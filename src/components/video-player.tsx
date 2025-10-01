@@ -15,7 +15,9 @@ interface VideoPlayerProps {
 
 export function VideoPlayer({ jobId, status, src }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [jobStatus, setJobStatus] = useState<JobStatus>(status ?? (src ? "ready" : "generating"));
+  const [jobStatus, setJobStatus] = useState<JobStatus>(
+    status ?? (src ? "ready" : "generating")
+  );
   const [videoUrl, setVideoUrl] = useState<string | undefined>(src);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,7 +64,7 @@ export function VideoPlayer({ jobId, status, src }: VideoPlayerProps) {
 
     // Start polling
     poll();
-    interval = setInterval(poll, 3000);
+    interval = setInterval(poll, 10000);
 
     return () => {
       cancelled = true;
@@ -87,14 +89,20 @@ export function VideoPlayer({ jobId, status, src }: VideoPlayerProps) {
   if (jobStatus !== "ready" || !videoUrl) {
     return (
       <div
-        className={"w-full rounded-lg border border-border bg-card text-card-foreground p-6 flex items-center justify-center"}
+        className={
+          "w-full rounded-lg border border-border bg-card text-card-foreground p-6 flex items-center justify-center"
+        }
         style={{ aspectRatio: "16 / 9" }}
         aria-busy="true"
         aria-label="Video container generating"
       >
         <div className="mx-auto max-w-md text-center space-y-4">
-          <h2 className="text-balance text-lg font-medium">Video generating. Please wait</h2>
-          <p className="text-sm text-muted-foreground">This may take a moment.</p>
+          <h2 className="text-balance text-lg font-medium">
+            Video generating. Please wait
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            This may take a moment.
+          </p>
 
           {/* Loading bar (indeterminate) */}
           <div className="mt-4">
@@ -119,9 +127,16 @@ export function VideoPlayer({ jobId, status, src }: VideoPlayerProps) {
   }
 
   return (
-    <div className="w-full rounded-lg border border-border bg-card text-card-foreground p-2" style={{ aspectRatio: "16 / 9" }}>
-      <video ref={videoRef} src={videoUrl} controls className="w-full h-full rounded-md" />
+    <div
+      className="w-full rounded-lg border border-border bg-card text-card-foreground p-2"
+      style={{ aspectRatio: "16 / 9" }}
+    >
+      <video
+        ref={videoRef}
+        src={videoUrl}
+        controls
+        className="w-full h-full rounded-md"
+      />
     </div>
   );
 }
-

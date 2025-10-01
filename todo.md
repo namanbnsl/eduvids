@@ -1,0 +1,1 @@
+if error cus of the script, pass in the error to gemini to regen script and run again

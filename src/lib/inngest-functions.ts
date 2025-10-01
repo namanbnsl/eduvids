@@ -5,7 +5,7 @@ import { uploadVideo } from "./uploadthing";
 import { jobStore } from "./job-store";
 
 export const generateVideo = inngest.createFunction(
-  { id: "generate-manim-video" },
+  { id: "generate-manim-video", timeouts: { start: "10m", finish: "10m" } },
   { event: "video/generate.request" },
   async ({ event, step }) => {
     const { prompt, userId, chatId, jobId } = event.data as {
@@ -69,4 +69,3 @@ export const generateVideo = inngest.createFunction(
     }
   }
 );
-

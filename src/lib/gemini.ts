@@ -21,7 +21,7 @@ export interface ManimScript {
 export async function generateVoiceoverScript({
   prompt,
 }: VoiceoverScriptRequest): Promise<string> {
-  const model = google("gemini-2.5-pro");
+  const model = google("gemini-2.5-flash");
 
   const systemPrompt = `
 You are a skilled educational script writer tasked with drafting a concise narration for a Manim video.

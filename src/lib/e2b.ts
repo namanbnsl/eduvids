@@ -70,27 +70,31 @@ export async function renderManimVideo({
       throw new Error("Rendered video has 0s duration — aborting upload");
     }
 
-    // Watermark the video inside the sandbox using OpenCV before upload
+    // Watermark the video inside the sandbox using ffmpeg drawtext for robust output
     const watermarkedPath = `${outputDir}/watermarked.mp4`;
+    const watermarkText = "Created by Naman Bansal via scimath-vids";
+    const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
+    const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@0.85:fontsize=24:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw-20:y=h-th-20`;
 
-    // Write a small Python script that applies a semi-transparent text watermark
-    const watermarkScriptPath = `/home/user/watermark.py`;
-    const watermarkText = "Eureka";
-    const pythonScript = `import sys\nimport cv2\n\nif len(sys.argv) < 3:\n    print('usage: watermark.py <in> <out> [text]')\n    sys.exit(2)\n\nin_path = sys.argv[1]\nout_path = sys.argv[2]\ntext = sys.argv[3] if len(sys.argv) > 3 else 'Eureka'\n\ncap = cv2.VideoCapture(in_path)\nif not cap.isOpened():\n    print('failed to open input')\n    sys.exit(3)\n\nfourcc = cv2.VideoWriter_fourcc(*'mp4v')\nfps = cap.get(cv2.CAP_PROP_FPS) or 30.0\nwidth = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))\nheight = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))\nwriter = cv2.VideoWriter(out_path, fourcc, fps, (width, height))\nif not writer.isOpened():\n    print('failed to open writer')\n    sys.exit(4)\n\nfont = cv2.FONT_HERSHEY_SIMPLEX\nfont_scale = max(0.5, min(width, height) / 720.0)\nthickness = max(1, int(2 * font_scale))\nalpha = 0.5\n\nwhile True:\n    ret, frame = cap.read()\n    if not ret:\n        break\n\n    overlay = frame.copy()\n    (tw, th), _ = cv2.getTextSize(text, font, font_scale, thickness)\n    x = width - tw - 20\n    y = height - 20\n\n    # Draw filled rectangle for better readability (transparent)\n    cv2.rectangle(overlay, (x - 10, y - th - 10), (x + tw + 10, y + 10), (0, 0, 0), -1)\n    # Blend overlay\n    cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)\n\n    # Draw the text itself (less transparent for crispness)\n    cv2.putText(frame, text, (x, y), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)\n\n    writer.write(frame)\n\ncap.release()\nwriter.release()\nprint('ok')\n`;
-
-    await sandbox.files.write(watermarkScriptPath, pythonScript);
-    const wmProc = await sandbox.commands.run(
-      `python3 ${watermarkScriptPath} ${videoPath} ${watermarkedPath} '${watermarkText}'`,
-      {
-        onStdout: (d) => console.log(d),
-        onStderr: (d) => console.error(d),
-      }
-    );
+    const ffmpegCmd = `ffmpeg -y -i ${videoPath} -vf \"${drawText}\" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart -c:a copy ${watermarkedPath}`;
+    const wmProc = await sandbox.commands.run(ffmpegCmd, {
+      onStdout: (d) => console.log(d),
+      onStderr: (d) => console.error(d),
+    });
 
     if (wmProc.exitCode !== 0) {
       throw new Error(
         `Watermarking failed: ${wmProc.exitCode}\n${wmProc.stderr}`
       );
+    }
+
+    // Validate watermarked output
+    const probeWm = await sandbox.commands.run(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${watermarkedPath}`
+    );
+    const wmDuration = parseFloat((probeWm.stdout || "").trim());
+    if (!wmDuration || wmDuration <= 0) {
+      throw new Error("Watermarked video has 0s duration — aborting upload");
     }
 
     // Read file bytes reliably via base64 in the sandbox to avoid encoding issues
@@ -114,6 +118,7 @@ export async function renderManimVideo({
     console.error("E2B render error:", err);
     throw new Error(`Failed to render Manim video: ${err.message}`);
   } finally {
-    console.log("E2B sandbox will be closed by the framework");
+    await sandbox?.kill();
+    console.log("E2B sandbox is closed.");
   }
 }
