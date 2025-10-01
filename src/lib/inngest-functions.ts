@@ -30,35 +30,66 @@ export const generateVideo = inngest.createFunction(
         length: voiceoverScript.length,
       });
 
-      // Step 2: Generate Manim Python script with voiceover
-      const script = await step.run("generate-manim-script", async () => {
-        return await generateManimScript({ prompt, voiceoverScript });
-      });
+      // Steps 2-4: Generate Manim script, render, and upload
+      // If an error occurs during these steps (e.g., due to a bad script),
+      // retry from generating the Manim script onward ONCE, keeping the same voiceover.
+      let videoUrl: string | null = null;
+      try {
+        const script = await step.run("generate-manim-script", async () => {
+          return await generateManimScript({ prompt, voiceoverScript });
+        });
 
-      console.log("Generated Manim script", { scriptLength: script.length });
+        console.log("Generated Manim script", { scriptLength: script.length });
 
-      // Step 3 & 4 combined: Render and upload within a single step to avoid persisting large payloads
-      const videoUrl = await step.run("render-and-upload-video", async () => {
-        const dataUrlOrPath = await renderManimVideo({ script, prompt });
-        return await uploadVideo({ videoPath: dataUrlOrPath, userId });
-      });
+        videoUrl = await step.run("render-and-upload-video", async () => {
+          const dataUrlOrPath = await renderManimVideo({ script, prompt });
+          return await uploadVideo({ videoPath: dataUrlOrPath, userId });
+        });
 
-      console.log("Video uploaded successfully:", videoUrl);
+        console.log("Video uploaded successfully:", videoUrl);
+      } catch (firstErr: any) {
+        console.warn(
+          "Primary attempt failed after voiceover; retrying from Manim script generation with same voiceover...",
+          firstErr
+        );
+
+        const retryScript = await step.run(
+          "retry-generate-manim-script",
+          async () => {
+            return await generateManimScript({ prompt, voiceoverScript });
+          }
+        );
+
+        console.log("Retry Manim script generated", {
+          scriptLength: retryScript.length,
+        });
+
+        videoUrl = await step.run("retry-render-and-upload-video", async () => {
+          const dataUrlOrPath = await renderManimVideo({
+            script: retryScript,
+            prompt,
+          });
+          return await uploadVideo({ videoPath: dataUrlOrPath, userId });
+        });
+
+        console.log("Video uploaded successfully on retry:", videoUrl);
+      }
 
       // Update job store on success
       if (jobId) {
-        await jobStore.setReady(jobId, videoUrl);
+        await jobStore.setReady(jobId, videoUrl!);
       }
 
       // Return the final result
       return {
         success: true,
-        videoUrl,
+        videoUrl: videoUrl!,
         prompt,
         userId,
         chatId,
         generatedAt: new Date().toISOString(),
-        scriptLength: script.length,
+        // We do not persist the script; expose voiceover length for traceability
+        voiceoverLength: voiceoverScript.length,
       };
     } catch (err: any) {
       console.error("Error in generateVideo function:", err);
