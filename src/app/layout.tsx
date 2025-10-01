@@ -7,7 +7,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "brain.open()",
+  title: "scimath-vids",
   description: "The AI-native learning OS.",
   icons: { icon: "/favicon.ico" },
 };
