@@ -13,7 +13,7 @@ export async function renderManimVideo({
 
   try {
     sandbox = await Sandbox.create("manim-ffmpeg-latex-voiceover-watermark", {
-      timeoutMs: 1200000,
+      timeoutMs: 0,
     });
     console.log("E2B sandbox created successfully");
 
@@ -42,6 +42,7 @@ export async function renderManimVideo({
       {
         onStdout: (d) => console.log(d),
         onStderr: (d) => console.error(d),
+        timeoutMs: 0,
       }
     );
 
@@ -61,7 +62,10 @@ export async function renderManimVideo({
 
     // Validate with ffprobe
     const probe = await sandbox.commands.run(
-      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${videoPath}`
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${videoPath}`,
+      {
+        timeoutMs: 0,
+      }
     );
     const duration = parseFloat((probe.stdout || "").trim());
     console.log("ffprobe duration:", duration);
@@ -80,6 +84,7 @@ export async function renderManimVideo({
     const wmProc = await sandbox.commands.run(ffmpegCmd, {
       onStdout: (d) => console.log(d),
       onStderr: (d) => console.error(d),
+      timeoutMs: 0,
     });
 
     if (wmProc.exitCode !== 0) {
@@ -90,7 +95,10 @@ export async function renderManimVideo({
 
     // Validate watermarked output
     const probeWm = await sandbox.commands.run(
-      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${watermarkedPath}`
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${watermarkedPath}`,
+      {
+        timeoutMs: 0,
+      }
     );
     const wmDuration = parseFloat((probeWm.stdout || "").trim());
     if (!wmDuration || wmDuration <= 0) {
@@ -99,7 +107,8 @@ export async function renderManimVideo({
 
     // Read file bytes reliably via base64 in the sandbox to avoid encoding issues
     const base64Result = await sandbox.commands.run(
-      `base64 -w 0 ${watermarkedPath}`
+      `base64 -w 0 ${watermarkedPath}`,
+      { timeoutMs: 0 }
     );
     if (base64Result.exitCode !== 0 || !base64Result.stdout) {
       throw new Error(

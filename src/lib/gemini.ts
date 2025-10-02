@@ -56,3 +56,27 @@ export async function generateManimScript({
 
   return code;
 }
+
+export async function generateYoutubeTitle({prompt, voiceoverScript}: ManimScriptRequest) {
+  const model = google("gemini-2.5-flash");
+  const systemPrompt = "You are a helpful assistant that generates catchy YouTube titles for educational videos based on the content provided. REMEMBER TO KEEP IT SHORT AND ENGAGING. ONLY PROVIDE THE TITLE, NOTHING ELSE.";
+  const { text } = await generateText({
+    model,
+    system: systemPrompt,
+    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate a catchy YouTube title for the video that summarizes the content:`,
+  });
+
+  return text.trim();
+}
+
+export async function generateYoutubeDescription({prompt, voiceoverScript}: ManimScriptRequest) {
+  const model = google("gemini-2.5-flash");
+  const systemPrompt = "You are a helpful assistant that generates cool YouTube descriptions for educational videos based on the content provided. REMEMBER TO KEEP IT SHORT AND ENGAGING. ONLY PROVIDE THE DESCRIPTION, NOTHING ELSE.";
+  const { text } = await generateText({
+    model,
+    system: systemPrompt,
+    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the YouTube description for the video that summarizes the content:`,
+  });
+
+  return text.trim();
+}

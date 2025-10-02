@@ -1,14 +1,16 @@
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import { Readable } from "node:stream";
+import { generateYoutubeDescription, generateYoutubeTitle } from "@/lib/gemini";
 
 export type YouTubePrivacyStatus = "public" | "unlisted" | "private";
 
 export interface YouTubeUploadRequest {
   videoUrl: string;
-  title: string;
+  prompt: string;
   description?: string;
   tags?: string[];
+  voiceoverScript?: string;
   privacyStatus?: YouTubePrivacyStatus;
 }
 
@@ -32,9 +34,10 @@ function getOAuth2Client(): OAuth2Client {
 
 export async function uploadToYouTube({
   videoUrl,
-  title,
+  prompt,
   description,
   tags,
+  voiceoverScript,
   privacyStatus,
 }: YouTubeUploadRequest): Promise<{ videoId: string; watchUrl: string }> {
   const auth = getOAuth2Client();
@@ -58,17 +61,21 @@ export async function uploadToYouTube({
   const mediaBody = Readable.from(mediaBuffer);
 
   // Ensure title is a non-empty string acceptable by YouTube API
-  const normalizedTitle = (title ?? "").toString().trim();
+  const normalizedTitle = (prompt ?? "").toString().trim();
   if (!normalizedTitle) {
     throw new Error("YouTube upload title is empty after normalization");
   }
+
+  const generatedYoutubeTitle = await generateYoutubeTitle({prompt, voiceoverScript: voiceoverScript!});
+  const generatedYoutubeDescription = await generateYoutubeDescription({prompt, voiceoverScript: voiceoverScript!});
+
 
   const insertRes = await youtube.videos.insert({
     part: ["snippet", "status"],
     requestBody: {
       snippet: {
-        title: normalizedTitle,
-        description,
+        title: generatedYoutubeTitle,
+        description: generatedYoutubeDescription,
         tags,
         categoryId: "27",
       },
