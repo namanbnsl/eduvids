@@ -13,7 +13,7 @@ export async function renderManimVideo({
 
   try {
     sandbox = await Sandbox.create("manim-ffmpeg-latex-voiceover-watermark", {
-      timeoutMs: 0,
+      timeoutMs: 1200_000,
     });
     console.log("E2B sandbox created successfully");
 
@@ -42,7 +42,7 @@ export async function renderManimVideo({
       {
         onStdout: (d) => console.log(d),
         onStderr: (d) => console.error(d),
-        timeoutMs: 0,
+        timeoutMs: 600_000,
       }
     );
 
@@ -64,7 +64,7 @@ export async function renderManimVideo({
     const probe = await sandbox.commands.run(
       `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${videoPath}`,
       {
-        timeoutMs: 0,
+        timeoutMs: 300_000,
       }
     );
     const duration = parseFloat((probe.stdout || "").trim());
@@ -84,7 +84,7 @@ export async function renderManimVideo({
     const wmProc = await sandbox.commands.run(ffmpegCmd, {
       onStdout: (d) => console.log(d),
       onStderr: (d) => console.error(d),
-      timeoutMs: 0,
+      timeoutMs: 300_000,
     });
 
     if (wmProc.exitCode !== 0) {
@@ -97,7 +97,7 @@ export async function renderManimVideo({
     const probeWm = await sandbox.commands.run(
       `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${watermarkedPath}`,
       {
-        timeoutMs: 0,
+        timeoutMs: 300_000,
       }
     );
     const wmDuration = parseFloat((probeWm.stdout || "").trim());
@@ -108,7 +108,7 @@ export async function renderManimVideo({
     // Read file bytes reliably via base64 in the sandbox to avoid encoding issues
     const base64Result = await sandbox.commands.run(
       `base64 -w 0 ${watermarkedPath}`,
-      { timeoutMs: 0 }
+      { timeoutMs: 300_000 }
     );
     if (base64Result.exitCode !== 0 || !base64Result.stdout) {
       throw new Error(
