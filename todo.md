@@ -1,3 +1,4 @@
+Proper titles for youtube videos, etc.
 Do agentic error fixing
 Make proper steps for and edit the README.
 Build proper onboarding flow.

@@ -73,49 +73,37 @@ export const generateVideo = inngest.createFunction(
       // Steps 2-4: Generate Manim script, render, and upload
       // If an error occurs during these steps (e.g., due to a bad script),
       // retry from generating the Manim script onward ONCE, keeping the same voiceover.
+      // let hasFailedOnce = false;  // testing error retrying capability
       let videoUrl: string | null = null;
-      try {
-        const script = await step.run("generate-manim-script", async () => {
-          return await generateManimScript({ prompt, voiceoverScript });
-        });
 
-        console.log("Generated Manim script", { scriptLength: script.length });
+      const result = await step.run(
+        "generate-manim-script-and-render-and-upload",
+        async () => {
+          // if (!hasFailedOnce) {
+          //   hasFailedOnce = true;
+          //   console.log("Forcing failure on first run...");
+          //   throw new Error("Intentional failure for retry test");
+          // } // testing error retrying capability
 
-        videoUrl = await step.run("render-and-upload-video", async () => {
-          const dataUrlOrPath = await renderManimVideo({ script, prompt });
-          return await uploadVideo({ videoPath: dataUrlOrPath, userId });
-        });
+          const script = await generateManimScript({ prompt, voiceoverScript });
 
-        console.log("Video uploaded successfully:", videoUrl);
-      } catch (firstErr: any) {
-        console.warn(
-          "Primary attempt failed after voiceover; retrying from Manim script generation with same voiceover...",
-          firstErr
-        );
-
-        const retryScript = await step.run(
-          "retry-generate-manim-script",
-          async () => {
-            return await generateManimScript({ prompt, voiceoverScript });
-          }
-        );
-
-        console.log("Retry Manim script generated", {
-          scriptLength: retryScript.length,
-        });
-
-        videoUrl = await step.run("retry-render-and-upload-video", async () => {
-          const dataUrlOrPath = await renderManimVideo({
-            script: retryScript,
-            prompt,
+          console.log("Generated Manim script", {
+            scriptLength: script.length,
           });
-          return await uploadVideo({ videoPath: dataUrlOrPath, userId });
-        });
 
-        console.log("Video uploaded successfully on retry:", videoUrl);
-      }
+          const dataUrlOrPath = await renderManimVideo({ script, prompt });
 
-      // Update job store so frontend updates with UploadThing URL
+          videoUrl = await uploadVideo({
+            videoPath: dataUrlOrPath,
+            userId,
+          });
+
+          console.log("Video uploaded successfully:", videoUrl);
+
+          return videoUrl;
+        }
+      );
+
       if (jobId) {
         await jobStore.setReady(jobId, videoUrl!);
       }
