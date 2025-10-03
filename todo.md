@@ -1,5 +1,6 @@
-before rendering video, give the code to another LLM and verify if its correct. if not change script, then render.
-Make progress bar in UI work
+writing code is very hard for the LLMS in manim. make it easier
+improve manim capability
+make longer videos better
 
 Make proper steps for and edit the README.
 Build proper onboarding flow.
