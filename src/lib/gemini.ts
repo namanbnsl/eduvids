@@ -3,12 +3,8 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText } from "ai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 
-// const google = createGoogleGenerativeAI({
-//   apiKey: process.env.GOOGLE_API_KEY!,
-// });
-
-const openrouter = createOpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY!,
+const google = createGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_API_KEY!,
 });
 
 export interface VoiceoverScriptRequest {
@@ -30,7 +26,7 @@ export interface ManimScript {
 export async function generateVoiceoverScript({
   prompt,
 }: VoiceoverScriptRequest): Promise<string> {
-  const model = openrouter("x-ai/grok-4-fast:free");
+  const model = google("gemini-2.5-flash-lite");
 
   const systemPrompt = VOICEOVER_SYSTEM_PROMPT;
 
@@ -50,7 +46,7 @@ export async function generateManimScript({
   selectedPluginNames,
   pluginImportHints,
 }: ManimScriptRequest): Promise<string> {
-  const model = openrouter("x-ai/grok-4-fast:free");
+  const model = google("gemini-2.5-pro");
   const systemPrompt = MANIM_SYSTEM_PROMPT;
 
   const pluginDirective = (() => {
@@ -134,7 +130,8 @@ export async function selectManimPlugins(params: {
   voiceoverScript: string;
   plugins: PluginDescriptorForModel[];
 }): Promise<string[]> {
-  const model = openrouter("x-ai/grok-4-fast:free");
+  const model = google("gemini-2.5-flash");
+
   const { prompt, voiceoverScript, plugins } = params;
   const selectionPrompt = [
     "You are deciding which Manim plugins, if any, would meaningfully help implement the user's request.",
@@ -169,7 +166,8 @@ export async function generateYoutubeTitle({
   prompt,
   voiceoverScript,
 }: ManimScriptRequest) {
-  const model = openrouter("x-ai/grok-4-fast:free");
+  const model = google("gemini-2.5-flash");
+
   const systemPrompt =
     "You are a helpful assistant that generates catchy YouTube titles for educational videos based on the content provided. REMEMBER TO KEEP IT SHORT AND ENGAGING. ONLY PROVIDE THE TITLE, NOTHING ELSE.";
   const { text } = await generateText({
@@ -185,7 +183,8 @@ export async function generateYoutubeDescription({
   prompt,
   voiceoverScript,
 }: ManimScriptRequest) {
-  const model = openrouter("x-ai/grok-4-fast:free");
+  const model = google("gemini-2.5-flash");
+
   const systemPrompt =
     "You are a helpful assistant that generates cool YouTube descriptions for educational videos based on the content provided. REMEMBER TO KEEP IT SHORT AND ENGAGING. ONLY PROVIDE THE DESCRIPTION, NOTHING ELSE.";
   const { text } = await generateText({
@@ -220,7 +219,8 @@ export async function regenerateManimScriptWithError({
   errorDetails,
   attemptNumber,
 }: RegenerateManimScriptRequest): Promise<string> {
-  const model = openrouter("x-ai/grok-4-fast:free");
+  const model = google("gemini-2.5-pro");
+
   const systemPrompt = MANIM_SYSTEM_PROMPT;
 
   const structuredErrorSection = (() => {
@@ -286,7 +286,8 @@ export async function verifyManimScript({
   voiceoverScript,
   script,
 }: VerifyManimScriptRequest): Promise<VerifyManimScriptResult> {
-  const model = openrouter("x-ai/grok-4-fast:free");
+  const model = google("gemini-2.5-pro");
+
   const systemPrompt = MANIM_SYSTEM_PROMPT;
 
   const { text } = await generateText({
