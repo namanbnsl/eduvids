@@ -12,6 +12,10 @@ export interface VideoJob {
   status: JobStatus;
   videoUrl?: string;
   error?: string;
+  // Progress fields (0-100)
+  progress?: number;
+  step?: string;
+  details?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -20,6 +24,10 @@ export interface VideoJob {
 interface JobStore {
   create(description: string): Promise<VideoJob>;
   get(id: string): Promise<VideoJob | undefined>;
+  setProgress(
+    id: string,
+    update: { progress?: number; step?: string; details?: string }
+  ): Promise<VideoJob | undefined>;
   setReady(id: string, videoUrl: string): Promise<VideoJob | undefined>;
   setError(id: string, message: string): Promise<VideoJob | undefined>;
 }
@@ -35,6 +43,8 @@ class KVJobStore implements JobStore {
       id,
       description,
       status: "generating",
+      progress: 0,
+      step: "queued",
       createdAt: now,
       updatedAt: now,
     };
@@ -47,6 +57,23 @@ class KVJobStore implements JobStore {
     return job ?? undefined;
   }
 
+  async setProgress(
+    id: string,
+    update: { progress?: number; step?: string; details?: string }
+  ): Promise<VideoJob | undefined> {
+    const job = await this.get(id);
+    if (!job) return undefined;
+    const updated: VideoJob = {
+      ...job,
+      progress: update.progress ?? job.progress,
+      step: update.step ?? job.step,
+      details: update.details ?? job.details,
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(this.key(id), updated, { ex: this.ttlSeconds });
+    return updated;
+  }
+
   async setReady(id: string, videoUrl: string): Promise<VideoJob | undefined> {
     const job = await this.get(id);
     if (!job) return undefined;
@@ -54,6 +81,8 @@ class KVJobStore implements JobStore {
       ...job,
       status: "ready",
       videoUrl,
+      progress: 100,
+      step: "completed",
       updatedAt: new Date().toISOString(),
     };
     await kv.set(this.key(id), updated, { ex: this.ttlSeconds });
@@ -67,6 +96,7 @@ class KVJobStore implements JobStore {
       ...job,
       status: "error",
       error: message,
+      step: "error",
       updatedAt: new Date().toISOString(),
     };
     await kv.set(this.key(id), updated, { ex: this.ttlSeconds });
@@ -89,6 +119,8 @@ class InMemoryJobStore implements JobStore {
       id,
       description,
       status: "generating",
+      progress: 0,
+      step: "queued",
       createdAt: now,
       updatedAt: now,
     };
@@ -100,11 +132,27 @@ class InMemoryJobStore implements JobStore {
     return this.jobs.get(id);
   }
 
+  async setProgress(
+    id: string,
+    update: { progress?: number; step?: string; details?: string }
+  ): Promise<VideoJob | undefined> {
+    const job = this.jobs.get(id);
+    if (!job) return undefined;
+    if (typeof update.progress === "number") job.progress = update.progress;
+    if (typeof update.step === "string") job.step = update.step;
+    if (typeof update.details === "string") job.details = update.details;
+    job.updatedAt = new Date().toISOString();
+    this.jobs.set(id, job);
+    return job;
+  }
+
   async setReady(id: string, videoUrl: string): Promise<VideoJob | undefined> {
     const job = this.jobs.get(id);
     if (!job) return undefined;
     job.status = "ready";
     job.videoUrl = videoUrl;
+    job.progress = 100;
+    job.step = "completed";
     job.updatedAt = new Date().toISOString();
     this.jobs.set(id, job);
     return job;
@@ -115,6 +163,7 @@ class InMemoryJobStore implements JobStore {
     if (!job) return undefined;
     job.status = "error";
     job.error = message;
+    job.step = "error";
     job.updatedAt = new Date().toISOString();
     this.jobs.set(id, job);
     return job;
@@ -122,5 +171,9 @@ class InMemoryJobStore implements JobStore {
 }
 
 // Select KV store if configured, otherwise fallback to in-memory (useful for local dev)
-const hasKV = Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-export const jobStore: JobStore = hasKV ? new KVJobStore() : new InMemoryJobStore();
+const hasKV = Boolean(
+  process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN
+);
+export const jobStore: JobStore = hasKV
+  ? new KVJobStore()
+  : new InMemoryJobStore();

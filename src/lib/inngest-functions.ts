@@ -69,6 +69,10 @@ export const generateVideo = inngest.createFunction(
     console.log(`Starting video generation for prompt: "${prompt}"`);
 
     try {
+      await jobStore.setProgress(jobId!, {
+        progress: 5,
+        step: "generating voiceover",
+      });
       const voiceoverScript = await step.run(
         "generate-voiceover-script",
         async () => {
@@ -81,6 +85,10 @@ export const generateVideo = inngest.createFunction(
       });
 
       // Decide which plugins (if any) to install and feed examples for
+      await jobStore.setProgress(jobId!, {
+        progress: 15,
+        step: "selecting plugins",
+      });
       const {
         selectedPluginNames,
         selectedPluginExamples,
@@ -117,6 +125,10 @@ export const generateVideo = inngest.createFunction(
         };
       });
 
+      await jobStore.setProgress(jobId!, {
+        progress: 30,
+        step: "generating manim script",
+      });
       let script = await step.run("generate-manim-script", async () => {
         return await generateManimScript({
           prompt,
@@ -130,6 +142,10 @@ export const generateVideo = inngest.createFunction(
       console.log("Generated Manim script", { scriptLength: script.length });
 
       // New: Verify and optionally auto-fix the script with Gemini before rendering
+      await jobStore.setProgress(jobId!, {
+        progress: 45,
+        step: "verifying script",
+      });
       const verified = await step.run("verify-manim-script", async () => {
         return await verifyManimScript({
           prompt,
@@ -153,6 +169,10 @@ export const generateVideo = inngest.createFunction(
       }
 
       // Render video with retry logic
+      await jobStore.setProgress(jobId!, {
+        progress: 55,
+        step: "rendering video",
+      });
       const { videoUrl, renderAttempt } = await step.run(
         "render-video-with-retries",
         async () => {
@@ -164,10 +184,19 @@ export const generateVideo = inngest.createFunction(
             try {
               console.log(`Render attempt ${attempt}/${MAX_RETRIES}...`);
 
+              // Mid-render heartbeat
+              await jobStore.setProgress(jobId!, {
+                progress: Math.min(55 + attempt * 5, 80),
+                step: `rendering attempt ${attempt}`,
+              });
               const dataUrlOrPath = await renderManimVideo({
                 script: currentScript,
                 prompt,
                 preInstallCommands: installCommands,
+              });
+              await jobStore.setProgress(jobId!, {
+                progress: 82,
+                step: "uploading video",
               });
               const videoUrl = await uploadVideo({
                 videoPath: dataUrlOrPath,
@@ -194,6 +223,9 @@ export const generateVideo = inngest.createFunction(
               }
 
               // Regenerate script with error feedback for next attempt
+              await jobStore.setProgress(jobId!, {
+                details: lastError.message,
+              });
               console.log(`Regenerating script for attempt ${attempt + 1}...`);
               currentScript = await regenerateManimScriptWithError({
                 prompt,
@@ -217,6 +249,7 @@ export const generateVideo = inngest.createFunction(
       );
 
       if (jobId) {
+        await jobStore.setProgress(jobId, { progress: 95, step: "finalizing" });
         await jobStore.setReady(jobId, videoUrl!);
       }
 

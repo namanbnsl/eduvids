@@ -20,55 +20,68 @@ export function VideoPlayer({ jobId, status, src }: VideoPlayerProps) {
   );
   const [videoUrl, setVideoUrl] = useState<string | undefined>(src);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<number>(0);
+  const [step, setStep] = useState<string | undefined>(undefined);
 
-  // Poll job status if we are still generating and we have a jobId
+  // Subscribe to job updates via SSE, fallback to polling
   useEffect(() => {
     if (!jobId || jobStatus === "ready" || jobStatus === "error") return;
 
     let cancelled = false;
-    let interval: any;
+    let pollInterval: any;
+    let es: EventSource | null = null;
 
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/jobs/${jobId}`, { cache: "no-store" });
-        if (!res.ok) {
-          // 404 means job might not be registered yet; continue polling briefly
-          if (res.status !== 404) {
-            throw new Error(`Failed to fetch job status (${res.status})`);
-          }
-          return;
-        }
-        const data = (await res.json()) as {
-          status: JobStatus;
-          videoUrl?: string;
-          error?: string;
-        };
-        if (cancelled) return;
-
-        if (data.status === "ready" && data.videoUrl) {
-          setVideoUrl(data.videoUrl);
-          setJobStatus("ready");
-          clearInterval(interval);
-        } else if (data.status === "error") {
-          setJobStatus("error");
-          setError(data.error ?? "Video generation failed");
-          clearInterval(interval);
-        }
-      } catch (e: any) {
-        if (!cancelled) {
-          setError(e?.message ?? "Failed to check job status");
-          setJobStatus("error");
-        }
+    const handleJob = (job: any) => {
+      if (cancelled || !job) return;
+      setProgress(typeof job.progress === "number" ? job.progress : 0);
+      if (job.step) setStep(job.step);
+      if (job.status === "ready" && job.videoUrl) {
+        setVideoUrl(job.videoUrl);
+        setJobStatus("ready");
+        es?.close();
+        if (pollInterval) clearInterval(pollInterval);
+      } else if (job.status === "error") {
+        setJobStatus("error");
+        setError(job.error ?? "Video generation failed");
+        es?.close();
+        if (pollInterval) clearInterval(pollInterval);
       }
     };
 
-    // Start polling
-    poll();
-    interval = setInterval(poll, 20_000);
+    const startPolling = () => {
+      const poll = async () => {
+        try {
+          const res = await fetch(`/api/jobs/${jobId}`, { cache: "no-store" });
+          if (!res.ok) return;
+          const data = await res.json();
+          handleJob(data);
+        } catch {}
+      };
+      poll();
+      pollInterval = setInterval(poll, 5000);
+    };
+
+    try {
+      es = new EventSource(`/api/jobs/${jobId}/events`);
+      es.addEventListener("progress", (evt) => {
+        try {
+          const job = JSON.parse((evt as MessageEvent).data);
+          handleJob(job);
+        } catch {}
+      });
+      es.addEventListener("error", () => {
+        // Fallback to polling on error
+        es?.close();
+        startPolling();
+      });
+    } catch {
+      startPolling();
+    }
 
     return () => {
       cancelled = true;
-      if (interval) clearInterval(interval);
+      es?.close();
+      if (pollInterval) clearInterval(pollInterval);
     };
   }, [jobId, jobStatus]);
 
@@ -101,10 +114,10 @@ export function VideoPlayer({ jobId, status, src }: VideoPlayerProps) {
             Video generating. Please wait
           </h2>
           <p className="text-sm text-muted-foreground">
-            This may take a moment.
+            {step ? step : "This may take a moment."}
           </p>
 
-          {/* Loading bar (indeterminate) */}
+          {/* Determinate progress bar with subtle animation */}
           <div className="mt-4">
             <div
               className="h-2 w-full overflow-hidden rounded bg-muted"
@@ -112,14 +125,25 @@ export function VideoPlayer({ jobId, status, src }: VideoPlayerProps) {
               aria-label="Generating video"
               aria-valuemin={0}
               aria-valuemax={100}
+              aria-valuenow={progress}
             >
-              <div className="h-full w-1/3 rounded bg-primary animate-pulse" />
+              <div
+                className="h-full rounded bg-primary transition-all duration-700 ease-out"
+                style={{
+                  width: `${Math.max(2, Math.min(100, progress || 0))}%`,
+                }}
+              />
+            </div>
+            <div className="mt-2 text-xs text-muted-foreground">
+              {Math.round(progress || 0)}%
             </div>
           </div>
 
           {/* Screen reader live status */}
           <p className="sr-only" aria-live="polite" role="status">
-            Video generating. Please wait
+            {`Video generating. ${step ?? "Please wait"}. ${Math.round(
+              progress || 0
+            )}%`}
           </p>
         </div>
       </div>
