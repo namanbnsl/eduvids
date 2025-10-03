@@ -3,11 +3,13 @@ import { Sandbox } from "@e2b/code-interpreter";
 export interface RenderRequest {
   script: string;
   prompt: string;
+  preInstallCommands?: string[];
 }
 
 export async function renderManimVideo({
   script,
   prompt: _prompt,
+  preInstallCommands,
 }: RenderRequest): Promise<string> {
   let sandbox: Sandbox | null = null;
 
@@ -16,6 +18,24 @@ export async function renderManimVideo({
       timeoutMs: 1200_000,
     });
     console.log("E2B sandbox created successfully");
+
+    // Optionally install selected plugins before writing/running the script
+    if (preInstallCommands && preInstallCommands.length > 0) {
+      for (const cmd of preInstallCommands) {
+        const res = await sandbox.commands.run(cmd, {
+          onStdout: (d) => console.log(d),
+          onStderr: (d) => console.error(d),
+          timeoutMs: 300_000,
+        });
+        if (res.exitCode !== 0) {
+          const err = [
+            `Pre-install failed for command: ${cmd}`,
+            res.stderr || "",
+          ].join("\n");
+          throw new Error(err);
+        }
+      }
+    }
 
     const scriptPath = `/home/user/script.py`;
     const mediaDir = `/home/user/media`;

@@ -4,6 +4,8 @@ import {
   generateVoiceoverScript,
   regenerateManimScriptWithError,
 } from "./gemini";
+import { selectManimPlugins } from "./gemini";
+import { manimPlugins } from "@/manim-plugins";
 import { renderManimVideo } from "./e2b";
 import { uploadVideo } from "./uploadthing";
 import { jobStore } from "./job-store";
@@ -77,8 +79,35 @@ export const generateVideo = inngest.createFunction(
         length: voiceoverScript.length,
       });
 
+      // Decide which plugins (if any) to install and feed examples for
+      const { selectedPluginNames, selectedPluginExamples, installCommands } =
+        await step.run("select-and-prepare-plugins", async () => {
+          // Ask model to pick from available plugins
+          const selectedNames = await selectManimPlugins({
+            prompt,
+            voiceoverScript,
+            plugins: manimPlugins.map((p) => ({
+              name: p.name,
+              description: p.description,
+            })),
+          });
+
+          const selected = manimPlugins.filter((p) =>
+            selectedNames.includes(p.name)
+          );
+          return {
+            selectedPluginNames: selected.map((p) => p.name),
+            selectedPluginExamples: selected.map((p) => p.basicExample),
+            installCommands: selected.map((p) => p.installCommand),
+          };
+        });
+
       const script = await step.run("generate-manim-script", async () => {
-        return await generateManimScript({ prompt, voiceoverScript });
+        return await generateManimScript({
+          prompt,
+          voiceoverScript,
+          pluginExamples: selectedPluginExamples,
+        });
       });
 
       console.log("Generated Manim script", { scriptLength: script.length });
@@ -98,6 +127,7 @@ export const generateVideo = inngest.createFunction(
               const dataUrlOrPath = await renderManimVideo({
                 script: currentScript,
                 prompt,
+                preInstallCommands: installCommands,
               });
               const videoUrl = await uploadVideo({
                 videoPath: dataUrlOrPath,

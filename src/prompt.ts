@@ -42,7 +42,7 @@ Code Style:
 - Keep the code compact, structured, and consistent.
 - Return plain Python code without Markdown fences or explanatory comments.
 
-You will receive the user's prompt along with the narration segments. Match the visuals to the narration as closely as possible.
+You will receive the user's prompt along with the narration segments. Match the visuals to the narration as closely as possible. PLEASE REMEMBER TO KEEP THE TEXT SMALL AND READABLE. PREVENT OVERLAPPING AND HIDE THINGS FROM THE SCENE WHEN NOT REQUIRED.
 
 Example:
 class MyScene(VoiceoverScene):
