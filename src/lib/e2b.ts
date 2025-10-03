@@ -156,7 +156,8 @@ export async function renderManimVideo({
     return dataUrl;
   } catch (err: any) {
     console.error("E2B render error:", err);
-    throw new Error(`Failed to render Manim video: ${err.message}`);
+    // Preserve original error details (message, stack, stderr snippets) for higher-level handlers
+    throw err instanceof Error ? err : new Error(String(err));
   } finally {
     await sandbox?.kill();
     console.log("E2B sandbox is closed.");

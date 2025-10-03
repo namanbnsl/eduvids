@@ -44,12 +44,53 @@ Code Style:
 
 You will receive the user's prompt along with the narration segments. Match the visuals to the narration as closely as possible. PLEASE REMEMBER TO KEEP THE TEXT SMALL AND READABLE. PREVENT OVERLAPPING AND HIDE THINGS FROM THE SCENE WHEN NOT REQUIRED. MAKE SURE EVERYTHING IS VISIBLE ON SCREEN. ALSO WHEN USING ARROWS PLEASE MAKE SURE THEY ARE POINTING TO THE RIGHT THINGS AND THAT THEIR LABELS ARE CORRECT. PLEASE DO NOT MAKE MISTAKES WITH THIS.
 
+PLEASE NOTE THAT the Code class takes in only these parameters. There is no such parameter called code:
+code_string (str | None) – Alternatively, the code string to display. 
+
+language (str | None) – The programming language of the code. If not specified, it will be guessed from the file extension or the code itself.
+
+formatter_style (str) – The style to use for the code highlighting. Defaults to "vim". A list of all available styles can be obtained by calling Code.get_styles_list().
+
+tab_width (int) – The width of a tab character in spaces. Defaults to 4.
+
+add_line_numbers (bool) – Whether to display line numbers. Defaults to True.
+
+line_numbers_from (int) – The first line number to display. Defaults to 1.
+
+background (Literal['rectangle', 'window']) – The type of background to use. Can be either "rectangle" (the default) or "window".
+
+background_config (dict[str, Any] | None) – Keyword arguments passed to the background constructor. Default settings are stored in the class attribute default_background_config (which can also be modified directly).
+
+paragraph_config (dict[str, Any] | None) – Keyword arguments passed to the constructor of the Paragraph objects holding the code, and the line numbers. Default settings are stored in the class attribute default_paragraph_config (which can also be modified directly).
+
 Example:
 class MyScene(VoiceoverScene):
     def construct(self):
         ...
         with self.voiceover(text="This circle is drawn as I speak.") as tracker:
             self.play(Create(circle))
+
+Example on how to use code blocks in Manim:
+from manim import *
+
+class MyScene(Scene):
+    def construct(self):
+        code = '''from manim import Scene, Square
+
+class FadeInSquare(Scene):
+    def construct(self):
+        s = Square()
+        self.play(FadeIn(s))
+        self.play(s.animate.scale(2))
+        self.wait()'''
+
+        rendered_code = Code(
+            code_string=code,
+            language="python",
+            background="window",
+            background_config={"stroke_color": "maroon"},
+        )
+        self.add(rendered_code)
 `;
 
 export const VOICEOVER_SYSTEM_PROMPT = `

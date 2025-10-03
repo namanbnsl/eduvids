@@ -196,7 +196,14 @@ export interface RegenerateManimScriptRequest {
   prompt: string;
   voiceoverScript: string;
   previousScript: string;
-  error: string;
+  error: string; // human-readable message
+  errorDetails?: {
+    message?: string;
+    stack?: string;
+    stderr?: string;
+    stdout?: string;
+    exitCode?: number;
+  };
   attemptNumber: number;
 }
 
@@ -205,15 +212,45 @@ export async function regenerateManimScriptWithError({
   voiceoverScript,
   previousScript,
   error,
+  errorDetails,
   attemptNumber,
 }: RegenerateManimScriptRequest): Promise<string> {
   const model = google("gemini-2.5-pro");
   const systemPrompt = MANIM_SYSTEM_PROMPT;
 
+  const structuredErrorSection = (() => {
+    if (!errorDetails) return "";
+    const parts: string[] = [];
+    if (typeof errorDetails.exitCode === "number") {
+      parts.push(`Exit code: ${errorDetails.exitCode}`);
+    }
+    if (errorDetails.stderr && errorDetails.stderr.trim().length > 0) {
+      parts.push(
+        `STDERR (truncated to 2k chars):\n${errorDetails.stderr.slice(0, 2000)}`
+      );
+    }
+    if (errorDetails.stdout && errorDetails.stdout.trim().length > 0) {
+      parts.push(
+        `STDOUT (truncated to 2k chars):\n${errorDetails.stdout.slice(0, 2000)}`
+      );
+    }
+    if (errorDetails.stack && errorDetails.stack.trim().length > 0) {
+      parts.push(
+        `Stack (truncated to 2k chars):\n${errorDetails.stack.slice(0, 2000)}`
+      );
+    }
+    if (errorDetails.message && errorDetails.message.trim().length > 0) {
+      parts.push(`Error message: ${errorDetails.message}`);
+    }
+    return parts.length
+      ? `\nAdditional structured error details:\n${parts.join("\n\n")}\n`
+      : "";
+  })();
+
   const { text } = await generateText({
     model,
     system: systemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\n⚠️ PREVIOUS ATTEMPT #${attemptNumber} FAILED ⚠️\n\nThe previous Manim script failed with the following error:\n\`\`\`\n${error}\n\`\`\`\n\nThe broken script was:\n\`\`\`python\n${previousScript}\n\`\`\`\n\nPlease analyze the error carefully and generate a CORRECTED Manim script that:\n1. Fixes the specific error that occurred\n2. Follows the narration timeline\n3. Uses proper Manim syntax and best practices\n4. Avoids the mistakes from the previous attempt\n\nGenerate the complete FIXED Manim script:`,
+    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\n⚠️ PREVIOUS ATTEMPT #${attemptNumber} FAILED ⚠️\n\nThe previous Manim script failed with the following error:\n\`\`\`\n${error}\n\`\`\`${structuredErrorSection}\nThe broken script was:\n\`\`\`python\n${previousScript}\n\`\`\`\n\nPlease analyze the error carefully and generate a CORRECTED Manim script that:\n1. Fixes the specific error that occurred\n2. Follows the narration timeline\n3. Uses proper Manim syntax and best practices\n4. Avoids the mistakes from the previous attempt\n\nGenerate the complete FIXED Manim script:`,
   });
 
   // Extract code from potential markdown formatting
@@ -253,6 +290,8 @@ export async function verifyManimScript({
     prompt: [
       "You are a strict static validator for Manim Python scripts.",
       "Analyze the provided script for correctness BEFORE runtime: imports, Scene/ThreeDScene usage, method names, missing constructs, syntax, and obvious logic issues.",
+      "Note do not change anything about the voiceover, etc. Do not add bookmarks, etc",
+      "If there is nothing to change, please do not",
       "Return ONLY a concise JSON object with fields: ok (boolean), error (string optional), fixedScript (string optional).",
       "If ok would be false, supply a full corrected script in fixedScript.",
       "User request:",
@@ -263,9 +302,24 @@ export async function verifyManimScript({
   });
 
   const raw = text.trim();
-  // Try to extract JSON if model added prose; fallback to parse as-is
-  const jsonMatch = raw.match(/\{[\s\S]*\}$/);
-  const candidate = jsonMatch ? jsonMatch[0] : raw;
+  // Try to robustly extract a JSON object, even if wrapped in fences or extra prose
+  const extractJsonString = (input: string): string | null => {
+    // Prefer fenced ```json ... ``` or ``` ... ``` blocks
+    const fenced = input.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (fenced && fenced[1]) {
+      return fenced[1].trim();
+    }
+    // Fallback: take substring from first '{' to last '}'
+    const firstBrace = input.indexOf("{");
+    const lastBrace = input.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      return input.substring(firstBrace, lastBrace + 1).trim();
+    }
+    return null;
+  };
+
+  const candidate = extractJsonString(raw) ?? raw;
+
   try {
     const parsed = JSON.parse(candidate);
     const ok = !!parsed.ok;
@@ -273,10 +327,19 @@ export async function verifyManimScript({
     let fixedScript =
       typeof parsed.fixedScript === "string" ? parsed.fixedScript : undefined;
     if (fixedScript) {
+      // If the model wrapped the script in code fences, strip them
       fixedScript = fixedScript
-        .replace(/```python?\n?/g, "")
+        .replace(/```python?\n?/gi, "")
         .replace(/```\n?/g, "")
         .trim();
+      // Sometimes models double-escape JSON strings; try to unescape once
+      if (fixedScript.startsWith('"') && fixedScript.endsWith('"')) {
+        try {
+          fixedScript = JSON.parse(fixedScript);
+        } catch (_) {
+          // ignore if not valid JSON string
+        }
+      }
     }
     return { ok, error, fixedScript };
   } catch (_) {
