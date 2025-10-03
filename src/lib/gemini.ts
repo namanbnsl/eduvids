@@ -14,6 +14,8 @@ export interface ManimScriptRequest {
   prompt: string;
   voiceoverScript: string;
   pluginExamples?: string[];
+  selectedPluginNames?: string[];
+  pluginImportHints?: string[];
 }
 
 export interface ManimScript {
@@ -40,14 +42,37 @@ export async function generateManimScript({
   prompt,
   voiceoverScript,
   pluginExamples,
+  selectedPluginNames,
+  pluginImportHints,
 }: ManimScriptRequest): Promise<string> {
   const model = google("gemini-2.5-pro");
   const systemPrompt = MANIM_SYSTEM_PROMPT;
 
-  const { text } = await generateText({
+  const pluginDirective = (() => {
+    const names =
+      selectedPluginNames && selectedPluginNames.length
+        ? `You MUST use these Manim plugins: ${selectedPluginNames.join(
+            ", "
+          )}. Import and use their features in the script.`
+        : "";
+    const hints =
+      pluginImportHints && pluginImportHints.length
+        ? `Suggested import hints (adapt as needed):\n${pluginImportHints
+            .map((h) => `- ${h}`)
+            .join("\n")}`
+        : "";
+    const override =
+      selectedPluginNames && selectedPluginNames.length
+        ? "If a selected plugin requires specific scenes (e.g., ThreeDScene) or APIs, you may override earlier constraints to use it correctly."
+        : "";
+    const combined = [names, hints, override].filter(Boolean).join("\n\n");
+    return combined ? combined + "\n\n" : "";
+  })();
+
+  const firstAttempt = await generateText({
     model,
     system: systemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\n$${
+    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\n${pluginDirective}${
       pluginExamples && pluginExamples.length
         ? `The following plugin examples may be helpful. If relevant, adapt ideas from them:\n\n${pluginExamples
             .map((ex, i) => `Plugin Example ${i + 1}:\n${ex}`)
@@ -57,10 +82,39 @@ export async function generateManimScript({
   });
 
   // Extract code from potential markdown formatting
-  const code = text
+  let code = firstAttempt.text
     .replace(/```python?\n?/g, "")
     .replace(/```\n?/g, "")
     .trim();
+
+  // If plugins were requested, ensure at least one import hint is present; otherwise, retry once with stronger instruction
+  const mustUsePlugins = !!(selectedPluginNames && selectedPluginNames.length);
+  const hasImportHints = !!(pluginImportHints && pluginImportHints.length);
+  const codeUsesPlugin = ((): boolean => {
+    if (!hasImportHints) return true;
+    const lowered = code.toLowerCase();
+    return pluginImportHints!.some((hint) =>
+      lowered.includes(hint.toLowerCase())
+    );
+  })();
+
+  if (mustUsePlugins && hasImportHints && !codeUsesPlugin) {
+    const retry = await generateText({
+      model,
+      system: systemPrompt,
+      prompt: `You did not use the required plugins previously. STRICT REQUIREMENT: Use these plugins and include their imports in the code: ${selectedPluginNames!.join(
+        ", "
+      )}.\n\nImport hints:\n${pluginImportHints!
+        .map((h) => `- ${h}`)
+        .join(
+          "\n"
+        )}\n\nRe-generate the COMPLETE corrected Manim script now. User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}`,
+    });
+    code = retry.text
+      .replace(/```python?\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+  }
 
   return code;
 }

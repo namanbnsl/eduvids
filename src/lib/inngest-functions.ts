@@ -80,33 +80,49 @@ export const generateVideo = inngest.createFunction(
       });
 
       // Decide which plugins (if any) to install and feed examples for
-      const { selectedPluginNames, selectedPluginExamples, installCommands } =
-        await step.run("select-and-prepare-plugins", async () => {
-          // Ask model to pick from available plugins
-          const selectedNames = await selectManimPlugins({
-            prompt,
-            voiceoverScript,
-            plugins: manimPlugins.map((p) => ({
-              name: p.name,
-              description: p.description,
-            })),
-          });
-
-          const selected = manimPlugins.filter((p) =>
-            selectedNames.includes(p.name)
-          );
-          return {
-            selectedPluginNames: selected.map((p) => p.name),
-            selectedPluginExamples: selected.map((p) => p.basicExample),
-            installCommands: selected.map((p) => p.installCommand),
-          };
+      const {
+        selectedPluginNames,
+        selectedPluginExamples,
+        installCommands,
+        pluginImportHints,
+      } = await step.run("select-and-prepare-plugins", async () => {
+        // Ask model to pick from available plugins
+        const selectedNames = await selectManimPlugins({
+          prompt,
+          voiceoverScript,
+          plugins: manimPlugins.map((p) => ({
+            name: p.name,
+            description: p.description,
+          })),
         });
+
+        const selected = manimPlugins.filter((p) =>
+          selectedNames.includes(p.name)
+        );
+        const examples = selected.map((p) => p.basicExample);
+        const hints = examples
+          .flatMap((ex) =>
+            ex
+              .split(/\r?\n/)
+              .map((l) => l.trim())
+              .filter((l) => l.startsWith("from ") || l.startsWith("import "))
+          )
+          .filter((v, i, a) => a.indexOf(v) === i);
+        return {
+          selectedPluginNames: selected.map((p) => p.name),
+          selectedPluginExamples: examples,
+          installCommands: selected.map((p) => p.installCommand),
+          pluginImportHints: hints,
+        };
+      });
 
       const script = await step.run("generate-manim-script", async () => {
         return await generateManimScript({
           prompt,
           voiceoverScript,
           pluginExamples: selectedPluginExamples,
+          selectedPluginNames,
+          pluginImportHints,
         });
       });
 
