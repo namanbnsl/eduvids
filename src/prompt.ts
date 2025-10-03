@@ -43,6 +43,13 @@ Code Style:
 - Return plain Python code without Markdown fences or explanatory comments.
 
 You will receive the user's prompt along with the narration segments. Match the visuals to the narration as closely as possible.
+
+Example:
+class MyScene(VoiceoverScene):
+    def construct(self):
+        ...
+        with self.voiceover(text="This circle is drawn as I speak.") as tracker:
+            self.play(Create(circle))
 `;
 
 export const VOICEOVER_SYSTEM_PROMPT = `

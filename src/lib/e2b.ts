@@ -31,9 +31,12 @@ export async function renderManimVideo({
     });
 
     if (checkLatex.exitCode !== 0) {
-      throw new Error(
-        `Latex failed: ${checkLatex.exitCode}\n${checkLatex.stderr}`
-      );
+      const errorDetails = [
+        `LaTeX check failed with exit code: ${checkLatex.exitCode}`,
+        `\nSTDERR:\n${checkLatex.stderr || '(empty)'}`,
+        `\nSTDOUT:\n${checkLatex.stdout || '(empty)'}`,
+      ].join('\n');
+      throw new Error(errorDetails);
     }
 
     // Run manim
@@ -47,7 +50,12 @@ export async function renderManimVideo({
     );
 
     if (proc.exitCode !== 0) {
-      throw new Error(`Manim failed: ${proc.exitCode}\n${proc.stderr}`);
+      const errorDetails = [
+        `Manim rendering failed with exit code: ${proc.exitCode}`,
+        `\nSTDERR:\n${proc.stderr || '(empty)'}`,
+        `\nSTDOUT:\n${proc.stdout || '(empty)'}`,
+      ].join('\n');
+      throw new Error(errorDetails);
     }
 
     // Find output file
@@ -88,9 +96,12 @@ export async function renderManimVideo({
     });
 
     if (wmProc.exitCode !== 0) {
-      throw new Error(
-        `Watermarking failed: ${wmProc.exitCode}\n${wmProc.stderr}`
-      );
+      const errorDetails = [
+        `Watermarking failed with exit code: ${wmProc.exitCode}`,
+        `\nSTDERR:\n${wmProc.stderr || '(empty)'}`,
+        `\nSTDOUT:\n${wmProc.stdout || '(empty)'}`,
+      ].join('\n');
+      throw new Error(errorDetails);
     }
 
     // Validate watermarked output

@@ -1,5 +1,9 @@
 import { inngest } from "./inngest";
-import { generateManimScript, generateVoiceoverScript } from "./gemini";
+import {
+  generateManimScript,
+  generateVoiceoverScript,
+  regenerateManimScriptWithError,
+} from "./gemini";
 import { renderManimVideo } from "./e2b";
 import { uploadVideo } from "./uploadthing";
 import { jobStore } from "./job-store";
@@ -45,7 +49,11 @@ function buildYouTubeTitle(params: {
 }
 
 export const generateVideo = inngest.createFunction(
-  { id: "generate-manim-video", timeouts: { start: "10m", finish: "10m" } },
+  {
+    id: "generate-manim-video",
+    timeouts: { start: "10m", finish: "10m" },
+    retries: 2, // Allow 2 additional retries at the function level
+  },
   { event: "video/generate.request" },
   async ({ event, step }) => {
     const { prompt, userId, chatId, jobId } = event.data as {
@@ -58,7 +66,6 @@ export const generateVideo = inngest.createFunction(
     console.log(`Starting video generation for prompt: "${prompt}"`);
 
     try {
-      // Step 1: Generate voiceover narration
       const voiceoverScript = await step.run(
         "generate-voiceover-script",
         async () => {
@@ -70,37 +77,72 @@ export const generateVideo = inngest.createFunction(
         length: voiceoverScript.length,
       });
 
-      // Steps 2-4: Generate Manim script, render, and upload
-      // If an error occurs during these steps (e.g., due to a bad script),
-      // retry from generating the Manim script onward ONCE, keeping the same voiceover.
-      // let hasFailedOnce = false;  // testing error retrying capability
-      let videoUrl: string | null = null;
+      const script = await step.run("generate-manim-script", async () => {
+        return await generateManimScript({ prompt, voiceoverScript });
+      });
 
-      const result = await step.run(
-        "generate-manim-script-and-render-and-upload",
+      console.log("Generated Manim script", { scriptLength: script.length });
+
+      // Render video with retry logic
+      const { videoUrl, renderAttempt } = await step.run(
+        "render-video-with-retries",
         async () => {
-          // if (!hasFailedOnce) {
-          //   hasFailedOnce = true;
-          //   console.log("Forcing failure on first run...");
-          //   throw new Error("Intentional failure for retry test");
-          // } // testing error retrying capability
+          const MAX_RETRIES = 3;
+          let currentScript = script;
+          let lastError: Error | null = null;
 
-          const script = await generateManimScript({ prompt, voiceoverScript });
+          for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+              console.log(`Render attempt ${attempt}/${MAX_RETRIES}...`);
 
-          console.log("Generated Manim script", {
-            scriptLength: script.length,
-          });
+              const dataUrlOrPath = await renderManimVideo({
+                script: currentScript,
+                prompt,
+              });
+              const videoUrl = await uploadVideo({
+                videoPath: dataUrlOrPath,
+                userId,
+              });
 
-          const dataUrlOrPath = await renderManimVideo({ script, prompt });
+              console.log(
+                `✓ Video uploaded successfully on attempt ${attempt}`
+              );
+              return { videoUrl, renderAttempt: attempt };
+            } catch (error: unknown) {
+              lastError =
+                error instanceof Error ? error : new Error(String(error));
+              console.error(
+                `Render attempt ${attempt} failed:`,
+                lastError.message
+              );
 
-          videoUrl = await uploadVideo({
-            videoPath: dataUrlOrPath,
-            userId,
-          });
+              // If this was the last attempt, throw the error
+              if (attempt === MAX_RETRIES) {
+                throw new Error(
+                  `Failed to render video after ${MAX_RETRIES} attempts. Last error: ${lastError.message}`
+                );
+              }
 
-          console.log("Video uploaded successfully:", videoUrl);
+              // Regenerate script with error feedback for next attempt
+              console.log(`Regenerating script for attempt ${attempt + 1}...`);
+              currentScript = await regenerateManimScriptWithError({
+                prompt,
+                voiceoverScript,
+                previousScript: currentScript,
+                error: lastError.message,
+                attemptNumber: attempt,
+              });
 
-          return videoUrl;
+              console.log(
+                `Regenerated script for attempt ${attempt + 1}, length: ${
+                  currentScript.length
+                }`
+              );
+            }
+          }
+
+          // This should never be reached due to the throw above, but TypeScript needs it
+          throw new Error("Unexpected end of retry loop");
         }
       );
 
@@ -122,21 +164,22 @@ export const generateVideo = inngest.createFunction(
         },
       });
 
-      // Return the final result
       return {
         success: true,
-        videoUrl: videoUrl!,
+        videoUrl: videoUrl,
         prompt,
         userId,
         chatId,
         generatedAt: new Date().toISOString(),
-        // We do not persist the script; expose voiceover length for traceability
         voiceoverLength: voiceoverScript.length,
+        renderAttempts: renderAttempt,
+        retriedAfterError: renderAttempt > 1,
       };
-    } catch (err: any) {
-      console.error("Error in generateVideo function:", err);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error("Error in generateVideo function:", errorMessage);
       if (jobId) {
-        await jobStore.setError(jobId, err?.message ?? "Unknown error");
+        await jobStore.setError(jobId, errorMessage);
       }
       throw err;
     }
@@ -171,15 +214,13 @@ export const uploadVideoToYouTube = inngest.createFunction(
         console.log("YouTube upload complete", yt);
       });
 
-      // Optionally: you could persist yt.watchUrl back to job store as metadata in future
       return { success: true, ...yt };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
       await step.run("log-youtube-failure", async () => {
-        console.error("YouTube upload failed", err);
+        console.error("YouTube upload failed", errorMessage);
       });
       if (jobId) {
-        // Do NOT mark job error; frontend is already updated with UploadThing URL.
-        // We only log the failure for YouTube background step.
       }
       throw err;
     }

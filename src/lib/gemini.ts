@@ -80,3 +80,36 @@ export async function generateYoutubeDescription({prompt, voiceoverScript}: Mani
 
   return text.trim();
 }
+
+export interface RegenerateManimScriptRequest {
+  prompt: string;
+  voiceoverScript: string;
+  previousScript: string;
+  error: string;
+  attemptNumber: number;
+}
+
+export async function regenerateManimScriptWithError({
+  prompt,
+  voiceoverScript,
+  previousScript,
+  error,
+  attemptNumber,
+}: RegenerateManimScriptRequest): Promise<string> {
+  const model = google("gemini-2.5-pro");
+  const systemPrompt = MANIM_SYSTEM_PROMPT;
+
+  const { text } = await generateText({
+    model,
+    system: systemPrompt,
+    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\n⚠️ PREVIOUS ATTEMPT #${attemptNumber} FAILED ⚠️\n\nThe previous Manim script failed with the following error:\n\`\`\`\n${error}\n\`\`\`\n\nThe broken script was:\n\`\`\`python\n${previousScript}\n\`\`\`\n\nPlease analyze the error carefully and generate a CORRECTED Manim script that:\n1. Fixes the specific error that occurred\n2. Follows the narration timeline\n3. Uses proper Manim syntax and best practices\n4. Avoids the mistakes from the previous attempt\n\nGenerate the complete FIXED Manim script:`,
+  });
+
+  // Extract code from potential markdown formatting
+  const code = text
+    .replace(/```python?\n?/g, "")
+    .replace(/```\n?/g, "")
+    .trim();
+
+  return code;
+}
