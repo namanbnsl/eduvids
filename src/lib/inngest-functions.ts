@@ -5,8 +5,6 @@ import {
   regenerateManimScriptWithError,
   verifyManimScript,
 } from "./gemini";
-import { selectManimPlugins } from "./gemini";
-import { manimPlugins } from "@/manim-plugins";
 import { renderManimVideo } from "./e2b";
 import { uploadVideo } from "./uploadthing";
 import { jobStore } from "./job-store";
@@ -84,58 +82,14 @@ export const generateVideo = inngest.createFunction(
         length: voiceoverScript.length,
       });
 
-      // Decide which plugins (if any) to install and feed examples for
       await jobStore.setProgress(jobId!, {
         progress: 15,
-        step: "selecting plugins",
-      });
-      const {
-        selectedPluginNames,
-        selectedPluginExamples,
-        installCommands,
-        pluginImportHints,
-      } = await step.run("select-and-prepare-plugins", async () => {
-        // Ask model to pick from available plugins
-        const selectedNames = await selectManimPlugins({
-          prompt,
-          voiceoverScript,
-          plugins: manimPlugins.map((p) => ({
-            name: p.name,
-            description: p.description,
-          })),
-        });
-
-        const selected = manimPlugins.filter((p) =>
-          selectedNames.includes(p.name)
-        );
-        const examples = selected.map((p) => p.basicExample);
-        const hints = examples
-          .flatMap((ex) =>
-            ex
-              .split(/\r?\n/)
-              .map((l) => l.trim())
-              .filter((l) => l.startsWith("from ") || l.startsWith("import "))
-          )
-          .filter((v, i, a) => a.indexOf(v) === i);
-        return {
-          selectedPluginNames: selected.map((p) => p.name),
-          selectedPluginExamples: examples,
-          installCommands: selected.map((p) => p.installCommand),
-          pluginImportHints: hints,
-        };
-      });
-
-      await jobStore.setProgress(jobId!, {
-        progress: 30,
         step: "generating manim script",
       });
       let script = await step.run("generate-manim-script", async () => {
         return await generateManimScript({
           prompt,
           voiceoverScript,
-          pluginExamples: selectedPluginExamples,
-          selectedPluginNames,
-          pluginImportHints,
         });
       });
 
@@ -197,7 +151,6 @@ export const generateVideo = inngest.createFunction(
               const dataUrlOrPath = await renderManimVideo({
                 script: currentScript,
                 prompt,
-                preInstallCommands: installCommands,
               });
               await jobStore.setProgress(jobId!, {
                 progress: 82,

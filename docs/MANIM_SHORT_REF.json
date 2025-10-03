@@ -1,0 +1,120 @@
+{
+  "version": "0.19.x-summary",
+  "note": "Conservative, authoritative subset of Manim CE APIs for use by verifier/generator LLMs.",
+  "classes": {
+    "Scene": {
+      "purpose": "Canvas for animations. Subclass and implement construct(self).",
+      "common_methods": [
+        "add(*mobjects)",
+        "play(*anims, run_time=None, rate_func=None, lag_ratio=None, subcaption=None)",
+        "wait(duration=1.0, stop_condition=None, frozen_frame=None)",
+        "add_updater(func)",
+        "remove_updater(func)",
+        "add_sound(sound_file, time_offset=0, gain=None)",
+        "render(preview=False)"
+      ],
+      "notes": [
+        "Do not override __init__ — use setup() for pre-construct initialization.",
+        "play() accepts Mobjects, Animations, and _AnimationBuilder (e.g., .animate chains)."
+      ]
+    },
+    "Mobject": {
+      "purpose": "Base drawable object. Geometry and text objects subclass this.",
+      "attributes": ["submobjects", "points", "color", "fill_color", "stroke_color", "stroke_width", "width", "height", "depth", "z_index"],
+      "common_methods": [
+        "add(*mobjects)",
+        "remove(*mobjects)",
+        "insert(index, mobj)",
+        "copy()",
+        "move_to(point_or_mobject)",
+        "next_to(mobject, direction, buff=0.25)",
+        "to_edge(edge, buff=0)",
+        "to_corner(corner)",
+        "scale(factor)",
+        "rotate(angle, about_point=None)",
+        "shift(vector)",
+        "flip(axis)",
+        "set_color(color, family=True)",
+        "set_fill(color=None, opacity=None, family=True)",
+        "set_stroke(color=None, width=None, opacity=None)",
+        "arrange(direction=RIGHT, buff=0.25)",
+        "arrange_in_grid(rows=None, cols=None, buff=0.25)",
+        "add_updater(func)",
+        "remove_updater(func)",
+        ".animate (method builder)"
+      ],
+      "notes": [
+        "Updaters often accept (mobject, dt) or (mobject).",
+        "Prefer high-level helpers instead of direct .points arithmetic unless necessary."
+      ]
+    },
+    "VMobject": {
+      "purpose": "Vectorized Mobject — manages Bezier curves, anchors/handles.",
+      "path_methods": [
+        "start_new_path(point)",
+        "add_line_to(point)",
+        "add_cubic_bezier_curve_to(handle1, handle2, anchor)",
+        "add_points_as_corners(points)"
+      ],
+      "utilities": [
+        "point_from_proportion(alpha)",
+        "get_arc_length(sample_points_per_curve=None)",
+        "get_num_curves()",
+        "get_nth_curve_points(n)",
+        "set_points_as_corners(points)",
+        "append_points(points)",
+        "resize_points(new_length)"
+      ],
+      "notes": [
+        "Expect point arrays as numpy arrays of shape (N, 3).",
+        "Many methods return self for chaining."
+      ]
+    },
+    "Animation": {
+      "purpose": "Base Animation with fixed runtime. Many subclasses exist.",
+      "attributes": ["run_time", "rate_func", "remover", "suspend_mobject_updating"],
+      "common_methods": ["begin()", "finish()", "interpolate(alpha)", "interpolate_mobject(alpha)", "get_run_time()"],
+      "notes": ["lag_ratio staggers animation application across submobjects."]
+    },
+    "Text/Tex/MathTex": {
+      "purpose": "Text rendering. Text uses system fonts; Tex/MathTex use LaTeX to render outlines.",
+      "common_usage": ["Text('Hello', font_size=48, color=WHITE)", "MathTex('\\int_0^1 x^2 \\; dx')"],
+      "notes": ["LaTeX toolchain must be available on system for Tex/MathTex."]
+    },
+    "Camera": {
+      "purpose": "Manages frame rendering and view transforms.",
+      "common_usage": ["self.camera.frame - mobject representing the viewport"],
+      "notes": ["Animate camera by animating self.camera.frame (e.g., self.play(self.camera.frame.animate.move_to(...)))"]
+    },
+    "ImageMobject": {
+      "purpose": "Displays raster images inside a scene.",
+      "usage": ["ImageMobject('file.png')"]
+    }
+  },
+  "common_animations": {
+    "Create": "Create(mobject, run_time=..., rate_func=...)",
+    "FadeOut": "FadeOut(mobject, run_time=...)",
+    "Rotate": "Rotate(mobject, angle, about_point=None, run_time=...)",
+    "Transform": "Transform(mobject, target_mobject, run_time=...)",
+    "ReplacementTransform": "ReplacementTransform(old, new, run_time=...)"
+  },
+  "constants": {
+    "vectors": ["ORIGIN", "LEFT", "RIGHT", "UP", "DOWN", "UL", "UR", "DL", "DR"],
+    "angles": ["PI", "TAU", "DEGREES"],
+    "colors": ["RED", "BLUE", "GREEN", "WHITE", "BLACK"]
+  },
+  "animate_gotchas": [
+    ".animate interpolates between start and end mobject states which can produce odd visuals when point layouts are identical.",
+    "Prefer explicit Animation classes (e.g., Rotate) or ValueTracker+updaters for complex/time-based behavior."
+  ],
+  "verifier_checks": [
+    "Imported symbols exist in manim namespace.",
+    "Called methods exist on target classes (Scene, Mobject, VMobject, Animation).",
+    "Array shapes for .points manipulations are (N, 3).",
+    "Tex/MathTex usage implies LaTeX availability — warn if not confirmed."
+  ],
+  "examples": {
+    "basic": "from manim import *\n\nclass Example(Scene):\n    def construct(self):\n        c = Circle().set_fill(PINK, opacity=0.5)\n        s = Square().next_to(c, RIGHT, buff=0.5)\n        self.play(Create(c), Create(s))\n        self.play(s.animate.rotate(PI/4))\n        self.play(Transform(s, c))\n        self.wait()",
+    "camera_pan": "class CameraPan(Scene):\n    def construct(self):\n        grid = VGroup(*[Dot().shift(RIGHT*i) for i in range(-5,6)])\n        self.add(grid)\n        self.play(self.camera.frame.animate.shift(RIGHT*3), run_time=2)\n        self.wait()"
+  }
+}

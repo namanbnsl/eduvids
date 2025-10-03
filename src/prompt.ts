@@ -87,6 +87,8 @@ Technical Requirements:
 - Call self.set_speech_service(GTTSService())
 - Use voiceover blocks with exact narration text
 - Import necessary manim and manim_voiceover modules
+- NEVER EVER USE EMOJIS IN THE MANIM CODE.
+- RETURN ONLY THE CODE. NOTHING ELSE. ONLY THE CODE
 
 Animation Guidelines:
 1. Visual Clarity:
