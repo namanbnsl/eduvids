@@ -224,3 +224,63 @@ export async function regenerateManimScriptWithError({
 
   return code;
 }
+
+export interface VerifyManimScriptRequest {
+  prompt: string;
+  voiceoverScript: string;
+  script: string;
+}
+
+export interface VerifyManimScriptResult {
+  ok: boolean;
+  error?: string;
+  fixedScript?: string;
+}
+
+// Uses a separate Gemini 2.5 Pro pass to statically validate the Manim script.
+// If issues are detected, the model is asked to return a corrected full script.
+export async function verifyManimScript({
+  prompt,
+  voiceoverScript,
+  script,
+}: VerifyManimScriptRequest): Promise<VerifyManimScriptResult> {
+  const model = google("gemini-2.5-pro");
+  const systemPrompt = MANIM_SYSTEM_PROMPT;
+
+  const { text } = await generateText({
+    model,
+    system: systemPrompt,
+    prompt: [
+      "You are a strict static validator for Manim Python scripts.",
+      "Analyze the provided script for correctness BEFORE runtime: imports, Scene/ThreeDScene usage, method names, missing constructs, syntax, and obvious logic issues.",
+      "Return ONLY a concise JSON object with fields: ok (boolean), error (string optional), fixedScript (string optional).",
+      "If ok would be false, supply a full corrected script in fixedScript.",
+      "User request:",
+      prompt,
+      "Voiceover narration:\n" + voiceoverScript,
+      "Script to validate (python):\n```python\n" + script + "\n```",
+    ].join("\n\n"),
+  });
+
+  const raw = text.trim();
+  // Try to extract JSON if model added prose; fallback to parse as-is
+  const jsonMatch = raw.match(/\{[\s\S]*\}$/);
+  const candidate = jsonMatch ? jsonMatch[0] : raw;
+  try {
+    const parsed = JSON.parse(candidate);
+    const ok = !!parsed.ok;
+    const error = typeof parsed.error === "string" ? parsed.error : undefined;
+    let fixedScript =
+      typeof parsed.fixedScript === "string" ? parsed.fixedScript : undefined;
+    if (fixedScript) {
+      fixedScript = fixedScript
+        .replace(/```python?\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
+    }
+    return { ok, error, fixedScript };
+  } catch (_) {
+    // If parsing fails, be safe and report not ok with model output
+    return { ok: false, error: raw };
+  }
+}

@@ -3,6 +3,7 @@ import {
   generateManimScript,
   generateVoiceoverScript,
   regenerateManimScriptWithError,
+  verifyManimScript,
 } from "./gemini";
 import { selectManimPlugins } from "./gemini";
 import { manimPlugins } from "@/manim-plugins";
@@ -116,7 +117,7 @@ export const generateVideo = inngest.createFunction(
         };
       });
 
-      const script = await step.run("generate-manim-script", async () => {
+      let script = await step.run("generate-manim-script", async () => {
         return await generateManimScript({
           prompt,
           voiceoverScript,
@@ -127,6 +128,29 @@ export const generateVideo = inngest.createFunction(
       });
 
       console.log("Generated Manim script", { scriptLength: script.length });
+
+      // New: Verify and optionally auto-fix the script with Gemini before rendering
+      const verified = await step.run("verify-manim-script", async () => {
+        return await verifyManimScript({
+          prompt,
+          voiceoverScript,
+          script,
+        });
+      });
+
+      if (!verified.ok) {
+        console.warn("Pre-render verification failed", verified.error);
+        if (verified.fixedScript && verified.fixedScript.length > 0) {
+          console.log("Using auto-fixed script from verification step");
+          script = verified.fixedScript;
+        } else {
+          throw new Error(
+            `Script verification failed and no fix was provided: ${
+              verified.error ?? "unknown error"
+            }`
+          );
+        }
+      }
 
       // Render video with retry logic
       const { videoUrl, renderAttempt } = await step.run(
