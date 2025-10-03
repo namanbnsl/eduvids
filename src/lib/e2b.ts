@@ -33,9 +33,9 @@ export async function renderManimVideo({
     if (checkLatex.exitCode !== 0) {
       const errorDetails = [
         `LaTeX check failed with exit code: ${checkLatex.exitCode}`,
-        `\nSTDERR:\n${checkLatex.stderr || '(empty)'}`,
-        `\nSTDOUT:\n${checkLatex.stdout || '(empty)'}`,
-      ].join('\n');
+        `\nSTDERR:\n${checkLatex.stderr || "(empty)"}`,
+        `\nSTDOUT:\n${checkLatex.stdout || "(empty)"}`,
+      ].join("\n");
       throw new Error(errorDetails);
     }
 
@@ -52,9 +52,9 @@ export async function renderManimVideo({
     if (proc.exitCode !== 0) {
       const errorDetails = [
         `Manim rendering failed with exit code: ${proc.exitCode}`,
-        `\nSTDERR:\n${proc.stderr || '(empty)'}`,
-        `\nSTDOUT:\n${proc.stdout || '(empty)'}`,
-      ].join('\n');
+        `\nSTDERR:\n${proc.stderr || "(empty)"}`,
+        `\nSTDOUT:\n${proc.stdout || "(empty)"}`,
+      ].join("\n");
       throw new Error(errorDetails);
     }
 
@@ -84,7 +84,7 @@ export async function renderManimVideo({
 
     // Watermark the video inside the sandbox using ffmpeg drawtext for robust output
     const watermarkedPath = `${outputDir}/watermarked.mp4`;
-    const watermarkText = "Created by Naman Bansal via scimath-vids";
+    const watermarkText = "scimath-vids";
     const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
     const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@0.85:fontsize=24:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw-20:y=h-th-20`;
 
@@ -98,9 +98,9 @@ export async function renderManimVideo({
     if (wmProc.exitCode !== 0) {
       const errorDetails = [
         `Watermarking failed with exit code: ${wmProc.exitCode}`,
-        `\nSTDERR:\n${wmProc.stderr || '(empty)'}`,
-        `\nSTDOUT:\n${wmProc.stdout || '(empty)'}`,
-      ].join('\n');
+        `\nSTDERR:\n${wmProc.stderr || "(empty)"}`,
+        `\nSTDOUT:\n${wmProc.stdout || "(empty)"}`,
+      ].join("\n");
       throw new Error(errorDetails);
     }
 
