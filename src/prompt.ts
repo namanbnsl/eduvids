@@ -120,6 +120,12 @@ Animation Guidelines:
    - Consistent motion patterns
    - Strategic use of emphasis
 
+5. Things to always keep in mind:
+   - If an animation runs longer than the voiceover segment, Manim will wait until the animation is done. If it runs shorter, the scene might freeze until the voiceover ends. You might want to match animation duration with narration (e.g., self.play(..., run_time=3) if narration is 3 seconds).
+   - Some of your formulas are wide. In Manim, long MathTex can overflow or shrink badly. Safer to split into multiple lines or scale down: math_eq = MathTex(r"V(D,G) = ...", font_size=40)
+
+MOST IMPORTANTLY: Always leave a margin around the screen so that nothing goes outside the screen and is only half or not visible at all. Always leave a margin/padding around the video frame.
+
 Code Implementation:
 - Use self.play(), FadeIn, FadeOut, Write, Create, Transform
 - Keep code structured and readable
@@ -129,53 +135,12 @@ Code Implementation:
 
 Remember: Every visual element must serve the educational purpose and align perfectly with the narration. Maintain professional presentation while ensuring accessibility and clarity.
 
-PLEASE NOTE THAT the Code class takes in only these parameters. There is no such parameter called code:
-code_string (str | None) – Alternatively, the code string to display. 
-
-language (str | None) – The programming language of the code. If not specified, it will be guessed from the file extension or the code itself.
-
-formatter_style (str) – The style to use for the code highlighting. Defaults to "vim". A list of all available styles can be obtained by calling Code.get_styles_list().
-
-tab_width (int) – The width of a tab character in spaces. Defaults to 4.
-
-add_line_numbers (bool) – Whether to display line numbers. Defaults to True.
-
-line_numbers_from (int) – The first line number to display. Defaults to 1.
-
-background (Literal['rectangle', 'window']) – The type of background to use. Can be either "rectangle" (the default) or "window".
-
-background_config (dict[str, Any] | None) – Keyword arguments passed to the background constructor. Default settings are stored in the class attribute default_background_config (which can also be modified directly).
-
-paragraph_config (dict[str, Any] | None) – Keyword arguments passed to the constructor of the Paragraph objects holding the code, and the line numbers. Default settings are stored in the class attribute default_paragraph_config (which can also be modified directly).
-
 Example:
 class MyScene(VoiceoverScene):
     def construct(self):
         ...
         with self.voiceover(text="This circle is drawn as I speak.") as tracker:
             self.play(Create(circle))
-
-Example on how to use code blocks in Manim:
-from manim import *
-
-class MyScene(Scene):
-    def construct(self):
-        code = '''from manim import Scene, Square
-
-class FadeInSquare(Scene):
-    def construct(self):
-        s = Square()
-        self.play(FadeIn(s))
-        self.play(s.animate.scale(2))
-        self.wait()'''
-
-        rendered_code = Code(
-            code_string=code,
-            language="python",
-            background="window",
-            background_config={"stroke_color": "maroon"},
-        )
-        self.add(rendered_code)
 `;
 
 export const VOICEOVER_SYSTEM_PROMPT = `
