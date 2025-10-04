@@ -142,7 +142,7 @@ export const generateVideo = inngest.createFunction(
       const { videoUrl, renderAttempt } = await step.run(
         "render-video-with-retries",
         async () => {
-          const MAX_RETRIES = 3;
+          const MAX_RETRIES = 5;
           let currentScript = script;
           const failedAttempts: ManimGenerationAttempt[] = [];
 
@@ -180,11 +180,15 @@ export const generateVideo = inngest.createFunction(
               const rawMessage = (renderError.message || "").trim();
               const normalizedMessage = rawMessage.length
                 ? rawMessage
-                : (String(error || "").trim() || "Unknown error");
+                : String(error || "").trim() || "Unknown error";
               const stack = renderError.stack;
               const stderr = renderError.stderr;
               const stdout = renderError.stdout;
               const exitCode = renderError.exitCode;
+              const preview = (value?: string, limit = 800) =>
+                value && value.length > limit
+                  ? `${value.slice(0, limit)}…`
+                  : value;
               const errorDetails = {
                 message: normalizedMessage,
                 stack,
@@ -203,6 +207,15 @@ export const generateVideo = inngest.createFunction(
                 `Render attempt ${attempt} failed:`,
                 normalizedMessage
               );
+
+              console.log("[manim-render] Prepared error feedback for LLM", {
+                attempt,
+                exitCode,
+                message: normalizedMessage,
+                stderrPreview: preview(stderr),
+                stdoutPreview: preview(stdout),
+                stackPreview: preview(stack),
+              });
 
               // If this was the last attempt, throw the error
               if (attempt === MAX_RETRIES) {
@@ -225,7 +238,9 @@ export const generateVideo = inngest.createFunction(
                   .join(" | "),
               });
               console.log(
-                `Regenerating script for attempt ${attempt + 1} with last error: ${normalizedMessage}`
+                `Regenerating script for attempt ${
+                  attempt + 1
+                } with last error: ${normalizedMessage}`
               );
               currentScript = await regenerateManimScriptWithError({
                 prompt,
