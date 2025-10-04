@@ -13,7 +13,7 @@ interface VideoPlayerProps {
   src?: string;
 }
 
-export function VideoPlayer({ jobId, status, src }: VideoPlayerProps) {
+export function VideoPlayer({ jobId, status, src, description }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus>(
     status ?? (src ? "ready" : "generating")
@@ -22,6 +22,8 @@ export function VideoPlayer({ jobId, status, src }: VideoPlayerProps) {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
   const [step, setStep] = useState<string | undefined>(undefined);
+  // Track when we should fire a browser notification after the UI has updated
+  const [notifyWhenPlayable, setNotifyWhenPlayable] = useState<boolean>(false);
 
   // Subscribe to job updates via SSE, fallback to polling
   useEffect(() => {
@@ -38,6 +40,8 @@ export function VideoPlayer({ jobId, status, src }: VideoPlayerProps) {
       if (job.status === "ready" && job.videoUrl) {
         setVideoUrl(job.videoUrl);
         setJobStatus("ready");
+        // Signal that we should notify once the video element can play
+        setNotifyWhenPlayable(true);
         es?.close();
         if (pollInterval) clearInterval(pollInterval);
       } else if (job.status === "error") {
@@ -84,6 +88,66 @@ export function VideoPlayer({ jobId, status, src }: VideoPlayerProps) {
       if (pollInterval) clearInterval(pollInterval);
     };
   }, [jobId, jobStatus]);
+
+  // Request Notification permission early when component mounts (best-effort)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("Notification" in window)) return;
+    // Don't prompt repeatedly; only if default
+    if (Notification.permission === "default") {
+      try {
+        Notification.requestPermission().catch(() => {});
+      } catch {}
+    }
+  }, []);
+
+  // When job is ready and the video is playable, fire a browser notification
+  useEffect(() => {
+    if (!notifyWhenPlayable) return;
+
+    const vid = videoRef.current;
+    if (!vid) return;
+
+    const maybeNotify = () => {
+      try {
+        if (typeof window === "undefined") return;
+        if (!("Notification" in window)) return;
+        if (Notification.permission !== "granted") return;
+
+        const title = "Your video is ready";
+        const body = description
+          ? `“${description}” has finished rendering.`
+          : "Your requested video has finished rendering.";
+        // Prefer showing notification when tab is hidden, but also show if visible
+        new Notification(title, {
+          body,
+          // Using an emoji as icon fallback; projects may add a proper icon asset
+          // Replace with a real icon path if available
+          // icon: "/icons/video-ready.png",
+        });
+      } catch {}
+    };
+
+    // If already ready to play, notify immediately
+    if (vid.readyState >= 3) {
+      maybeNotify();
+      setNotifyWhenPlayable(false);
+      return;
+    }
+
+    const onCanPlay = () => {
+      maybeNotify();
+      setNotifyWhenPlayable(false);
+    };
+
+    vid.addEventListener("canplay", onCanPlay, { once: true });
+    vid.addEventListener("loadeddata", onCanPlay, { once: true });
+
+    return () => {
+      vid.removeEventListener("canplay", onCanPlay);
+      vid.removeEventListener("loadeddata", onCanPlay);
+    };
+  }, [notifyWhenPlayable, description]);
 
   if (error) {
     return (

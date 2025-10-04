@@ -3,7 +3,7 @@ import {
   generateManimScript,
   generateVoiceoverScript,
   regenerateManimScriptWithError,
-  verifyManimScript,
+  // verifyManimScript,
 } from "./gemini";
 import { renderManimVideo } from "./e2b";
 import { uploadVideo } from "./uploadthing";
@@ -52,7 +52,7 @@ function buildYouTubeTitle(params: {
 export const generateVideo = inngest.createFunction(
   {
     id: "generate-manim-video",
-    timeouts: { start: "10m", finish: "10m" },
+    timeouts: { start: "20m", finish: "25m" },
     retries: 2, // Allow 2 additional retries at the function level
   },
   { event: "video/generate.request" },
@@ -96,36 +96,36 @@ export const generateVideo = inngest.createFunction(
       console.log("Generated Manim script", { scriptLength: script.length });
 
       // Verify and auto-fix the generated Manim script before attempting render
-      await jobStore.setProgress(jobId!, {
-        progress: 38,
-        step: "verifying script",
-      });
-      script = await step.run("verify-manim-script-initial", async () => {
-        let current = script;
-        const MAX_VERIFY_PASSES = 2;
-        for (let pass = 1; pass <= MAX_VERIFY_PASSES; pass++) {
-          const result = await verifyManimScript({
-            prompt,
-            voiceoverScript,
-            script: current,
-          });
-          if (result.ok) return current;
-          if (result.fixedScript && result.fixedScript.trim().length > 0) {
-            console.log(
-              `Verification pass ${pass} produced a fixed script (length: ${result.fixedScript.length}).`
-            );
-            current = result.fixedScript;
-            continue;
-          }
-          console.warn(
-            `Verification pass ${pass} reported issues but did not return a fix: ${
-              result.error || "unknown"
-            }`
-          );
-          break;
-        }
-        return current;
-      });
+      // await jobStore.setProgress(jobId!, {
+      //   progress: 38,
+      //   step: "verifying script",
+      // });
+      // script = await step.run("verify-manim-script-initial", async () => {
+      //   let current = script;
+      //   const MAX_VERIFY_PASSES = 2;
+      //   for (let pass = 1; pass <= MAX_VERIFY_PASSES; pass++) {
+      //     const result = await verifyManimScript({
+      //       prompt,
+      //       voiceoverScript,
+      //       script: current,
+      //     });
+      //     if (result.ok) return current;
+      //     if (result.fixedScript && result.fixedScript.trim().length > 0) {
+      //       console.log(
+      //         `Verification pass ${pass} produced a fixed script (length: ${result.fixedScript.length}).`
+      //       );
+      //       current = result.fixedScript;
+      //       continue;
+      //     }
+      //     console.warn(
+      //       `Verification pass ${pass} reported issues but did not return a fix: ${
+      //         result.error || "unknown"
+      //       }`
+      //     );
+      //     break;
+      //   }
+      //   return current;
+      // });
 
       // Render video with retry logic
       await jobStore.setProgress(jobId!, {
@@ -139,6 +139,8 @@ export const generateVideo = inngest.createFunction(
           let currentScript = script;
           let lastError: Error | null = null;
 
+          console.log("Regenerating video because of last error:", lastError);
+
           for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
               console.log(`Render attempt ${attempt}/${MAX_RETRIES}...`);
@@ -146,7 +148,7 @@ export const generateVideo = inngest.createFunction(
               // Mid-render heartbeat
               await jobStore.setProgress(jobId!, {
                 progress: Math.min(55 + attempt * 5, 80),
-                step: `rendering attempt ${attempt}`,
+                step: `rendering`,
               });
               const dataUrlOrPath = await renderManimVideo({
                 script: currentScript,
@@ -204,23 +206,23 @@ export const generateVideo = inngest.createFunction(
                 attemptNumber: attempt,
               });
 
-              // Verify and auto-fix regenerated script before next render attempt
-              await jobStore.setProgress(jobId!, {
-                step: `verifying regenerated script (attempt ${attempt + 1})`,
-              });
-              const verifyResult = await verifyManimScript({
-                prompt,
-                voiceoverScript,
-                script: currentScript,
-              });
-              if (!verifyResult.ok && verifyResult.fixedScript) {
-                console.log(
-                  `Applied verification fix for attempt ${
-                    attempt + 1
-                  } (length: ${verifyResult.fixedScript.length}).`
-                );
-                currentScript = verifyResult.fixedScript;
-              }
+              // // Verify and auto-fix regenerated script before next render attempt
+              // await jobStore.setProgress(jobId!, {
+              //   step: `verifying regenerated script`,
+              // });
+              // const verifyResult = await verifyManimScript({
+              //   prompt,
+              //   voiceoverScript,
+              //   script: currentScript,
+              // });
+              // if (!verifyResult.ok && verifyResult.fixedScript) {
+              //   console.log(
+              //     `Applied verification fix for attempt ${
+              //       attempt + 1
+              //     } (length: ${verifyResult.fixedScript.length}).`
+              //   );
+              //   currentScript = verifyResult.fixedScript;
+              // }
 
               console.log(
                 `Regenerated script for attempt ${attempt + 1}, length: ${

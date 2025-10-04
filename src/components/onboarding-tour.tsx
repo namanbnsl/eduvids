@@ -9,6 +9,7 @@ import {
   useLayoutEffect,
   useMemo,
   useState,
+  useRef,
 } from "react";
 import { createPortal } from "react-dom";
 
@@ -39,6 +40,7 @@ type OnboardingTourProps = {
 const SPOTLIGHT_DEFAULT_PADDING = 18;
 const TOOLTIP_OFFSET = 28;
 const SPOTLIGHT_RADIUS = 28;
+const TOOLTIP_MARGIN = 12;
 
 export function OnboardingTour({ steps, onClose }: OnboardingTourProps) {
   const [index, setIndex] = useState(0);
@@ -46,6 +48,11 @@ export function OnboardingTour({ steps, onClose }: OnboardingTourProps) {
   const activeStep = steps[index];
   const [rect, setRect] = useState<SpotlightRect | null>(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [tooltipSize, setTooltipSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
   const generatedId = useId();
   const maskId = `onboarding-mask-${generatedId.replace(/:/g, "")}`;
 
@@ -63,10 +70,29 @@ export function OnboardingTour({ steps, onClose }: OnboardingTourProps) {
     }
 
     const bounds = element.getBoundingClientRect();
-    const padding = activeStep.spotlightPadding ?? SPOTLIGHT_DEFAULT_PADDING;
 
+    // If the element is outside the viewport, scroll it into view (mobile-friendly)
     if (typeof window !== "undefined") {
-      const nextViewport = {
+      const margin = 12;
+      const bottom = bounds.top + bounds.height;
+      const needsScroll =
+        bounds.top < margin || bottom > window.innerHeight - margin;
+      if (needsScroll) {
+        try {
+          element.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+            inline: "nearest",
+          });
+        } catch {
+          element.scrollIntoView();
+        }
+      }
+    }
+
+    let nextViewport = viewport;
+    if (typeof window !== "undefined") {
+      nextViewport = {
         width: window.innerWidth,
         height: window.innerHeight,
       };
@@ -76,6 +102,11 @@ export function OnboardingTour({ steps, onClose }: OnboardingTourProps) {
           : nextViewport
       );
     }
+
+    const basePadding =
+      activeStep.spotlightPadding ?? SPOTLIGHT_DEFAULT_PADDING;
+    const paddingScale = nextViewport.width < 640 ? 0.6 : 1;
+    const padding = Math.max(8, Math.round(basePadding * paddingScale));
 
     setRect({
       top: bounds.top - padding,
@@ -100,6 +131,12 @@ export function OnboardingTour({ steps, onClose }: OnboardingTourProps) {
 
     const handleRelayout = () => {
       updateRect();
+      // Re-measure tooltip after layout changes
+      const el = tooltipRef.current;
+      if (el) {
+        const r = el.getBoundingClientRect();
+        setTooltipSize({ width: r.width, height: r.height });
+      }
     };
 
     const element = activeStep.target.current;
@@ -116,7 +153,14 @@ export function OnboardingTour({ steps, onClose }: OnboardingTourProps) {
     window.addEventListener("resize", handleRelayout);
     window.addEventListener("scroll", handleRelayout, true);
 
-    const raf = requestAnimationFrame(updateRect);
+    const raf = requestAnimationFrame(() => {
+      updateRect();
+      const el = tooltipRef.current;
+      if (el) {
+        const r = el.getBoundingClientRect();
+        setTooltipSize({ width: r.width, height: r.height });
+      }
+    });
 
     return () => {
       if (observer && element) {
@@ -135,35 +179,94 @@ export function OnboardingTour({ steps, onClose }: OnboardingTourProps) {
       return null;
     }
 
-    const placement = activeStep.placement ?? "bottom";
+    const isMobile = viewport.width > 0 ? viewport.width < 640 : false;
+    const preferredPlacement = activeStep.placement ?? "bottom";
+    const placement = isMobile ? "bottom" : preferredPlacement;
 
     const style: CSSProperties = {};
+    const margin = TOOLTIP_MARGIN;
+    const vw = viewport.width || 0;
+    const vh = viewport.height || 0;
+    const maxWidth =
+      vw > 0 ? Math.max(240, Math.min(384, vw - margin * 2)) : 384;
+
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    const clamp = (n: number, min: number, max: number) =>
+      Math.min(Math.max(n, min), max);
+
+    const th = tooltipSize?.height ?? 0;
+    const tw = tooltipSize?.width ?? 0;
 
     switch (placement) {
-      case "top":
-        style.top = rect.top - TOOLTIP_OFFSET;
-        style.left = rect.left + rect.width / 2;
+      case "top": {
+        let top = rect.top - TOOLTIP_OFFSET;
+        if (vh && th) {
+          // Account for translateY(-100%) transform
+          top = clamp(top, margin + th, vh - margin);
+        }
+        style.top = top;
+        const left = centerX;
+        style.left = vw
+          ? clamp(
+              left,
+              margin + (tw ? tw / 2 : maxWidth / 2),
+              vw - margin - (tw ? tw / 2 : maxWidth / 2)
+            )
+          : left;
         break;
-      case "left":
-        style.top = rect.top + rect.height / 2;
+      }
+      case "left": {
         style.left = rect.left - TOOLTIP_OFFSET;
+        let top = centerY;
+        if (vh && th) {
+          // Account for translateY(-50%)
+          top = clamp(top, margin + th / 2, vh - margin - th / 2);
+        } else {
+          top = vh ? clamp(top, margin, vh - margin) : top;
+        }
+        style.top = top;
         break;
-      case "right":
-        style.top = rect.top + rect.height / 2;
+      }
+      case "right": {
         style.left = rect.left + rect.width + TOOLTIP_OFFSET;
+        let top = centerY;
+        if (vh && th) {
+          top = clamp(top, margin + th / 2, vh - margin - th / 2);
+        } else {
+          top = vh ? clamp(top, margin, vh - margin) : top;
+        }
+        style.top = top;
         break;
+      }
       case "bottom":
-      default:
-        style.top = rect.top + rect.height + TOOLTIP_OFFSET;
-        style.left = rect.left + rect.width / 2;
+      default: {
+        let top = rect.top + rect.height + TOOLTIP_OFFSET;
+        if (vh && th) {
+          top = Math.min(top, vh - margin - th); // Keep fully visible at bottom
+        }
+        style.top = top;
+        const left = centerX;
+        style.left = vw
+          ? clamp(
+              left,
+              margin + (tw ? tw / 2 : maxWidth / 2),
+              vw - margin - (tw ? tw / 2 : maxWidth / 2)
+            )
+          : left;
         break;
+      }
     }
 
+    style.maxWidth = maxWidth;
+
     return style;
-  }, [rect, activeStep]);
+  }, [rect, activeStep, viewport, tooltipSize]);
 
   const tooltipTransformClass = useMemo(() => {
-    const placement = activeStep?.placement ?? "bottom";
+    const isMobile = viewport.width < 640;
+    const placement = isMobile ? "bottom" : activeStep?.placement ?? "bottom";
 
     switch (placement) {
       case "top":
@@ -176,7 +279,7 @@ export function OnboardingTour({ steps, onClose }: OnboardingTourProps) {
       default:
         return "-translate-x-1/2";
     }
-  }, [activeStep?.placement]);
+  }, [activeStep?.placement, viewport]);
 
   const maskedRect = useMemo(() => {
     if (!rect) {
@@ -243,14 +346,14 @@ export function OnboardingTour({ steps, onClose }: OnboardingTourProps) {
         <div className="absolute inset-0 bg-black/60" />
       )}
 
-      {rect ? (
+      {rect && maskedRect ? (
         <div
           className="pointer-events-none absolute border border-primary/60 bg-transparent shadow-[0_12px_40px_-12px_rgba(59,130,246,0.45)] ring-4 ring-primary/20 transition-all duration-200"
           style={{
-            top: rect.top,
-            left: rect.left,
-            width: rect.width,
-            height: rect.height,
+            top: maskedRect.y,
+            left: maskedRect.x,
+            width: maskedRect.width,
+            height: maskedRect.height,
             borderRadius: SPOTLIGHT_RADIUS,
           }}
         />
@@ -258,21 +361,21 @@ export function OnboardingTour({ steps, onClose }: OnboardingTourProps) {
 
       {tooltipStyle ? (
         <div
+          ref={tooltipRef}
           className={cn(
-            "pointer-events-auto absolute max-w-sm rounded-2xl border border-zinc-200/70 bg-background/95 p-5 shadow-xl backdrop-blur",
+            "pointer-events-auto absolute w-auto max-w-full rounded-2xl border border-zinc-200/70 bg-background/95 p-5 shadow-xl backdrop-blur",
             tooltipTransformClass
           )}
-          style={tooltipStyle}
+          style={{
+            ...tooltipStyle,
+            paddingBottom: "max(env(safe-area-inset-bottom), 0px)",
+          }}
         >
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs font-mono uppercase tracking-wide text-zinc-400">
               Step {index + 1} of {steps.length}
             </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onClose()}
-            >
+            <Button variant="ghost" size="sm" onClick={() => onClose()}>
               Skip
             </Button>
           </div>
@@ -284,8 +387,9 @@ export function OnboardingTour({ steps, onClose }: OnboardingTourProps) {
             {activeStep.description}
           </p>
 
-          <div className="mt-4 flex items-center justify-between gap-2">
+          <div className="mt-4 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2">
             <Button
+              className="w-full sm:w-auto"
               variant="ghost"
               size="sm"
               onClick={() => setIndex((value) => Math.max(0, value - 1))}
@@ -294,6 +398,7 @@ export function OnboardingTour({ steps, onClose }: OnboardingTourProps) {
               Back
             </Button>
             <Button
+              className="w-full sm:w-auto"
               size="sm"
               onClick={() => {
                 if (index === steps.length - 1) {

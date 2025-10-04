@@ -210,109 +210,109 @@ export async function regenerateManimScriptWithError({
   return code;
 }
 
-export interface VerifyManimScriptRequest {
-  prompt: string;
-  voiceoverScript: string;
-  script: string;
-}
+// export interface VerifyManimScriptRequest {
+//   prompt: string;
+//   voiceoverScript: string;
+//   script: string;
+// }
 
-export interface VerifyManimScriptResult {
-  ok: boolean;
-  error?: string;
-  fixedScript?: string;
-}
+// export interface VerifyManimScriptResult {
+//   ok: boolean;
+//   error?: string;
+//   fixedScript?: string;
+// }
 
 // Uses a separate Gemini 2.5 Pro pass to statically validate the Manim script.
 // If issues are detected, the model is asked to return a corrected full script.
-export async function verifyManimScript({
-  prompt,
-  voiceoverScript,
-  script,
-}: VerifyManimScriptRequest): Promise<VerifyManimScriptResult> {
-  const model = google("gemini-2.5-pro");
+// export async function verifyManimScript({
+//   prompt,
+//   voiceoverScript,
+//   script,
+// }: VerifyManimScriptRequest): Promise<VerifyManimScriptResult> {
+//   const model = google("gemini-2.5-pro");
 
-  // Load local docs and attach them to the system prompt
-  const docsDir = path.join(process.cwd(), "docs");
-  let manimShortRefMd = "";
-  let manimShortRefJson: any = {};
-  try {
-    manimShortRefMd = fs.readFileSync(
-      path.join(docsDir, "MANIM_SHORT_REF.md"),
-      "utf8"
-    );
-  } catch (e) {}
-  try {
-    const j = fs.readFileSync(
-      path.join(docsDir, "MANIM_SHORT_REF.json"),
-      "utf8"
-    );
-    manimShortRefJson = JSON.parse(j);
-  } catch (e) {}
+//   // Load local docs and attach them to the system prompt
+//   const docsDir = path.join(process.cwd(), "docs");
+//   let manimShortRefMd = "";
+//   let manimShortRefJson: any = {};
+//   try {
+//     manimShortRefMd = fs.readFileSync(
+//       path.join(docsDir, "MANIM_SHORT_REF.md"),
+//       "utf8"
+//     );
+//   } catch (e) {}
+//   try {
+//     const j = fs.readFileSync(
+//       path.join(docsDir, "MANIM_SHORT_REF.json"),
+//       "utf8"
+//     );
+//     manimShortRefJson = JSON.parse(j);
+//   } catch (e) {}
 
-  const augmentedSystemPrompt = `${MANIM_SYSTEM_PROMPT}\n\n---\nMANIM_SHORT_REF.md (local):\n${manimShortRefMd}\n\nMANIM_SHORT_REF.json (local):\n${JSON.stringify(
-    manimShortRefJson
-  )}\n---`;
+//   const augmentedSystemPrompt = `${MANIM_SYSTEM_PROMPT}\n\n---\nMANIM_SHORT_REF.md (local):\n${manimShortRefMd}\n\nMANIM_SHORT_REF.json (local):\n${JSON.stringify(
+//     manimShortRefJson
+//   )}\n---`;
 
-  const { text } = await generateText({
-    model,
-    system: augmentedSystemPrompt,
-    prompt: [
-      "You are a strict static validator for Manim Python scripts.",
-      "Analyze the provided script for correctness BEFORE runtime: imports, Scene/ThreeDScene usage, method names, missing constructs, syntax, and obvious logic issues.",
-      "Note do not change anything about the voiceover, etc. Do not add bookmarks, etc",
-      "If there is nothing to change, please do not",
-      "Return ONLY a concise JSON object with fields: ok (boolean), error (string optional), fixedScript (string optional).",
-      "If ok would be false, supply a full corrected script in fixedScript.",
-      "User request:",
-      prompt,
-      "Voiceover narration:\n" + voiceoverScript,
-      "Script to validate (python):\n```python\n" + script + "\n```",
-    ].join("\n\n"),
-  });
+//   const { text } = await generateText({
+//     model,
+//     system: augmentedSystemPrompt,
+//     prompt: [
+//       "You are a strict static validator for Manim Python scripts.",
+//       "Analyze the provided script for correctness BEFORE runtime: imports, Scene/ThreeDScene usage, method names, missing constructs, syntax, and obvious logic issues.",
+//       "Note do not change anything about the voiceover, etc. Do not add bookmarks, etc",
+//       "If there is nothing to change, please do not",
+//       "Return ONLY a concise JSON object with fields: ok (boolean), error (string optional), fixedScript (string optional).",
+//       "If ok would be false, supply a full corrected script in fixedScript.",
+//       "User request:",
+//       prompt,
+//       "Voiceover narration:\n" + voiceoverScript,
+//       "Script to validate (python):\n```python\n" + script + "\n```",
+//     ].join("\n\n"),
+//   });
 
-  const raw = text.trim();
-  // Try to robustly extract a JSON object, even if wrapped in fences or extra prose
-  const extractJsonString = (input: string): string | null => {
-    // Prefer fenced ```json ... ``` or ``` ... ``` blocks
-    const fenced = input.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    if (fenced && fenced[1]) {
-      return fenced[1].trim();
-    }
-    // Fallback: take substring from first '{' to last '}'
-    const firstBrace = input.indexOf("{");
-    const lastBrace = input.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      return input.substring(firstBrace, lastBrace + 1).trim();
-    }
-    return null;
-  };
+//   const raw = text.trim();
+//   // Try to robustly extract a JSON object, even if wrapped in fences or extra prose
+//   const extractJsonString = (input: string): string | null => {
+//     // Prefer fenced ```json ... ``` or ``` ... ``` blocks
+//     const fenced = input.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+//     if (fenced && fenced[1]) {
+//       return fenced[1].trim();
+//     }
+//     // Fallback: take substring from first '{' to last '}'
+//     const firstBrace = input.indexOf("{");
+//     const lastBrace = input.lastIndexOf("}");
+//     if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+//       return input.substring(firstBrace, lastBrace + 1).trim();
+//     }
+//     return null;
+//   };
 
-  const candidate = extractJsonString(raw) ?? raw;
+//   const candidate = extractJsonString(raw) ?? raw;
 
-  try {
-    const parsed = JSON.parse(candidate);
-    const ok = !!parsed.ok;
-    const error = typeof parsed.error === "string" ? parsed.error : undefined;
-    let fixedScript =
-      typeof parsed.fixedScript === "string" ? parsed.fixedScript : undefined;
-    if (fixedScript) {
-      // If the model wrapped the script in code fences, strip them
-      fixedScript = fixedScript
-        .replace(/```python?\n?/gi, "")
-        .replace(/```\n?/g, "")
-        .trim();
-      // Sometimes models double-escape JSON strings; try to unescape once
-      if (fixedScript.startsWith('"') && fixedScript.endsWith('"')) {
-        try {
-          fixedScript = JSON.parse(fixedScript);
-        } catch (_) {
-          // ignore if not valid JSON string
-        }
-      }
-    }
-    return { ok, error, fixedScript };
-  } catch (_) {
-    // If parsing fails, be safe and report not ok with model output
-    return { ok: false, error: raw };
-  }
-}
+//   try {
+//     const parsed = JSON.parse(candidate);
+//     const ok = !!parsed.ok;
+//     const error = typeof parsed.error === "string" ? parsed.error : undefined;
+//     let fixedScript =
+//       typeof parsed.fixedScript === "string" ? parsed.fixedScript : undefined;
+//     if (fixedScript) {
+//       // If the model wrapped the script in code fences, strip them
+//       fixedScript = fixedScript
+//         .replace(/```python?\n?/gi, "")
+//         .replace(/```\n?/g, "")
+//         .trim();
+//       // Sometimes models double-escape JSON strings; try to unescape once
+//       if (fixedScript.startsWith('"') && fixedScript.endsWith('"')) {
+//         try {
+//           fixedScript = JSON.parse(fixedScript);
+//         } catch (_) {
+//           // ignore if not valid JSON string
+//         }
+//       }
+//     }
+//     return { ok, error, fixedScript };
+//   } catch (_) {
+//     // If parsing fails, be safe and report not ok with model output
+//     return { ok: false, error: raw };
+//   }
+// }
