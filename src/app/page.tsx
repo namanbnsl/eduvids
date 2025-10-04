@@ -17,9 +17,12 @@ import { useChat } from "@ai-sdk/react";
 import { Response } from "@/components/response";
 import { Conversation, ConversationContent } from "@/components/conversation";
 import { VideoPlayer } from "@/components/video-player";
-import { OnboardingTour, type OnboardingStep } from "@/components/onboarding-tour";
+import {
+  OnboardingTour,
+  type OnboardingStep,
+} from "@/components/onboarding-tour";
 
-const ONBOARDING_STORAGE_KEY = "scimath-vids:onboarding:v1";
+const ONBOARDING_STORAGE_KEY = "eduvids:onboarding:v1";
 
 export default function ChatPage() {
   const [input, setInput] = useState("");
@@ -72,7 +75,7 @@ export default function ChatPage() {
         id: "conversation",
         title: "Follow the conversation",
         description:
-          "This stream keeps every question and answer together so you can review context at a glance. Example: Revisit a response after asking \"Summarize Galileo's experiments in two sentences.\"",
+          'This stream keeps every question and answer together so you can review context at a glance. Example: Revisit a response after asking "Summarize Galileo\'s experiments in two sentences."',
         target: conversationSpotlightRef,
         placement: "right",
         spotlightPadding: 28,
@@ -81,7 +84,7 @@ export default function ChatPage() {
         id: "new-chat",
         title: "Start fresh anytime",
         description:
-          "Kick off a new idea without losing your current thread. Example: Launch a clean session to explore \"Design a lab on projectile motion.\"",
+          'Kick off a new idea without losing your current thread. Example: Launch a clean session to explore "Design a lab on projectile motion."',
         target: newChatSpotlightRef,
         placement: "bottom",
       },
@@ -89,7 +92,7 @@ export default function ChatPage() {
         id: "video-mode",
         title: "Turn prompts into videos",
         description:
-          "Toggle video mode to have responses rendered as animations tailored to your topic. Example: Request \"Animate the phases of mitosis with labeled steps.\"",
+          'Toggle video mode to have responses rendered as animations tailored to your topic. Example: Request "Animate the phases of mitosis with labeled steps."',
         target: videoToggleSpotlightRef,
         placement: "top",
       },
@@ -97,7 +100,7 @@ export default function ChatPage() {
         id: "composer",
         title: "Compose with guidance",
         description:
-          "Draft questions here, submit with Enter, and lean on Shift+Enter for multi-line prompts. Example: Draft \"Compare energy transfer in conduction, convection, and radiation with bullet points.\"",
+          'Draft questions here, submit with Enter, and lean on Shift+Enter for multi-line prompts. Example: Draft "Compare energy transfer in conduction, convection, and radiation with bullet points."',
         target: composerSpotlightRef,
         placement: "top",
         spotlightPadding: 24,
@@ -129,7 +132,7 @@ export default function ChatPage() {
             href="/"
             className="font-mono text-xs text-zinc-500 hover:text-foreground transition-colors"
           >
-            scimath-vids
+            eduvids
           </Link>
           <span className="hidden md:inline text-zinc-400">/</span>
           <span className="hidden md:inline text-xs text-zinc-500">Chat</span>
@@ -149,19 +152,22 @@ export default function ChatPage() {
       <div
         className={`mx-auto w-full max-w-7xl flex-1 px-4 md:px-6 flex flex-col`}
       >
-        <div ref={conversationSpotlightRef} className="relative flex flex-1 flex-col">
+        <div
+          ref={conversationSpotlightRef}
+          className="relative flex flex-1 flex-col"
+        >
           <Conversation>
             <ConversationContent>
               {messages.map((message: any) => (
                 <Message from={message.role} key={message.id}>
                   <MessageContent>
                     {message.parts?.map((part: any, i: number) => {
-                    switch (part.type) {
-                      case "text":
-                        return (
-                          <Response
-                            key={`${message.id}-${i}`}
-                            className={`
+                      switch (part.type) {
+                        case "text":
+                          return (
+                            <Response
+                              key={`${message.id}-${i}`}
+                              className={`
         max-w-none text-base leading-relaxed break-words ${
           message.role == "assistant" ? "p-4" : ""
         } rounded-lg
@@ -191,32 +197,32 @@ export default function ChatPage() {
         [&_.math-display]:my-4 [&_.math-display]:text-center
         [&_.math-inline]:mx-1
       `}
-                          >
-                            {part.text}
-                          </Response>
-                        );
-                      case "tool-generate_video": {
-                        const toolPart = part;
-                        switch (toolPart.state) {
-                          case "input-available":
-                            return <div key={i}>Loading video...</div>;
-                          case "output-available":
-                            return (
-                              <div key={i}>
-                                <VideoPlayer {...toolPart.output} />
-                              </div>
-                            );
-                          case "output-error":
-                            return (
-                              <div key={i}>Error: {toolPart.errorText}</div>
-                            );
-                          default:
-                            return null;
+                            >
+                              {part.text}
+                            </Response>
+                          );
+                        case "tool-generate_video": {
+                          const toolPart = part;
+                          switch (toolPart.state) {
+                            case "input-available":
+                              return <div key={i}>Loading video...</div>;
+                            case "output-available":
+                              return (
+                                <div key={i}>
+                                  <VideoPlayer {...toolPart.output} />
+                                </div>
+                              );
+                            case "output-error":
+                              return (
+                                <div key={i}>Error: {toolPart.errorText}</div>
+                              );
+                            default:
+                              return null;
+                          }
                         }
+                        default:
+                          return null;
                       }
-                      default:
-                        return null;
-                    }
                     })}
                   </MessageContent>
                   <MessageAvatar
@@ -261,7 +267,10 @@ export default function ChatPage() {
       </div>
 
       {showOnboarding ? (
-        <OnboardingTour steps={onboardingSteps} onClose={handleOnboardingClose} />
+        <OnboardingTour
+          steps={onboardingSteps}
+          onClose={handleOnboardingClose}
+        />
       ) : null}
     </div>
   );

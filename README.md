@@ -1,20 +1,20 @@
-# 📚 scimath-vids  
+# 📚 eduvids  
 
 ![Vercel Deploy](https://img.shields.io/badge/deploy-vercel-black?logo=vercel)  
 ![Manim](https://img.shields.io/badge/made%20with-manim-blue?logo=python)  
-![Stars](https://img.shields.io/github/stars/namanbnsl/scimath-vids?style=social)  
-![Issues](https://img.shields.io/github/issues/namanbnsl/scimath-vids)  
+![Stars](https://img.shields.io/github/stars/namanbnsl/eduvids?style=social)  
+![Issues](https://img.shields.io/github/issues/namanbnsl/eduvids)  
 
 **eduvids** lets you create educational videos using just text prompts.  
 
-- 🌐 Try it here (no sign-in required): [https://scimath-vids.vercel.app](https://scimath-vids.vercel.app)  
+- 🌐 Try it here (no sign-in required): [https://eduvids.vercel.app](https://eduvids.vercel.app)  
 - ▶️ Watch community creations: [SciMath Videos on YouTube](https://www.youtube.com/channel/UCws8TdWGs-Fo4UsBay3GtFA)  
 
 ---
 
 ## 🚀 Using the Online Version
 
-1. Open [eduvids](https://scimath-vids.vercel.app).  
+1. Open [eduvids](https://eduvids.vercel.app).  
 2. Enter any topic you’d like explained as a video, or press **Video** and enter the same.  
 3. Wait while the servers render your video. (You can switch tabs, but don’t close it.)  
 4. Once ready, the video will appear on the page, and you’ll get a notification.  

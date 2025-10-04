@@ -85,7 +85,7 @@ export async function renderManimVideo({
 
     // Watermark the video inside the sandbox using ffmpeg drawtext for robust output
     const watermarkedPath = `${outputDir}/watermarked.mp4`;
-    const watermarkText = "scimath-vids";
+    const watermarkText = "eduvids";
     const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
     const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@0.85:fontsize=24:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw-20:y=h-th-20`;
 
@@ -142,14 +142,16 @@ export async function renderManimVideo({
       const stderr = err.stderr ?? "";
       const stdout = err.stdout ?? "";
       const commandError = err.error ?? err.message ?? "";
-      const summary = typeof exitCode === "number"
-        ? `Manim command exited with code ${exitCode}`
-        : "Manim command failed";
+      const summary =
+        typeof exitCode === "number"
+          ? `Manim command exited with code ${exitCode}`
+          : "Manim command failed";
       const messageParts = [summary];
       const normalizedCommandError = commandError.trim();
       if (
         normalizedCommandError &&
-        normalizedCommandError.toLowerCase() !== `exit status ${(exitCode ?? "").toString()}`
+        normalizedCommandError.toLowerCase() !==
+          `exit status ${(exitCode ?? "").toString()}`
       ) {
         messageParts.push(`Error: ${normalizedCommandError}`);
       }

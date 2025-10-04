@@ -7,8 +7,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "scimath-vids",
-  description: "The AI-native learning OS.",
+  title: "eduvids",
+  description: "Educational Video Generator.",
   icons: { icon: "/favicon.ico" },
 };
 
