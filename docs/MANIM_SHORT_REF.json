@@ -5,158 +5,136 @@
     "mobject": "https://docs.manim.community/en/stable/reference/manim.mobject.mobject.Mobject.html",
     "vmobject": "https://docs.manim.community/en/stable/reference/manim.mobject.types.vectorized_mobject.VMobject.html",
     "animation": "https://docs.manim.community/en/stable/reference/manim.animation.animation.Animation.html",
-    "text": "https://docs.manim.community/en/stable/reference/manim.mobject.text.html",
-    "value_tracker": "https://docs.manim.community/en/stable/reference/manim.mobject.value_tracker.html"
+    "text": "https://docs.manim.community/en/stable/reference/manim.mobject.text.text_mobject.Text.html",
+    "mathtex": "https://docs.manim.community/en/stable/reference/manim.mobject.text.tex_mobject.MathTex.html",
+    "value_tracker": "https://docs.manim.community/en/stable/reference/manim.mobject.value_tracker.ValueTracker.html"
   },
   "classes": {
     "Scene": {
+      "name": "Scene",
       "module": "manim.scene.scene.Scene",
       "constructor": "Scene(renderer=None, camera_class=Camera, always_update_mobjects=False, random_seed=None, skip_animations=False)",
-      "properties": [
-        "camera",
-        "time",
-        "mobjects"
-      ],
+      "properties": ["camera", "time", "mobjects"],
       "methods": {
         "render": "render(preview=False)",
-        "setup": "setup(self)",
-        "construct": "construct(self)",
-        "tear_down": "tear_down(self)",
-        "next_section": "next_section(name='unnamed', section_type=DefaultSectionType.NORMAL, skip_animations=False)",
+        "setup": "setup()",
+        "construct": "construct()",
+        "tear_down": "tear_down()",
         "add": "add(*mobjects)",
         "remove": "remove(*mobjects)",
-        "clear": "clear(self)",
-        "add_foreground_mobjects": "add_foreground_mobjects(*mobjects)",
-        "remove_foreground_mobjects": "remove_foreground_mobjects(*mobjects)",
+        "clear": "clear()",
         "bring_to_front": "bring_to_front(*mobjects)",
         "bring_to_back": "bring_to_back(*mobjects)",
-        "add_mobjects_from_animations": "add_mobjects_from_animations(*animations)",
-        "play": "play(*args, subcaption=None, subcaption_duration=None, subcaption_offset=0, **kwargs)",
-        "wait": "wait(duration=DEFAULT_WAIT_TIME, stop_condition=None, frozen_frame=None)",
-        "pause": "pause(duration=1.0)",
-        "wait_until": "wait_until(stop_condition, max_time=60)",
-        "add_subcaption": "add_subcaption(content, duration=1, offset=0)",
-        "add_sound": "add_sound(sound_file, time_offset=0, gain=None, **kwargs)",
-        "add_updater": "add_updater(func)",
-        "remove_updater": "remove_updater(func)",
-        "on_mouse_motion": "on_mouse_motion(point, d_point)",
-        "on_mouse_scroll": "on_mouse_scroll(offset)"
+        "add_to_foreground": "add_to_foreground(m)",
+        "add_foreground_mobjects": "add_foreground_mobjects(*mobjects)",
+        "remove_foreground_mobject": "remove_foreground_mobject(m)",
+        "remove_foreground_mobjects": "remove_foreground_mobjects(*mobjects)",
+        "play": "play(*animations)",
+        "wait": "wait(duration=1)",
+        "add_sound": "add_sound(sound_file, time_offset=0)",
+        "pause": "pause()",
+        "next_section": "next_section()"
       }
     },
     "Mobject": {
+      "name": "Mobject",
       "module": "manim.mobject.mobject.Mobject",
-      "constructor": "Mobject(color=WHITE, name=None, dim=3, target=None, z_index=0)",
-      "attributes": [
-        "submobjects",
-        "points",
-        "dim",
-        "z_index",
-        "name"
-      ],
-      "properties": [
-        "width",
-        "height",
-        "depth"
-      ],
+      "constructor": "Mobject(color=WHITE, fill_opacity=1.0, stroke_width=0, z_index=0, name=\"\")",
+      "attrs": ["submobjects", "points", "dim", "z_index", "name"],
+      "properties": ["width", "height", "depth"],
       "methods": {
         "add": "add(*mobjects)",
         "add_to_back": "add_to_back(*mobjects)",
-        "remove": "remove(*mobjects)",
-        "arrange": "arrange(direction=RIGHT, buff=DEFAULT_MOBJECT_TO_MOBJECT_BUFFER, center=True, **kwargs)",
-        "arrange_in_grid": "arrange_in_grid(rows=None, cols=None, buff=MED_SMALL_BUFF, cell_alignment=ORIGIN, row_alignments=None, col_alignments=None, row_heights=None, col_widths=None, flow_order='dr')",
-        "move_to": "move_to(point_or_mobject, aligned_edge=ORIGIN, coor_mask=np.array([1, 1, 1]))",
-        "next_to": "next_to(mobject_or_point, direction=RIGHT, buff=DEFAULT_MOBJECT_TO_MOBJECT_BUFFER, aligned_edge=ORIGIN, submobject_to_align=None, index_of_submobject_to_align=None)",
-        "to_edge": "to_edge(edge=LEFT, buff=DEFAULT_MOBJECT_TO_EDGE_BUFFER)",
-        "to_corner": "to_corner(corner=UR, buff=DEFAULT_MOBJECT_TO_EDGE_BUFFER)",
-        "align_on_border": "align_on_border(direction, buff=DEFAULT_MOBJECT_TO_EDGE_BUFFER)",
-        "shift": "shift(vector)",
-        "scale": "scale(factor, about_point=None, about_edge=ORIGIN)",
-        "scale_to_fit_width": "scale_to_fit_width(width)",
-        "scale_to_fit_height": "scale_to_fit_height(height)",
-        "scale_to_fit_depth": "scale_to_fit_depth(depth)",
-        "stretch": "stretch(factor, dim, about_point=ORIGIN)",
-        "rotate": "rotate(angle, axis=OUT, about_point=None)",
-        "flip": "flip(axis=UP)",
+        "add_updater": "add_updater(update_function)",
+        "remove_updater": "remove_updater(update_function)",
+        "clear_updaters": "clear_updaters()",
+        "copy": "copy()",
         "set_color": "set_color(color, family=True)",
         "set_fill": "set_fill(color=None, opacity=None, family=True)",
-        "set_stroke": "set_stroke(color=None, width=None, opacity=None, background=False, family=True)",
-        "set_opacity": "set_opacity(opacity, family=True)",
-        "set_z_index": "set_z_index(z_index, family=True)",
-        "add_updater": "add_updater(update_function, index=None, call_updater=False)",
-        "remove_updater": "remove_updater(update_function=None)",
-        "clear_updaters": "clear_updaters()",
-        "generate_target": "generate_target()"
+        "set_stroke": "set_stroke(color=None, width=None, opacity=None, family=True)",
+        "rotate": "rotate(angle, axis=OUT, about_point=None)",
+        "flip": "flip(axis=RIGHT)",
+        "move_to": "move_to(point)",
+        "shift": "shift(vector)",
+        "next_to": "next_to(mobject_or_point, direction, buff=0)",
+        "to_edge": "to_edge(direction, buff=0)",
+        "to_corner": "to_corner(direction, buff=0)",
+        "scale": "scale(scale_factor, about_point=None)",
+        "stretch_to_fit_width": "stretch_to_fit_width(width)",
+        "stretch_to_fit_height": "stretch_to_fit_height(height)",
+        "match_width": "match_width(mobject)",
+        "match_height": "match_height(mobject)",
+        "center": "center()",
+        "get_center": "get_center()",
+        "get_left": "get_left()",
+        "get_right": "get_right()",
+        "get_top": "get_top()",
+        "get_bottom": "get_bottom()"
       }
     },
     "VMobject": {
+      "name": "VMobject",
       "module": "manim.mobject.types.vectorized_mobject.VMobject",
-      "constructor": "VMobject(fill_color=None, fill_opacity=0.0, stroke_color=None, stroke_opacity=1.0, stroke_width=DEFAULT_STROKE_WIDTH, background_stroke_color=None, sheen_factor=0.0, sheen_direction=None, close_new_points=False, joint_type=LineJointType.ROUND, shadow=None, **kwargs)",
       "methods": {
-        "set_fill": "set_fill(color=None, opacity=None, family=True)",
-        "set_stroke": "set_stroke(color=None, width=None, opacity=None, background=False, family=True)",
-        "set_sheen": "set_sheen(factor, direction=None)",
-        "set_sheen_direction": "set_sheen_direction(direction)",
         "start_new_path": "start_new_path(point)",
         "add_line_to": "add_line_to(point)",
-        "add_cubic_bezier_curve_to": "add_cubic_bezier_curve_to(handle1, handle2, anchor)",
-        "append_points": "append_points(points)",
+        "add_cubic_bezier_curve_to": "add_cubic_bezier_curve_to(control1, control2, anchor)",
+        "append_points": "append_points(points_array)",
+        "become_partial": "become_partial(vmobject, a, b)",
+        "get_arc_length": "get_arc_length()",
+        "get_nth_curve_points": "get_nth_curve_points(n)",
+        "get_num_curves": "get_num_curves()",
+        "insert_n_curves": "insert_n_curves(n)",
+        "point_from_proportion": "point_from_proportion(alpha)",
         "set_points_as_corners": "set_points_as_corners(points)",
         "set_points_smoothly": "set_points_smoothly(points)",
-        "become_partial": "become_partial(vmobject, a, b)",
-        "point_from_proportion": "point_from_proportion(alpha)",
-        "get_arc_length": "get_arc_length(sample_points_per_curve=None)",
-        "get_num_curves": "get_num_curves()",
-        "get_nth_curve_points": "get_nth_curve_points(n)",
-        "insert_n_curves": "insert_n_curves(n)"
+        "set_fill": "set_fill(color=None, opacity=None, family=True)",
+        "set_stroke": "set_stroke(color=None, width=None, opacity=None, family=True)",
+        "set_sheen": "set_sheen(factor, direction=None, family=True)",
+        "set_sheen_direction": "set_sheen_direction(direction, family=True)"
       }
     },
     "Animation": {
+      "name": "Animation",
       "module": "manim.animation.animation.Animation",
-      "constructor": "Animation(mobject, lag_ratio=DEFAULT_ANIMATION_LAG_RATIO, run_time=DEFAULT_ANIMATION_RUN_TIME, rate_func=smooth, reverse_rate_function=False, name=None, remover=False, suspend_mobject_updating=False, introducer=False)",
-      "methods": {
-        "begin": "begin()",
-        "finish": "finish()",
-        "clean_up_from_scene": "clean_up_from_scene(scene)",
-        "interpolate": "interpolate(alpha)",
-        "interpolate_mobject": "interpolate_mobject(alpha)",
-        "update_mobjects": "update_mobjects(dt)",
-        "get_run_time": "get_run_time()",
-        "set_run_time": "set_run_time(run_time)",
-        "set_rate_func": "set_rate_func(func)",
-        "copy": "copy()"
-      }
+      "constructor": "Animation(mobject=None, **kwargs)"
     },
     "Text": {
+      "name": "Text",
       "module": "manim.mobject.text.text_mobject.Text",
-      "constructor": "Text(text, font=None, warn_missing_font=True, t2c=None, t2f=None, t2g=None, t2s=None, line_spacing=0.0, disable_ligatures=False, font_size=DEFAULT_FONT_SIZE, weight=STANDARD, slant=NORMAL, gradient=None, **kwargs)"
+      "constructor": "Text(text, font='', font_size=48, color=WHITE, stroke_width=0, stroke_opacity=1.0, fill_opacity=1.0, gradient=None)"
     },
     "MathTex": {
+      "name": "MathTex",
       "module": "manim.mobject.text.tex_mobject.MathTex",
-      "constructor": "MathTex(*tex_strings, arg_separator=' ', substrings_to_isolate=None, tex_to_color_map=None, tex_environment='align*', font_size=DEFAULT_FONT_SIZE, tex_template=None)"
+      "constructor": "MathTex(*tex_strings, arg_separator=' ', substrings_to_isolate=None, tex_to_color_map=None, tex_environment='align*', font_size=48, color=WHITE)"
     },
     "ValueTracker": {
+      "name": "ValueTracker",
       "module": "manim.mobject.value_tracker.ValueTracker",
-      "constructor": "ValueTracker(value=0.0)",
+      "constructor": "ValueTracker(value=0)",
       "methods": {
         "get_value": "get_value()",
-        "set_value": "set_value(value)",
+        "set_value": "set_value(val)",
         "increment_value": "increment_value(delta)"
       }
     },
     "DoubleValueTracker": {
+      "name": "DoubleValueTracker",
       "module": "manim.mobject.value_tracker.DoubleValueTracker",
-      "constructor": "DoubleValueTracker(x=0.0, y=0.0)",
+      "constructor": "DoubleValueTracker(x0, y0)",
       "methods": {
-        "get_values": "get_values()",
+        "get_values": "get_values()", 
         "set_values": "set_values(x, y)"
       }
     },
     "ComplexValueTracker": {
+      "name": "ComplexValueTracker",
       "module": "manim.mobject.value_tracker.ComplexValueTracker",
-      "constructor": "ComplexValueTracker(complex_number=0j)",
+      "constructor": "ComplexValueTracker(value=0)",
       "methods": {
-        "get_value": "get_value()",
-        "set_value": "set_value(complex_number)"
+        "get_value": "get_value()", 
+        "set_value": "set_value(z)"
       }
     }
   },
@@ -166,44 +144,38 @@
     "FadeIn": "manim.animation.fading.FadeIn",
     "FadeOut": "manim.animation.fading.FadeOut",
     "FadeTransform": "manim.animation.fading.FadeTransform",
-    "FadeTransformPieces": "manim.animation.fading.FadeTransformPieces",
     "Transform": "manim.animation.transform.Transform",
     "ReplacementTransform": "manim.animation.transform.ReplacementTransform",
     "Rotate": "manim.animation.rotation.Rotate",
     "MoveAlongPath": "manim.animation.movement.MoveAlongPath",
     "AnimationGroup": "manim.animation.composition.AnimationGroup",
-    "LaggedStart": "manim.animation.composition.LaggedStart",
     "Succession": "manim.animation.composition.Succession",
+    "LaggedStart": "manim.animation.composition.LaggedStart",
     "Wait": "manim.animation.animation.Wait"
   },
   "constants": {
-    "vectors": [
-      "ORIGIN",
-      "UP",
-      "DOWN",
-      "LEFT",
-      "RIGHT",
-      "IN",
-      "OUT",
-      "UL",
-      "UR",
-      "DL",
-      "DR"
-    ],
-    "angles": [
-      "PI",
-      "TAU",
-      "DEGREES"
-    ],
-    "colors": [
-      "WHITE",
-      "BLACK",
-      "RED",
-      "GREEN",
-      "BLUE",
-      "YELLOW",
-      "PINK",
-      "PURPLE"
-    ]
+    "ORIGIN": "[0, 0, 0]",
+    "UP": "[0, 1, 0]",
+    "DOWN": "[0, -1, 0]",
+    "RIGHT": "[1, 0, 0]",
+    "LEFT": "[-1, 0, 0]",
+    "IN": "[0, 0, -1]",
+    "OUT": "[0, 0, 1]",
+    "UL": "UP+LEFT",
+    "UR": "UP+RIGHT",
+    "DL": "DOWN+LEFT",
+    "DR": "DOWN+RIGHT",
+    "PI": "pi",
+    "TAU": "2*pi",
+    "DEGREES": "pi/180",
+    "ORIGIN_NAME": "The center of the coordinate system:contentReference[oaicite:43]{index=43}",
+    "AXES": {
+      "UP": "One unit up (positive Y):contentReference[oaicite:44]{index=44}",
+      "DOWN": "One unit down (negative Y):contentReference[oaicite:45]{index=45}",
+      "RIGHT": "One unit right (positive X):contentReference[oaicite:46]{index=46}",
+      "LEFT": "One unit left (negative X):contentReference[oaicite:47]{index=47}",
+      "IN": "One unit into screen (negative Z):contentReference[oaicite:48]{index=48}",
+      "OUT": "One unit out of screen (positive Z):contentReference[oaicite:49]{index=49}"
+    }
   }
 }
