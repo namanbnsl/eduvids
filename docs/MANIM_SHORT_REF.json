@@ -111,10 +111,13 @@
     "Imported symbols exist in manim namespace.",
     "Called methods exist on target classes (Scene, Mobject, VMobject, Animation).",
     "Array shapes for .points manipulations are (N, 3).",
-    "Tex/MathTex usage implies LaTeX availability — warn if not confirmed."
+    "Tex/MathTex usage implies LaTeX availability — warn if not confirmed.",
+    "No mobject extends beyond the camera frame after layout (width/height within frame minus margin).",
+    "Labels use next_to/arrange with nonzero buff; overlapping centers are forbidden.",
+    "Titles are faded out before main content unless explicitly kept."
   ],
   "examples": {
-    "basic": "from manim import *\n\nclass Example(Scene):\n    def construct(self):\n        c = Circle().set_fill(PINK, opacity=0.5)\n        s = Square().next_to(c, RIGHT, buff=0.5)\n        self.play(Create(c), Create(s))\n        self.play(s.animate.rotate(PI/4))\n        self.play(Transform(s, c))\n        self.wait()",
+    "basic": "from manim import *\n\nSAFE_MARGIN = 0.4\n\nclass Example(Scene):\n    def fit_and_keep_on_screen(self, m, margin=SAFE_MARGIN):\n        frame = self.camera.frame\n        max_w = frame.width - 2*margin\n        max_h = frame.height - 2*margin\n        if m.width > max_w: m.scale_to_fit_width(max_w)\n        if m.height > max_h: m.scale_to_fit_height(max_h)\n        m.move_to(frame.get_center())\n        return m\n\n    def construct(self):\n        c = Circle().set_fill(PINK, opacity=0.5)\n        s = Square()\n        group = VGroup(c, s.arrange(RIGHT, buff=0.5))\n        self.fit_and_keep_on_screen(group)\n        self.play(Create(c), Create(s))\n        self.play(s.animate.rotate(PI/4))\n        self.play(Transform(s, c))\n        self.wait()",
     "camera_pan": "class CameraPan(Scene):\n    def construct(self):\n        grid = VGroup(*[Dot().shift(RIGHT*i) for i in range(-5,6)])\n        self.add(grid)\n        self.play(self.camera.frame.animate.shift(RIGHT*3), run_time=2)\n        self.wait()"
   }
 }

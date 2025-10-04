@@ -125,6 +125,60 @@ Notes:
 Notes:
 - For moving-camera effects, animate the camera frame: `self.play(self.camera.frame.animate.move_to(point))`.
 
+## Layout and visibility contract (LLM MUST follow)
+These hard rules are designed to prevent overlapping labels and off‑screen content in generated scenes.
+
+1) Always build layouts with groups instead of manual coordinates
+- Prefer `VGroup(...).arrange(direction=RIGHT, buff=0.5, center=True)` and `arrange_in_grid` over ad‑hoc `shift` calls.
+- Use `next_to(target, direction, buff=0.3)` for labels and arrows. Never place a label directly at the same center as its target.
+
+2) Maintain a safe frame margin
+- Use a margin of at least 0.4 units on all sides: `MARGIN = 0.4`.
+- Only use `to_edge/ to_corner` with an explicit `buff=MARGIN`.
+- If scaling is needed, prefer `scale_to_fit_width`/`scale_to_fit_height` with `frame.get_width() - 2*MARGIN` or `frame.get_height() - 2*MARGIN`.
+
+3) Ensure everything is on screen before playing
+- Compute the frame once: `frame = self.camera.frame`.
+- Before `self.play(...)` for any newly created `m`, ensure:
+  - `m.width <= frame.width - 2*MARGIN` and `m.height <= frame.height - 2*MARGIN` (scale down if needed)
+  - Move into view: `m.move_to(frame.get_center())` or `m.to_edge(..., buff=MARGIN)`
+
+4) Z‑order and readability
+- Labels should be above shapes: set `label.set_z_index(shape.z_index + 1)` or simply `label.set_z_index(10)`.
+- When highlighting, add translucent fills and adequate stroke widths: e.g., `set_fill(opacity=0.15)` and `set_stroke(width=3)`.
+
+5) Clear the screen between sections
+- Fade out previous groups before introducing new ones: `self.play(FadeOut(VGroup(*self.mobjects)))` or keep an explicit `current_group` variable and fade out that.
+
+6) Diagram recipes
+- Function box: use `SurroundingRectangle` or `RoundedRectangle` sized to text plus `buff=0.3`. Place input label with `.next_to(box, UP, buff=0.3)` and output label with `.next_to(box, DOWN, buff=0.3)`.
+- Two‑set mapping (like domain→codomain): create two `Ellipse`/`Circle` objects, then place items as a `VGroup(*dots_or_labels).arrange(DOWN, buff=0.4).move_to(left_ellipse)`. Arrows should start/end outside fills: use `buff=0.1` on `Arrow(start, end, buff=0.1)`.
+
+7) Safe helper (recommended to include at top of each Scene)
+```py
+from manim import *
+
+SAFE_MARGIN = 0.4
+
+def fit_and_keep_on_screen(m: Mobject, frame: Mobject, margin: float = SAFE_MARGIN):
+    # Scale down if too large for frame with margin
+    max_w = frame.width - 2*margin
+    max_h = frame.height - 2*margin
+    if m.width > max_w:
+        m.scale_to_fit_width(max_w)
+    if m.height > max_h:
+        m.scale_to_fit_height(max_h)
+    # If still slightly out of view due to rounding, center it
+    m.move_to(frame.get_center())
+    return m
+```
+- Call `fit_and_keep_on_screen(group, self.camera.frame)` for any complex group before displaying it.
+
+8) Timing hygiene
+- Use short waits `self.wait(0.5)` between layout steps so viewers can perceive structure.
+
+These rules exist to eliminate: overlapping titles and labels, off‑screen ellipses/ovals, and invisible numerals in set diagrams.
+
 ## ImageMobject
 - `ImageMobject(path_or_pil_image)` displays raster images. Useful for backgrounds, texture references, or combining rendered images with vector mobjects.
 - Typical usage: `img = ImageMobject("fig.png").scale(2); self.add(img)`
