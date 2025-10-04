@@ -68,13 +68,13 @@ npx inngest-cli@latest dev
 
 ## 📺 Setting up automatic YouTube uploads (optional)
 1. Visit Google Cloud Console and create an **OAuth desktop service**. Your `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` will be available here.
+   
 2. Edit `helper/get_google_refresh_token.mjs` with your `CLIENT_ID` and `CLIENT_SECRET` at the given places.
+   
 3. Getting your `GOOGLE_REFRESH_TOKEN`:
 ```bash
 # Visit the auth screen and allow permissions for your YouTube channel. The REFRESH_TOKEN will be visible on the console after that.
 node helper/get_google_refresh_token.mjs
 ```
+
 4. Edit your `YOUTUBE_PRIVACY_STATUS` in `.env` based on what you want as the visibility for your videos `(public | unlisted | private)`. Default is `public`.
-
-
-
