@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -17,10 +17,19 @@ import { useChat } from "@ai-sdk/react";
 import { Response } from "@/components/response";
 import { Conversation, ConversationContent } from "@/components/conversation";
 import { VideoPlayer } from "@/components/video-player";
+import { OnboardingTour, type OnboardingStep } from "@/components/onboarding-tour";
+
+const ONBOARDING_STORAGE_KEY = "scimath-vids:onboarding:v1";
 
 export default function ChatPage() {
   const [input, setInput] = useState("");
   const [videoMode, setVideoMode] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  const conversationSpotlightRef = useRef<HTMLElement | null>(null);
+  const newChatSpotlightRef = useRef<HTMLElement | null>(null);
+  const videoToggleSpotlightRef = useRef<HTMLElement | null>(null);
+  const composerSpotlightRef = useRef<HTMLElement | null>(null);
 
   const { messages, status, sendMessage } = useChat();
 
@@ -46,6 +55,69 @@ export default function ChatPage() {
     setVideoMode(false);
   };
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const seen = window.localStorage.getItem(ONBOARDING_STORAGE_KEY);
+    if (!seen) {
+      setShowOnboarding(true);
+    }
+  }, []);
+
+  const onboardingSteps = useMemo<OnboardingStep[]>(
+    () => [
+      {
+        id: "conversation",
+        title: "Follow the conversation",
+        description:
+          "This stream keeps every question and answer together so you can review context at a glance. Example: Revisit a response after asking \"Summarize Galileo's experiments in two sentences.\"",
+        target: conversationSpotlightRef,
+        placement: "right",
+        spotlightPadding: 28,
+      },
+      {
+        id: "new-chat",
+        title: "Start fresh anytime",
+        description:
+          "Kick off a new idea without losing your current thread. Example: Launch a clean session to explore \"Design a lab on projectile motion.\"",
+        target: newChatSpotlightRef,
+        placement: "bottom",
+      },
+      {
+        id: "video-mode",
+        title: "Turn prompts into videos",
+        description:
+          "Toggle video mode to have responses rendered as animations tailored to your topic. Example: Request \"Animate the phases of mitosis with labeled steps.\"",
+        target: videoToggleSpotlightRef,
+        placement: "top",
+      },
+      {
+        id: "composer",
+        title: "Compose with guidance",
+        description:
+          "Draft questions here, submit with Enter, and lean on Shift+Enter for multi-line prompts. Example: Draft \"Compare energy transfer in conduction, convection, and radiation with bullet points.\"",
+        target: composerSpotlightRef,
+        placement: "top",
+        spotlightPadding: 24,
+      },
+    ],
+    [
+      conversationSpotlightRef,
+      newChatSpotlightRef,
+      videoToggleSpotlightRef,
+      composerSpotlightRef,
+    ]
+  );
+
+  const handleOnboardingClose = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "1");
+    }
+    setShowOnboarding(false);
+  };
+
   return (
     <div className="relative flex flex-col h-svh">
       {/* Background wash */}
@@ -63,9 +135,11 @@ export default function ChatPage() {
           <span className="hidden md:inline text-xs text-zinc-500">Chat</span>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="hidden sm:inline-flex">
-            New chat
-          </Button>
+          <div ref={newChatSpotlightRef} className="hidden sm:inline-flex">
+            <Button variant="outline" size="sm">
+              New chat
+            </Button>
+          </div>
           <Button variant="ghost" size="sm" className="text-zinc-500">
             Settings
           </Button>
@@ -75,12 +149,13 @@ export default function ChatPage() {
       <div
         className={`mx-auto w-full max-w-7xl flex-1 px-4 md:px-6 flex flex-col`}
       >
-        <Conversation>
-          <ConversationContent>
-            {messages.map((message: any) => (
-              <Message from={message.role} key={message.id}>
-                <MessageContent>
-                  {message.parts?.map((part: any, i: number) => {
+        <div ref={conversationSpotlightRef} className="relative flex flex-1 flex-col">
+          <Conversation>
+            <ConversationContent>
+              {messages.map((message: any) => (
+                <Message from={message.role} key={message.id}>
+                  <MessageContent>
+                    {message.parts?.map((part: any, i: number) => {
                     switch (part.type) {
                       case "text":
                         return (
@@ -142,21 +217,22 @@ export default function ChatPage() {
                       default:
                         return null;
                     }
-                  })}
-                </MessageContent>
-                <MessageAvatar
-                  src=""
-                  name={message.role == "assistant" ? "AI" : "ME"}
-                />
-              </Message>
-            ))}
-          </ConversationContent>
-        </Conversation>
+                    })}
+                  </MessageContent>
+                  <MessageAvatar
+                    src=""
+                    name={message.role == "assistant" ? "AI" : "ME"}
+                  />
+                </Message>
+              ))}
+            </ConversationContent>
+          </Conversation>
+        </div>
 
         <Separator />
 
         {/* Composer */}
-        <div className="w-full py-4">
+        <div className="w-full py-4" ref={composerSpotlightRef}>
           <PromptInput onSubmit={handleSubmit} className="mt-4">
             <PromptInputTextarea
               onChange={(e) => setInput(e.target.value)}
@@ -169,18 +245,24 @@ export default function ChatPage() {
             />
             <PromptInputToolbar>
               <PromptInputTools>
-                <PromptInputButton
-                  onClick={() => setVideoMode((v) => !v)}
-                  variant={videoMode ? "default" : "ghost"}
-                >
-                  Generate Video
-                </PromptInputButton>
+                <div ref={videoToggleSpotlightRef} className="inline-flex">
+                  <PromptInputButton
+                    onClick={() => setVideoMode((v) => !v)}
+                    variant={videoMode ? "default" : "ghost"}
+                  >
+                    Generate Video
+                  </PromptInputButton>
+                </div>
               </PromptInputTools>
               <PromptInputSubmit disabled={!input} status={status} />
             </PromptInputToolbar>
           </PromptInput>
         </div>
       </div>
+
+      {showOnboarding ? (
+        <OnboardingTour steps={onboardingSteps} onClose={handleOnboardingClose} />
+      ) : null}
     </div>
   );
 }
