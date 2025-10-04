@@ -1,4 +1,4 @@
-import { Sandbox } from "@e2b/code-interpreter";
+import { CommandExitError, Sandbox } from "@e2b/code-interpreter";
 
 export interface RenderRequest {
   script: string;
@@ -9,6 +9,7 @@ export async function renderManimVideo({
   script,
   prompt: _prompt,
 }: RenderRequest): Promise<string> {
+  void _prompt;
   let sandbox: Sandbox | null = null;
 
   try {
@@ -134,9 +135,43 @@ export async function renderManimVideo({
       `Prepared base64 data URL for upload (length: ${base64.length} chars)`
     );
     return dataUrl;
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("E2B render error:", err);
-    // Preserve original error details (message, stack, stderr snippets) for higher-level handlers
+    if (err instanceof CommandExitError) {
+      const exitCode = err.exitCode;
+      const stderr = err.stderr ?? "";
+      const stdout = err.stdout ?? "";
+      const commandError = err.error ?? err.message ?? "";
+      const summary = typeof exitCode === "number"
+        ? `Manim command exited with code ${exitCode}`
+        : "Manim command failed";
+      const messageParts = [summary];
+      const normalizedCommandError = commandError.trim();
+      if (
+        normalizedCommandError &&
+        normalizedCommandError.toLowerCase() !== `exit status ${(exitCode ?? "").toString()}`
+      ) {
+        messageParts.push(`Error: ${normalizedCommandError}`);
+      }
+      if (stderr.trim().length) {
+        messageParts.push(`STDERR:\n${stderr}`);
+      }
+      if (stdout.trim().length) {
+        messageParts.push(`STDOUT:\n${stdout}`);
+      }
+
+      const detailedError = new Error(messageParts.join("\n\n"));
+      detailedError.name = err.name;
+      detailedError.stack = err.stack;
+      Object.assign(detailedError, {
+        exitCode,
+        stderr,
+        stdout,
+        originalMessage: err.message,
+        cause: err,
+      });
+      throw detailedError;
+    }
     throw err instanceof Error ? err : new Error(String(err));
   } finally {
     await sandbox?.kill();

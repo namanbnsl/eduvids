@@ -5,10 +5,17 @@ import {
   regenerateManimScriptWithError,
   // verifyManimScript,
 } from "./gemini";
+import type { ManimGenerationAttempt } from "./gemini";
 import { renderManimVideo } from "./e2b";
 import { uploadVideo } from "./uploadthing";
 import { jobStore } from "./job-store";
 import { uploadToYouTube } from "./youtube";
+
+type RenderProcessError = Error & {
+  stderr?: string;
+  stdout?: string;
+  exitCode?: number;
+};
 
 function buildYouTubeTitle(params: {
   prompt?: string;
@@ -86,7 +93,7 @@ export const generateVideo = inngest.createFunction(
         progress: 15,
         step: "generating manim script",
       });
-      let script = await step.run("generate-manim-script", async () => {
+      const script = await step.run("generate-manim-script", async () => {
         return await generateManimScript({
           prompt,
           voiceoverScript,
@@ -137,9 +144,7 @@ export const generateVideo = inngest.createFunction(
         async () => {
           const MAX_RETRIES = 3;
           let currentScript = script;
-          let lastError: Error | null = null;
-
-          console.log("Regenerating video because of last error:", lastError);
+          const failedAttempts: ManimGenerationAttempt[] = [];
 
           for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
@@ -168,42 +173,68 @@ export const generateVideo = inngest.createFunction(
               );
               return { videoUrl, renderAttempt: attempt };
             } catch (error: unknown) {
-              lastError =
+              const baseError =
                 error instanceof Error ? error : new Error(String(error));
-              const message = lastError.message || String(error);
-              const stack = (lastError as any).stack as string | undefined;
-              const stderr = (lastError as any).stderr as string | undefined;
-              const stdout = (lastError as any).stdout as string | undefined;
-              const exitCode = (lastError as any).exitCode as
-                | number
-                | undefined;
-              console.error(`Render attempt ${attempt} failed:`, message);
+              const renderError = baseError as RenderProcessError;
+
+              const rawMessage = (renderError.message || "").trim();
+              const normalizedMessage = rawMessage.length
+                ? rawMessage
+                : (String(error || "").trim() || "Unknown error");
+              const stack = renderError.stack;
+              const stderr = renderError.stderr;
+              const stdout = renderError.stdout;
+              const exitCode = renderError.exitCode;
+              const errorDetails = {
+                message: normalizedMessage,
+                stack,
+                stderr,
+                stdout,
+                exitCode,
+              };
+
+              failedAttempts.push({
+                attemptNumber: attempt,
+                script: currentScript,
+                error: errorDetails,
+              });
+
+              console.error(
+                `Render attempt ${attempt} failed:`,
+                normalizedMessage
+              );
 
               // If this was the last attempt, throw the error
               if (attempt === MAX_RETRIES) {
                 // Surface the original error with context so upstream handlers can log full details
-                (lastError as any).attempt = attempt;
-                throw lastError;
+                const finalError = renderError as RenderProcessError & {
+                  attempt?: number;
+                };
+                finalError.attempt = attempt;
+                throw finalError;
               }
 
               // Regenerate script with error feedback for next attempt
               await jobStore.setProgress(jobId!, {
                 details: [
-                  message,
+                  normalizedMessage,
                   exitCode !== undefined ? `exitCode=${exitCode}` : undefined,
                   stderr ? `stderr: ${stderr.substring(0, 500)}` : undefined,
                 ]
                   .filter(Boolean)
                   .join(" | "),
               });
-              console.log(`Regenerating script for attempt ${attempt + 1}...`);
+              console.log(
+                `Regenerating script for attempt ${attempt + 1} with last error: ${normalizedMessage}`
+              );
               currentScript = await regenerateManimScriptWithError({
                 prompt,
                 voiceoverScript,
                 previousScript: currentScript,
-                error: message,
-                errorDetails: { message, stack, stderr, stdout, exitCode },
+                error: normalizedMessage,
+                errorDetails,
                 attemptNumber: attempt,
+                attemptHistory: failedAttempts,
               });
 
               // // Verify and auto-fix regenerated script before next render attempt

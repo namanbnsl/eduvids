@@ -8,6 +8,59 @@ const google = createGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_API_KEY!,
 });
 
+interface ManimReferenceDocs {
+  markdown: string;
+  json: unknown;
+}
+
+let cachedManimDocs: ManimReferenceDocs | null = null;
+
+function loadManimReferenceDocs(): ManimReferenceDocs {
+  if (cachedManimDocs) {
+    return cachedManimDocs;
+  }
+
+  const docsDir = path.join(process.cwd(), "docs");
+  let markdown = "";
+  let json: unknown = {};
+
+  try {
+    markdown = fs.readFileSync(
+      path.join(docsDir, "MANIM_SHORT_REF.md"),
+      "utf8"
+    );
+  } catch {
+    markdown = "";
+  }
+
+  try {
+    const raw = fs.readFileSync(
+      path.join(docsDir, "MANIM_SHORT_REF.json"),
+      "utf8"
+    );
+    json = JSON.parse(raw) as unknown;
+  } catch {
+    json = {};
+  }
+
+  cachedManimDocs = { markdown, json };
+  return cachedManimDocs;
+}
+
+function buildAugmentedSystemPrompt(base: string): string {
+  const { markdown, json } = loadManimReferenceDocs();
+  return `${base}\n\n---\nMANIM_SHORT_REF.md (local):\n${markdown}\n\nMANIM_SHORT_REF.json (local):\n${JSON.stringify(
+    json
+  )}\n---`;
+}
+
+const truncate = (value: string, max = 2000) => {
+  if (!value) return "";
+  return value.length > max
+    ? `${value.slice(0, max)}\n...[truncated ${value.length - max} chars]`
+    : value;
+};
+
 export interface VoiceoverScriptRequest {
   prompt: string;
 }
@@ -19,6 +72,20 @@ export interface ManimScriptRequest {
 
 export interface ManimScript {
   code: string;
+}
+
+export interface ManimGenerationErrorDetails {
+  message?: string;
+  stack?: string;
+  stderr?: string;
+  stdout?: string;
+  exitCode?: number;
+}
+
+export interface ManimGenerationAttempt {
+  attemptNumber: number;
+  script: string;
+  error: ManimGenerationErrorDetails;
 }
 
 export async function generateVoiceoverScript({
@@ -42,33 +109,7 @@ export async function generateManimScript({
   voiceoverScript,
 }: ManimScriptRequest): Promise<string> {
   const model = google("gemini-2.5-pro");
-
-  // Attach local Manim docs (md + json) to the system prompt so the model has
-  // authoritative reference material when generating scripts.
-  const docsDir = path.join(process.cwd(), "docs");
-  let manimShortRefMd = "";
-  let manimShortRefJson: any = {};
-  try {
-    manimShortRefMd = fs.readFileSync(
-      path.join(docsDir, "MANIM_SHORT_REF.md"),
-      "utf8"
-    );
-  } catch (e) {
-    // ignore if not present
-  }
-  try {
-    const j = fs.readFileSync(
-      path.join(docsDir, "MANIM_SHORT_REF.json"),
-      "utf8"
-    );
-    manimShortRefJson = JSON.parse(j);
-  } catch (e) {
-    // ignore if not present or invalid
-  }
-
-  const augmentedSystemPrompt = `${MANIM_SYSTEM_PROMPT}\n\n---\nMANIM_SHORT_REF.md (local):\n${manimShortRefMd}\n\nMANIM_SHORT_REF.json (local):\n${JSON.stringify(
-    manimShortRefJson
-  )}\n---`;
+  const augmentedSystemPrompt = buildAugmentedSystemPrompt(MANIM_SYSTEM_PROMPT);
 
   const firstAttempt = await generateText({
     model,
@@ -77,7 +118,7 @@ export async function generateManimScript({
   });
 
   // Extract code from potential markdown formatting
-  let code = firstAttempt.text
+  const code = firstAttempt.text
     .replace(/```python?\n?/g, "")
     .replace(/```\n?/g, "")
     .trim();
@@ -124,14 +165,9 @@ export interface RegenerateManimScriptRequest {
   voiceoverScript: string;
   previousScript: string;
   error: string; // human-readable message
-  errorDetails?: {
-    message?: string;
-    stack?: string;
-    stderr?: string;
-    stdout?: string;
-    exitCode?: number;
-  };
+  errorDetails?: ManimGenerationErrorDetails;
   attemptNumber: number;
+  attemptHistory?: ManimGenerationAttempt[];
 }
 
 export async function regenerateManimScriptWithError({
@@ -141,30 +177,34 @@ export async function regenerateManimScriptWithError({
   error,
   errorDetails,
   attemptNumber,
+  attemptHistory = [],
 }: RegenerateManimScriptRequest): Promise<string> {
   const model = google("gemini-2.5-pro");
+  const augmentedSystemPrompt = buildAugmentedSystemPrompt(MANIM_SYSTEM_PROMPT);
 
-  // Load local docs for context (same approach as generateManimScript)
-  const docsDir = path.join(process.cwd(), "docs");
-  let manimShortRefMd = "";
-  let manimShortRefJson: any = {};
-  try {
-    manimShortRefMd = fs.readFileSync(
-      path.join(docsDir, "MANIM_SHORT_REF.md"),
-      "utf8"
-    );
-  } catch (e) {}
-  try {
-    const j = fs.readFileSync(
-      path.join(docsDir, "MANIM_SHORT_REF.json"),
-      "utf8"
-    );
-    manimShortRefJson = JSON.parse(j);
-  } catch (e) {}
-
-  const augmentedSystemPrompt = `${MANIM_SYSTEM_PROMPT}\n\n---\nMANIM_SHORT_REF.md (local):\n${manimShortRefMd}\n\nMANIM_SHORT_REF.json (local):\n${JSON.stringify(
-    manimShortRefJson
-  )}\n---`;
+  const previousAttemptsSummary = (() => {
+    if (!attemptHistory.length) return "";
+    const blocks = attemptHistory.map((attempt) => {
+      const lines: string[] = [`Attempt #${attempt.attemptNumber}`];
+      if (attempt.error.message) {
+        lines.push(`- Message: ${attempt.error.message}`);
+      }
+      if (typeof attempt.error.exitCode === "number") {
+        lines.push(`- Exit code: ${attempt.error.exitCode}`);
+      }
+      if (attempt.error.stderr) {
+        lines.push(`- STDERR snippet:\n${truncate(attempt.error.stderr)}`);
+      }
+      if (attempt.error.stdout) {
+        lines.push(`- STDOUT snippet:\n${truncate(attempt.error.stdout)}`);
+      }
+      if (attempt.error.stack) {
+        lines.push(`- Stack snippet:\n${truncate(attempt.error.stack)}`);
+      }
+      return lines.join("\n");
+    });
+    return `\nSummary of previous failed attempts:\n${blocks.join("\n\n")}`;
+  })();
 
   const structuredErrorSection = (() => {
     if (!errorDetails) return "";
@@ -195,10 +235,24 @@ export async function regenerateManimScriptWithError({
       : "";
   })();
 
+  const normalizedError = error?.trim().length
+    ? error
+    : errorDetails?.message ?? "Unknown error";
+
+  const promptSections = [
+    `User request: ${prompt}`,
+    `Voiceover narration:\n${voiceoverScript}`,
+    previousAttemptsSummary.trim(),
+    `⚠️ PREVIOUS ATTEMPT #${attemptNumber} FAILED ⚠️`,
+    `The previous Manim script failed with the following error:\n\`\`\`\n${normalizedError}\n\`\`\`${structuredErrorSection}`,
+    `The broken script was:\n\`\`\`python\n${previousScript}\n\`\`\``,
+    "Please analyze the error carefully and generate a CORRECTED Manim script that:\n1. Fixes the specific error that occurred\n2. Follows the narration timeline\n3. Uses proper Manim syntax and best practices\n4. Avoids the mistakes from the previous attempt\n\nGenerate the complete FIXED Manim script:",
+  ].filter((section) => section && section.trim().length > 0);
+
   const { text } = await generateText({
     model,
     system: augmentedSystemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\n⚠️ PREVIOUS ATTEMPT #${attemptNumber} FAILED ⚠️\n\nThe previous Manim script failed with the following error:\n\`\`\`\n${error}\n\`\`\`${structuredErrorSection}\nThe broken script was:\n\`\`\`python\n${previousScript}\n\`\`\`\n\nPlease analyze the error carefully and generate a CORRECTED Manim script that:\n1. Fixes the specific error that occurred\n2. Follows the narration timeline\n3. Uses proper Manim syntax and best practices\n4. Avoids the mistakes from the previous attempt\n\nGenerate the complete FIXED Manim script:`,
+    prompt: promptSections.join("\n\n"),
   });
 
   // Extract code from potential markdown formatting

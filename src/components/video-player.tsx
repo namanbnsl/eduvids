@@ -13,7 +13,12 @@ interface VideoPlayerProps {
   src?: string;
 }
 
-export function VideoPlayer({ jobId, status, src, description }: VideoPlayerProps) {
+export function VideoPlayer({
+  jobId,
+  status,
+  src,
+  description,
+}: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus>(
     status ?? (src ? "ready" : "generating")
@@ -114,10 +119,8 @@ export function VideoPlayer({ jobId, status, src, description }: VideoPlayerProp
         if (!("Notification" in window)) return;
         if (Notification.permission !== "granted") return;
 
-        const title = "Your video is ready";
-        const body = description
-          ? `“${description}” has finished rendering.`
-          : "Your requested video has finished rendering.";
+        const title = "Your video is ready to watch! 😀";
+        const body = "Your requested video has finished rendering. 📽️";
         // Prefer showing notification when tab is hidden, but also show if visible
         new Notification(title, {
           body,
