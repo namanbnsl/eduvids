@@ -138,16 +138,6 @@ export default function ChatPage() {
           <span className="hidden md:inline text-zinc-400">/</span>
           <span className="hidden md:inline text-xs text-zinc-500">Chat</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div ref={newChatSpotlightRef} className="hidden sm:inline-flex">
-            <Button variant="outline" size="sm">
-              New chat
-            </Button>
-          </div>
-          <Button variant="ghost" size="sm" className="text-zinc-500">
-            Settings
-          </Button>
-        </div>
       </header>
       {/* Chat area */}
       <div
@@ -255,9 +245,9 @@ export default function ChatPage() {
                 <div ref={videoToggleSpotlightRef} className="inline-flex">
                   <PromptInputButton
                     onClick={() => setVideoMode((v) => !v)}
-                    variant={videoMode ? "default" : "ghost"}
+                    variant={videoMode ? "default" : "outline"}
                   >
-                    Generate Video
+                    Video
                   </PromptInputButton>
                 </div>
               </PromptInputTools>
