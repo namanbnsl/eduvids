@@ -5,7 +5,7 @@
 ![Stars](https://img.shields.io/github/stars/namanbnsl/scimath-vids?style=social)  
 ![Issues](https://img.shields.io/github/issues/namanbnsl/scimath-vids)  
 
-**scimath-vids** lets you create educational videos using just text prompts.  
+**eduvids** lets you create educational videos using just text prompts.  
 
 - 🌐 Try it here (no sign-in required): [https://scimath-vids.vercel.app](https://scimath-vids.vercel.app)  
 - ▶️ Watch community creations: [SciMath Videos on YouTube](https://www.youtube.com/channel/UCws8TdWGs-Fo4UsBay3GtFA)  
@@ -14,7 +14,7 @@
 
 ## 🚀 Using the Online Version
 
-1. Open [scimath-vids](https://scimath-vids.vercel.app).  
+1. Open [eduvids](https://scimath-vids.vercel.app).  
 2. Enter any topic you’d like explained as a video, or press **Video** and enter the same.  
 3. Wait while the servers render your video. (You can switch tabs, but don’t close it.)  
 4. Once ready, the video will appear on the page, and you’ll get a notification.  
@@ -28,8 +28,8 @@
 1. Clone the repository:
 ```bash
 # Clone the repository
-git clone https://github.com/namanbnsl/scimath-vids
-cd scimath-vids
+git clone https://github.com/namanbnsl/eduvids
+cd eduvids
 
 # Install dependencies (any of the following)
 npm install
@@ -78,5 +78,6 @@ node helper/get_google_refresh_token.mjs
 ```
 
 4. Edit your `YOUTUBE_PRIVACY_STATUS` in `.env` based on what you want as the visibility for your videos `(public | unlisted | private)`. Default is `public`.
+
 
 
