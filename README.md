@@ -2,7 +2,6 @@
 
 ![Vercel Deploy](https://img.shields.io/badge/deploy-vercel-black?logo=vercel)  
 ![Manim](https://img.shields.io/badge/made%20with-manim-blue?logo=python)  
-![License](https://img.shields.io/github/license/namanbnsl/scimath-vids)  
 ![Stars](https://img.shields.io/github/stars/namanbnsl/scimath-vids?style=social)  
 ![Issues](https://img.shields.io/github/issues/namanbnsl/scimath-vids)  
 
@@ -76,5 +75,6 @@ npx inngest-cli@latest dev
 node helper/get_google_refresh_token.mjs
 ```
 4. Edit your `YOUTUBE_PRIVACY_STATUS` in `.env` based on what you want as the visibility for your videos `(public | unlisted | private)`. Default is `public`.
+
 
 
