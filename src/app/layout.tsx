@@ -9,7 +9,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "eduvids",
   description: "Educational Video Generator.",
-  icons: { icon: "/favicon.ico" },
+  icons: { icon: "/eduvids_logo.svg" },
 };
 
 export const viewport: Viewport = {
