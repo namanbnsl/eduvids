@@ -63,6 +63,7 @@ export default function ChatPage() {
       return;
     }
 
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "1");
     const seen = window.localStorage.getItem(ONBOARDING_STORAGE_KEY);
     if (!seen) {
       setShowOnboarding(true);
