@@ -36,15 +36,19 @@ bun install
 
 2. Install the E2B CLI from here: [https://e2b.dev/docs/cli](https://e2b.dev/docs/cli)
 
-3. Build the E2B sandbox:
+3. Build the E2B sandbox (requires Docker):
+
 ```bash
 cd sandbox-templates/manim-ffmpeg-latex-voiceover-watermark # This is the latest template
 e2b template build --name manim-ffmpeg-latex-voiceover-watermark
 ```
+4. Get your `GOOGLE_GENERATIVE_AI_API_KEY` from [https://aistudio.google.com/](https://aistudio.google.com/)
+5. Get your `E2B_API_KEY` from [https://e2b.dev](https://e2b.dev) or the `e2b.toml` file created after building the sandbox.
+6. Get your `KV_****` API KEYS from [https://vercel.com](https://vercel.com) by creating an Upstash storage service.
+7. Get your `UPLOADTHING_****` API KEYS from [https://uploadthing.com](https://uploadthing.com) by creating a new project.
+8. Rename `.env.example` to `.env` and fill in with your environment variables. (YouTube keys are optional)
 
-4. Rename `.env.example` to `.env` and fill in with your environment variables. (YouTube not compulsurily required)
-
-5. Run the server:
+9. Run the server:
 ```bash
 # Start the development server
 npm run dev
@@ -53,7 +57,7 @@ npm run dev
 npx inngest-cli@latest dev
 ```
 
-6. Visit [http://localhost:3000](http://localhost:3000) and start using the app.
+10. Visit [http://localhost:3000](http://localhost:3000) and start using the app.
 
 ---
 
@@ -66,3 +70,4 @@ npx inngest-cli@latest dev
 node helper/get_google_refresh_token.mjs
 ```
 4. Edit your `YOUTUBE_PRIVACY_STATUS` in `.env` based on what you want as the visibility for your videos `(public | unlisted | private)`. Default is `public`.
+
