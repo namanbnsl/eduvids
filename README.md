@@ -15,7 +15,7 @@
 ## 🚀 Using the Online Version
 
 1. Open [scimath-vids](https://scimath-vids.vercel.app).  
-2. Enter any topic you’d like explained as a video, or press **Generate Video** and enter the same.  
+2. Enter any topic you’d like explained as a video, or press **Video** and enter the same.  
 3. Wait while the servers render your video. (You can switch tabs, but don’t close it.)  
 4. Once ready, the video will appear on the page, and you’ll get a notification.  
 
@@ -78,3 +78,4 @@ node helper/get_google_refresh_token.mjs
 ```
 
 4. Edit your `YOUTUBE_PRIVACY_STATUS` in `.env` based on what you want as the visibility for your videos `(public | unlisted | private)`. Default is `public`.
+
