@@ -11,6 +11,7 @@ import {
   PromptInputTextarea,
   PromptInputToolbar,
   PromptInputTools,
+  PromptInputButton,
 } from "@/components/prompt-input";
 import { useChat } from "@ai-sdk/react";
 import { Response } from "@/components/response";
@@ -19,21 +20,31 @@ import { VideoPlayer } from "@/components/video-player";
 
 export default function ChatPage() {
   const [input, setInput] = useState("");
+  const [videoMode, setVideoMode] = useState(false);
+
+  const { messages, status, sendMessage } = useChat();
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    const text =
+      videoMode && input.trim().length > 0
+        ? `Generate a video of ${input.trim()}`
+        : input;
+
     sendMessage(
-      { text: input },
+      { text },
       {
         body: {
           model: "gemini-2.5-flash",
+          forceGenerateVideo: videoMode === true,
         },
       }
     );
-    setInput("");
-  };
 
-  const { messages, status, sendMessage } = useChat();
+    setInput("");
+    setVideoMode(false);
+  };
 
   return (
     <div className="relative flex flex-col h-svh">
@@ -150,9 +161,21 @@ export default function ChatPage() {
             <PromptInputTextarea
               onChange={(e) => setInput(e.target.value)}
               value={input}
+              placeholder={
+                videoMode
+                  ? "Describe the topic or animation you want to turn into a video"
+                  : undefined
+              }
             />
             <PromptInputToolbar>
-              <PromptInputTools></PromptInputTools>
+              <PromptInputTools>
+                <PromptInputButton
+                  onClick={() => setVideoMode((v) => !v)}
+                  variant={videoMode ? "default" : "ghost"}
+                >
+                  Generate Video
+                </PromptInputButton>
+              </PromptInputTools>
               <PromptInputSubmit disabled={!input} status={status} />
             </PromptInputToolbar>
           </PromptInput>

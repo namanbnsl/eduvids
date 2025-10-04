@@ -118,8 +118,12 @@ export const PromptInputButton = ({
   size,
   ...props
 }: PromptInputButtonProps) => {
-  const newSize =
-    size ?? Children.count(props.children) > 1 ? "default" : "icon";
+  // Determine an appropriate default size based on children:
+  // - If a single non-string child (e.g., an icon) => 'icon'
+  // - Otherwise (text label or multiple children) => 'default'
+  const childCount = Children.count(props.children);
+  const autoSize = childCount === 1 && typeof props.children !== "string" ? "icon" : "default";
+  const newSize = size ?? autoSize;
 
   return (
     <Button
