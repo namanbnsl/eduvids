@@ -66,16 +66,21 @@ export async function uploadToYouTube({
     throw new Error("YouTube upload title is empty after normalization");
   }
 
-  const generatedYoutubeTitle = await generateYoutubeTitle({prompt, voiceoverScript: voiceoverScript!});
-  const generatedYoutubeDescription = await generateYoutubeDescription({prompt, voiceoverScript: voiceoverScript!});
-
+  const generatedYoutubeTitle = await generateYoutubeTitle({
+    prompt,
+    voiceoverScript: voiceoverScript!,
+  });
+  const generatedYoutubeDescription = await generateYoutubeDescription({
+    prompt,
+    voiceoverScript: voiceoverScript!,
+  });
 
   const insertRes = await youtube.videos.insert({
     part: ["snippet", "status"],
     requestBody: {
       snippet: {
-        title: generatedYoutubeTitle,
-        description: generatedYoutubeDescription,
+        title: generatedYoutubeTitle + " | namanbnsl/eduvids",
+        description: `${generatedYoutubeDescription} \n This video was generated completely by eduvids AI. There may be some factual inconsistencies, please verify from trusted sources. \n\n Create your own AI-generated educational videos at https://eduvids.vercel.app or run it locally for yourself at https://github.com/namanbnsl/eduvids \n\n`,
         tags,
         categoryId: "27",
       },
