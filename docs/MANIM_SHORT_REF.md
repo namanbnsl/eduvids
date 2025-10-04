@@ -1,3 +1,158 @@
+# Manim Community Edition v0.19.0 — verified reference
+
+Derived from the public Manim Community Edition documentation (stable branch, v0.19.0). All member names and signatures below are copied or paraphrased from the official reference pages, in particular the `Scene`, `Mobject`, `VMobject`, `Animation`, `Text`, `Tex/MathTex`, and tracker sections under <https://docs.manim.community/en/stable/reference.html> and their linked `[source]` views.
+
+## Primary documentation links
+- Scene: <https://docs.manim.community/en/stable/reference/manim.scene.scene.Scene.html>
+- Mobject: <https://docs.manim.community/en/stable/reference/manim.mobject.mobject.Mobject.html>
+- VMobject: <https://docs.manim.community/en/stable/reference/manim.mobject.types.vectorized_mobject.VMobject.html>
+- Animation base: <https://docs.manim.community/en/stable/reference/manim.animation.animation.Animation.html>
+- Text / LaTeX mobjects: <https://docs.manim.community/en/stable/reference/manim.mobject.text.html>
+- Value trackers: <https://docs.manim.community/en/stable/reference/manim.mobject.value_tracker.html>
+
+---
+
+## `Scene` essentials (`manim.scene.scene.Scene`)
+
+### Lifecycle & properties
+- `Scene(renderer=None, camera_class=Camera, always_update_mobjects=False, random_seed=None, skip_animations=False)`
+- `render(preview=False)` calls `setup()`, `construct()`, then `tear_down()`; `preview=True` opens the rendered media.
+- Overridable hooks: `setup(self)`, `construct(self)`, `tear_down(self)`.
+- `next_section(name="unnamed", section_type=DefaultSectionType.NORMAL, skip_animations=False)` creates section boundaries for the file writer.
+- `camera` property exposes the renderer camera; `time` property reports elapsed scene time.
+
+### Managing displayed objects
+- `add(*mobjects)` / `remove(*mobjects)` / `clear()` mutate `Scene.mobjects` (draw order matches add order).
+- `add_foreground_mobjects(*mobjects)` / `remove_foreground_mobjects(*mobjects)` bring items above the standard render list; singular helpers accept one mobject.
+- `bring_to_front(*mobjects)` / `bring_to_back(*mobjects)` adjust render order.
+- `add_mobjects_from_animations(*animations)` collects mobjects produced by animations (e.g., `Write`).
+
+### Animation control & timing
+- `play(*args, subcaption=None, subcaption_duration=None, subcaption_offset=0, **kwargs)` accepts `Animation`, `Mobject`, or `_AnimationBuilder` objects; animation kwargs (`run_time`, `rate_func`, `lag_ratio`, etc.) are forwarded.
+- `wait(duration=DEFAULT_WAIT_TIME, stop_condition=None, frozen_frame=None)`; `pause(duration=1.0)` is an alias that freezes the last frame.
+- `wait_until(stop_condition, max_time=60)` polls a predicate until it returns `True` or the timeout elapses.
+- `add_subcaption(content, duration=1, offset=0)` records a subcaption entry aligned to the current scene time.
+- `add_sound(sound_file, time_offset=0, gain=None, **kwargs)` schedules audio playback.
+
+### Scene-level updaters & interaction
+- `add_updater(func)` and `remove_updater(func)` register scene-wide callbacks that receive `dt` each frame.
+- Input hooks supplied by the interactive renderer: `on_mouse_motion`, `on_mouse_scroll`, `on_mouse_press`, `on_mouse_drag`, `on_key_press`, `on_key_release`, plus helpers `mouse_scroll_orbit_controls` and `mouse_drag_orbit_controls`.
+
+---
+
+## `Mobject` fundamentals (`manim.mobject.mobject.Mobject`)
+
+### Construction & attributes
+- `Mobject(color=WHITE, name=None, dim=3, target=None, z_index=0)`
+- Documented attributes: `submobjects`, `points`, `dim`, `z_index`, `name`, and the `.animate` convenience property.
+- Bounding-box helpers: `get_critical_point(direction)`, `get_center()`, `get_left()`, `get_right()`, `get_top()`, `get_bottom()`, `get_bounding_box()`; width/height/depth are exposed as properties.
+
+### Layout & composition
+- `add(*mobjects)`, `add_to_back(*mobjects)`, `remove(*mobjects)` and their `__add__`/`__sub__` operator aliases manage group membership.
+- `arrange(direction=RIGHT, buff=DEFAULT_MOBJECT_TO_MOBJECT_BUFFER, center=True, **kwargs)` positions submobjects along a line.
+- `arrange_in_grid(rows=None, cols=None, buff=MED_SMALL_BUFF, cell_alignment=ORIGIN, row_alignments=None, col_alignments=None, row_heights=None, col_widths=None, flow_order="dr")` lays out submobjects on a grid.
+
+### Positioning & transforms
+- `move_to(point_or_mobject, aligned_edge=ORIGIN, coor_mask=np.array([1, 1, 1]))`
+- `next_to(mobject_or_point, direction=RIGHT, buff=DEFAULT_MOBJECT_TO_MOBJECT_BUFFER, aligned_edge=ORIGIN, submobject_to_align=None, index_of_submobject_to_align=None)`
+- `to_edge(edge=LEFT, buff=DEFAULT_MOBJECT_TO_EDGE_BUFFER)` / `to_corner(corner=UR, buff=DEFAULT_MOBJECT_TO_EDGE_BUFFER)` / `align_on_border(direction, buff=DEFAULT_MOBJECT_TO_EDGE_BUFFER)`
+- `shift(vector)` / `center()` / `stretch(factor, dim, about_point=ORIGIN)` / `rotate(angle, axis=OUT, about_point=None)` / `flip(axis=UP)`
+- `scale(factor, about_point=None, about_edge=ORIGIN)` alongside `scale_to_fit_width(width)`, `scale_to_fit_height(height)`, `scale_to_fit_depth(depth)`, `stretch_to_fit_width/height/depth`.
+
+### Styling
+- `set_color(color, family=True)`
+- `set_fill(color=None, opacity=None, family=True)` (implemented on `VMobject`, applies recursively when `family=True`).
+- `set_stroke(color=None, width=None, opacity=None, background=False, family=True)`
+- `set_opacity(opacity, family=True)`, `set_z_index(z, family=True)`
+
+### Updaters & animation helpers
+- `add_updater(update_function, index=None, call_updater=False)` registers per-mobject updaters (signatures can depend on helper type).
+- `remove_updater(update_function=None)`, `clear_updaters()`, `has_time_based_updater()`, `suspend_updating()`, `resume_updating()`
+- `generate_target()` prepares a copy for `MoveToTarget`; `.animate` turns chained method calls into an `_AnimationBuilder`.
+
+---
+
+## Vectorized mobjects (`manim.mobject.types.vectorized_mobject.VMobject`)
+
+- `VMobject(fill_color=None, fill_opacity=0.0, stroke_color=None, stroke_opacity=1.0, stroke_width=DEFAULT_STROKE_WIDTH, background_stroke_color=None, sheen_factor=0.0, sheen_direction=None, close_new_points=False, joint_type=LineJointType.ROUND, shadow=None, **kwargs)`
+- Path construction: `start_new_path(point)`, `add_line_to(point)`, `add_cubic_bezier_curve_to(handle1, handle2, anchor)`, `append_points(points)`, `set_points_as_corners(points)`, `set_points_smoothly(points)`, `become_partial(vmobject, a, b)`
+- Geometry queries: `point_from_proportion(alpha)`, `get_arc_length(sample_points_per_curve=None)`, `get_num_curves()`, `get_nth_curve_points(n)`, `insert_n_curves(n)`
+- Styling helpers inherit from `Mobject`: `set_fill`, `set_stroke`, plus `set_sheen(factor, direction=None)` / `set_sheen_direction(direction)`
+
+---
+
+## Text and LaTeX mobjects (`manim.mobject.text`)
+
+- `Text(text, font=None, warn_missing_font=True, t2c=None, t2f=None, t2g=None, t2s=None, line_spacing=0.0, disable_ligatures=False, font_size=DEFAULT_FONT_SIZE, weight=STANDARD, slant=NORMAL, gradient=None, **kwargs)` (Pango-backed plain text; behaves like a `VGroup` of characters).
+- `MarkupText(markup_text, **pango_kwargs)` accepts Pango markup.
+- `MathTex(*tex_strings, arg_separator=" ", substrings_to_isolate=None, tex_to_color_map=None, tex_environment="align*", font_size=DEFAULT_FONT_SIZE, tex_template=None)` renders LaTeX in math mode; `Tex` shares the signature but compiles in normal mode.
+- Common helpers exposed on these classes: `get_part_by_tex(tex)`, `set_color_by_tex(tex, color)`, `set_opacity_by_tex(tex, opacity)`.
+
+---
+
+## Trackers (`manim.mobject.value_tracker`)
+
+- `ValueTracker(value=0.0)` with `get_value()`, `set_value(value)`, `increment_value(delta)`.
+- `DoubleValueTracker(x=0.0, y=0.0)` exposes `get_values()` / `set_values(x, y)`.
+- `ComplexValueTracker(complex_number=0j)` tracks complex values; real and imaginary components are animated.
+- Trackers inherit from `Mobject`, so `.animate` and updaters work exactly like other mobjects.
+
+---
+
+## Animation primitives (`manim.animation.animation` and friends)
+
+### Base class
+- `Animation(mobject, lag_ratio=DEFAULT_ANIMATION_LAG_RATIO, run_time=DEFAULT_ANIMATION_RUN_TIME, rate_func=smooth, reverse_rate_function=False, name=None, remover=False, suspend_mobject_updating=False, introducer=False)`
+- Key methods: `begin()`, `finish()`, `clean_up_from_scene(scene)`, `interpolate(alpha)`, `interpolate_mobject(alpha)`, `update_mobjects(dt)`, `get_run_time()`, `set_run_time(run_time)`, `set_rate_func(func)`, `copy()`
+
+### Frequently used subclasses (one-line signatures from docs)
+- `Create(mobject, lag_ratio=1.0)` — draws path-defined mobjects.
+- `Write(mobject, lag_ratio=1.0)` — sequentially writes text or strokes.
+- `FadeIn(mobject, shift=0, scale=1, target_position=None)` / `FadeOut(mobject, shift=0, target_position=None)`
+- `FadeTransform(source, target, stretch=True, path_arc=0)` / `FadeTransformPieces(source, target)`
+- `Transform(mobject, target_mobject, replace_mobject_with_target_in_scene=False, path_arc=0, rate_func=smooth)`
+- `ReplacementTransform(old_mobject, new_mobject, stretch=False, **kwargs)`
+- `Rotate(mobject, angle, about_point=None, axis=OUT)`
+- `MoveAlongPath(mobject, path, rate_func=smooth)`
+- `AnimationGroup(*animations, lag_ratio=0.0, group=None)` / `LaggedStart(*animations, lag_ratio=0.5, group=None)` / `Succession(*animations)`
+- `Wait(run_time=duration)`
+
+`.animate` (available on `Scene`, `Mobject`, trackers, etc.) returns an `_AnimationBuilder` that records chained method/property calls and forwards animation keyword arguments, e.g. `square.animate(run_time=2, rate_func=linear).rotate(PI/4)`.
+
+---
+
+## Coordinates, angles, and colors
+
+Common constants exported from the Manim namespace (`from manim import *`):
+- Unit vectors & positions: `ORIGIN`, `UP`, `DOWN`, `LEFT`, `RIGHT`, `IN`, `OUT`, `UL`, `UR`, `DL`, `DR`
+- Angle helpers: `PI`, `TAU`, `DEGREES`
+- Color names (non-exhaustive): `WHITE`, `BLACK`, `RED`, `GREEN`, `BLUE`, `YELLOW`, `PINK`, `PURPLE`
+
+---
+
+## Minimal scene (straight from documented API)
+
+```python
+from manim import *
+
+class FormulaScene(Scene):
+    def construct(self):
+        title = Text("Divergence Theorem").to_edge(UP)
+        formula = MathTex(r"\\iiint_V (\\nabla \\cdot F)\\,dV = \\oiint_{\\partial V} F \\cdot n\\,dS")
+        formula.next_to(title, DOWN, buff=0.6)
+
+        tracker = ValueTracker(0)
+        circle = Circle(radius=1.8, color=BLUE)
+        dot = Dot().move_to(circle.point_from_proportion(tracker.get_value()))
+        dot.add_updater(lambda d: d.move_to(circle.point_from_proportion(tracker.get_value())))
+
+        self.add(title, formula, circle, dot)
+        self.play(Create(circle), Write(formula))
+        self.play(tracker.animate.set_value(1), run_time=4, rate_func=linear)
+        self.wait()
+```
+
+The example only invokes names documented above and mirrors the signatures in the Manim CE v0.19.0 reference manual.
 # Manim (Community) Short Reference — for LLM context
 
 Version note: this summary is based on Manim Community Edition docs (stable, v0.19.x series). Use these names and properties as authoritative; avoid inventing new API members.
@@ -214,6 +369,3 @@ class CameraPan(Scene):
         self.play(self.camera.frame.animate.shift(RIGHT*3), run_time=2)
         self.wait()
 ```
-
----
-If you'd like a narrower JSON schema (e.g., classes-only, or a flattened method list for quick lookup), tell me which format your verifier expects and I will adapt the JSON accordingly.

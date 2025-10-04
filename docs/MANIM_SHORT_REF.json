@@ -1,123 +1,209 @@
 {
-  "version": "0.19.x-summary",
-  "note": "Conservative, authoritative subset of Manim CE APIs for use by verifier/generator LLMs.",
+  "version": "ManimCE-0.19.0",
+  "reference_urls": {
+    "scene": "https://docs.manim.community/en/stable/reference/manim.scene.scene.Scene.html",
+    "mobject": "https://docs.manim.community/en/stable/reference/manim.mobject.mobject.Mobject.html",
+    "vmobject": "https://docs.manim.community/en/stable/reference/manim.mobject.types.vectorized_mobject.VMobject.html",
+    "animation": "https://docs.manim.community/en/stable/reference/manim.animation.animation.Animation.html",
+    "text": "https://docs.manim.community/en/stable/reference/manim.mobject.text.html",
+    "value_tracker": "https://docs.manim.community/en/stable/reference/manim.mobject.value_tracker.html"
+  },
   "classes": {
     "Scene": {
-      "purpose": "Canvas for animations. Subclass and implement construct(self).",
-      "common_methods": [
-        "add(*mobjects)",
-        "play(*anims, run_time=None, rate_func=None, lag_ratio=None, subcaption=None)",
-        "wait(duration=1.0, stop_condition=None, frozen_frame=None)",
-        "add_updater(func)",
-        "remove_updater(func)",
-        "add_sound(sound_file, time_offset=0, gain=None)",
-        "render(preview=False)"
+      "module": "manim.scene.scene.Scene",
+      "constructor": "Scene(renderer=None, camera_class=Camera, always_update_mobjects=False, random_seed=None, skip_animations=False)",
+      "properties": [
+        "camera",
+        "time",
+        "mobjects"
       ],
-      "notes": [
-        "Do not override __init__ — use setup() for pre-construct initialization.",
-        "play() accepts Mobjects, Animations, and _AnimationBuilder (e.g., .animate chains)."
-      ]
+      "methods": {
+        "render": "render(preview=False)",
+        "setup": "setup(self)",
+        "construct": "construct(self)",
+        "tear_down": "tear_down(self)",
+        "next_section": "next_section(name='unnamed', section_type=DefaultSectionType.NORMAL, skip_animations=False)",
+        "add": "add(*mobjects)",
+        "remove": "remove(*mobjects)",
+        "clear": "clear(self)",
+        "add_foreground_mobjects": "add_foreground_mobjects(*mobjects)",
+        "remove_foreground_mobjects": "remove_foreground_mobjects(*mobjects)",
+        "bring_to_front": "bring_to_front(*mobjects)",
+        "bring_to_back": "bring_to_back(*mobjects)",
+        "add_mobjects_from_animations": "add_mobjects_from_animations(*animations)",
+        "play": "play(*args, subcaption=None, subcaption_duration=None, subcaption_offset=0, **kwargs)",
+        "wait": "wait(duration=DEFAULT_WAIT_TIME, stop_condition=None, frozen_frame=None)",
+        "pause": "pause(duration=1.0)",
+        "wait_until": "wait_until(stop_condition, max_time=60)",
+        "add_subcaption": "add_subcaption(content, duration=1, offset=0)",
+        "add_sound": "add_sound(sound_file, time_offset=0, gain=None, **kwargs)",
+        "add_updater": "add_updater(func)",
+        "remove_updater": "remove_updater(func)",
+        "on_mouse_motion": "on_mouse_motion(point, d_point)",
+        "on_mouse_scroll": "on_mouse_scroll(offset)"
+      }
     },
     "Mobject": {
-      "purpose": "Base drawable object. Geometry and text objects subclass this.",
-      "attributes": ["submobjects", "points", "color", "fill_color", "stroke_color", "stroke_width", "width", "height", "depth", "z_index"],
-      "common_methods": [
-        "add(*mobjects)",
-        "remove(*mobjects)",
-        "insert(index, mobj)",
-        "copy()",
-        "move_to(point_or_mobject)",
-        "next_to(mobject, direction, buff=0.25)",
-        "to_edge(edge, buff=0)",
-        "to_corner(corner)",
-        "scale(factor)",
-        "rotate(angle, about_point=None)",
-        "shift(vector)",
-        "flip(axis)",
-        "set_color(color, family=True)",
-        "set_fill(color=None, opacity=None, family=True)",
-        "set_stroke(color=None, width=None, opacity=None)",
-        "arrange(direction=RIGHT, buff=0.25)",
-        "arrange_in_grid(rows=None, cols=None, buff=0.25)",
-        "add_updater(func)",
-        "remove_updater(func)",
-        ".animate (method builder)"
+      "module": "manim.mobject.mobject.Mobject",
+      "constructor": "Mobject(color=WHITE, name=None, dim=3, target=None, z_index=0)",
+      "attributes": [
+        "submobjects",
+        "points",
+        "dim",
+        "z_index",
+        "name"
       ],
-      "notes": [
-        "Updaters often accept (mobject, dt) or (mobject).",
-        "Prefer high-level helpers instead of direct .points arithmetic unless necessary."
-      ]
+      "properties": [
+        "width",
+        "height",
+        "depth"
+      ],
+      "methods": {
+        "add": "add(*mobjects)",
+        "add_to_back": "add_to_back(*mobjects)",
+        "remove": "remove(*mobjects)",
+        "arrange": "arrange(direction=RIGHT, buff=DEFAULT_MOBJECT_TO_MOBJECT_BUFFER, center=True, **kwargs)",
+        "arrange_in_grid": "arrange_in_grid(rows=None, cols=None, buff=MED_SMALL_BUFF, cell_alignment=ORIGIN, row_alignments=None, col_alignments=None, row_heights=None, col_widths=None, flow_order='dr')",
+        "move_to": "move_to(point_or_mobject, aligned_edge=ORIGIN, coor_mask=np.array([1, 1, 1]))",
+        "next_to": "next_to(mobject_or_point, direction=RIGHT, buff=DEFAULT_MOBJECT_TO_MOBJECT_BUFFER, aligned_edge=ORIGIN, submobject_to_align=None, index_of_submobject_to_align=None)",
+        "to_edge": "to_edge(edge=LEFT, buff=DEFAULT_MOBJECT_TO_EDGE_BUFFER)",
+        "to_corner": "to_corner(corner=UR, buff=DEFAULT_MOBJECT_TO_EDGE_BUFFER)",
+        "align_on_border": "align_on_border(direction, buff=DEFAULT_MOBJECT_TO_EDGE_BUFFER)",
+        "shift": "shift(vector)",
+        "scale": "scale(factor, about_point=None, about_edge=ORIGIN)",
+        "scale_to_fit_width": "scale_to_fit_width(width)",
+        "scale_to_fit_height": "scale_to_fit_height(height)",
+        "scale_to_fit_depth": "scale_to_fit_depth(depth)",
+        "stretch": "stretch(factor, dim, about_point=ORIGIN)",
+        "rotate": "rotate(angle, axis=OUT, about_point=None)",
+        "flip": "flip(axis=UP)",
+        "set_color": "set_color(color, family=True)",
+        "set_fill": "set_fill(color=None, opacity=None, family=True)",
+        "set_stroke": "set_stroke(color=None, width=None, opacity=None, background=False, family=True)",
+        "set_opacity": "set_opacity(opacity, family=True)",
+        "set_z_index": "set_z_index(z_index, family=True)",
+        "add_updater": "add_updater(update_function, index=None, call_updater=False)",
+        "remove_updater": "remove_updater(update_function=None)",
+        "clear_updaters": "clear_updaters()",
+        "generate_target": "generate_target()"
+      }
     },
     "VMobject": {
-      "purpose": "Vectorized Mobject — manages Bezier curves, anchors/handles.",
-      "path_methods": [
-        "start_new_path(point)",
-        "add_line_to(point)",
-        "add_cubic_bezier_curve_to(handle1, handle2, anchor)",
-        "add_points_as_corners(points)"
-      ],
-      "utilities": [
-        "point_from_proportion(alpha)",
-        "get_arc_length(sample_points_per_curve=None)",
-        "get_num_curves()",
-        "get_nth_curve_points(n)",
-        "set_points_as_corners(points)",
-        "append_points(points)",
-        "resize_points(new_length)"
-      ],
-      "notes": [
-        "Expect point arrays as numpy arrays of shape (N, 3).",
-        "Many methods return self for chaining."
-      ]
+      "module": "manim.mobject.types.vectorized_mobject.VMobject",
+      "constructor": "VMobject(fill_color=None, fill_opacity=0.0, stroke_color=None, stroke_opacity=1.0, stroke_width=DEFAULT_STROKE_WIDTH, background_stroke_color=None, sheen_factor=0.0, sheen_direction=None, close_new_points=False, joint_type=LineJointType.ROUND, shadow=None, **kwargs)",
+      "methods": {
+        "set_fill": "set_fill(color=None, opacity=None, family=True)",
+        "set_stroke": "set_stroke(color=None, width=None, opacity=None, background=False, family=True)",
+        "set_sheen": "set_sheen(factor, direction=None)",
+        "set_sheen_direction": "set_sheen_direction(direction)",
+        "start_new_path": "start_new_path(point)",
+        "add_line_to": "add_line_to(point)",
+        "add_cubic_bezier_curve_to": "add_cubic_bezier_curve_to(handle1, handle2, anchor)",
+        "append_points": "append_points(points)",
+        "set_points_as_corners": "set_points_as_corners(points)",
+        "set_points_smoothly": "set_points_smoothly(points)",
+        "become_partial": "become_partial(vmobject, a, b)",
+        "point_from_proportion": "point_from_proportion(alpha)",
+        "get_arc_length": "get_arc_length(sample_points_per_curve=None)",
+        "get_num_curves": "get_num_curves()",
+        "get_nth_curve_points": "get_nth_curve_points(n)",
+        "insert_n_curves": "insert_n_curves(n)"
+      }
     },
     "Animation": {
-      "purpose": "Base Animation with fixed runtime. Many subclasses exist.",
-      "attributes": ["run_time", "rate_func", "remover", "suspend_mobject_updating"],
-      "common_methods": ["begin()", "finish()", "interpolate(alpha)", "interpolate_mobject(alpha)", "get_run_time()"],
-      "notes": ["lag_ratio staggers animation application across submobjects."]
+      "module": "manim.animation.animation.Animation",
+      "constructor": "Animation(mobject, lag_ratio=DEFAULT_ANIMATION_LAG_RATIO, run_time=DEFAULT_ANIMATION_RUN_TIME, rate_func=smooth, reverse_rate_function=False, name=None, remover=False, suspend_mobject_updating=False, introducer=False)",
+      "methods": {
+        "begin": "begin()",
+        "finish": "finish()",
+        "clean_up_from_scene": "clean_up_from_scene(scene)",
+        "interpolate": "interpolate(alpha)",
+        "interpolate_mobject": "interpolate_mobject(alpha)",
+        "update_mobjects": "update_mobjects(dt)",
+        "get_run_time": "get_run_time()",
+        "set_run_time": "set_run_time(run_time)",
+        "set_rate_func": "set_rate_func(func)",
+        "copy": "copy()"
+      }
     },
-    "Text/Tex/MathTex": {
-      "purpose": "Text rendering. Text uses system fonts; Tex/MathTex use LaTeX to render outlines.",
-      "common_usage": ["Text('Hello', font_size=48, color=WHITE)", "MathTex('\\int_0^1 x^2 \\; dx')"],
-      "notes": ["LaTeX toolchain must be available on system for Tex/MathTex."]
+    "Text": {
+      "module": "manim.mobject.text.text_mobject.Text",
+      "constructor": "Text(text, font=None, warn_missing_font=True, t2c=None, t2f=None, t2g=None, t2s=None, line_spacing=0.0, disable_ligatures=False, font_size=DEFAULT_FONT_SIZE, weight=STANDARD, slant=NORMAL, gradient=None, **kwargs)"
     },
-    "Camera": {
-      "purpose": "Manages frame rendering and view transforms.",
-      "common_usage": ["self.camera.frame - mobject representing the viewport"],
-      "notes": ["Animate camera by animating self.camera.frame (e.g., self.play(self.camera.frame.animate.move_to(...)))"]
+    "MathTex": {
+      "module": "manim.mobject.text.tex_mobject.MathTex",
+      "constructor": "MathTex(*tex_strings, arg_separator=' ', substrings_to_isolate=None, tex_to_color_map=None, tex_environment='align*', font_size=DEFAULT_FONT_SIZE, tex_template=None)"
     },
-    "ImageMobject": {
-      "purpose": "Displays raster images inside a scene.",
-      "usage": ["ImageMobject('file.png')"]
+    "ValueTracker": {
+      "module": "manim.mobject.value_tracker.ValueTracker",
+      "constructor": "ValueTracker(value=0.0)",
+      "methods": {
+        "get_value": "get_value()",
+        "set_value": "set_value(value)",
+        "increment_value": "increment_value(delta)"
+      }
+    },
+    "DoubleValueTracker": {
+      "module": "manim.mobject.value_tracker.DoubleValueTracker",
+      "constructor": "DoubleValueTracker(x=0.0, y=0.0)",
+      "methods": {
+        "get_values": "get_values()",
+        "set_values": "set_values(x, y)"
+      }
+    },
+    "ComplexValueTracker": {
+      "module": "manim.mobject.value_tracker.ComplexValueTracker",
+      "constructor": "ComplexValueTracker(complex_number=0j)",
+      "methods": {
+        "get_value": "get_value()",
+        "set_value": "set_value(complex_number)"
+      }
     }
   },
   "common_animations": {
-    "Create": "Create(mobject, run_time=..., rate_func=...)",
-    "FadeOut": "FadeOut(mobject, run_time=...)",
-    "Rotate": "Rotate(mobject, angle, about_point=None, run_time=...)",
-    "Transform": "Transform(mobject, target_mobject, run_time=...)",
-    "ReplacementTransform": "ReplacementTransform(old, new, run_time=...)"
+    "Create": "manim.animation.creation.Create",
+    "Write": "manim.animation.creation.Write",
+    "FadeIn": "manim.animation.fading.FadeIn",
+    "FadeOut": "manim.animation.fading.FadeOut",
+    "FadeTransform": "manim.animation.fading.FadeTransform",
+    "FadeTransformPieces": "manim.animation.fading.FadeTransformPieces",
+    "Transform": "manim.animation.transform.Transform",
+    "ReplacementTransform": "manim.animation.transform.ReplacementTransform",
+    "Rotate": "manim.animation.rotation.Rotate",
+    "MoveAlongPath": "manim.animation.movement.MoveAlongPath",
+    "AnimationGroup": "manim.animation.composition.AnimationGroup",
+    "LaggedStart": "manim.animation.composition.LaggedStart",
+    "Succession": "manim.animation.composition.Succession",
+    "Wait": "manim.animation.animation.Wait"
   },
   "constants": {
-    "vectors": ["ORIGIN", "LEFT", "RIGHT", "UP", "DOWN", "UL", "UR", "DL", "DR"],
-    "angles": ["PI", "TAU", "DEGREES"],
-    "colors": ["RED", "BLUE", "GREEN", "WHITE", "BLACK"]
-  },
-  "animate_gotchas": [
-    ".animate interpolates between start and end mobject states which can produce odd visuals when point layouts are identical.",
-    "Prefer explicit Animation classes (e.g., Rotate) or ValueTracker+updaters for complex/time-based behavior."
-  ],
-  "verifier_checks": [
-    "Imported symbols exist in manim namespace.",
-    "Called methods exist on target classes (Scene, Mobject, VMobject, Animation).",
-    "Array shapes for .points manipulations are (N, 3).",
-    "Tex/MathTex usage implies LaTeX availability — warn if not confirmed.",
-    "No mobject extends beyond the camera frame after layout (width/height within frame minus margin).",
-    "Labels use next_to/arrange with nonzero buff; overlapping centers are forbidden.",
-    "Titles are faded out before main content unless explicitly kept."
-  ],
-  "examples": {
-    "basic": "from manim import *\n\nSAFE_MARGIN = 0.4\n\nclass Example(Scene):\n    def fit_and_keep_on_screen(self, m, margin=SAFE_MARGIN):\n        frame = self.camera.frame\n        max_w = frame.width - 2*margin\n        max_h = frame.height - 2*margin\n        if m.width > max_w: m.scale_to_fit_width(max_w)\n        if m.height > max_h: m.scale_to_fit_height(max_h)\n        m.move_to(frame.get_center())\n        return m\n\n    def construct(self):\n        c = Circle().set_fill(PINK, opacity=0.5)\n        s = Square()\n        group = VGroup(c, s.arrange(RIGHT, buff=0.5))\n        self.fit_and_keep_on_screen(group)\n        self.play(Create(c), Create(s))\n        self.play(s.animate.rotate(PI/4))\n        self.play(Transform(s, c))\n        self.wait()",
-    "camera_pan": "class CameraPan(Scene):\n    def construct(self):\n        grid = VGroup(*[Dot().shift(RIGHT*i) for i in range(-5,6)])\n        self.add(grid)\n        self.play(self.camera.frame.animate.shift(RIGHT*3), run_time=2)\n        self.wait()"
+    "vectors": [
+      "ORIGIN",
+      "UP",
+      "DOWN",
+      "LEFT",
+      "RIGHT",
+      "IN",
+      "OUT",
+      "UL",
+      "UR",
+      "DL",
+      "DR"
+    ],
+    "angles": [
+      "PI",
+      "TAU",
+      "DEGREES"
+    ],
+    "colors": [
+      "WHITE",
+      "BLACK",
+      "RED",
+      "GREEN",
+      "BLUE",
+      "YELLOW",
+      "PINK",
+      "PURPLE"
+    ]
   }
 }
