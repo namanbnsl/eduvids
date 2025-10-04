@@ -1,0 +1,68 @@
+# 📚 scimath-vids  
+
+**scimath-vids** lets you create educational math and science videos using just text prompts.  
+
+- 🌐 Try it here (no sign-in required): [https://scimath-vids.vercel.app](https://scimath-vids.vercel.app)  
+- ▶️ Watch community creations: [SciMath Videos on YouTube](https://www.youtube.com/channel/UCws8TdWGs-Fo4UsBay3GtFA)  
+
+---
+
+## 🚀 Using the Online Version
+
+1. Open [scimath-vids](https://scimath-vids.vercel.app).  
+2. Enter any topic you’d like explained as a video, or press **Generate Video** and enter the same.  
+3. Wait while the servers render your video. (You can switch tabs, but don’t close it.)  
+4. Once ready, the video will appear on the page, and you’ll get a notification.  
+
+💡 **Tip:** If you accidentally close the tab or want to revisit your video, check the [SciMath YouTube Channel](https://www.youtube.com/channel/UCws8TdWGs-Fo4UsBay3GtFA)—your video will be uploaded there automatically.  
+
+---
+
+## 🛠️ Running Locally
+
+1. Clone the repository:
+```bash
+# Clone the repository
+git clone https://github.com/namanbnsl/scimath-vids
+cd scimath-vids
+
+# Install dependencies (any of the following)
+npm install
+pnpm install
+yarn install
+bun install
+
+```
+
+2. Install the E2B CLI from here: [https://e2b.dev/docs/cli](https://e2b.dev/docs/cli)
+
+3. Build the E2B sandbox:
+```bash
+cd sandbox-templates/manim-ffmpeg-latex-voiceover-watermark # This is the latest template
+e2b template build --name manim-ffmpeg-latex-voiceover-watermark
+```
+
+4. Rename `.env.example` to `.env` and fill in with your environment variables. (YouTube not compulsurily required)
+
+5. Run the server:
+```bash
+# Start the development server
+npm run dev
+
+# Start the inngest dev server
+npx inngest-cli@latest dev
+```
+
+6. Visit [http://localhost:3000](http://localhost:3000) and start using the app.
+
+---
+
+## 📺 Setting up automatic YouTube uploads (optional)
+1. Visit Google Cloud Console and create an **OAuth desktop service**. Your `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` will be available here.
+2. Edit `helper/get_google_refresh_token.mjs` with your `CLIENT_ID` and `CLIENT_SECRET` at the given places.
+3. Getting your `GOOGLE_REFRESH_TOKEN`:
+```bash
+# Visit the auth screen and allow permissions for your YouTube channel. The REFRESH_TOKEN will be visible on the console after that.
+node helper/get_google_refresh_token.mjs
+```
+4. Edit your `YOUTUBE_PRIVACY_STATUS` in `.env` based on what you want as the visibility for your videos `(public | unlisted | private)`. Default is `public`.
