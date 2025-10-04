@@ -91,7 +91,7 @@ export interface ManimGenerationAttempt {
 export async function generateVoiceoverScript({
   prompt,
 }: VoiceoverScriptRequest): Promise<string> {
-  const model = google("gemini-2.5-flash-lite");
+  const model = google("gemini-2.5-flash");
 
   const systemPrompt = VOICEOVER_SYSTEM_PROMPT;
 
