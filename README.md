@@ -5,7 +5,7 @@
 ![Stars](https://img.shields.io/github/stars/namanbnsl/scimath-vids?style=social)  
 ![Issues](https://img.shields.io/github/issues/namanbnsl/scimath-vids)  
 
-**scimath-vids** lets you create educational math and science videos using just text prompts.  
+**scimath-vids** lets you create educational videos using just text prompts.  
 
 - 🌐 Try it here (no sign-in required): [https://scimath-vids.vercel.app](https://scimath-vids.vercel.app)  
 - ▶️ Watch community creations: [SciMath Videos on YouTube](https://www.youtube.com/channel/UCws8TdWGs-Fo4UsBay3GtFA)  
@@ -78,4 +78,5 @@ node helper/get_google_refresh_token.mjs
 ```
 
 4. Edit your `YOUTUBE_PRIVACY_STATUS` in `.env` based on what you want as the visibility for your videos `(public | unlisted | private)`. Default is `public`.
+
 
