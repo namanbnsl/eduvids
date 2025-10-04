@@ -120,7 +120,7 @@ export async function renderManimVideo({
     // Read file bytes reliably via base64 in the sandbox to avoid encoding issues
     const base64Result = await sandbox.commands.run(
       `base64 -w 0 ${watermarkedPath}`,
-      { timeoutMs: 300_000 }
+      { timeoutMs: 500_000 }
     );
     if (base64Result.exitCode !== 0 || !base64Result.stdout) {
       throw new Error(
