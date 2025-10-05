@@ -144,16 +144,26 @@ Checklist before self.play:
 MOST IMPORTANTLY: Always leave a margin around the screen so that nothing goes outside the screen and is only half or not visible at all. Always leave a margin/padding around the video frame. Use SAFE_MARGIN = 0.4 unless the prompt says otherwise.
 
 ⚠️ CRITICAL - CAMERA FRAME RESTRICTION ⚠️
-- VoiceoverScene DOES NOT have `self.camera.frame` - accessing it will cause AttributeError!
-- NEVER write: `frame = self.camera.frame` in VoiceoverScene
-- NEVER use: `frame.width`, `frame.height`, `frame.get_center()` in VoiceoverScene
+- VoiceoverScene DOES NOT have 'self.camera.frame' - accessing it will cause AttributeError!
+- NEVER write: 'frame = self.camera.frame' in VoiceoverScene
+- NEVER use: 'frame.width', 'frame.height', 'frame.get_center()' in VoiceoverScene
 - Default frame is fixed: 14.2 units wide × 8 units tall, centered at ORIGIN
 - Use these constants instead:
   FRAME_WIDTH = 14.2
   FRAME_HEIGHT = 8.0
   SAFE_MARGIN = 0.4
-- For camera movement, use: `class MyScene(VoiceoverScene, MovingCameraScene):`
+- For camera movement, use: 'class MyScene(VoiceoverScene, MovingCameraScene):'
 - In 99% of cases, you should NOT use camera.frame at all!
+
+⚠️ CRITICAL - DO NOT SHADOW PYTHON BUILT-INS ⚠️
+- NEVER use these as variable names: str, list, dict, int, float, len, max, min, sum, all, any
+- Shadowing built-ins causes cryptic "'str' object is not callable" errors
+- Use descriptive names instead:
+  ❌ str = "hello"  →  ✅ text_str = "hello"
+  ❌ list = [1,2,3]  →  ✅ items = [1,2,3]
+  ❌ dict = {}      →  ✅ config = {}
+  ❌ int = 5        →  ✅ count = 5
+- This is especially important in loops and temporary variables!
 
 Code Implementation:
 - Use self.play(), FadeIn, FadeOut, Write, Create, Transform

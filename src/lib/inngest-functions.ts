@@ -208,6 +208,7 @@ export const generateVideo = inngest.createFunction(
         progress: 38,
         step: "verifying script",
       });
+      const unverifiedScript = script;
       script = await step.run("verify-manim-script-initial", async () => {
         return await verifyScriptWithAutoFix({
           scriptToCheck: script,
@@ -215,6 +216,15 @@ export const generateVideo = inngest.createFunction(
           narration: voiceoverScript,
         });
       });
+
+      console.log(
+        `✅ Script verification complete. Using verified script for rendering.`,
+        {
+          originalLength: unverifiedScript.length,
+          verifiedLength: script.length,
+          changed: unverifiedScript !== script,
+        }
+      );
 
       // Render video with retry logic
       await jobStore.setProgress(jobId!, {
@@ -231,6 +241,9 @@ export const generateVideo = inngest.createFunction(
           for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
               console.log(`Render attempt ${attempt}/${MAX_RETRIES}...`);
+              console.log(
+                `▶️ Rendering with verified script (length: ${currentScript.length} chars)`
+              );
 
               // Mid-render heartbeat
               await jobStore.setProgress(jobId!, {
@@ -336,6 +349,7 @@ export const generateVideo = inngest.createFunction(
               await jobStore.setProgress(jobId!, {
                 step: `verifying regenerated script`,
               });
+              const unverifiedRegenScript = currentScript;
               currentScript = await verifyScriptWithAutoFix({
                 scriptToCheck: currentScript,
                 context: `regeneration attempt ${attempt + 1}`,
@@ -343,9 +357,12 @@ export const generateVideo = inngest.createFunction(
               });
 
               console.log(
-                `Regenerated script for attempt ${attempt + 1}, length: ${
-                  currentScript.length
-                }`
+                `✅ Verification complete for attempt ${attempt + 1}. Using verified regenerated script.`,
+                {
+                  unverifiedLength: unverifiedRegenScript.length,
+                  verifiedLength: currentScript.length,
+                  changed: unverifiedRegenScript !== currentScript,
+                }
               );
             }
           }

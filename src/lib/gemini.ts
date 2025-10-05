@@ -295,9 +295,15 @@ export async function verifyManimScript({
       "3. Using frame.width, frame.height, frame.get_center() in VoiceoverScene are ERRORS - replace with constants",
       "4. Missing imports (VoiceoverScene, GTTSService, etc.) - reject and add",
       "5. Missing self.set_speech_service(GTTSService()) in VoiceoverScene - reject and add",
+      "6. SHADOWING BUILT-INS causes 'str' is not callable errors:",
+      "   - NEVER use: str=, list=, dict=, int=, float=, len=, max=, min=, sum=, all=, any= as variable names",
+      "   - These shadow Python built-ins and cause cryptic 'X' is not callable errors",
+      "   - Use descriptive names: text_str, items_list, config_dict, count_int, etc.",
+      "7. Check for calling string literals: 'text'() instead of Text('text') - this is a syntax error",
       "",
       "If you find any issue, return a fully corrected script that resolves every detected problem.",
       "For camera.frame errors, replace with: FRAME_WIDTH=14.2, FRAME_HEIGHT=8.0, SAFE_MARGIN=0.4 constants.",
+      "For built-in shadowing, rename variables: str→text_str, list→items_list, dict→config_dict, etc.",
       "Respond ONLY with a minimal JSON object.",
     ].join("\n")
   );

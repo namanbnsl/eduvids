@@ -292,9 +292,59 @@ class ValueTrackerExample(Scene):
 
 ## More LLM verifier guidance (programmatic checks)
 
+### API and Type Checks
 - Ensure all used symbols exist in Manim (with `from manim import *` or explicit import). Only use methods/attributes listed above or in official docs. The verifier should flag any unknown names.
 - `.points` and anchor manipulations should use NumPy arrays of shape (N, 3). If code manipulates raw points, check array shapes. Prefer using higher-level helpers (`set_points_as_corners`, `append_points`, `add_line_to`, etc.) rather than manual NumPy math unless intentional.
 - For transforms between differently-shaped mobjects, use `Transform` or `ReplacementTransform` (or call `align_points()` / `match_points()` first).
+
+### ⚠️ Python Built-in Shadowing (CRITICAL)
+**This causes "'str' object is not callable" and similar cryptic errors!**
+
+**NEVER use these as variable names:**
+- String/collection types: `str`, `list`, `dict`, `tuple`, `set`, `frozenset`
+- Numeric types: `int`, `float`, `complex`, `bool`
+- Built-in functions: `len`, `max`, `min`, `sum`, `abs`, `round`, `pow`
+- Iterators/filters: `all`, `any`, `map`, `filter`, `zip`, `range`, `enumerate`
+- I/O: `print`, `input`, `open`, `file`
+- Other: `type`, `id`, `hash`, `format`, `sorted`, `reversed`
+
+**Use descriptive alternatives:**
+```python
+# ❌ BAD - shadows built-ins (causes "'X' is not callable")
+str = "Hello World"
+list = [1, 2, 3]
+dict = {"key": "val"}
+max = 100
+len = 5
+
+# ✅ GOOD - descriptive names
+text_str = "Hello World"  # or just: text
+items = [1, 2, 3]         # or: numbers, values
+config = {"key": "val"}   # or: settings, params
+max_value = 100           # or: upper_bound, limit
+length = 5                # or: count, size
+```
+
+**Common problematic patterns to catch:**
+```python
+# ❌ BAD
+for str in strings:           # shadows built-in str()
+    print(str(number))        # ERROR: str is now the loop variable!
+
+# ✅ GOOD
+for text in strings:
+    print(str(number))        # works correctly
+
+# ❌ BAD
+list = some_function()        # shadows built-in list()
+my_list = list(data)          # ERROR: list is now a variable!
+
+# ✅ GOOD  
+items = some_function()
+my_list = list(data)          # works correctly
+```
+
+**Verifier must REJECT any script that shadows built-ins and provide a fixed version with renamed variables.**
 
 ## Text, Tex, and MathText
 

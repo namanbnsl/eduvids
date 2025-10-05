@@ -44,6 +44,31 @@ function validateManimScript(script: string): { valid: boolean; error?: string }
     issues.push("❌ VoiceoverScene requires: self.set_speech_service(GTTSService())");
   }
 
+  // Check for common "'str' object is not callable" errors
+  // This happens when shadowing built-in names or method calls
+  const strNotCallablePatterns = [
+    /\bstr\s*=\s*["']/i,  // str = "something" (shadows built-in)
+    /\blist\s*=\s*\[/i,    // list = [...] (shadows built-in)
+    /\bdict\s*=\s*\{/i,    // dict = {...} (shadows built-in)
+    /\bint\s*=\s*\d/i,     // int = 123 (shadows built-in)
+    /\bfloat\s*=\s*\d/i,   // float = 1.5 (shadows built-in)
+    /\blen\s*=\s*/i,       // len = ... (shadows built-in)
+    /\bmax\s*=\s*/i,       // max = ... (shadows built-in)
+    /\bmin\s*=\s*/i,       // min = ... (shadows built-in)
+  ];
+
+  for (const pattern of strNotCallablePatterns) {
+    if (pattern.test(script)) {
+      const match = script.match(pattern);
+      issues.push(`❌ Shadowing built-in name detected: ${match?.[0]}. This causes "'str' object is not callable" errors. Use a different variable name.`);
+    }
+  }
+
+  // Check for incorrect string method calls (common mistake)
+  if (script.match(/["'][^"']*["']\s*\(/)) {
+    issues.push("❌ Potential error: calling a string literal like a function. Check for syntax like 'text'() instead of Text('text')");
+  }
+
   if (issues.length > 0) {
     return { valid: false, error: issues.join("\n") };
   }
