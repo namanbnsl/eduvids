@@ -31,6 +31,8 @@ const PROSE_PHRASES = [
   "sure",
   "certainly",
   "explanation",
+  "an analysis",
+  "analysis of",
   "let's",
   "in this video",
   "we will",
