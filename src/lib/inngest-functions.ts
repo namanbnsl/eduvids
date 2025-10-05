@@ -5,7 +5,10 @@ import {
   regenerateManimScriptWithError,
   verifyManimScript,
 } from "./gemini";
-import type { ManimGenerationAttempt } from "./gemini";
+import type {
+  ManimGenerationAttempt,
+  ManimGenerationErrorDetails,
+} from "./gemini";
 import { renderManimVideo } from "./e2b";
 import { uploadVideo } from "./uploadthing";
 import { jobStore } from "./job-store";
@@ -82,7 +85,19 @@ export const generateVideo = inngest.createFunction(
       context: string;
       narration: string;
     }): Promise<string> => {
-      const MAX_VERIFY_PASSES = 1;
+      const MAX_VERIFY_PASSES = 2;
+      const limitHistory = <T>(history: T[], max: number) => {
+        if (history.length <= max) return;
+        history.splice(0, history.length - max);
+      };
+      const sanitizeForStep = (label: string) => {
+        const normalized = label
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+        return normalized.length ? normalized : "verification";
+      };
+      const baseStepId = sanitizeForStep(context);
       const seenScripts = new Set<string>();
       const attemptHistory: ManimGenerationAttempt[] = [];
       let current = scriptToCheck.trim();
@@ -98,11 +113,16 @@ export const generateVideo = inngest.createFunction(
         }
         seenScripts.add(current);
 
-        const result = await verifyManimScript({
-          prompt,
-          voiceoverScript: narration,
-          script: current,
-        });
+        const result = await step.run(
+          `verify-${baseStepId}-pass-${pass}`,
+          async () => {
+            return await verifyManimScript({
+              prompt,
+              voiceoverScript: narration,
+              script: current,
+            });
+          }
+        );
 
         if (result.ok) {
           const approvedScript =
@@ -131,6 +151,7 @@ export const generateVideo = inngest.createFunction(
             script: current,
             error: { message: lastError },
           });
+          limitHistory(attemptHistory, 3);
         }
 
         let nextScript: string | undefined;
@@ -144,16 +165,26 @@ export const generateVideo = inngest.createFunction(
           console.warn(
             `Verifier did not return a fix for ${context} on pass ${pass}; regenerating with error feedback.`
           );
-          nextScript = (
-            await regenerateManimScriptWithError({
-              prompt,
-              voiceoverScript: narration,
-              previousScript: current,
-              error: lastError ?? "Unknown verification error",
-              attemptNumber: pass,
-              attemptHistory,
-            })
-          ).trim();
+          nextScript = await step.run(
+            `regen-${baseStepId}-pass-${pass}`,
+            async () => {
+              const regenerated = await regenerateManimScriptWithError({
+                prompt,
+                voiceoverScript: narration,
+                previousScript: current,
+                error: lastError ?? "Unknown verification error",
+                attemptNumber: pass,
+                attemptHistory,
+              });
+              const trimmed = regenerated.trim();
+              if (!trimmed) {
+                throw new Error(
+                  `Regeneration returned an empty script during ${context} pass ${pass}`
+                );
+              }
+              return trimmed;
+            }
+          );
         }
 
         if (!nextScript || nextScript.trim().length === 0) {
@@ -209,12 +240,10 @@ export const generateVideo = inngest.createFunction(
         step: "verifying script",
       });
       const unverifiedScript = script;
-      script = await step.run("verify-manim-script-initial", async () => {
-        return await verifyScriptWithAutoFix({
-          scriptToCheck: script,
-          context: "initial generation",
-          narration: voiceoverScript,
-        });
+      script = await verifyScriptWithAutoFix({
+        scriptToCheck: script,
+        context: "initial generation",
+        narration: voiceoverScript,
       });
 
       console.log(
@@ -231,148 +260,185 @@ export const generateVideo = inngest.createFunction(
         progress: 45,
         step: "rendering video",
       });
-      const { videoUrl, renderAttempt } = await step.run(
-        "render-video-with-retries",
-        async () => {
-          const MAX_RETRIES = 5;
-          let currentScript = script;
-          const failedAttempts: ManimGenerationAttempt[] = [];
 
-          for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-            try {
-              console.log(`Render attempt ${attempt}/${MAX_RETRIES}...`);
-              console.log(
-                `▶️ Rendering with verified script (length: ${currentScript.length} chars)`
-              );
+      const MAX_RETRIES = 5;
+      const ATTEMPT_HISTORY_LIMIT = 4;
+      const clampDetail = (value?: string, limit = 2000) => {
+        if (!value) return undefined;
+        return value.length > limit ? value.slice(0, limit) : value;
+      };
 
-              // Mid-render heartbeat
-              await jobStore.setProgress(jobId!, {
-                progress: Math.min(55 + attempt * 5, 80),
-                step: `rendering`,
-              });
-              const dataUrlOrPath = await renderManimVideo({
+      let currentScript = script;
+      let finalVideoUrl: string | null = null;
+      let renderAttempt = 0;
+      const failedAttempts: ManimGenerationAttempt[] = [];
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          console.log(`Render attempt ${attempt}/${MAX_RETRIES}...`);
+          console.log(
+            `▶️ Rendering with verified script (length: ${currentScript.length} chars)`
+          );
+
+          await jobStore.setProgress(jobId!, {
+            progress: Math.min(55 + attempt * 5, 80),
+            step: `rendering`,
+          });
+
+          const dataUrlOrPath = await step.run(
+            `render-attempt-${attempt}`,
+            async () => {
+              return await renderManimVideo({
                 script: currentScript,
                 prompt,
               });
-              await jobStore.setProgress(jobId!, {
-                progress: 82,
-                step: "uploading video",
-              });
-              const videoUrl = await uploadVideo({
+            }
+          );
+
+          await jobStore.setProgress(jobId!, {
+            progress: 82,
+            step: "uploading video",
+          });
+
+          const videoUrlCandidate = await step.run(
+            `upload-video-attempt-${attempt}`,
+            async () => {
+              return await uploadVideo({
                 videoPath: dataUrlOrPath,
                 userId,
               });
+            }
+          );
 
-              console.log(
-                `✓ Video uploaded successfully on attempt ${attempt}`
-              );
-              return { videoUrl, renderAttempt: attempt };
-            } catch (error: unknown) {
-              const baseError =
-                error instanceof Error ? error : new Error(String(error));
-              const renderError = baseError as RenderProcessError;
+          console.log(`✓ Video uploaded successfully on attempt ${attempt}`);
+          finalVideoUrl = videoUrlCandidate;
+          renderAttempt = attempt;
+          break;
+        } catch (error: unknown) {
+          const baseError =
+            error instanceof Error ? error : new Error(String(error));
+          const renderError = baseError as RenderProcessError;
 
-              const rawMessage = (renderError.message || "").trim();
-              const normalizedMessage = rawMessage.length
-                ? rawMessage
-                : String(error || "").trim() || "Unknown error";
-              const stack = renderError.stack;
-              const stderr = renderError.stderr;
-              const stdout = renderError.stdout;
-              const exitCode = renderError.exitCode;
-              const preview = (value?: string, limit = 800) =>
-                value && value.length > limit
-                  ? `${value.slice(0, limit)}…`
-                  : value;
-              const errorDetails = {
-                message: normalizedMessage,
-                stack,
-                stderr,
-                stdout,
-                exitCode,
-              };
+          const rawMessage = (renderError.message || "").trim();
+          const normalizedMessage = rawMessage.length
+            ? rawMessage
+            : String(error || "").trim() || "Unknown error";
+          const stack = renderError.stack;
+          const stderr = renderError.stderr;
+          const stdout = renderError.stdout;
+          const exitCode = renderError.exitCode;
+          const preview = (value?: string, limit = 800) =>
+            value && value.length > limit
+              ? `${value.slice(0, limit)}…`
+              : value;
+          const sanitizedErrorDetails = {
+            message: normalizedMessage,
+            stack: clampDetail(stack),
+            stderr: clampDetail(stderr),
+            stdout: clampDetail(stdout),
+            exitCode,
+          } satisfies ManimGenerationErrorDetails;
 
-              failedAttempts.push({
-                attemptNumber: attempt,
-                script: currentScript,
-                error: errorDetails,
-              });
+          failedAttempts.push({
+            attemptNumber: attempt,
+            script: currentScript,
+            error: sanitizedErrorDetails,
+          });
+          if (failedAttempts.length > ATTEMPT_HISTORY_LIMIT) {
+            failedAttempts.splice(
+              0,
+              failedAttempts.length - ATTEMPT_HISTORY_LIMIT
+            );
+          }
 
-              console.error(
-                `Render attempt ${attempt} failed:`,
-                normalizedMessage
-              );
+          console.error(`Render attempt ${attempt} failed:`, normalizedMessage);
 
-              console.log("[manim-render] Prepared error feedback for LLM", {
-                attempt,
-                exitCode,
-                message: normalizedMessage,
-                stderrPreview: preview(stderr),
-                stdoutPreview: preview(stdout),
-                stackPreview: preview(stack),
-              });
+          console.log("[manim-render] Prepared error feedback for LLM", {
+            attempt,
+            exitCode,
+            message: normalizedMessage,
+            stderrPreview: preview(stderr),
+            stdoutPreview: preview(stdout),
+            stackPreview: preview(stack),
+          });
 
-              // If this was the last attempt, throw the error
-              if (attempt === MAX_RETRIES) {
-                // Surface the original error with context so upstream handlers can log full details
-                const finalError = renderError as RenderProcessError & {
-                  attempt?: number;
-                };
-                finalError.attempt = attempt;
-                throw finalError;
-              }
+          if (attempt === MAX_RETRIES) {
+            const finalError = renderError as RenderProcessError & {
+              attempt?: number;
+            };
+            finalError.attempt = attempt;
+            throw finalError;
+          }
 
-              // Regenerate script with error feedback for next attempt
-              await jobStore.setProgress(jobId!, {
-                details: [
-                  normalizedMessage,
-                  exitCode !== undefined ? `exitCode=${exitCode}` : undefined,
-                  stderr ? `stderr: ${stderr.substring(0, 500)}` : undefined,
-                ]
-                  .filter(Boolean)
-                  .join(" | "),
-              });
-              console.log(
-                `Regenerating script for attempt ${
-                  attempt + 1
-                } with last error: ${normalizedMessage}`
-              );
-              currentScript = await regenerateManimScriptWithError({
+          await jobStore.setProgress(jobId!, {
+            details: [
+              normalizedMessage,
+              exitCode !== undefined ? `exitCode=${exitCode}` : undefined,
+              stderr ? `stderr: ${stderr.substring(0, 500)}` : undefined,
+            ]
+              .filter(Boolean)
+              .join(" | "),
+          });
+
+          console.log(
+            `Regenerating script for attempt ${
+              attempt + 1
+            } with last error: ${normalizedMessage}`
+          );
+
+          const regeneratedScript = await step.run(
+            `regen-script-attempt-${attempt + 1}`,
+            async () => {
+              const nextScript = await regenerateManimScriptWithError({
                 prompt,
                 voiceoverScript,
                 previousScript: currentScript,
                 error: normalizedMessage,
-                errorDetails,
+                errorDetails: sanitizedErrorDetails,
                 attemptNumber: attempt,
                 attemptHistory: failedAttempts,
               });
-              await jobStore.setProgress(jobId!, {
-                step: `verifying regenerated script`,
-              });
-              const unverifiedRegenScript = currentScript;
-              currentScript = await verifyScriptWithAutoFix({
-                scriptToCheck: currentScript,
-                context: `regeneration attempt ${attempt + 1}`,
-                narration: voiceoverScript,
-              });
-
-              console.log(
-                `✅ Verification complete for attempt ${
-                  attempt + 1
-                }. Using verified regenerated script.`,
-                {
-                  unverifiedLength: unverifiedRegenScript.length,
-                  verifiedLength: currentScript.length,
-                  changed: unverifiedRegenScript !== currentScript,
-                }
-              );
+              const trimmed = nextScript.trim();
+              if (!trimmed) {
+                throw new Error(
+                  `Regeneration returned an empty script for attempt ${
+                    attempt + 1
+                  }`
+                );
+              }
+              return trimmed;
             }
-          }
+          );
 
-          // This should never be reached due to the throw above, but TypeScript needs it
-          throw new Error("Unexpected end of retry loop");
+          await jobStore.setProgress(jobId!, {
+            step: `verifying regenerated script`,
+          });
+
+          const unverifiedRegenScript = regeneratedScript;
+          currentScript = await verifyScriptWithAutoFix({
+            scriptToCheck: regeneratedScript,
+            context: `regeneration attempt ${attempt + 1}`,
+            narration: voiceoverScript,
+          });
+
+          console.log(
+            `✅ Verification complete for attempt ${
+              attempt + 1
+            }. Using verified regenerated script.`,
+            {
+              unverifiedLength: unverifiedRegenScript.length,
+              verifiedLength: currentScript.length,
+              changed: unverifiedRegenScript !== currentScript,
+            }
+          );
         }
-      );
+      }
+
+      if (!finalVideoUrl || renderAttempt === 0) {
+        throw new Error("Unexpected end of retry loop");
+      }
+
+      const videoUrl = finalVideoUrl;
 
       if (jobId) {
         await jobStore.setProgress(jobId, { progress: 95, step: "finalizing" });
