@@ -91,30 +91,89 @@ Technical Requirements:
 
 Animation Guidelines:
 1. Visual Clarity:
-   - You must always fade out the title before fading in the content. Make sure nothing overlaps at all.
    - Keep ALL objects clearly visible on screen
    - Use consistent scale for similar elements
    - Maintain readable text size
    - Prevent overlapping unless comparing
-   - Center important information
    - Use proper spacing (LEFT, RIGHT, UP, DOWN)
+
+2. Text Layout (CRITICAL - prevents cutoffs):
+   - **Long sentences:** Split into multiple lines. NEVER create text wider than ~12 units.
+   - **Line breaks:** Use \n in Text() or create separate Text objects arranged with VGroup
+   - **Width check:** After creating text, ensure text.width <= 13.4. If too wide, split or scale.
+   - **Font sizes:** Use font_size=36 for body text, font_size=48 for titles
+   - **Examples:**
+     '''python
+     # GOOD: Split long text
+     line1 = Text("This is a long sentence")
+     line2 = Text("split across two lines")
+     text = VGroup(line1, line2).arrange(DOWN, buff=0.2)
+     
+     # GOOD: Use newlines
+     text = Text("Line 1\nLine 2\nLine 3")
+     
+     # BAD: Long single line (gets cut off!)
+     text = Text("This extremely long sentence will get cut off at edges")
+     '''
+
+3. Positioning (prevent overlaps):
+   - **Titles:** Always at top: 'title.to_edge(UP, buff=0.5)'
+   - **Content:** Center at ORIGIN or slightly below: 'content.move_to(ORIGIN)' or 'shift(DOWN*0.5)'
+   - **NEVER overlap title and content** - minimum 0.8 units vertical spacing
+   - **Pattern to follow:**
+     '''python
+     # Show title
+     title = Text("Title", font_size=48).to_edge(UP, buff=0.5)
+     self.play(Write(title))
+     
+     # Option 1: Fade out title, then show content centered
+     self.play(FadeOut(title))
+     content = VGroup(...).move_to(ORIGIN)
+     self.play(FadeIn(content))
+     
+     # Option 2: Keep title, place content below
+     content = VGroup(...).move_to(ORIGIN)  # or shift(DOWN*0.5)
+     self.play(FadeIn(content))
+     '''
+
+4. Bullet Points:
+   - **MUST be LEFT-aligned**, never centered
+   - Start from left edge: 'bullets.to_edge(LEFT, buff=1.0)'
+   - Use aligned_edge=LEFT in arrange: 'VGroup(...).arrange(DOWN, buff=0.3, aligned_edge=LEFT)'
+   - Example:
+     '''python
+     bullet1 = Text("• First point", font_size=36)
+     bullet2 = Text("• Second point", font_size=36)
+     bullet3 = Text("• Third point", font_size=36)
+     bullets = VGroup(bullet1, bullet2, bullet3).arrange(DOWN, buff=0.3, aligned_edge=LEFT)
+     bullets.to_edge(LEFT, buff=1.0)  # Start from left side
+     '''
+   - Spacing: buff=0.3 to 0.4 between items
+   - Max 5-6 bullets visible at once
 
 Hard Layout Contract (strict, do not violate):
 - Define SAFE_MARGIN = 0.4 in every scene and leave this empty border inside the camera frame.
+- **Text width limit:** No text wider than ~12 units. Check text.width after creation; split into lines if needed.
+- **Long sentences:** Always split into multiple Text objects or use \n for line breaks.
+- **Titles vs Content:** Titles at 'to_edge(UP, buff=0.5)', content at 'ORIGIN' or below. Minimum 0.8 units vertical spacing.
+- **Bullet points:** MUST be LEFT-aligned with 'to_edge(LEFT, buff=1.0)' and 'arrange(DOWN, aligned_edge=LEFT)'.
 - Build layouts with VGroup(...).arrange(...) or next_to(..., buff>=0.3). Do not stack items manually with the same center.
 - All labels must be placed with next_to and a nonzero buff; never place a label exactly on top of another mobject.
 - Before adding/animating any group, scale to fit the frame minus margins using scale_to_fit_width/height.
 - Ensure shapes are fully visible: if any item would extend beyond the frame, scale it down and recenter.
-- Titles must be faded out before showing main content unless explicitly kept on a separate edge with buff >= SAFE_MARGIN.
+- Option 1: Fade out title before showing content. Option 2: Keep title at top, place content centered/below.
 - Use set_z_index to ensure text/labels are above shapes when needed.
-- For two-set mapping diagrams (domain→codomain), arrange items inside each set as a vertical VGroup with buff>=0.3, align the two sets left/right with ample spacing, and ensure arrows have buff=0.1 so arrowheads don’t overlap labels.
+- For two-set mapping diagrams (domain→codomain), arrange items inside each set as a vertical VGroup with buff>=0.3, align the two sets left/right with ample spacing, and ensure arrows have buff=0.1 so arrowheads don't overlap labels.
 - Always add a brief wait(0.5) between major layout steps to reveal structure.
 
 Checklist before self.play:
-1) Is every new mobject inside the camera frame with the SAFE_MARGIN? If not, scale_to_fit and move_to(frame.get_center()).
-2) Are labels positioned with next_to and a visible buff? If not, fix.
-3) Are z-indexes set so text is readable? If text could be hidden, raise its z-index.
-4) Is the previous section cleared (FadeOut old_group) before introducing a new diagram?
+1) Is text width <= 13.4? If not, split into lines or scale down.
+2) Is every new mobject inside the camera frame with the SAFE_MARGIN? If not, scale_to_fit and move_to(ORIGIN).
+3) Are titles at top (to_edge UP) and content at center/below (min 0.8 units spacing)?
+4) Are bullet points LEFT-aligned (not centered)?
+5) Are labels positioned with next_to and a visible buff? If not, fix.
+6) Are z-indexes set so text is readable? If text could be hidden, raise its z-index.
+7) Is the previous section cleared (FadeOut old_group) before introducing a new diagram?
 
 2. Timing and Flow:
    - Natural pacing (wait calls 0.5-1.5 seconds)

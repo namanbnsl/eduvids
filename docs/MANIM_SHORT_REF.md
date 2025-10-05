@@ -193,18 +193,73 @@ These hard rules are designed to prevent overlapping labels and off‑screen con
      - `m.width <= 14.2 - 2*MARGIN` (≈13.4) and `m.height <= 8 - 2*MARGIN` (≈7.2)
      - Move `m` to view: e.g. `m.move_to(ORIGIN)` or `m.to_edge(..., buff=MARGIN)`.
 
-4) **Z-order and readability.**
+4) **Text layout and wrapping (CRITICAL for readability).**
+   - **Long sentences:** Split into multiple Text/MathTex objects, one per line. NEVER let text exceed ~12 units width.
+   - **Line breaks:** Use `\n` in Text strings or create separate Text objects arranged vertically.
+   - **Multi-line text example:**
+     ```python
+     # GOOD: Split long text into lines
+     line1 = Text("This is the first part of a long sentence")
+     line2 = Text("and this is the continuation")
+     lines = VGroup(line1, line2).arrange(DOWN, buff=0.2)
+     
+     # GOOD: Use newlines
+     text = Text("First line\nSecond line\nThird line")
+     
+     # BAD: Long text that gets cut off
+     text = Text("This is a very long sentence that will definitely get cut off at the edges")
+     ```
+   - **Font size:** Use `font_size=36` for body text, `font_size=48` for titles. Smaller if needed to fit.
+   - **Width check:** After creating text, check `text.width <= 13.4`. If too wide, scale down or split into lines.
+
+5) **Positioning and spacing (prevent overlaps).**
+   - **Titles:** Always at top with `to_edge(UP, buff=0.5)`. NEVER place content in the same vertical space as title.
+   - **Main content:** Center at `ORIGIN` or slightly below: `move_to(ORIGIN)` or `shift(DOWN*0.5)`.
+   - **Title + content pattern:**
+     ```python
+     title = Text("Title", font_size=48).to_edge(UP, buff=0.5)
+     self.play(Write(title))
+     
+     # Content MUST be below title, never overlapping
+     content = VGroup(...).move_to(ORIGIN)  # or shift(DOWN*0.5)
+     self.play(FadeIn(content))
+     
+     # OR: Fade out title before showing content
+     self.play(FadeOut(title))
+     content = VGroup(...).move_to(ORIGIN)
+     self.play(FadeIn(content))
+     ```
+   - **Minimum vertical spacing:** At least 0.8 units between title and content.
+
+6) **Bullet points and lists.**
+   - **Alignment:** Bullet points MUST start at the LEFT side of the frame, not centered.
+   - **Left-aligned pattern:**
+     ```python
+     # GOOD: Left-aligned bullets
+     bullet1 = Text("• First point", font_size=36)
+     bullet2 = Text("• Second point", font_size=36)
+     bullet3 = Text("• Third point", font_size=36)
+     bullets = VGroup(bullet1, bullet2, bullet3).arrange(DOWN, buff=0.3, aligned_edge=LEFT)
+     bullets.to_edge(LEFT, buff=1.0)  # Start from left side
+     
+     # BAD: Centered bullets (looks wrong)
+     bullets = VGroup(bullet1, bullet2, bullet3).arrange(DOWN).move_to(ORIGIN)
+     ```
+   - **Bullet spacing:** `buff=0.3` to `buff=0.4` between items.
+   - **Max bullets visible:** No more than 5-6 bullets on screen at once.
+
+7) **Z-order and readability.**
    - Labels should be above shapes: e.g. `label.set_z_index(shape.z_index + 1)` (or simply a high z-index).
    - When highlighting, use translucent fills and thick strokes: `set_fill(opacity=0.15)`, `set_stroke(width=3)` (with an appropriate color).
 
-5) **Clear between sections.**
+8) **Clear between sections.**
    - Fade out or remove previous elements before new ones. Example:
      ```python
      self.play(FadeOut(VGroup(*self.mobjects)))
      ```
    - Or keep track of a `current_group` and `self.play(FadeOut(current_group))`.
 
-6) **Diagram recipes:**
+9) **Diagram recipes:**
    - Function box: use `SurroundingRectangle` or `RoundedRectangle` sized to text with `buff=0.3`. Place input label above (`.next_to(box, UP, buff=0.3)`) and output below (`.next_to(box, DOWN, buff=0.3)`).
    - Mapping diagram: create two `Circle` or `Ellipse` for domain/codomain. Place points as `VGroup(*dots).arrange(DOWN, buff=0.4).move_to(left_ellipse)` and similarly for right. Use `Arrow(start, end, buff=0.1)` so arrows end outside the circles.
 
@@ -367,38 +422,18 @@ my_list = list(data)          # works correctly
 - You can specify `camera_class` when creating a Scene (e.g. `camera_class=ThreeDCamera`), but this is rarely needed.
 - **References:** Frame width/height: `config.frame_width`, `config.frame_height`
 
-## Layout and visibility contract (LLM MUST follow)
+## Layout and visibility contract - Summary
 
-These hard rules are designed to prevent overlapping labels and off‑screen content in generated scenes.
+**See the comprehensive Layout and visibility contract section above for full details.**
 
-1) **Always build layouts with groups instead of manual coordinates.**
-   - Prefer `VGroup(...).arrange(direction=RIGHT, buff=0.5, center=True)` and `arrange_in_grid(...)`.
-   - Use `next_to(target, direction, buff=0.3)` for labels/arrows. Never place a label at the exact center of its target.
-
-2) **Maintain a safe frame margin.**
-   - Margin ≥ 0.4 units on all sides (`MARGIN = 0.4`).
-   - Only use `to_edge` / `to_corner` with `buff=MARGIN`.
-   - For scaling, use `scale_to_fit_width(frame.width - 2*MARGIN)` or similar.
-
-3) **Ensure everything is on screen before playing.**
-   - DO NOT use `self.camera.frame` in VoiceoverScene!
-   - Before `self.play(...)`, for any new mobject `m`:
-     - Ensure `m.width <= 13.4` and `m.height <= 7.2` (with MARGIN=0.4)
-     - Center or move `m` inside frame: e.g. `m.move_to(ORIGIN)` or `m.to_edge(..., buff=MARGIN)`.
-
-4) **Z‑order and readability.**
-   - Labels above shapes: e.g. `label.set_z_index(shape.z_index + 1)`.
-   - For highlights, use transparent fills and thick strokes (e.g. `set_fill(opacity=0.15)`, `set_stroke(width=3)`).
-
-5) **Clear between sections.**
-   - Fade out or remove previous objects before new ones. Example: `self.play(FadeOut(VGroup(*self.mobjects)))`.
-
-6) **Diagram recipes:**
-   - Function boxes, mapping diagrams, etc., use appropriate Manim helpers (`SurroundingRectangle`, `Ellipse`, `Arrow` with small `buff`, etc.) and consistent buffers (0.3 or 0.1) as shown in code above.
-
-7) **Safe helper (include in each Scene):** as shown above, to ensure objects fit in the frame.
-
-8) **Timing:** Use short waits (`self.wait(0.5)`) between steps for clarity.
+Key reminders:
+- Split long text into multiple lines (max width ~12 units)
+- Titles at top (`to_edge(UP, buff=0.5)`), content at center (`ORIGIN`) or below
+- Bullet points must be LEFT-aligned (`to_edge(LEFT, buff=1.0)`)
+- Minimum 0.8 units vertical spacing between title and content
+- Clear previous content before showing new sections
+- Check text width after creation: `text.width <= 13.4`
+- Use `font_size=36` for body, `font_size=48` for titles
 
 Failing to follow these may lead to parts being off-screen, overlapping, or unreadable.
 
