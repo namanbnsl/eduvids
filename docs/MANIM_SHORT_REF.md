@@ -255,8 +255,11 @@ These hard rules are designed to prevent overlapping labels and off‑screen con
 8) **Clear between sections.**
    - Fade out or remove previous elements before new ones. Example:
      ```python
-     self.play(FadeOut(VGroup(*self.mobjects)))
+     self.play(FadeOut(Group(*self.mobjects)))
      ```
+     Use `Group` (not `VGroup`) when collecting existing scene mobjects, since `self.mobjects`
+     may include plain `Mobject` instances such as `ImageMobject` or `ThreeDAxes` that are not
+     `VMobject`s and would raise a `TypeError` if added to a `VGroup`.
    - Or keep track of a `current_group` and `self.play(FadeOut(current_group))`.
 
 9) **Diagram recipes:**

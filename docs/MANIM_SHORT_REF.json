@@ -15,6 +15,9 @@
       "module": "manim.scene.scene.Scene",
       "constructor": "Scene(renderer=None, camera_class=Camera, always_update_mobjects=False, random_seed=None, skip_animations=False)",
       "properties": ["camera", "time", "mobjects"],
+      "notes": [
+        "When clearing or fading out all current objects, wrap self.mobjects in Group(*self.mobjects) instead of VGroup; self.mobjects can contain non-VMobject instances and VGroup would raise a TypeError."
+      ],
       "methods": {
         "render": "render(preview=False)",
         "setup": "setup()",

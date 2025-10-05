@@ -184,6 +184,7 @@ Checklist before self.play:
 
 3. Scene Management:
    - Clear screen before new concepts
+   - When removing all current objects use Group(*self.mobjects) (not VGroup) before FadeOut to avoid TypeError from non-VMobject entries
    - Keep related elements together
    - Use proper positioning
    - Maintain visual balance
