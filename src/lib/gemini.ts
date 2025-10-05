@@ -127,6 +127,7 @@ export async function generateManimScript({
     model,
     system: augmentedSystemPrompt,
     prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n. Generate the complete Manim script that follows the narration:`,
+    temperature: 0.1,
   });
 
   // Extract code from potential markdown formatting
@@ -150,6 +151,7 @@ export async function generateYoutubeTitle({
     model,
     system: systemPrompt,
     prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate a catchy YouTube title for the video that summarizes the content:`,
+    temperature: 0.5,
   });
 
   return text.trim();
@@ -167,6 +169,7 @@ export async function generateYoutubeDescription({
     model,
     system: systemPrompt,
     prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the YouTube description for the video that summarizes the content:`,
+    temperature: 0.5,
   });
 
   return text.trim();
@@ -263,23 +266,25 @@ export async function regenerateManimScriptWithError({
     if (!blockedScripts.length) return "";
     const unique = Array.from(
       new Map(
-        blockedScripts
-          .map((script) => {
-            const trimmed = script.trim();
-            return [trimmed, truncate(trimmed, 6000)];
-          })
+        blockedScripts.map((script) => {
+          const trimmed = script.trim();
+          return [trimmed, truncate(trimmed, 6000)];
+        })
       ).values()
     );
     if (!unique.length) return "";
     const blocks = unique
-      .map((script, idx) => `--- Failed Script Variant #${idx + 1} ---\n${script}`)
+      .map(
+        (script, idx) => `--- Failed Script Variant #${idx + 1} ---\n${script}`
+      )
       .join("\n\n");
     return `\nThe following script variants are known to fail. You must not reuse them verbatim or with superficial edits. Study them to understand and avoid the mistakes:\n${blocks}\n`;
   })();
 
   const rewriteDirective = forceRewrite
     ? `\nThis is a forced rewrite because the last regeneration did not resolve the issue. ${
-        forcedReason ?? "Produce a substantially different script that fixes the problem."
+        forcedReason ??
+        "Produce a substantially different script that fixes the problem."
       }`
     : "";
 
@@ -302,6 +307,7 @@ export async function regenerateManimScriptWithError({
     model,
     system: augmentedSystemPrompt,
     prompt: promptSections.join("\n\n"),
+    temperature: 0.1,
   });
 
   // Extract code from potential markdown formatting
@@ -352,6 +358,7 @@ export async function verifyManimScript({
       `Voiceover narration:\n${voiceoverScript}`,
       `Script to validate (python):\n\u0060\u0060\u0060python\n${script}\n\u0060\u0060\u0060`,
     ].join("\n\n"),
+    temperature: 0,
   });
 
   const raw = text.trim();
@@ -486,7 +493,7 @@ export async function verifyManimScript({
 
       let backslashCount = 0;
       for (let i = nextQuote - 1; i > openingQuoteIndex; i -= 1) {
-        if (candidate[i] === '\\') {
+        if (candidate[i] === "\\") {
           backslashCount += 1;
         } else {
           break;
@@ -504,7 +511,11 @@ export async function verifyManimScript({
       }
 
       const terminator = candidate[lookahead];
-      if (terminator === "," || terminator === "}" || terminator === undefined) {
+      if (
+        terminator === "," ||
+        terminator === "}" ||
+        terminator === undefined
+      ) {
         closingQuoteIndex = nextQuote;
         break;
       }

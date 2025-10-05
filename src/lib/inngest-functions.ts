@@ -25,6 +25,12 @@ type HeuristicSeverity = "noncode" | "fixable" | "critical";
 type HeuristicIssue = { message: string; severity: HeuristicSeverity };
 type HeuristicOptions = { allowVerificationFixes?: boolean };
 
+const REQUIRED_IMPORTS = [
+  "from manim import",
+  "from manim_voiceover import VoiceoverScene",
+  "from manim_voiceover.services.gtts import GTTSService",
+];
+
 const PROSE_PHRASES = [
   "here is",
   "here's",
@@ -86,6 +92,43 @@ const stripStringLiterals = (source: string): string =>
 
 const formatIssueList = (issues: HeuristicIssue[]): string =>
   issues.map((issue, index) => `${index + 1}. ${issue.message}`).join("\n");
+
+// Quick pre-check for absolutely required elements (fast fail)
+function validateRequiredElements(script: string): { ok: boolean; error?: string } {
+  const normalized = script.trim().replace(/\r/g, "");
+  const issues: string[] = [];
+
+  // Check all required imports
+  for (const requiredImport of REQUIRED_IMPORTS) {
+    if (!normalized.includes(requiredImport)) {
+      issues.push(`Missing required import: ${requiredImport}`);
+    }
+  }
+
+  // Check for class MyScene
+  if (!normalized.includes("class MyScene")) {
+    issues.push("Missing class MyScene definition");
+  }
+
+  // Check for construct method
+  if (!normalized.includes("def construct(self)")) {
+    issues.push("Missing def construct(self) method");
+  }
+
+  // Check for set_speech_service
+  if (!normalized.includes("set_speech_service")) {
+    issues.push("Missing self.set_speech_service(GTTSService()) call");
+  }
+
+  if (issues.length > 0) {
+    return {
+      ok: false,
+      error: `Script validation failed - missing required elements:\n${issues.map((issue, idx) => `${idx + 1}. ${issue}`).join("\n")}`,
+    };
+  }
+
+  return { ok: true };
+}
 
 function runHeuristicChecks(
   script: string,
@@ -213,23 +256,20 @@ function runHeuristicChecks(
     }
   }
 
-  if (
-    normalized.includes("VoiceoverScene") &&
-    !normalized.includes("from manim_voiceover")
-  ) {
-    issues.push({
-      message: "❌ Missing: from manim_voiceover import VoiceoverScene.",
-      severity: "fixable",
-    });
+  // Check for required imports more strictly
+  for (const requiredImport of REQUIRED_IMPORTS) {
+    if (!normalized.includes(requiredImport)) {
+      issues.push({
+        message: `❌ Missing required import: ${requiredImport}`,
+        severity: "fixable",
+      });
+    }
   }
 
-  if (
-    normalized.includes("GTTSService") &&
-    !normalized.includes("from manim_voiceover.services.gtts")
-  ) {
+  // Verify "from manim import" is present (catch all)
+  if (!normalized.includes("from manim import")) {
     issues.push({
-      message:
-        "❌ Missing: from manim_voiceover.services.gtts import GTTSService.",
+      message: "❌ Missing: from manim import * (or specific imports)",
       severity: "fixable",
     });
   }
@@ -334,8 +374,8 @@ function buildYouTubeTitle(params: {
 export const generateVideo = inngest.createFunction(
   {
     id: "generate-manim-video",
-    timeouts: { start: "20m", finish: "25m" },
-    retries: 2, // Allow 2 additional retries at the function level
+    timeouts: { start: "15m", finish: "45m" },
+    retries: 1, // Allow 1 additional retry at the function level
   },
   { event: "video/generate.request" },
   async ({ event, step }) => {
@@ -357,7 +397,7 @@ export const generateVideo = inngest.createFunction(
       context: string;
       narration: string;
     }): Promise<string> => {
-      const MAX_VERIFY_PASSES = 2;
+      const MAX_VERIFY_PASSES = 1;
       const limitHistory = <T>(history: T[], max: number) => {
         if (history.length <= max) return;
         history.splice(0, history.length - max);
@@ -548,6 +588,15 @@ export const generateVideo = inngest.createFunction(
 
       console.log("Generated Manim script", { scriptLength: script.length });
 
+      // Fast pre-validation check for required elements
+      const preValidation = validateRequiredElements(script);
+      if (!preValidation.ok) {
+        console.error("Script failed pre-validation:", preValidation.error);
+        throw new Error(
+          `Generated script is missing required elements:\n${preValidation.error}`
+        );
+      }
+
       await jobStore.setProgress(jobId!, {
         progress: 38,
         step: "verifying script",
@@ -574,9 +623,9 @@ export const generateVideo = inngest.createFunction(
         step: "rendering video",
       });
 
-      const MAX_RETRIES = 5;
-      const ATTEMPT_HISTORY_LIMIT = 4;
-      const MAX_FORCE_REGENERATIONS = 3;
+      const MAX_RETRIES = 3;
+      const ATTEMPT_HISTORY_LIMIT = 3;
+      const MAX_FORCE_REGENERATIONS = 2;
       const clampDetail = (value?: string, limit = 2000) => {
         if (!value) return undefined;
         return value.length > limit ? value.slice(0, limit) : value;
@@ -725,13 +774,11 @@ export const generateVideo = inngest.createFunction(
           );
 
           let previousScriptForRewrite = currentScript;
-          let acceptedRegeneration:
-            | {
-                unverified: string;
-                verified: string;
-                context: string;
-              }
-            | null = null;
+          let acceptedRegeneration: {
+            unverified: string;
+            verified: string;
+            context: string;
+          } | null = null;
 
           for (
             let regenPass = 1;
@@ -743,35 +790,32 @@ export const generateVideo = inngest.createFunction(
               ? `force-regen-script-attempt-${attempt + 1}-pass-${regenPass}`
               : `regen-script-attempt-${attempt + 1}`;
 
-            const regeneratedScript = await step.run(
-              regenStepId,
-              async () => {
-                const nextScript = await regenerateManimScriptWithError({
-                  prompt,
-                  voiceoverScript,
-                  previousScript: previousScriptForRewrite,
-                  error: normalizedMessage,
-                  errorDetails: sanitizedErrorDetails,
-                  attemptNumber: attempt,
-                  attemptHistory: failedAttempts,
-                  blockedScripts: getBlockedScripts(),
-                  forceRewrite: isForcedRewrite,
-                  forcedReason: isForcedRewrite
-                    ? "Regenerated script matched a previous failure and must be rewritten with substantial changes."
-                    : undefined,
-                  repeatedErrorCount: repeatedErrorOccurrences,
-                });
-                const trimmed = nextScript.trim();
-                if (!trimmed) {
-                  throw new Error(
-                    `Regeneration returned an empty script for attempt ${
-                      attempt + 1
-                    } (pass ${regenPass})`
-                  );
-                }
-                return trimmed;
+            const regeneratedScript = await step.run(regenStepId, async () => {
+              const nextScript = await regenerateManimScriptWithError({
+                prompt,
+                voiceoverScript,
+                previousScript: previousScriptForRewrite,
+                error: normalizedMessage,
+                errorDetails: sanitizedErrorDetails,
+                attemptNumber: attempt,
+                attemptHistory: failedAttempts,
+                blockedScripts: getBlockedScripts(),
+                forceRewrite: isForcedRewrite,
+                forcedReason: isForcedRewrite
+                  ? "Regenerated script matched a previous failure and must be rewritten with substantial changes."
+                  : undefined,
+                repeatedErrorCount: repeatedErrorOccurrences,
+              });
+              const trimmed = nextScript.trim();
+              if (!trimmed) {
+                throw new Error(
+                  `Regeneration returned an empty script for attempt ${
+                    attempt + 1
+                  } (pass ${regenPass})`
+                );
               }
-            );
+              return trimmed;
+            });
 
             await jobStore.setProgress(jobId!, {
               step: isForcedRewrite
