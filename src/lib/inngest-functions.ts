@@ -82,7 +82,7 @@ export const generateVideo = inngest.createFunction(
       context: string;
       narration: string;
     }): Promise<string> => {
-      const MAX_VERIFY_PASSES = 3;
+      const MAX_VERIFY_PASSES = 1;
       const seenScripts = new Set<string>();
       const attemptHistory: ManimGenerationAttempt[] = [];
       let current = scriptToCheck.trim();
@@ -357,7 +357,9 @@ export const generateVideo = inngest.createFunction(
               });
 
               console.log(
-                `✅ Verification complete for attempt ${attempt + 1}. Using verified regenerated script.`,
+                `✅ Verification complete for attempt ${
+                  attempt + 1
+                }. Using verified regenerated script.`,
                 {
                   unverifiedLength: unverifiedRegenScript.length,
                   verifiedLength: currentScript.length,
