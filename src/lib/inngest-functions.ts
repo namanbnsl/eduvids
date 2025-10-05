@@ -102,41 +102,74 @@ function runHeuristicChecks(
 
   const normalized = trimmed.replace(/\r/g, "");
   const stripped = stripStringLiterals(normalized);
-  const strippedLower = stripped.toLowerCase();
-
-  for (const pattern of MARKDOWN_LIKE_PATTERNS) {
-    if (pattern.test(normalized)) {
-      issues.push({
-        message:
-          "❌ Detected Markdown or formatting artifacts. Provide code only.",
-        severity: "noncode",
-      });
-      break;
-    }
-  }
-
-  for (const phrase of PROSE_PHRASES) {
-    if (strippedLower.includes(phrase)) {
-      issues.push({
-        message: `❌ Narrative/explanatory text detected (contains "${phrase}"). Provide only executable Manim code.`,
-        severity: "noncode",
-      });
-      break;
-    }
-  }
-
+  const normalizedLines = normalized.split(/\n/);
   const strippedLines = stripped.split(/\n/);
-  const originalLines = normalized.split(/\n/);
 
-  for (let index = 0; index < originalLines.length; index++) {
-    const line = originalLines[index]?.trim() ?? "";
-    if (!line) continue;
-    if (line.startsWith("#")) continue;
-    if (line === '"""' || line === "'''") continue;
+  const isLikelyCodeLine = (rawLine: string): boolean => {
+    const line = rawLine.trim();
+    if (!line) return false;
+    if (line.startsWith("#")) return false;
+    if (line === '"""' || line === "'''") return false;
+    if (CODE_LINE_PATTERNS.some((pattern) => pattern.test(line))) {
+      return true;
+    }
+    if (/^[A-Za-z_][A-Za-z0-9_]*\s*=/.test(line) && !line.includes("==")) {
+      return true;
+    }
+    if (line.endsWith(":")) {
+      return true;
+    }
+    if (/\w\s*\(/.test(line) && line.includes(")")) {
+      return true;
+    }
+    return false;
+  };
 
-    const strippedLine = strippedLines[index]?.trim() ?? "";
+  const firstCodeLineIndex = normalizedLines.findIndex((line) =>
+    isLikelyCodeLine(line)
+  );
 
-    if (!CODE_LINE_PATTERNS.some((pattern) => pattern.test(line))) {
+  const preambleEndIndex =
+    firstCodeLineIndex === -1 ? normalizedLines.length : firstCodeLineIndex;
+  if (preambleEndIndex > 0) {
+    const preambleOriginal = normalizedLines
+      .slice(0, preambleEndIndex)
+      .join("\n");
+    const preambleStripped = strippedLines
+      .slice(0, preambleEndIndex)
+      .join("\n")
+      .toLowerCase();
+
+    for (const pattern of MARKDOWN_LIKE_PATTERNS) {
+      if (pattern.test(preambleOriginal)) {
+        issues.push({
+          message:
+            "❌ Detected Markdown or formatting artifacts before the first code line. Provide code only.",
+          severity: "noncode",
+        });
+        break;
+      }
+    }
+
+    for (const phrase of PROSE_PHRASES) {
+      if (preambleStripped.includes(phrase)) {
+        issues.push({
+          message: `❌ Narrative/explanatory text detected before the first code line (contains "${phrase}"). Provide only executable Manim code.`,
+          severity: "noncode",
+        });
+        break;
+      }
+    }
+
+    const preambleLines = normalizedLines.slice(0, preambleEndIndex);
+    for (let index = 0; index < preambleLines.length; index++) {
+      const rawLine = preambleLines[index] ?? "";
+      const line = rawLine.trim();
+      if (!line) continue;
+      if (line.startsWith("#")) continue;
+      if (line === '"""' || line === "'''") continue;
+
+      const strippedLine = strippedLines[index]?.trim() ?? "";
       const hasCodeSymbols = /[(){}\[\]=:+\-*/.,]/.test(line);
       const wordCount = strippedLine
         ? strippedLine.split(/\s+/).filter(Boolean).length
@@ -144,9 +177,9 @@ function runHeuristicChecks(
 
       if (wordCount >= 4 && !hasCodeSymbols) {
         issues.push({
-          message: `❌ Non-code narrative detected on line ${
+          message: `❌ Non-code narrative detected before the first code line (line ${
             index + 1
-          }: "${line.slice(0, 80)}"`,
+          }): "${line.slice(0, 80)}"`,
           severity: "noncode",
         });
         break;
