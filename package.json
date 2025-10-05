@@ -11,9 +11,7 @@
     "format:write": "prettier --write \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
     "lint:fix": "next lint --fix",
-"preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-"deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-"cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "preview": "next build && next start",
 "check": "next lint && tsc --noEmit"
   },
   "dependencies": {
@@ -22,7 +20,6 @@
     "@ai-sdk/react": "^2.0.25",
     "@e2b/code-interpreter": "^2.0.0",
     "@e2b/sdk": "^2.1.3",
-    "@opennextjs/cloudflare": "^1.9.1",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-select": "^2.2.6",
@@ -59,8 +56,7 @@
     "eslint-config-next": "15.5.2",
     "tailwindcss": "^4",
     "tw-animate-css": "^1.3.7",
-    "typescript": "^5",
-    "wrangler": "^4.42.0"
+    "typescript": "^5"
   },
   "packageManager": "pnpm@10.13.1"
 }
