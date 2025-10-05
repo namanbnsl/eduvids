@@ -1,9 +1,4 @@
-import {
-  streamText,
-  UIMessage,
-  convertToModelMessages,
-  tool,
-} from "ai";
+import { streamText, UIMessage, convertToModelMessages, tool } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { SYSTEM_PROMPT } from "@/prompt";
 import { z } from "zod";
@@ -11,7 +6,6 @@ import { Sandbox } from "@e2b/code-interpreter";
 import { inngest } from "@/lib/inngest";
 import { jobStore } from "@/lib/job-store";
 
-// Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
 
 const google = createGoogleGenerativeAI({});
@@ -83,4 +77,3 @@ export async function POST(req: Request) {
     sendReasoning: true,
   });
 }
-
