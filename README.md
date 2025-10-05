@@ -8,7 +8,7 @@
 **eduvids** lets you create educational videos using just text prompts.  
 
 - 🌐 Try it here (no sign-in required): [https://eduvids.vercel.app](https://eduvids.vercel.app)  
-- ▶️ Watch community creations: [Eduvids on YouTube](https://www.youtube.com/channel/UCws8TdWGs-Fo4UsBay3GtFA)  
+- ▶️ Watch community creations: [eduvids on YouTube](https://www.youtube.com/channel/UCws8TdWGs-Fo4UsBay3GtFA)  
 
 ---
 
@@ -78,6 +78,7 @@ node helper/get_google_refresh_token.mjs
 ```
 
 4. Edit your `YOUTUBE_PRIVACY_STATUS` in `.env` based on what you want as the visibility for your videos `(public | unlisted | private)`. Default is `public`.
+
 
 
 
