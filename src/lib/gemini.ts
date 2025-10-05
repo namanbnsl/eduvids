@@ -180,6 +180,10 @@ export interface RegenerateManimScriptRequest {
   errorDetails?: ManimGenerationErrorDetails;
   attemptNumber: number;
   attemptHistory?: ManimGenerationAttempt[];
+  blockedScripts?: string[];
+  forceRewrite?: boolean;
+  forcedReason?: string;
+  repeatedErrorCount?: number;
 }
 
 export async function regenerateManimScriptWithError({
@@ -190,6 +194,10 @@ export async function regenerateManimScriptWithError({
   errorDetails,
   attemptNumber,
   attemptHistory = [],
+  blockedScripts = [],
+  forceRewrite = false,
+  forcedReason,
+  repeatedErrorCount = 0,
 }: RegenerateManimScriptRequest): Promise<string> {
   const model = google("gemini-2.5-pro");
   const augmentedSystemPrompt = buildAugmentedSystemPrompt(MANIM_SYSTEM_PROMPT);
@@ -251,14 +259,43 @@ export async function regenerateManimScriptWithError({
     ? error
     : errorDetails?.message ?? "Unknown error";
 
+  const blockedScriptsSection = (() => {
+    if (!blockedScripts.length) return "";
+    const unique = Array.from(
+      new Map(
+        blockedScripts
+          .map((script) => {
+            const trimmed = script.trim();
+            return [trimmed, truncate(trimmed, 6000)];
+          })
+      ).values()
+    );
+    if (!unique.length) return "";
+    const blocks = unique
+      .map((script, idx) => `--- Failed Script Variant #${idx + 1} ---\n${script}`)
+      .join("\n\n");
+    return `\nThe following script variants are known to fail. You must not reuse them verbatim or with superficial edits. Study them to understand and avoid the mistakes:\n${blocks}\n`;
+  })();
+
+  const rewriteDirective = forceRewrite
+    ? `\nThis is a forced rewrite because the last regeneration did not resolve the issue. ${
+        forcedReason ?? "Produce a substantially different script that fixes the problem."
+      }`
+    : "";
+
+  const repetitionDirective =
+    repeatedErrorCount > 1
+      ? `\nThe same error (or a very similar one) has occurred ${repeatedErrorCount} times. You must eliminate the root cause immediately.`
+      : "";
+
   const promptSections = [
     `User request: ${prompt}`,
     `Voiceover narration:\n${voiceoverScript}`,
     previousAttemptsSummary.trim(),
     `⚠️ PREVIOUS ATTEMPT #${attemptNumber} FAILED ⚠️`,
     `The previous Manim script failed with the following error:\n\`\`\`\n${normalizedError}\n\`\`\`${structuredErrorSection}`,
-    `The broken script was:\n\`\`\`python\n${previousScript}\n\`\`\``,
-    "Please analyze the error carefully and generate a CORRECTED Manim script that:\n1. Fixes the specific error that occurred\n2. Follows the narration timeline\n3. Uses proper Manim syntax and best practices\n4. Avoids the mistakes from the previous attempt\n\nReturn ONLY the fully corrected Python code with no commentary, no analysis, and no Markdown fences. Provide just the executable script:",
+    `The broken script was:\n\`\`\`python\n${previousScript}\n\`\`\`${blockedScriptsSection}${rewriteDirective}${repetitionDirective}`,
+    "You must analyze the failure, apply all necessary fixes, and generate a corrected Manim script that:\n1. Resolves the specific error\n2. Follows the narration timeline\n3. Uses proper Manim syntax and best practices\n4. Avoids repeating any previous mistakes or failing scripts\n5. Differs meaningfully from the broken script when required\n\nReturn ONLY the fully corrected Python code with no commentary, no analysis, and no Markdown fences. Provide just the executable script:",
   ].filter((section) => section && section.trim().length > 0);
 
   const { text } = await generateText({

@@ -512,6 +512,13 @@ export const generateVideo = inngest.createFunction(
       return current;
     };
 
+    const fingerprintScript = (code: string) =>
+      code
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .join("\n");
+
     try {
       await jobStore.setProgress(jobId!, {
         progress: 5,
@@ -569,6 +576,7 @@ export const generateVideo = inngest.createFunction(
 
       const MAX_RETRIES = 5;
       const ATTEMPT_HISTORY_LIMIT = 4;
+      const MAX_FORCE_REGENERATIONS = 3;
       const clampDetail = (value?: string, limit = 2000) => {
         if (!value) return undefined;
         return value.length > limit ? value.slice(0, limit) : value;
@@ -690,51 +698,138 @@ export const generateVideo = inngest.createFunction(
             } with last error: ${normalizedMessage}`
           );
 
-          const regeneratedScript = await step.run(
-            `regen-script-attempt-${attempt + 1}`,
-            async () => {
-              const nextScript = await regenerateManimScriptWithError({
-                prompt,
-                voiceoverScript,
-                previousScript: currentScript,
-                error: normalizedMessage,
-                errorDetails: sanitizedErrorDetails,
-                attemptNumber: attempt,
-                attemptHistory: failedAttempts,
-              });
-              const trimmed = nextScript.trim();
-              if (!trimmed) {
-                throw new Error(
-                  `Regeneration returned an empty script for attempt ${
-                    attempt + 1
-                  }`
-                );
+          const scriptBucket = new Map<string, string>();
+          const addBlockedScript = (script: string) => {
+            const trimmed = script.trim();
+            if (!trimmed) {
+              return;
+            }
+            const fingerprint = fingerprintScript(trimmed);
+            if (!scriptBucket.has(fingerprint)) {
+              scriptBucket.set(fingerprint, trimmed);
+            }
+          };
+
+          for (const attemptRecord of failedAttempts) {
+            addBlockedScript(attemptRecord.script);
+          }
+          addBlockedScript(currentScript);
+
+          const getBlockedScripts = () => Array.from(scriptBucket.values());
+          let repeatedErrorOccurrences = Math.max(
+            1,
+            failedAttempts.filter((attemptRecord) => {
+              const message = attemptRecord.error.message?.trim();
+              return message && message === normalizedMessage;
+            }).length
+          );
+
+          let previousScriptForRewrite = currentScript;
+          let acceptedRegeneration:
+            | {
+                unverified: string;
+                verified: string;
+                context: string;
               }
-              return trimmed;
+            | null = null;
+
+          for (
+            let regenPass = 1;
+            regenPass <= MAX_FORCE_REGENERATIONS;
+            regenPass++
+          ) {
+            const isForcedRewrite = regenPass > 1;
+            const regenStepId = isForcedRewrite
+              ? `force-regen-script-attempt-${attempt + 1}-pass-${regenPass}`
+              : `regen-script-attempt-${attempt + 1}`;
+
+            const regeneratedScript = await step.run(
+              regenStepId,
+              async () => {
+                const nextScript = await regenerateManimScriptWithError({
+                  prompt,
+                  voiceoverScript,
+                  previousScript: previousScriptForRewrite,
+                  error: normalizedMessage,
+                  errorDetails: sanitizedErrorDetails,
+                  attemptNumber: attempt,
+                  attemptHistory: failedAttempts,
+                  blockedScripts: getBlockedScripts(),
+                  forceRewrite: isForcedRewrite,
+                  forcedReason: isForcedRewrite
+                    ? "Regenerated script matched a previous failure and must be rewritten with substantial changes."
+                    : undefined,
+                  repeatedErrorCount: repeatedErrorOccurrences,
+                });
+                const trimmed = nextScript.trim();
+                if (!trimmed) {
+                  throw new Error(
+                    `Regeneration returned an empty script for attempt ${
+                      attempt + 1
+                    } (pass ${regenPass})`
+                  );
+                }
+                return trimmed;
+              }
+            );
+
+            await jobStore.setProgress(jobId!, {
+              step: isForcedRewrite
+                ? `verifying forced regenerated script (pass ${regenPass})`
+                : `verifying regenerated script`,
+            });
+
+            const verificationContext = isForcedRewrite
+              ? `forced regeneration attempt ${attempt + 1} pass ${regenPass}`
+              : `regeneration attempt ${attempt + 1}`;
+
+            const verifiedScript = await verifyScriptWithAutoFix({
+              scriptToCheck: regeneratedScript,
+              context: verificationContext,
+              narration: voiceoverScript,
+            });
+
+            const fingerprint = fingerprintScript(verifiedScript);
+            if (!scriptBucket.has(fingerprint)) {
+              scriptBucket.set(fingerprint, verifiedScript.trim());
+              acceptedRegeneration = {
+                unverified: regeneratedScript,
+                verified: verifiedScript,
+                context: verificationContext,
+              };
+              currentScript = verifiedScript;
+              break;
             }
-          );
 
-          await jobStore.setProgress(jobId!, {
-            step: `verifying regenerated script`,
-          });
+            console.warn(
+              `Regenerated script for ${verificationContext} matches a previously failed version; forcing another rewrite.`
+            );
 
-          const unverifiedRegenScript = regeneratedScript;
-          currentScript = await verifyScriptWithAutoFix({
-            scriptToCheck: regeneratedScript,
-            context: `regeneration attempt ${attempt + 1}`,
-            narration: voiceoverScript,
-          });
+            previousScriptForRewrite = verifiedScript;
+            addBlockedScript(verifiedScript);
+            repeatedErrorOccurrences += 1;
 
-          console.log(
-            `✅ Verification complete for attempt ${
-              attempt + 1
-            }. Using verified regenerated script.`,
-            {
-              unverifiedLength: unverifiedRegenScript.length,
-              verifiedLength: currentScript.length,
-              changed: unverifiedRegenScript !== currentScript,
+            if (regenPass === MAX_FORCE_REGENERATIONS) {
+              throw new Error(
+                `Regeneration could not produce a new script after ${MAX_FORCE_REGENERATIONS} passes for attempt ${
+                  attempt + 1
+                }`
+              );
             }
-          );
+          }
+
+          if (acceptedRegeneration) {
+            console.log(
+              `✅ Verification complete for ${acceptedRegeneration.context}. Using verified regenerated script.`,
+              {
+                unverifiedLength: acceptedRegeneration.unverified.length,
+                verifiedLength: acceptedRegeneration.verified.length,
+                changed:
+                  acceptedRegeneration.unverified !==
+                  acceptedRegeneration.verified,
+              }
+            );
+          }
         }
       }
 
