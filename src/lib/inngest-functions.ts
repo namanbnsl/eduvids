@@ -8,6 +8,7 @@ import {
 import type {
   ManimGenerationAttempt,
   ManimGenerationErrorDetails,
+  VerifyManimScriptResult,
 } from "./gemini";
 import { renderManimVideo } from "./e2b";
 import { uploadVideo } from "./uploadthing";
@@ -19,6 +20,242 @@ type RenderProcessError = Error & {
   stdout?: string;
   exitCode?: number;
 };
+
+type HeuristicSeverity = "noncode" | "fixable" | "critical";
+type HeuristicIssue = { message: string; severity: HeuristicSeverity };
+type HeuristicOptions = { allowVerificationFixes?: boolean };
+
+const PROSE_PHRASES = [
+  "here is",
+  "here's",
+  "sure",
+  "certainly",
+  "explanation",
+  "let's",
+  "in this video",
+  "we will",
+  "i will",
+  "first,",
+  "second,",
+  "finally",
+  "overall",
+];
+
+const MARKDOWN_LIKE_PATTERNS = [/```/, /\[[^\]]+\]\([^\)]+\)/];
+
+const CODE_LINE_PATTERNS = [
+  /^(?:from|import|class|def|with|for|while|if|elif|else|try|except|finally|return|yield|async|await|pass|raise|break|continue|@)/,
+  /^(?:FRAME_|SAFE_|config\.)/,
+  /^(?:await\s+)?[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\s*(?:=|\()/,
+  /^[\[({]/,
+  /^[})\]]+$/,
+];
+
+const STRING_LITERAL_PLACEHOLDER = " ";
+
+const replaceWithPlaceholderPreservingNewlines = (value: string): string =>
+  value.replace(/[^\n]/g, STRING_LITERAL_PLACEHOLDER);
+
+const BUILTIN_SHADOWING_PATTERNS = [
+  /\bstr\s*=\s*["']/i,
+  /\blist\s*=\s*\[/i,
+  /\bdict\s*=\s*\{/i,
+  /\bint\s*=\s*\d/i,
+  /\bfloat\s*=\s*\d/i,
+  /\b(float|int)\s*=\s*[\w.]+/i,
+  /\blen\s*=\s*/i,
+  /\bmax\s*=\s*/i,
+  /\bmin\s*=\s*/i,
+];
+
+// const STRING_CALL_PATTERN = /(^|[^a-zA-Z0-9_])(['"][^'"]*['"])\s*\(/;
+const STRING_CALL_PATTERN = /(?<![A-Za-z0-9_])(['"][^'"]+['"])\s*\(/;
+
+const stripStringLiterals = (source: string): string =>
+  source
+    .replace(/'''[\s\S]*?'''/g, replaceWithPlaceholderPreservingNewlines)
+    .replace(/"""[\s\S]*?"""/g, replaceWithPlaceholderPreservingNewlines)
+    .replace(/"(?:\\.|[^"\\])*"/g, (match) =>
+      match.replace(/./g, STRING_LITERAL_PLACEHOLDER)
+    )
+    .replace(/'(?:\\.|[^'\\])*'/g, (match) =>
+      match.replace(/./g, STRING_LITERAL_PLACEHOLDER)
+    );
+
+const formatIssueList = (issues: HeuristicIssue[]): string =>
+  issues.map((issue, index) => `${index + 1}. ${issue.message}`).join("\n");
+
+function runHeuristicChecks(
+  script: string,
+  options: HeuristicOptions = {}
+): { ok: boolean; error?: string } {
+  const allowVerificationFixes = options.allowVerificationFixes ?? false;
+  const issues: HeuristicIssue[] = [];
+  const trimmed = script.trim();
+
+  if (!trimmed) {
+    issues.push({
+      message: "❌ Script is empty after trimming.",
+      severity: "critical",
+    });
+  }
+
+  const normalized = trimmed.replace(/\r/g, "");
+  const stripped = stripStringLiterals(normalized);
+  const strippedLower = stripped.toLowerCase();
+
+  for (const pattern of MARKDOWN_LIKE_PATTERNS) {
+    if (pattern.test(normalized)) {
+      issues.push({
+        message:
+          "❌ Detected Markdown or formatting artifacts. Provide code only.",
+        severity: "noncode",
+      });
+      break;
+    }
+  }
+
+  for (const phrase of PROSE_PHRASES) {
+    if (strippedLower.includes(phrase)) {
+      issues.push({
+        message: `❌ Narrative/explanatory text detected (contains "${phrase}"). Provide only executable Manim code.`,
+        severity: "noncode",
+      });
+      break;
+    }
+  }
+
+  const strippedLines = stripped.split(/\n/);
+  const originalLines = normalized.split(/\n/);
+
+  for (let index = 0; index < originalLines.length; index++) {
+    const line = originalLines[index]?.trim() ?? "";
+    if (!line) continue;
+    if (line.startsWith("#")) continue;
+    if (line === '"""' || line === "'''") continue;
+
+    const strippedLine = strippedLines[index]?.trim() ?? "";
+
+    if (!CODE_LINE_PATTERNS.some((pattern) => pattern.test(line))) {
+      const hasCodeSymbols = /[(){}\[\]=:+\-*/.,]/.test(line);
+      const wordCount = strippedLine
+        ? strippedLine.split(/\s+/).filter(Boolean).length
+        : 0;
+
+      if (wordCount >= 4 && !hasCodeSymbols) {
+        issues.push({
+          message: `❌ Non-code narrative detected on line ${
+            index + 1
+          }: "${line.slice(0, 80)}"`,
+          severity: "noncode",
+        });
+        break;
+      }
+    }
+  }
+
+  if (normalized.includes("VoiceoverScene")) {
+    const referencesCameraFrame = normalized.includes("self.camera.frame");
+    const assignsCameraFrame = /frame\s*=\s*self\.camera\.frame/.test(
+      normalized
+    );
+    const usesMovingCamera = normalized.includes("MovingCameraScene");
+
+    if (referencesCameraFrame && !usesMovingCamera) {
+      issues.push({
+        message:
+          "❌ VoiceoverScene does not have camera.frame. Remove camera.frame references or inherit from MovingCameraScene.",
+        severity: "fixable",
+      });
+    }
+
+    if (assignsCameraFrame && !usesMovingCamera) {
+      issues.push({
+        message:
+          "❌ Cannot assign frame = self.camera.frame in VoiceoverScene. Use FRAME_WIDTH/FRAME_HEIGHT constants instead.",
+        severity: "fixable",
+      });
+    }
+  }
+
+  if (
+    normalized.includes("VoiceoverScene") &&
+    !normalized.includes("from manim_voiceover")
+  ) {
+    issues.push({
+      message: "❌ Missing: from manim_voiceover import VoiceoverScene.",
+      severity: "fixable",
+    });
+  }
+
+  if (
+    normalized.includes("GTTSService") &&
+    !normalized.includes("from manim_voiceover.services.gtts")
+  ) {
+    issues.push({
+      message:
+        "❌ Missing: from manim_voiceover.services.gtts import GTTSService.",
+      severity: "fixable",
+    });
+  }
+
+  if (!normalized.includes("class MyScene")) {
+    issues.push({
+      message: "❌ Missing: class MyScene definition.",
+      severity: "fixable",
+    });
+  }
+
+  if (!normalized.includes("def construct(self)")) {
+    issues.push({
+      message: "❌ Missing: def construct(self) method.",
+      severity: "fixable",
+    });
+  }
+
+  if (
+    normalized.includes("VoiceoverScene") &&
+    !normalized.includes("set_speech_service")
+  ) {
+    issues.push({
+      message:
+        "❌ VoiceoverScene requires self.set_speech_service(GTTSService()).",
+      severity: "fixable",
+    });
+  }
+
+  for (const pattern of BUILTIN_SHADOWING_PATTERNS) {
+    if (pattern.test(normalized)) {
+      const match = normalized.match(pattern);
+      issues.push({
+        message: `❌ Shadowing built-in name detected: ${match?.[0]}. Use a different variable name to avoid "'str' object is not callable" errors.`,
+        severity: "fixable",
+      });
+      break;
+    }
+  }
+
+  if (STRING_CALL_PATTERN.test(normalized)) {
+    issues.push({
+      message:
+        "❌ Potential error: calling a string literal like a function (e.g., 'text'()). Use Text('text') instead.",
+      severity: "fixable",
+    });
+  }
+
+  const relevantIssues = allowVerificationFixes
+    ? issues.filter((issue) => issue.severity !== "fixable")
+    : issues;
+
+  if (relevantIssues.length === 0) {
+    return { ok: true };
+  }
+
+  return {
+    ok: false,
+    error: `Heuristic validation failed:\n${formatIssueList(relevantIssues)}`,
+  };
+}
 
 function buildYouTubeTitle(params: {
   prompt?: string;
@@ -116,11 +353,45 @@ export const generateVideo = inngest.createFunction(
         const result = await step.run(
           `verify-${baseStepId}-pass-${pass}`,
           async () => {
-            return await verifyManimScript({
+            const trimmedCurrent = current.trim();
+            const preCheck = runHeuristicChecks(trimmedCurrent, {
+              allowVerificationFixes: true,
+            });
+
+            if (!preCheck.ok) {
+              return {
+                ok: false,
+                error: preCheck.error,
+              } satisfies VerifyManimScriptResult;
+            }
+
+            const verification = await verifyManimScript({
               prompt,
               voiceoverScript: narration,
-              script: current,
+              script: trimmedCurrent,
             });
+
+            if (!verification.ok) {
+              return verification;
+            }
+
+            const candidate = (
+              verification.fixedScript ?? trimmedCurrent
+            ).trim();
+            const postCheck = runHeuristicChecks(candidate);
+
+            if (!postCheck.ok) {
+              return {
+                ok: false,
+                error: postCheck.error,
+                fixedScript: candidate,
+              } satisfies VerifyManimScriptResult;
+            }
+
+            return {
+              ok: true,
+              fixedScript: candidate,
+            } satisfies VerifyManimScriptResult;
           }
         );
 
@@ -328,9 +599,7 @@ export const generateVideo = inngest.createFunction(
           const stdout = renderError.stdout;
           const exitCode = renderError.exitCode;
           const preview = (value?: string, limit = 800) =>
-            value && value.length > limit
-              ? `${value.slice(0, limit)}…`
-              : value;
+            value && value.length > limit ? `${value.slice(0, limit)}…` : value;
           const sanitizedErrorDetails = {
             message: normalizedMessage,
             stack: clampDetail(stack),
