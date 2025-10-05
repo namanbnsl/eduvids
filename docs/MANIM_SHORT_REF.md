@@ -141,7 +141,7 @@ The example only invokes names documented above. It uses `Text`, `MathTex`, `Val
 
 ## Text, Tex, and MathTex
 
-- `Text("string", font_size=..., color=..., font="...", slant=ITALIC, weight=BOLD, t2c=None, t2s=None, ...)`: high-level text (non-LaTeX) rendered with Pango/Cairo. Use `t2c={'a': BLUE}` to color substrings (e.g. letters).
+- `Text("string", font_size=..., color=..., slant=ITALIC, weight=BOLD, t2c=None, t2s=None, ...)`: high-level text (non-LaTeX) rendered with Pango/Cairo. Use `t2c={'a': BLUE}` to color substrings (e.g. letters).
 - `Tex("LaTeX string", tex_environment='center', color=WHITE)`: a LaTeX-rendered string (internally a `MathTex`). `MathTex("math", tex_to_color_map=None, substrings_to_isolate=None)` is for math mode (default environment `'align*'`). You can color parts of a `MathTex` with `tex_to_color_map={'x': RED}`.
 - `SingleStringMathTex` is a subclass of `MathTex` for a single string, same arguments.
 - For full customization, use the various `t2*` arguments in `Text` (`t2f` for font, `t2g` for gradient, etc.).

@@ -102,7 +102,7 @@
     "Text": {
       "name": "Text",
       "module": "manim.mobject.text.text_mobject.Text",
-      "constructor": "Text(text, font='', font_size=48, color=WHITE, stroke_width=0, stroke_opacity=1.0, fill_opacity=1.0, gradient=None)"
+      "constructor": "Text(text, font_size=48, color=WHITE, stroke_width=0, stroke_opacity=1.0, fill_opacity=1.0, gradient=None)"
     },
     "MathTex": {
       "name": "MathTex",
