@@ -184,13 +184,14 @@ These hard rules are designed to prevent overlapping labels and off‑screen con
 2) **Maintain a safe frame margin.**
    - Use a margin of at least 0.4 units on all sides (`MARGIN = 0.4`).
    - Only use `to_edge` / `to_corner` with `buff=MARGIN`.
-   - If an object is too large, use `scale_to_fit_width(frame.width - 2*MARGIN)` or `.scale_to_fit_height(...)`.
+   - If an object is too large, use `scale_to_fit_width(13.4)` or `.scale_to_fit_height(7.2)` (assuming MARGIN=0.4).
 
 3) **Ensure everything is on screen before playing.**
-   - Compute the frame once: `frame = self.camera.frame`.
-   - Before `self.play(...)`, for any new mobject `m`, ensure:
-     - `m.width <= frame.width - 2*MARGIN` and `m.height <= frame.height - 2*MARGIN` (otherwise scale it down), and
-     - Move `m` to view: e.g. `m.move_to(frame.get_center())` or `m.to_edge(..., buff=MARGIN)`.
+   - DO NOT use `self.camera.frame` in VoiceoverScene (it doesn't exist!)
+   - Default frame: ~14.2 units wide, ~8 units tall
+   - Before `self.play(...)`, for any newly created `m`, ensure:
+     - `m.width <= 14.2 - 2*MARGIN` (≈13.4) and `m.height <= 8 - 2*MARGIN` (≈7.2)
+     - Move `m` to view: e.g. `m.move_to(ORIGIN)` or `m.to_edge(..., buff=MARGIN)`.
 
 4) **Z-order and readability.**
    - Labels should be above shapes: e.g. `label.set_z_index(shape.z_index + 1)` (or simply a high z-index).
@@ -213,21 +214,23 @@ These hard rules are designed to prevent overlapping labels and off‑screen con
 from manim import *
 
 SAFE_MARGIN = 0.4
+FRAME_WIDTH = 14.2  # Default manim frame width
+FRAME_HEIGHT = 8.0  # Default manim frame height
 
-def fit_and_keep_on_screen(m: Mobject, frame: Mobject, margin: float = SAFE_MARGIN):
-    # Scale down if too large for frame with margin
-    max_w = frame.width - 2*margin
-    max_h = frame.height - 2*margin
+def fit_and_keep_on_screen(m: Mobject, margin: float = SAFE_MARGIN):
+    # Scale down if too large for frame with margin (works in ALL scene types)
+    max_w = FRAME_WIDTH - 2*margin
+    max_h = FRAME_HEIGHT - 2*margin
     if m.width > max_w:
         m.scale_to_fit_width(max_w)
     if m.height > max_h:
         m.scale_to_fit_height(max_h)
-    # If still slightly out of view due to rounding, center it
-    m.move_to(frame.get_center())
+    # Center in frame
+    m.move_to(ORIGIN)
     return m
 ```
 
-Call `fit_and_keep_on_screen(group, self.camera.frame)` for any complex group before displaying it.
+Call `fit_and_keep_on_screen(group)` for any complex group before displaying it. This works in Scene, VoiceoverScene, MovingCameraScene, etc.
 
 8) **Timing hygiene:** Use short waits (`self.wait(0.5)`) between layout steps so viewers can perceive structure.
 
@@ -303,14 +306,16 @@ class ValueTrackerExample(Scene):
 ## Camera (overview)
 
 - Scenes have a `camera` attribute (instance of `Camera` or subclass). It manages frame size, rendering, etc.
-- **Moving camera:** For `MovingCameraScene` (or similar), the `camera.frame` is a `VMobject` that defines the view. Animate the camera by moving/scaling this frame.
-- **Common usage:** To pan/zoom the view, animate the frame: e.g.
+- **CRITICAL:** `self.camera.frame` is ONLY available in `MovingCameraScene` and `ThreeDScene`. Regular `Scene` and `VoiceoverScene` DO NOT have `camera.frame`!
+- **Default frame dimensions:** ~14.2 units wide × ~8 units tall (centered at ORIGIN)
+- **Moving camera:** Only for `MovingCameraScene` or `class MyScene(VoiceoverScene, MovingCameraScene):`
   ```python
+  # ONLY works in MovingCameraScene!
   self.play(self.camera.frame.animate.move_to(point))
   ```
-- You can specify `camera_class` when creating a Scene to swap camera type (e.g. `camera_class=ThreeDCamera` for 3D).
-- **Note:** The default `Camera` (as used by plain `Scene`) does not support `frame`. Only `MovingCameraScene` or other moving-camera types have a frame.
-- **References:** The camera frame is documented as a rectangular viewfinder.
+- **For VoiceoverScene (default):** Use fixed coordinates. Objects are visible if centered near ORIGIN with reasonable size.
+- You can specify `camera_class` when creating a Scene (e.g. `camera_class=ThreeDCamera`), but this is rarely needed.
+- **References:** Frame width/height: `config.frame_width`, `config.frame_height`
 
 ## Layout and visibility contract (LLM MUST follow)
 
@@ -326,10 +331,10 @@ These hard rules are designed to prevent overlapping labels and off‑screen con
    - For scaling, use `scale_to_fit_width(frame.width - 2*MARGIN)` or similar.
 
 3) **Ensure everything is on screen before playing.**
-   - Compute frame once: `frame = self.camera.frame`.
+   - DO NOT use `self.camera.frame` in VoiceoverScene!
    - Before `self.play(...)`, for any new mobject `m`:
-     - Ensure `m.width <= frame.width - 2*MARGIN` and `m.height <= frame.height - 2*MARGIN` (scale down if needed).
-     - Center or move `m` inside frame: e.g. `m.move_to(frame.get_center())` or `m.to_edge(..., buff=MARGIN)`.
+     - Ensure `m.width <= 13.4` and `m.height <= 7.2` (with MARGIN=0.4)
+     - Center or move `m` inside frame: e.g. `m.move_to(ORIGIN)` or `m.to_edge(..., buff=MARGIN)`.
 
 4) **Z‑order and readability.**
    - Labels above shapes: e.g. `label.set_z_index(shape.z_index + 1)`.

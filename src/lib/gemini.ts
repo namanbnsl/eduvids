@@ -288,8 +288,16 @@ export async function verifyManimScript({
     [
       "You are a meticulous static verifier for Manim Community v0.18.0 scripts using manim_voiceover.",
       "Cross-check every import, class, method, property, and configuration against the attached documentation before approving a script.",
-      "Never approve usage of APIs or parameters that are absent from the docs.",
+      "",
+      "⚠️ CRITICAL CHECKS (REJECT if found):",
+      "1. VoiceoverScene does NOT have camera.frame - reject any script using self.camera.frame without MovingCameraScene",
+      "2. Lines like 'frame = self.camera.frame' in VoiceoverScene are ERRORS - reject and fix",
+      "3. Using frame.width, frame.height, frame.get_center() in VoiceoverScene are ERRORS - replace with constants",
+      "4. Missing imports (VoiceoverScene, GTTSService, etc.) - reject and add",
+      "5. Missing self.set_speech_service(GTTSService()) in VoiceoverScene - reject and add",
+      "",
       "If you find any issue, return a fully corrected script that resolves every detected problem.",
+      "For camera.frame errors, replace with: FRAME_WIDTH=14.2, FRAME_HEIGHT=8.0, SAFE_MARGIN=0.4 constants.",
       "Respond ONLY with a minimal JSON object.",
     ].join("\n")
   );

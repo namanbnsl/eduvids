@@ -5,18 +5,88 @@ export interface RenderRequest {
   prompt: string;
 }
 
+/**
+ * Quick validation to catch common errors before expensive E2B rendering
+ */
+function validateManimScript(script: string): { valid: boolean; error?: string } {
+  const issues: string[] = [];
+
+  // Check for camera.frame in VoiceoverScene (most common error)
+  if (script.includes("VoiceoverScene")) {
+    if (script.includes("self.camera.frame") && !script.includes("MovingCameraScene")) {
+      issues.push("❌ VoiceoverScene does not have camera.frame. Remove all camera.frame references or use multiple inheritance: class MyScene(VoiceoverScene, MovingCameraScene)");
+    }
+    if (script.match(/frame\s*=\s*self\.camera\.frame/) && !script.includes("MovingCameraScene")) {
+      issues.push("❌ Cannot assign frame = self.camera.frame in VoiceoverScene. Use FRAME_WIDTH=14.2, FRAME_HEIGHT=8.0 constants instead.");
+    }
+  }
+
+  // Check for required imports
+  if (script.includes("VoiceoverScene") && !script.includes("from manim_voiceover")) {
+    issues.push("❌ Missing: from manim_voiceover import VoiceoverScene");
+  }
+  if (script.includes("GTTSService") && !script.includes("from manim_voiceover.services.gtts")) {
+    issues.push("❌ Missing: from manim_voiceover.services.gtts import GTTSService");
+  }
+
+  // Check for scene class
+  if (!script.includes("class MyScene")) {
+    issues.push("❌ Missing: class MyScene definition");
+  }
+
+  // Check for construct method
+  if (!script.includes("def construct(self)")) {
+    issues.push("❌ Missing: def construct(self) method");
+  }
+
+  // Check for speech service initialization in VoiceoverScene
+  if (script.includes("VoiceoverScene") && !script.includes("set_speech_service")) {
+    issues.push("❌ VoiceoverScene requires: self.set_speech_service(GTTSService())");
+  }
+
+  if (issues.length > 0) {
+    return { valid: false, error: issues.join("\n") };
+  }
+
+  return { valid: true };
+}
+
 export async function renderManimVideo({
   script,
   prompt: _prompt,
 }: RenderRequest): Promise<string> {
   void _prompt;
   let sandbox: Sandbox | null = null;
+  let cleanupAttempted = false;
+
+  const ensureCleanup = async () => {
+    if (sandbox && !cleanupAttempted) {
+      cleanupAttempted = true;
+      try {
+        await sandbox.kill();
+        console.log("E2B sandbox cleaned up successfully");
+      } catch (cleanupError) {
+        console.warn("Sandbox cleanup error (non-fatal):", cleanupError);
+      }
+    }
+  };
 
   try {
+    // Pre-validation to catch common errors early
+    console.log("Validating Manim script...");
+    const validation = validateManimScript(script);
+    if (!validation.valid) {
+      console.error("Script validation failed:", validation.error);
+      const error = new Error(`Script validation failed:\n${validation.error}`);
+      Object.assign(error, { exitCode: -1, validationError: true });
+      throw error;
+    }
+    console.log("Script validation passed");
+
     sandbox = await Sandbox.create("manim-ffmpeg-latex-voiceover-watermark", {
       timeoutMs: 1200_000,
     });
-    console.log("E2B sandbox created successfully");
+    console.log("E2B sandbox created successfully", { sandboxId: sandbox.sandboxId });
 
     const scriptPath = `/home/user/script.py`;
     const mediaDir = `/home/user/media`;
@@ -40,12 +110,13 @@ export async function renderManimVideo({
       throw new Error(errorDetails);
     }
 
-    // Run manim
+    // Run manim with explicit Python path and error capture
+    console.log("Starting manim render...");
     const proc = await sandbox.commands.run(
-      `manim ${scriptPath} MyScene --media_dir ${mediaDir} -ql --disable_caching --format=mp4`,
+      `manim ${scriptPath} MyScene --media_dir ${mediaDir} -ql --disable_caching --format=mp4 2>&1`,
       {
-        onStdout: (d) => console.log(d),
-        onStderr: (d) => console.error(d),
+        onStdout: (d) => console.log("[manim stdout]", d),
+        onStderr: (d) => console.error("[manim stderr]", d),
         timeoutMs: 600_000,
       }
     );
@@ -56,15 +127,29 @@ export async function renderManimVideo({
         `\nSTDERR:\n${proc.stderr || "(empty)"}`,
         `\nSTDOUT:\n${proc.stdout || "(empty)"}`,
       ].join("\n");
-      throw new Error(errorDetails);
+      console.error("Manim render failed:", errorDetails);
+      await ensureCleanup();
+      const error = new Error(errorDetails);
+      Object.assign(error, {
+        exitCode: proc.exitCode,
+        stderr: proc.stderr,
+        stdout: proc.stdout,
+      });
+      throw error;
     }
+    console.log("Manim render completed successfully");
 
     // Find output file
+    console.log("Looking for rendered video in:", outputDir);
     const files = (await sandbox.files.list(outputDir)) as Array<{
       name: string;
     }>;
+    console.log("Files found:", files.map(f => f.name));
     const videoFile = files.find((f) => f.name.endsWith(".mp4"));
-    if (!videoFile) throw new Error("No .mp4 file produced");
+    if (!videoFile) {
+      await ensureCleanup();
+      throw new Error(`No .mp4 file produced in ${outputDir}. Files found: ${files.map(f => f.name).join(", ")}`);
+    }
 
     const videoPath = `${outputDir}/${videoFile.name}`;
     console.log("Video file candidate:", videoPath);
@@ -80,7 +165,8 @@ export async function renderManimVideo({
     console.log("ffprobe duration:", duration);
 
     if (!duration || duration <= 0) {
-      throw new Error("Rendered video has 0s duration — aborting upload");
+      await ensureCleanup();
+      throw new Error(`Rendered video has invalid duration: ${duration}s — aborting upload`);
     }
 
     // Watermark the video inside the sandbox using ffmpeg drawtext for robust output
@@ -102,6 +188,7 @@ export async function renderManimVideo({
         `\nSTDERR:\n${wmProc.stderr || "(empty)"}`,
         `\nSTDOUT:\n${wmProc.stdout || "(empty)"}`,
       ].join("\n");
+      await ensureCleanup();
       throw new Error(errorDetails);
     }
 
@@ -114,7 +201,8 @@ export async function renderManimVideo({
     );
     const wmDuration = parseFloat((probeWm.stdout || "").trim());
     if (!wmDuration || wmDuration <= 0) {
-      throw new Error("Watermarked video has 0s duration — aborting upload");
+      await ensureCleanup();
+      throw new Error(`Watermarked video has invalid duration: ${wmDuration}s — aborting upload`);
     }
 
     // Read file bytes reliably via base64 in the sandbox to avoid encoding issues
@@ -123,6 +211,7 @@ export async function renderManimVideo({
       { timeoutMs: 500_000 }
     );
     if (base64Result.exitCode !== 0 || !base64Result.stdout) {
+      await ensureCleanup();
       throw new Error(
         `Failed to base64-encode video in sandbox: ${
           base64Result.stderr || "no stdout"
@@ -134,9 +223,14 @@ export async function renderManimVideo({
     console.log(
       `Prepared base64 data URL for upload (length: ${base64.length} chars)`
     );
+    
+    // Cleanup before returning
+    await ensureCleanup();
     return dataUrl;
   } catch (err: unknown) {
     console.error("E2B render error:", err);
+    await ensureCleanup();
+    
     if (err instanceof CommandExitError) {
       const exitCode = err.exitCode;
       const stderr = err.stderr ?? "";
@@ -176,7 +270,7 @@ export async function renderManimVideo({
     }
     throw err instanceof Error ? err : new Error(String(err));
   } finally {
-    await sandbox?.kill();
-    console.log("E2B sandbox is closed.");
+    // Ensure cleanup happens even if not already done
+    await ensureCleanup();
   }
 }

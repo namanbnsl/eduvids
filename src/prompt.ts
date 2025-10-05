@@ -143,12 +143,17 @@ Checklist before self.play:
 
 MOST IMPORTANTLY: Always leave a margin around the screen so that nothing goes outside the screen and is only half or not visible at all. Always leave a margin/padding around the video frame. Use SAFE_MARGIN = 0.4 unless the prompt says otherwise.
 
-PLEASE NOTE (VERY VERY IMPORTANT):
-- YOU CANNOT CALL camera.frame in a normal scene. You can only call it in a ThreeDScene/MovingCameraScene.
-- YOU ALSO CANNOT CALL IT IN A VoiceoverScene. 
-- SO, IN MOST CASES YOU CANNOT CALL camera.frame AT ALL. JUST REMOVE THAT LINE where you use: frame = self.camera.frame
-- IF REQUIRED, DO THIS:
-   self.camera.set_frame_width or self.camera.set_zoom or class MyScene(VoiceoverScene, MovingCameraScene):
+⚠️ CRITICAL - CAMERA FRAME RESTRICTION ⚠️
+- VoiceoverScene DOES NOT have `self.camera.frame` - accessing it will cause AttributeError!
+- NEVER write: `frame = self.camera.frame` in VoiceoverScene
+- NEVER use: `frame.width`, `frame.height`, `frame.get_center()` in VoiceoverScene
+- Default frame is fixed: 14.2 units wide × 8 units tall, centered at ORIGIN
+- Use these constants instead:
+  FRAME_WIDTH = 14.2
+  FRAME_HEIGHT = 8.0
+  SAFE_MARGIN = 0.4
+- For camera movement, use: `class MyScene(VoiceoverScene, MovingCameraScene):`
+- In 99% of cases, you should NOT use camera.frame at all!
 
 Code Implementation:
 - Use self.play(), FadeIn, FadeOut, Write, Create, Transform
