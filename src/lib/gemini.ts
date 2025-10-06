@@ -75,6 +75,22 @@ export interface ManimScript {
   code: string;
 }
 
+export interface PlannedManimSegment {
+  id: string;
+  title: string;
+  narration: string;
+  cues?: string[];
+}
+
+export interface PlanManimSegmentsRequest {
+  prompt: string;
+  voiceoverScript: string;
+}
+
+export interface ManimSegmentScriptRequest extends ManimScriptRequest {
+  segment: PlannedManimSegment;
+}
+
 export interface ManimGenerationErrorDetails {
   message?: string;
   stack?: string;
@@ -138,6 +154,127 @@ export async function generateManimScript({
     .replace(/```python?\n?/g, "")
     .replace(/```\n?/g, "")
     .trim();
+
+  return code;
+}
+
+export async function planManimSegments({
+  prompt,
+  voiceoverScript,
+}: PlanManimSegmentsRequest): Promise<PlannedManimSegment[]> {
+  const model = google("gemini-2.5-pro");
+  const systemPrompt = [
+    "You are an experienced video editor who divides narration scripts into clean Manim segments.",
+    "Identify natural cut points at pauses or topic shifts so voiceovers stay coherent when concatenated.",
+    "Return JSON describing 2-5 ordered segments covering the entire narration with no gaps or overlaps.",
+    "Each segment must include an id (slug), short title, narration text, and optional cues array.",
+    "Respond with JSON only.",
+  ].join(" ");
+
+  const { text } = await generateText({
+    model,
+    system: systemPrompt,
+    prompt: [
+      `Video prompt: ${prompt}`,
+      "Full narration (voiceover):",
+      voiceoverScript,
+      "Plan the segment timeline.",
+      "JSON schema: { segments: [{ id: string, title: string, narration: string, cues?: string[] }] }",
+    ].join("\n\n"),
+    temperature: 0,
+  });
+
+  const raw = text.trim();
+  const extractJsonString = (input: string): string | null => {
+    const fenced = input.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (fenced?.[1]) return fenced[1].trim();
+    const firstBrace = input.indexOf("{");
+    const lastBrace = input.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      return input.slice(firstBrace, lastBrace + 1).trim();
+    }
+    return null;
+  };
+
+  const jsonCandidate = extractJsonString(raw) ?? raw;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonCandidate);
+  } catch (error) {
+    throw new Error(
+      `Failed to parse segment planning response as JSON: ${(error as Error).message}. Raw response: ${raw}`
+    );
+  }
+
+  const segments =
+    (parsed && typeof parsed === "object" && "segments" in parsed
+      ? (parsed as { segments?: PlannedManimSegment[] }).segments
+      : Array.isArray(parsed)
+        ? (parsed as PlannedManimSegment[])
+        : undefined) ?? [];
+
+  const normalized = segments
+    .map((segment, index) => {
+      const id = segment?.id?.trim() || `segment-${index + 1}`;
+      const title = segment?.title?.trim() || `Segment ${index + 1}`;
+      const narration = segment?.narration?.trim() ?? "";
+      const cues = Array.isArray(segment?.cues)
+        ? segment.cues.filter((cue): cue is string => typeof cue === "string" && cue.trim().length > 0)
+        : undefined;
+      return {
+        id,
+        title,
+        narration,
+        cues,
+      } satisfies PlannedManimSegment;
+    })
+    .filter((segment) => segment.narration.length > 0);
+
+  if (!normalized.length) {
+    throw new Error(
+      `Segment planner returned no usable segments. Parsed value: ${JSON.stringify(parsed).slice(0, 4000)}`
+    );
+  }
+
+  return normalized;
+}
+
+export async function generateSegmentManimScript({
+  prompt,
+  voiceoverScript,
+  segment,
+}: ManimSegmentScriptRequest): Promise<string> {
+  const model = google("gemini-2.5-pro");
+  const augmentedSystemPrompt = buildAugmentedSystemPrompt(MANIM_SYSTEM_PROMPT);
+  const { id, title, narration } = segment;
+
+  const { text } = await generateText({
+    model,
+    system: augmentedSystemPrompt,
+    prompt: [
+      `Video prompt: ${prompt}`,
+      `Segment id: ${id}`,
+      `Segment title: ${title}`,
+      "Full narration for the whole video:",
+      voiceoverScript,
+      "Narration allocated for this segment:",
+      narration,
+      "Generate only the Python Manim code for this segment, matching the narration timing.",
+      "The script must be a self-contained Manim scene named MyScene using manim_voiceover.",
+      "Ensure the scene covers only this segment's narration and assumes preceding content has already played.",
+      "Do not include markdown fences or commentary.",
+    ].join("\n\n"),
+    temperature: 0.1,
+  });
+
+  const code = text
+    .replace(/```python?\n?/g, "")
+    .replace(/```\n?/g, "")
+    .trim();
+
+  if (!code.length) {
+    throw new Error(`Generated empty script for segment ${segment.id}`);
+  }
 
   return code;
 }

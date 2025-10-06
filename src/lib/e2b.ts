@@ -193,11 +193,13 @@ const buildDryRunCommand = (scriptPath: string, mediaDir: string) =>
 export interface RenderRequest {
   script: string;
   prompt: string;
+  applyWatermark?: boolean;
 }
 
 export async function renderManimVideo({
   script,
   prompt: _prompt,
+  applyWatermark = true,
 }: RenderRequest): Promise<RenderResult> {
   void _prompt;
   const normalizedScript = script.trim();
@@ -241,17 +243,9 @@ export async function renderManimVideo({
 
   const runCommandOrThrow = async (
     command: string,
-    {
-      description,
-      stage,
-      timeoutMs,
-      hint,
-      onStdout,
-      onStderr,
-      streamOutput,
-    }: {
+    options: {
       description?: string;
-      stage: ValidationStage;
+      stage?: ValidationStage;
       timeoutMs?: number;
       hint?: string;
       onStdout?: (chunk: string) => void;
@@ -267,6 +261,15 @@ export async function renderManimVideo({
     if (!sandbox) {
       throw new Error("Sandbox not initialised before running command");
     }
+    const {
+      description,
+      stage = "render",
+      timeoutMs,
+      hint,
+      onStdout,
+      onStderr,
+      streamOutput,
+    } = options;
     const startedAt = Date.now();
     let streamStdout = false;
     let streamStderr = false;
@@ -452,59 +455,55 @@ export async function renderManimVideo({
       );
     }
 
-    // Watermark the video inside the sandbox using ffmpeg drawtext for robust output
-    const watermarkedPath = `${outputDir}/watermarked.mp4`;
-    const watermarkText = "eduvids";
-    const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
-    const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@0.85:fontsize=24:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw-20:y=h-th-20`;
+    let finalVideoPath = videoPath;
 
-    const ffmpegCmd = `ffmpeg -y -i ${videoPath} -vf "${drawText}" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart -c:a copy ${watermarkedPath}`;
-    await runCommandOrThrow(ffmpegCmd, {
-      description: "Watermark application",
-      stage: "watermark",
-      timeoutMs: 240_000,
-      hint: "ffmpeg failed while applying the watermark.",
-      streamOutput: { stdout: true, stderr: true },
-    });
+    if (applyWatermark) {
+      const watermarkedPath = `${outputDir}/watermarked.mp4`;
+      const watermarkText = "eduvids";
+      const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
+      const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@0.85:fontsize=24:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw-20:y=h-th-20`;
 
-    // Validate watermarked output
-    const probeWm = await runCommandOrThrow(
-      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${watermarkedPath}`,
-      {
-        description: "Watermarked video validation",
-        stage: "watermark-validation",
-        timeoutMs: 180_000,
-        hint: "The watermarked video appears to be corrupted.",
+      const ffmpegCmd = `ffmpeg -y -i ${videoPath} -vf "${drawText}" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart -c:a copy ${watermarkedPath}`;
+      await runCommandOrThrow(ffmpegCmd, {
+        description: "Watermark application",
+        stage: "watermark",
+        timeoutMs: 240_000,
+        hint: "ffmpeg failed while applying the watermark.",
+        streamOutput: { stdout: true, stderr: true },
+      });
+
+      const probeWm = await runCommandOrThrow(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${watermarkedPath}`,
+        {
+          description: "Watermarked video validation",
+          stage: "watermark-validation",
+          timeoutMs: 180_000,
+          hint: "The watermarked video appears to be corrupted.",
+        }
+      );
+      const wmDuration = parseFloat((probeWm.stdout || "").trim());
+      if (!wmDuration || wmDuration <= 0) {
+        await ensureCleanup();
+        throw new ManimValidationError(
+          `Watermarked video has invalid duration: ${wmDuration}s — aborting upload`,
+          "watermark-validation"
+        );
       }
-    );
-    const wmDuration = parseFloat((probeWm.stdout || "").trim());
-    if (!wmDuration || wmDuration <= 0) {
-      await ensureCleanup();
-      throw new ManimValidationError(
-        `Watermarked video has invalid duration: ${wmDuration}s — aborting upload`,
-        "watermark-validation"
-      );
+
+      finalVideoPath = watermarkedPath;
     }
 
-    // Download watermarked video via signed URL to avoid sandbox output limits
-    const downloadUrl = await sandbox.downloadUrl(watermarkedPath);
-    const response = await fetch(downloadUrl);
-    if (!response.ok) {
-      await ensureCleanup();
-      throw new ManimValidationError(
-        `Failed to download watermarked video (status ${response.status})`,
-        "download"
-      );
-    }
-    const arrayBuffer = await response.arrayBuffer();
-    const fileBytes = Buffer.from(arrayBuffer);
-    if (!fileBytes.length) {
+    const fileBytesArray = (await sandbox.files.read(finalVideoPath, {
+      format: "bytes",
+    })) as Uint8Array;
+    if (!fileBytesArray || !fileBytesArray.length) {
       await ensureCleanup();
       throw new ManimValidationError(
         "Downloaded watermarked video is empty; aborting upload",
         "download"
       );
     }
+    const fileBytes = Buffer.from(fileBytesArray);
     const base64 = fileBytes.toString("base64");
     const dataUrl = `data:video/mp4;base64,${base64}`;
     console.log(
@@ -576,5 +575,299 @@ export async function renderManimVideo({
   } finally {
     // Ensure cleanup happens even if not already done
     await ensureCleanup();
+  }
+}
+
+export interface SegmentVideoInput {
+  id: string;
+  dataUrl: string;
+}
+
+export interface ConcatWatermarkRequest {
+  segments: SegmentVideoInput[];
+  watermarkText?: string;
+}
+
+export async function concatSegmentVideos({
+  segments,
+  watermarkText = "eduvids",
+}: ConcatWatermarkRequest): Promise<RenderResult> {
+  if (!segments.length) {
+    throw new ManimValidationError(
+      "No segment videos provided for concatenation.",
+      "input"
+    );
+  }
+
+  let sandbox: Sandbox | null = null;
+  let cleanupAttempted = false;
+
+  const ensureCleanup = async () => {
+    if (sandbox && !cleanupAttempted) {
+      cleanupAttempted = true;
+      try {
+        await sandbox.kill();
+        console.log("E2B concat sandbox cleaned up successfully");
+      } catch (cleanupError) {
+        console.warn("Concat sandbox cleanup error (non-fatal):", cleanupError);
+      }
+    }
+  };
+
+  const runCommandOrThrow = async (
+    command: string,
+    options: {
+      description?: string;
+      stage?: ValidationStage;
+      timeoutMs?: number;
+      hint?: string;
+      streamOutput?: boolean | { stdout?: boolean; stderr?: boolean };
+    } = {}
+  ) => {
+    if (!sandbox) {
+      throw new Error("Sandbox not initialised before running command");
+    }
+    const {
+      description,
+      stage = "render",
+      timeoutMs,
+      hint,
+      streamOutput,
+    } = options;
+
+    let streamStdout = false;
+    let streamStderr = false;
+    if (typeof streamOutput === "boolean") {
+      streamStdout = streamOutput;
+      streamStderr = streamOutput;
+    } else if (streamOutput) {
+      streamStdout = Boolean(streamOutput.stdout);
+      streamStderr =
+        streamOutput.stderr !== undefined
+          ? Boolean(streamOutput.stderr)
+          : streamStdout;
+    }
+
+    const result = await sandbox.commands.run(command, {
+      timeoutMs,
+      onStdout: streamStdout
+        ? (chunk: string) => {
+            if (!chunk) return;
+            console.log(`[${description ?? command}][stdout] ${chunk}`);
+          }
+        : undefined,
+      onStderr: streamStderr
+        ? (chunk: string) => {
+            if (!chunk) return;
+            console.error(`[${description ?? command}][stderr] ${chunk}`);
+          }
+        : undefined,
+    });
+
+    if (result.exitCode !== 0) {
+      const label = description ?? command;
+      const stderr = truncateOutput(result.stderr);
+      const stdout = truncateOutput(result.stdout);
+      const messageParts = [
+        `${label} failed with exit code ${result.exitCode}`,
+      ];
+      if (hint) {
+        messageParts.push(hint);
+      }
+      if (stderr) {
+        messageParts.push(`STDERR:\n${stderr}`);
+      }
+      if (stdout) {
+        messageParts.push(`STDOUT:\n${stdout}`);
+      }
+      throw new ManimValidationError(messageParts.join("\n\n"), stage, {
+        exitCode: result.exitCode,
+        stderr: result.stderr,
+        stdout: result.stdout,
+        hint,
+      });
+    }
+
+    return result;
+  };
+
+  try {
+    sandbox = await Sandbox.create("manim-ffmpeg-latex-voiceover-watermark", {
+      timeoutMs: 600_000,
+    });
+    console.log("Concat sandbox created", { sandboxId: sandbox.sandboxId });
+
+    const segmentPaths: string[] = [];
+    let totalDuration = 0;
+
+    for (let index = 0; index < segments.length; index++) {
+      const segment = segments[index]!;
+      const match = segment.dataUrl.match(/^data:video\/mp4;base64,(.+)$/);
+      if (!match) {
+        await ensureCleanup();
+        throw new ManimValidationError(
+          `Segment ${segment.id} is not a base64 MP4 data URL`,
+          "input"
+        );
+      }
+      const base64 = match[1]!;
+      const bytes = Buffer.from(base64, "base64");
+      if (!bytes.length) {
+        await ensureCleanup();
+        throw new ManimValidationError(
+          `Segment ${segment.id} is empty after decoding`,
+          "input"
+        );
+      }
+      const filePath = `/home/user/segment-${index}.mp4`;
+      const arrayBuffer = bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength
+      );
+      await sandbox.files.write(filePath, arrayBuffer);
+      segmentPaths.push(filePath);
+
+      const probe = await runCommandOrThrow(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${filePath}`,
+        {
+          description: `Validate segment ${segment.id}`,
+          stage: "video-validation",
+          timeoutMs: 120_000,
+        }
+      );
+      const duration = parseFloat((probe.stdout || "").trim());
+      if (!duration || duration <= 0) {
+        await ensureCleanup();
+        throw new ManimValidationError(
+          `Segment ${segment.id} has invalid duration: ${duration}`,
+          "video-validation"
+        );
+      }
+      totalDuration += duration;
+    }
+
+    const listFilePath = `/home/user/segments.txt`;
+    const listContent = segmentPaths
+      .map((path) => `file '${path}'`)
+      .join("\n");
+    await sandbox.files.write(listFilePath, listContent);
+
+    const concatPath = `/home/user/combined.mp4`;
+    await runCommandOrThrow(
+      `ffmpeg -y -f concat -safe 0 -i ${listFilePath} -c copy ${concatPath}`,
+      {
+        description: "Segment concatenation",
+        stage: "render",
+        timeoutMs: Math.max(240_000, segments.length * 90_000),
+        hint: "ffmpeg failed while concatenating segment videos.",
+        streamOutput: { stderr: true },
+      }
+    );
+
+    const concatProbe = await runCommandOrThrow(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${concatPath}`,
+      {
+        description: "Concatenated duration check",
+        stage: "video-validation",
+        timeoutMs: 120_000,
+      }
+    );
+    const concatenatedDuration = parseFloat((concatProbe.stdout || "").trim());
+    if (!concatenatedDuration || concatenatedDuration <= 0) {
+      await ensureCleanup();
+      throw new ManimValidationError(
+        "Concatenated video duration is invalid.",
+        "video-validation"
+      );
+    }
+
+    const expectedMinDuration = totalDuration * 0.9;
+    if (concatenatedDuration < expectedMinDuration) {
+      console.warn(
+        `Concatenated duration ${concatenatedDuration}s is less than expected ${expectedMinDuration}s`
+      );
+    }
+
+    const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
+    const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@0.85:fontsize=24:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw-20:y=h-th-20`;
+    const watermarkedPath = `/home/user/combined-watermarked.mp4`;
+
+    await runCommandOrThrow(
+      `ffmpeg -y -i ${concatPath} -vf "${drawText}" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart -c:a copy ${watermarkedPath}`,
+      {
+        description: "Watermark concatenated video",
+        stage: "watermark",
+        timeoutMs: 240_000,
+        hint: "ffmpeg failed while watermarking the final video.",
+        streamOutput: { stderr: true },
+      }
+    );
+
+    const finalProbe = await runCommandOrThrow(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${watermarkedPath}`,
+      {
+        description: "Final video validation",
+        stage: "watermark-validation",
+        timeoutMs: 120_000,
+      }
+    );
+    const finalDuration = parseFloat((finalProbe.stdout || "").trim());
+    if (!finalDuration || finalDuration <= 0) {
+      await ensureCleanup();
+      throw new ManimValidationError(
+        "Final watermarked video has invalid duration.",
+        "watermark-validation"
+      );
+    }
+
+    const fileBytesArray = (await sandbox.files.read(watermarkedPath, {
+      format: "bytes",
+    })) as Uint8Array;
+    if (!fileBytesArray || !fileBytesArray.length) {
+      await ensureCleanup();
+      throw new ManimValidationError(
+        "Downloaded concatenated video is empty.",
+        "download"
+      );
+    }
+    const fileBytes = Buffer.from(fileBytesArray);
+
+    const base64 = fileBytes.toString("base64");
+    const dataUrl = `data:video/mp4;base64,${base64}`;
+
+    await ensureCleanup();
+    return {
+      videoPath: dataUrl,
+      warnings: [],
+    };
+  } catch (error) {
+    await ensureCleanup();
+    if (error instanceof ManimValidationError) {
+      throw error;
+    }
+    if (error instanceof CommandExitError) {
+      const stderr = error.stderr ?? "";
+      const stdout = error.stdout ?? "";
+      const message = error.error ?? error.message ?? "Segment concatenation failed";
+      throw new ManimValidationError(
+        [
+          message,
+          stderr ? `STDERR:\n${stderr}` : undefined,
+          stdout ? `STDOUT:\n${stdout}` : undefined,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        "render",
+        {
+          stderr,
+          stdout,
+          exitCode: error.exitCode,
+        }
+      );
+    }
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new ManimValidationError(String(error), "render");
   }
 }
