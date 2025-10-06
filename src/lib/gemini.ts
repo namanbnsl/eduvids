@@ -481,6 +481,7 @@ export async function verifyManimScript({
       "3. Shadowing Python built-ins (str=, list=, dict=, int=, float=, len=, max=, min=, sum=, all=, any=) or calling string literals like 'text'().",
       "4. Text layouts that will obviously fail (e.g., a single Text wider than ~13 units) or titles overlapping content with no spacing.",
       "5. Any syntax errors or omissions that would prevent the scene from running.",
+      "6. Overly complex numerical calculations or precision-heavy values; prefer simple numbers that are unlikely to cause runtime issues.",
       "",
       "When you must fix something, keep the changes minimal and preserve the author's structure.",
       "If no blocking issues are found, respond with ok=true and do not modify the script.",
