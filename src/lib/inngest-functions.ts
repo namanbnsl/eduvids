@@ -378,7 +378,7 @@ function buildYouTubeTitle(params: {
 export const generateVideo = inngest.createFunction(
   {
     id: "generate-manim-video",
-    timeouts: { start: "15m", finish: "45m" },
+    timeouts: { start: "25m", finish: "90m" },
     retries: 1, // Allow 1 additional retry at the function level
   },
   { event: "video/generate.request" },
@@ -984,7 +984,7 @@ export const generateVideo = inngest.createFunction(
 );
 
 export const uploadVideoToYouTube = inngest.createFunction(
-  { id: "upload-video-to-youtube", timeouts: { start: "15m", finish: "30m" } },
+  { id: "upload-video-to-youtube", timeouts: { start: "20m", finish: "45m" } },
   { event: "video/youtube.upload.request" },
   async ({ event, step }) => {
     const { videoUrl, title, description, jobId, voiceoverScript } =

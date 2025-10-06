@@ -338,7 +338,7 @@ export async function renderManimVideo({
 
   try {
     sandbox = await Sandbox.create("manim-ffmpeg-latex-voiceover-watermark", {
-      timeoutMs: 1200_000,
+      timeoutMs: 2_400_000,
     });
     console.log("E2B sandbox created successfully", {
       sandboxId: sandbox.sandboxId,
@@ -376,7 +376,7 @@ export async function renderManimVideo({
     await runCommandOrThrow(buildDryRunCommand(scriptPath, mediaDir), {
       description: "Dry-run validation",
       stage: "dry-run",
-      timeoutMs: 240_000,
+      timeoutMs: 480_000,
       hint: "Resolve runtime errors triggered during the dry-run render phase before attempting a full render.",
       streamOutput: { stdout: true, stderr: true },
     });
@@ -397,7 +397,7 @@ export async function renderManimVideo({
       {
         description: "Manim render",
         stage: "render",
-        timeoutMs: 1800_000,
+        timeoutMs: 2_700_000,
         hint: "Review the traceback to resolve errors inside your Manim scene.",
         streamOutput: true,
       }
@@ -467,7 +467,7 @@ export async function renderManimVideo({
       await runCommandOrThrow(ffmpegCmd, {
         description: "Watermark application",
         stage: "watermark",
-        timeoutMs: 240_000,
+        timeoutMs: 360_000,
         hint: "ffmpeg failed while applying the watermark.",
         streamOutput: { stdout: true, stderr: true },
       });
@@ -693,7 +693,7 @@ export async function concatSegmentVideos({
 
   try {
     sandbox = await Sandbox.create("manim-ffmpeg-latex-voiceover-watermark", {
-      timeoutMs: 600_000,
+      timeoutMs: 900_000,
     });
     console.log("Concat sandbox created", { sandboxId: sandbox.sandboxId });
 
@@ -758,7 +758,7 @@ export async function concatSegmentVideos({
       {
         description: "Segment concatenation",
         stage: "render",
-        timeoutMs: Math.max(240_000, segments.length * 90_000),
+        timeoutMs: Math.max(360_000, segments.length * 120_000),
         hint: "ffmpeg failed while concatenating segment videos.",
         streamOutput: { stderr: true },
       }
@@ -797,7 +797,7 @@ export async function concatSegmentVideos({
       {
         description: "Watermark concatenated video",
         stage: "watermark",
-        timeoutMs: 240_000,
+        timeoutMs: 360_000,
         hint: "ffmpeg failed while watermarking the final video.",
         streamOutput: { stderr: true },
       }

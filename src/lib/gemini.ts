@@ -145,7 +145,7 @@ export async function generateManimScript({
   const firstAttempt = await generateText({
     model,
     system: augmentedSystemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n. Generate the complete Manim script that follows the narration:`,
+    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nUse FadeIn to introduce every text element (never Write). Generate the complete Manim script that follows the narration:`,
     temperature: 0.1,
   });
 
@@ -262,6 +262,7 @@ export async function generateSegmentManimScript({
       "Generate only the Python Manim code for this segment, matching the narration timing.",
       "The script must be a self-contained Manim scene named MyScene using manim_voiceover.",
       "Ensure the scene covers only this segment's narration and assumes preceding content has already played.",
+      "Use FadeIn for all text elements (never Write) so narration stays brisk.",
       "Do not include markdown fences or commentary.",
     ].join("\n\n"),
     temperature: 0.1,
@@ -440,6 +441,7 @@ export async function regenerateManimScriptWithError({
     `⚠️ PREVIOUS ATTEMPT #${attemptNumber} FAILED ⚠️`,
     `The previous Manim script failed with the following error:\n\`\`\`\n${normalizedError}\n\`\`\`${structuredErrorSection}`,
     `The broken script was:\n\`\`\`python\n${previousScript}\n\`\`\`${blockedScriptsSection}${rewriteDirective}${repetitionDirective}`,
+    "When revealing text elements, replace any Write usage with FadeIn for quicker pacing.",
     "You must analyze the failure, apply all necessary fixes, and generate a corrected Manim script that:\n1. Resolves the specific error\n2. Follows the narration timeline\n3. Uses proper Manim syntax and best practices\n4. Avoids repeating any previous mistakes or failing scripts\n5. Differs meaningfully from the broken script when required\n\nReturn ONLY the fully corrected Python code with no commentary, no analysis, and no Markdown fences. Provide just the executable script:",
   ].filter((section) => section && section.trim().length > 0);
 
