@@ -10,7 +10,7 @@ import type {
   ManimGenerationErrorDetails,
   VerifyManimScriptResult,
 } from "./gemini";
-import { renderManimVideo } from "./e2b";
+import { renderManimVideo, ValidationStage } from "./e2b";
 import { uploadVideo } from "./uploadthing";
 import { jobStore } from "./job-store";
 import { uploadToYouTube } from "./youtube";
@@ -19,6 +19,8 @@ type RenderProcessError = Error & {
   stderr?: string;
   stdout?: string;
   exitCode?: number;
+  stage?: ValidationStage;
+  hint?: string;
 };
 
 type HeuristicSeverity = "noncode" | "fixable" | "critical";
@@ -648,7 +650,7 @@ export const generateVideo = inngest.createFunction(
             step: `rendering`,
           });
 
-          const dataUrlOrPath = await step.run(
+          const { videoPath: dataUrlOrPath, warnings: renderWarnings } = await step.run(
             `render-attempt-${attempt}`,
             async () => {
               return await renderManimVideo({
@@ -657,6 +659,15 @@ export const generateVideo = inngest.createFunction(
               });
             }
           );
+
+          if (renderWarnings.length) {
+            console.warn("Render warnings detected", renderWarnings);
+            await jobStore.setProgress(jobId!, {
+              details: renderWarnings
+                .map((warning) => `[${warning.stage}] ${warning.message}`)
+                .join(" | "),
+            });
+          }
 
           await jobStore.setProgress(jobId!, {
             progress: 82,
@@ -698,6 +709,8 @@ export const generateVideo = inngest.createFunction(
             stderr: clampDetail(stderr),
             stdout: clampDetail(stdout),
             exitCode,
+            stage: renderError.stage,
+            hint: renderError.hint,
           } satisfies ManimGenerationErrorDetails;
 
           failedAttempts.push({

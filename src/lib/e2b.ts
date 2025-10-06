@@ -1,4 +1,194 @@
 import { CommandExitError, Sandbox } from "@e2b/code-interpreter";
+import { Buffer } from "node:buffer";
+
+const MAX_COMMAND_OUTPUT_CHARS = 4000;
+let latexEnvironmentVerified = false;
+
+export type ValidationStage =
+  | "input"
+  | "heuristic"
+  | "syntax"
+  | "ast-guard"
+  | "scene-validation"
+  | "latex"
+  | "dry-run"
+  | "render"
+  | "video-validation"
+  | "watermark"
+  | "watermark-validation"
+  | "download";
+
+class ManimValidationError extends Error {
+  constructor(
+    message: string,
+    readonly stage: ValidationStage,
+    readonly options: {
+      hint?: string;
+      stdout?: string;
+      stderr?: string;
+      exitCode?: number;
+    } = {}
+  ) {
+    super(message);
+    this.name = "ManimValidationError";
+    Object.assign(this, options);
+  }
+
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number;
+  hint?: string;
+}
+
+interface ValidationWarning {
+  stage: ValidationStage;
+  message: string;
+}
+
+export interface RenderResult {
+  videoPath: string;
+  warnings: ValidationWarning[];
+}
+
+const PROHIBITED_MODULES = [
+  "os",
+  "sys",
+  "subprocess",
+  "pathlib",
+  "shutil",
+  "socket",
+  "requests",
+  "http",
+  "urllib",
+  "multiprocessing",
+  "psutil",
+  "asyncio",
+];
+
+const PROHIBITED_BUILTINS = ["open", "exec", "eval", "compile", "__import__"];
+
+const hasExpectedSceneClass = (source: string) =>
+  /\bclass\s+MyScene\b/.test(source);
+
+const movingCameraSceneDeclared = (source: string) =>
+  /class\s+MyScene\s*\(\s*MovingCameraScene/.test(source);
+
+const runHeuristicChecks = (source: string): {
+  errors: ValidationWarning[];
+  warnings: ValidationWarning[];
+} => {
+  const errors: ValidationWarning[] = [];
+  const warnings: ValidationWarning[] = [];
+
+  if (/self\.camera\.frame/.test(source) && !movingCameraSceneDeclared(source)) {
+    errors.push({
+      stage: "heuristic",
+      message:
+        "Detected self.camera.frame usage outside MovingCameraScene. Update MyScene to inherit from MovingCameraScene or remove camera frame operations.",
+    });
+  }
+
+  if (!/\bplay\s*\(/.test(source)) {
+    warnings.push({
+      stage: "heuristic",
+      message: "Scene contains no animations (play calls); output may be empty.",
+    });
+  }
+
+  return { errors, warnings };
+};
+
+const truncateOutput = (value: string | undefined | null) => {
+  const normalized = (value ?? "").trim();
+  if (!normalized.length) return "";
+  if (normalized.length <= MAX_COMMAND_OUTPUT_CHARS) return normalized;
+  return `${normalized.slice(
+    0,
+    MAX_COMMAND_OUTPUT_CHARS
+  )}\n... output truncated (${
+    normalized.length - MAX_COMMAND_OUTPUT_CHARS
+  } more chars)`;
+};
+
+const buildSceneValidationCommand = (scriptPath: string) =>
+  [
+    "python - <<'PY'",
+    "import importlib.util",
+    "import inspect",
+    "import sys",
+    "from manim import Scene",
+    `script_path = r"${scriptPath}"`,
+    "spec = importlib.util.spec_from_file_location('manim_scene', script_path)",
+    "module = importlib.util.module_from_spec(spec)",
+    "try:",
+    "    spec.loader.exec_module(module)",
+    "except Exception as exc:",
+    "    import traceback",
+    "    traceback.print_exc()",
+    "    raise SystemExit(f'Failed to import script: {exc}')",
+    "scene_cls = getattr(module, 'MyScene', None)",
+    "if scene_cls is None:",
+    "    raise SystemExit(\"No class named 'MyScene' was found in the script.\")",
+    "if not isinstance(scene_cls, type):",
+    "    raise SystemExit(\"Attribute 'MyScene' exists but is not a class.\")",
+    "if not issubclass(scene_cls, Scene):",
+    '    raise SystemExit("MyScene must inherit from manim.Scene.")',
+    "construct = getattr(scene_cls, 'construct', None)",
+    "if construct is None or not callable(construct):",
+    '    raise SystemExit("MyScene must define a callable construct() method.")',
+    "params = list(inspect.signature(construct).parameters.values())",
+    "if not params or params[0].kind not in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):",
+    "    raise SystemExit(\"construct() must accept 'self' as its first positional argument.\")",
+    "print('Scene validation passed.')",
+    "PY",
+  ].join("\n");
+
+const buildAstValidationCommand = (scriptPath: string) =>
+  [
+    "python - <<'PY'",
+    "import ast",
+    "import sys",
+    `script_path = r"${scriptPath}"`,
+    "with open(script_path, 'r', encoding='utf-8') as fh:",
+    "    source = fh.read()",
+    "try:",
+    "    tree = ast.parse(source, filename=script_path)",
+    "except SyntaxError as exc:",
+    "    import traceback",
+    "    traceback.print_exc()",
+    "    raise SystemExit(f'Syntax error: {exc}')",
+    `prohibited_modules = ${JSON.stringify(PROHIBITED_MODULES)}`,
+    `prohibited_builtins = ${JSON.stringify(PROHIBITED_BUILTINS)}`,
+    "issues = []",
+    "class GuardVisitor(ast.NodeVisitor):",
+    "    def visit_Import(self, node):",
+    "        for alias in node.names:",
+    "            name = alias.name.split('.')[0]",
+    "            if name in prohibited_modules:",
+    "                issues.append(f\"Import of module '{name}' is not allowed in Manim scripts.\")",
+    "        self.generic_visit(node)",
+    "    def visit_ImportFrom(self, node):",
+    "        if node.module:",
+    "            base = node.module.split('.')[0]",
+    "            if base in prohibited_modules:",
+    "                issues.append(f\"Import from module '{node.module}' is not allowed in Manim scripts.\")",
+    "        self.generic_visit(node)",
+    "    def visit_Call(self, node):",
+    "        func = node.func",
+    "        if isinstance(func, ast.Name) and func.id in prohibited_builtins:",
+    "            issues.append(f\"Use of builtin '{func.id}' is not allowed in Manim scripts.\")",
+    "        self.generic_visit(node)",
+    "GuardVisitor().visit(tree)",
+    "if issues:",
+    "    for issue in issues:",
+    "        print(issue, file=sys.stderr)",
+    "    raise SystemExit('AST validation failed due to disallowed operations.')",
+    "print('AST validation passed.')",
+    "PY",
+  ].join("\n");
+
+const buildDryRunCommand = (scriptPath: string, mediaDir: string) =>
+  `manim ${scriptPath} MyScene --media_dir ${mediaDir} --dry_run --disable_caching`;
 
 export interface RenderRequest {
   script: string;
@@ -8,8 +198,32 @@ export interface RenderRequest {
 export async function renderManimVideo({
   script,
   prompt: _prompt,
-}: RenderRequest): Promise<string> {
+}: RenderRequest): Promise<RenderResult> {
   void _prompt;
+  const normalizedScript = script.trim();
+  if (!normalizedScript.length) {
+    throw new ManimValidationError(
+      "Manim script is empty. Please provide a scene before rendering.",
+      "input"
+    );
+  }
+  if (!hasExpectedSceneClass(normalizedScript)) {
+    throw new ManimValidationError(
+      "Manim script must declare `class MyScene` before rendering. Rename your scene or adjust the renderer to match.",
+      "input"
+    );
+  }
+  const heuristicResult = runHeuristicChecks(normalizedScript);
+  if (heuristicResult.errors.length) {
+    const summary = heuristicResult.errors
+      .map((issue) => `- ${issue.message}`)
+      .join("\n");
+    throw new ManimValidationError(
+      `Heuristic validation failed:\n${summary}`,
+      "heuristic"
+    );
+  }
+  const warnings: ValidationWarning[] = [...heuristicResult.warnings];
   let sandbox: Sandbox | null = null;
   let cleanupAttempted = false;
 
@@ -25,6 +239,100 @@ export async function renderManimVideo({
     }
   };
 
+  const runCommandOrThrow = async (
+    command: string,
+    {
+      description,
+      stage,
+      timeoutMs,
+      hint,
+      onStdout,
+      onStderr,
+      streamOutput,
+    }: {
+      description?: string;
+      stage: ValidationStage;
+      timeoutMs?: number;
+      hint?: string;
+      onStdout?: (chunk: string) => void;
+      onStderr?: (chunk: string) => void;
+      streamOutput?:
+        | boolean
+        | {
+            stdout?: boolean;
+            stderr?: boolean;
+          };
+    } = {}
+  ) => {
+    if (!sandbox) {
+      throw new Error("Sandbox not initialised before running command");
+    }
+    const startedAt = Date.now();
+    let streamStdout = false;
+    let streamStderr = false;
+    if (typeof streamOutput === "boolean") {
+      streamStdout = streamOutput;
+      streamStderr = streamOutput;
+    } else if (streamOutput) {
+      streamStdout = Boolean(streamOutput.stdout);
+      streamStderr =
+        streamOutput.stderr !== undefined
+          ? Boolean(streamOutput.stderr)
+          : streamStdout;
+    }
+
+    const result = await sandbox.commands.run(command, {
+      timeoutMs,
+      onStdout:
+        onStdout ??
+        (streamStdout
+          ? (chunk: string) => {
+              if (!chunk) return;
+              console.log(`[${description ?? command}][stdout] ${chunk}`);
+            }
+          : undefined),
+      onStderr:
+        onStderr ??
+        (streamStderr
+          ? (chunk: string) => {
+              if (!chunk) return;
+              console.error(`[${description ?? command}][stderr] ${chunk}`);
+            }
+          : undefined),
+    });
+    if (result.exitCode !== 0) {
+      const label = description ?? command;
+      const messageParts = [
+        `${label} failed with exit code ${result.exitCode}`,
+      ];
+      if (hint) {
+        messageParts.push(hint);
+      }
+      const stderr = truncateOutput(result.stderr);
+      const stdout = truncateOutput(result.stdout);
+      if (stderr) {
+        messageParts.push(`STDERR:\n${stderr}`);
+      }
+      if (stdout) {
+        messageParts.push(`STDOUT:\n${stdout}`);
+      }
+      const error = new ManimValidationError(messageParts.join("\n\n"), stage, {
+        exitCode: result.exitCode,
+        stderr: result.stderr,
+        stdout: result.stdout,
+        hint,
+      });
+      Object.assign(error, {
+        command,
+        description: label,
+      });
+      throw error;
+    }
+    const elapsedSeconds = Math.round((Date.now() - startedAt) / 1000);
+    console.log(`${description ?? command} succeeded in ${elapsedSeconds}s`);
+    return result;
+  };
+
   try {
     sandbox = await Sandbox.create("manim-ffmpeg-latex-voiceover-watermark", {
       timeoutMs: 1200_000,
@@ -38,79 +346,99 @@ export async function renderManimVideo({
     const outputDir = `${mediaDir}/videos/script/480p15`;
 
     // Write Manim script
-    await sandbox.files.write(scriptPath, script);
+    await sandbox.files.write(scriptPath, normalizedScript);
     console.log("Manim script written to sandbox");
 
-    const checkLatex = await sandbox.commands.run(`latex --version`, {
-      onStdout: (d) => console.log(d),
-      onStderr: (d) => console.error(d),
+    await runCommandOrThrow(`python -m py_compile ${scriptPath}`, {
+      description: "Python syntax check",
+      stage: "syntax",
+      timeoutMs: 120_000,
+      hint: "Fix Python syntax errors reported above before rendering with Manim.",
     });
 
-    if (checkLatex.exitCode !== 0) {
-      const errorDetails = [
-        `LaTeX check failed with exit code: ${checkLatex.exitCode}`,
-        `\nSTDERR:\n${checkLatex.stderr || "(empty)"}`,
-        `\nSTDOUT:\n${checkLatex.stdout || "(empty)"}`,
-      ].join("\n");
-      throw new Error(errorDetails);
+    await runCommandOrThrow(buildAstValidationCommand(scriptPath), {
+      description: "AST safety validation",
+      stage: "ast-guard",
+      timeoutMs: 120_000,
+      hint: "Remove disallowed imports or builtins from the Manim script before rendering.",
+    });
+
+    await runCommandOrThrow(buildSceneValidationCommand(scriptPath), {
+      description: "Scene validation",
+      stage: "scene-validation",
+      timeoutMs: 120_000,
+      hint: "Ensure MyScene imports correctly, inherits from manim.Scene, and defines construct(self).",
+    });
+
+    await runCommandOrThrow(buildDryRunCommand(scriptPath, mediaDir), {
+      description: "Dry-run validation",
+      stage: "dry-run",
+      timeoutMs: 240_000,
+      hint: "Resolve runtime errors triggered during the dry-run render phase before attempting a full render.",
+      streamOutput: { stdout: true, stderr: true },
+    });
+
+    if (!latexEnvironmentVerified) {
+      await runCommandOrThrow(`latex --version`, {
+        description: "LaTeX availability check",
+        stage: "latex",
+        timeoutMs: 120_000,
+        hint: "The Manim template requires LaTeX. Ensure it is installed in the sandbox template.",
+      });
+      latexEnvironmentVerified = true;
     }
 
-    // Run manim with explicit Python path and error capture
     console.log("Starting manim render...");
-    const proc = await sandbox.commands.run(
-      `manim ${scriptPath} MyScene --media_dir ${mediaDir} -ql --disable_caching --format=mp4 2>&1`,
+    await runCommandOrThrow(
+      `manim ${scriptPath} MyScene --media_dir ${mediaDir} -ql --disable_caching --format=mp4`,
       {
-        onStdout: (d) => console.log("[manim stdout]", d),
-        onStderr: (d) => console.error("[manim stderr]", d),
-        timeoutMs: 600_000,
+        description: "Manim render",
+        stage: "render",
+        timeoutMs: 1800_000,
+        hint: "Review the traceback to resolve errors inside your Manim scene.",
+        streamOutput: true,
       }
     );
 
-    if (proc.exitCode !== 0) {
-      const errorDetails = [
-        `Manim rendering failed with exit code: ${proc.exitCode}`,
-        `\nSTDERR:\n${proc.stderr || "(empty)"}`,
-        `\nSTDOUT:\n${proc.stdout || "(empty)"}`,
-      ].join("\n");
-      console.error("Manim render failed:", errorDetails);
-      await ensureCleanup();
-      const error = new Error(errorDetails);
-      Object.assign(error, {
-        exitCode: proc.exitCode,
-        stderr: proc.stderr,
-        stdout: proc.stdout,
-      });
-      throw error;
-    }
-    console.log("Manim render completed successfully");
-
     // Find output file
     console.log("Looking for rendered video in:", outputDir);
-    const files = (await sandbox.files.list(outputDir)) as Array<{
-      name: string;
-    }>;
-    console.log(
-      "Files found:",
-      files.map((f) => f.name)
-    );
-    const videoFile = files.find((f) => f.name.endsWith(".mp4"));
-    if (!videoFile) {
-      await ensureCleanup();
-      throw new Error(
-        `No .mp4 file produced in ${outputDir}. Files found: ${files
-          .map((f) => f.name)
-          .join(", ")}`
+    let videoPath = `${outputDir}/MyScene.mp4`;
+    let videoExists = false;
+    try {
+      videoExists = await sandbox.files.exists(videoPath);
+    } catch (fsErr) {
+      console.warn(
+        "Unable to verify video existence directly, falling back to directory listing",
+        fsErr
       );
     }
 
-    const videoPath = `${outputDir}/${videoFile.name}`;
+    if (!videoExists) {
+      const files = (await sandbox.files.list(outputDir)) as Array<{
+        name: string;
+      }>;
+      const videoFile = files.find((f) => f.name.endsWith(".mp4"));
+      if (!videoFile) {
+        await ensureCleanup();
+        throw new ManimValidationError(
+          `No .mp4 file produced in ${outputDir}. Files found: ${files
+            .map((f) => f.name)
+            .join(", ")}`,
+          "render"
+        );
+      }
+      videoPath = `${outputDir}/${videoFile.name}`;
+    }
     console.log("Video file candidate:", videoPath);
 
     // Validate with ffprobe
-    const probe = await sandbox.commands.run(
+    const probe = await runCommandOrThrow(
       `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${videoPath}`,
       {
-        timeoutMs: 300_000,
+        description: "Video validation",
+        stage: "video-validation",
+        timeoutMs: 180_000,
+        hint: "The rendered video appears to be corrupted.",
       }
     );
     const duration = parseFloat((probe.stdout || "").trim());
@@ -118,8 +446,9 @@ export async function renderManimVideo({
 
     if (!duration || duration <= 0) {
       await ensureCleanup();
-      throw new Error(
-        `Rendered video has invalid duration: ${duration}s — aborting upload`
+      throw new ManimValidationError(
+        `Rendered video has invalid duration: ${duration}s — aborting upload`,
+        "video-validation"
       );
     }
 
@@ -129,52 +458,54 @@ export async function renderManimVideo({
     const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
     const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@0.85:fontsize=24:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw-20:y=h-th-20`;
 
-    const ffmpegCmd = `ffmpeg -y -i ${videoPath} -vf \"${drawText}\" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart -c:a copy ${watermarkedPath}`;
-    const wmProc = await sandbox.commands.run(ffmpegCmd, {
-      onStdout: (d) => console.log(d),
-      onStderr: (d) => console.error(d),
-      timeoutMs: 300_000,
+    const ffmpegCmd = `ffmpeg -y -i ${videoPath} -vf "${drawText}" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart -c:a copy ${watermarkedPath}`;
+    await runCommandOrThrow(ffmpegCmd, {
+      description: "Watermark application",
+      stage: "watermark",
+      timeoutMs: 240_000,
+      hint: "ffmpeg failed while applying the watermark.",
+      streamOutput: { stdout: true, stderr: true },
     });
 
-    if (wmProc.exitCode !== 0) {
-      const errorDetails = [
-        `Watermarking failed with exit code: ${wmProc.exitCode}`,
-        `\nSTDERR:\n${wmProc.stderr || "(empty)"}`,
-        `\nSTDOUT:\n${wmProc.stdout || "(empty)"}`,
-      ].join("\n");
-      await ensureCleanup();
-      throw new Error(errorDetails);
-    }
-
     // Validate watermarked output
-    const probeWm = await sandbox.commands.run(
+    const probeWm = await runCommandOrThrow(
       `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${watermarkedPath}`,
       {
-        timeoutMs: 300_000,
+        description: "Watermarked video validation",
+        stage: "watermark-validation",
+        timeoutMs: 180_000,
+        hint: "The watermarked video appears to be corrupted.",
       }
     );
     const wmDuration = parseFloat((probeWm.stdout || "").trim());
     if (!wmDuration || wmDuration <= 0) {
       await ensureCleanup();
-      throw new Error(
-        `Watermarked video has invalid duration: ${wmDuration}s — aborting upload`
+      throw new ManimValidationError(
+        `Watermarked video has invalid duration: ${wmDuration}s — aborting upload`,
+        "watermark-validation"
       );
     }
 
-    // Read file bytes reliably via base64 in the sandbox to avoid encoding issues
-    const base64Result = await sandbox.commands.run(
-      `base64 -w 0 ${watermarkedPath}`,
-      { timeoutMs: 500_000 }
-    );
-    if (base64Result.exitCode !== 0 || !base64Result.stdout) {
+    // Download watermarked video via signed URL to avoid sandbox output limits
+    const downloadUrl = await sandbox.downloadUrl(watermarkedPath);
+    const response = await fetch(downloadUrl);
+    if (!response.ok) {
       await ensureCleanup();
-      throw new Error(
-        `Failed to base64-encode video in sandbox: ${
-          base64Result.stderr || "no stdout"
-        }`
+      throw new ManimValidationError(
+        `Failed to download watermarked video (status ${response.status})`,
+        "download"
       );
     }
-    const base64 = (base64Result.stdout || "").trim();
+    const arrayBuffer = await response.arrayBuffer();
+    const fileBytes = Buffer.from(arrayBuffer);
+    if (!fileBytes.length) {
+      await ensureCleanup();
+      throw new ManimValidationError(
+        "Downloaded watermarked video is empty; aborting upload",
+        "download"
+      );
+    }
+    const base64 = fileBytes.toString("base64");
     const dataUrl = `data:video/mp4;base64,${base64}`;
     console.log(
       `Prepared base64 data URL for upload (length: ${base64.length} chars)`
@@ -182,11 +513,17 @@ export async function renderManimVideo({
 
     // Cleanup before returning
     await ensureCleanup();
-    return dataUrl;
+    return {
+      videoPath: dataUrl,
+      warnings,
+    };
   } catch (err: unknown) {
     console.error("E2B render error:", err);
     await ensureCleanup();
 
+    if (err instanceof ManimValidationError) {
+      throw err;
+    }
     if (err instanceof CommandExitError) {
       const exitCode = err.exitCode;
       const stderr = err.stderr ?? "";
@@ -212,7 +549,15 @@ export async function renderManimVideo({
         messageParts.push(`STDOUT:\n${stdout}`);
       }
 
-      const detailedError = new Error(messageParts.join("\n\n"));
+      const detailedError = new ManimValidationError(
+        messageParts.join("\n\n"),
+        "render",
+        {
+          exitCode,
+          stderr,
+          stdout,
+        }
+      );
       detailedError.name = err.name;
       detailedError.stack = err.stack;
       Object.assign(detailedError, {
@@ -224,7 +569,10 @@ export async function renderManimVideo({
       });
       throw detailedError;
     }
-    throw err instanceof Error ? err : new Error(String(err));
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new ManimValidationError(String(err), "render");
   } finally {
     // Ensure cleanup happens even if not already done
     await ensureCleanup();

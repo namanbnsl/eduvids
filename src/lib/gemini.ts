@@ -3,6 +3,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText } from "ai";
 import fs from "fs";
 import path from "path";
+import type { ValidationStage } from "./e2b";
 
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_API_KEY!,
@@ -80,6 +81,8 @@ export interface ManimGenerationErrorDetails {
   stderr?: string;
   stdout?: string;
   exitCode?: number;
+  stage?: ValidationStage;
+  hint?: string;
 }
 
 export interface ManimGenerationAttempt {
