@@ -287,11 +287,11 @@ export async function generateYoutubeTitle({
   const model = google("gemini-2.5-flash");
 
   const systemPrompt =
-    "You are a helpful assistant that generates catchy YouTube titles for educational videos based on the content provided. REMEMBER TO KEEP IT SHORT AND ENGAGING. ONLY PROVIDE THE TITLE, NOTHING ELSE.";
+    "You are a hype-building copywriter crafting magnetic, click-worthy YouTube titles for educational videos. Keep it under 80 characters, weave in 1-2 relevant emojis, and make it irresistible. Reply with only the final title—no quotes, no extra text.";
   const { text } = await generateText({
     model,
     system: systemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate a catchy YouTube title for the video that summarizes the content:`,
+    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nCraft a curiosity-sparking YouTube title that teases the biggest aha moment, feels fun and human, and makes viewers want to click immediately. Keep it playful and emoji-powered:`,
     temperature: 0.5,
   });
 
@@ -305,11 +305,11 @@ export async function generateYoutubeDescription({
   const model = google("gemini-2.5-flash");
 
   const systemPrompt =
-    "You are a helpful assistant that generates cool YouTube descriptions for educational videos based on the content provided. REMEMBER TO KEEP IT SHORT AND ENGAGING. ONLY PROVIDE THE DESCRIPTION, NOTHING ELSE.";
+    "You are an upbeat storyteller who writes irresistible YouTube descriptions for educational videos. Keep it concise, stack engaging short paragraphs, sprinkle in lively emojis, add a playful call-to-action, and finish with 2-3 relevant hashtags. Reply only with the description.";
   const { text } = await generateText({
     model,
     system: systemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the YouTube description for the video that summarizes the content:`,
+    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite a high-energy YouTube description that hooks viewers in the opening line, highlights the key takeaways, invites them to watch or subscribe, uses emojis throughout, and ends with 2-3 discoverable hashtags:`,
     temperature: 0.5,
   });
 
