@@ -712,16 +712,25 @@ export const generateVideo = inngest.createFunction(
 
         for (let attempt = 1; attempt <= MAX_SEGMENT_RENDER_RETRIES; attempt++) {
           try {
-            const { videoPath, warnings } = await step.run(
-              `segment-${baseId}-render-${attempt}`,
-              async () => {
-                return await renderManimVideo({
-                  script: currentScript,
-                  prompt: `${prompt} (segment ${segment.title})`,
-                  applyWatermark: false,
-                });
-              }
-            );
+            let renderResult: Awaited<
+              ReturnType<typeof renderManimVideo>
+            > | null = null;
+
+            await step.run(`segment-${baseId}-render-${attempt}`, async () => {
+              renderResult = await renderManimVideo({
+                script: currentScript,
+                prompt: `${prompt} (segment ${segment.title})`,
+                applyWatermark: false,
+              });
+            });
+
+            if (!renderResult) {
+              throw new Error(
+                `Render step did not produce a result for segment ${segment.id}`
+              );
+            }
+
+            const { videoPath, warnings } = renderResult;
 
             if (warnings.length) {
               segmentRenderWarnings.push(...warnings);
