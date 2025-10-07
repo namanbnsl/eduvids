@@ -11,7 +11,6 @@ export type ValidationStage =
   | "ast-guard"
   | "scene-validation"
   | "latex"
-  | "dry-run"
   | "render"
   | "video-validation"
   | "watermark"
@@ -73,14 +72,19 @@ const hasExpectedSceneClass = (source: string) =>
 const movingCameraSceneDeclared = (source: string) =>
   /class\s+MyScene\s*\(\s*MovingCameraScene/.test(source);
 
-const runHeuristicChecks = (source: string): {
+const runHeuristicChecks = (
+  source: string
+): {
   errors: ValidationWarning[];
   warnings: ValidationWarning[];
 } => {
   const errors: ValidationWarning[] = [];
   const warnings: ValidationWarning[] = [];
 
-  if (/self\.camera\.frame/.test(source) && !movingCameraSceneDeclared(source)) {
+  if (
+    /self\.camera\.frame/.test(source) &&
+    !movingCameraSceneDeclared(source)
+  ) {
     errors.push({
       stage: "heuristic",
       message:
@@ -91,7 +95,8 @@ const runHeuristicChecks = (source: string): {
   if (!/\bplay\s*\(/.test(source)) {
     warnings.push({
       stage: "heuristic",
-      message: "Scene contains no animations (play calls); output may be empty.",
+      message:
+        "Scene contains no animations (play calls); output may be empty.",
     });
   }
 
@@ -186,9 +191,6 @@ const buildAstValidationCommand = (scriptPath: string) =>
     "print('AST validation passed.')",
     "PY",
   ].join("\n");
-
-const buildDryRunCommand = (scriptPath: string, mediaDir: string) =>
-  `manim ${scriptPath} MyScene --media_dir ${mediaDir} --dry_run --disable_caching`;
 
 export interface RenderRequest {
   script: string;
@@ -371,14 +373,6 @@ export async function renderManimVideo({
       stage: "scene-validation",
       timeoutMs: 120_000,
       hint: "Ensure MyScene imports correctly, inherits from manim.Scene, and defines construct(self).",
-    });
-
-    await runCommandOrThrow(buildDryRunCommand(scriptPath, mediaDir), {
-      description: "Dry-run validation",
-      stage: "dry-run",
-      timeoutMs: 480_000,
-      hint: "Resolve runtime errors triggered during the dry-run render phase before attempting a full render.",
-      streamOutput: { stdout: true, stderr: true },
     });
 
     if (!latexEnvironmentVerified) {
@@ -748,7 +742,7 @@ export async function concatSegmentVideos({
 
     const listFilePath = `/home/user/segments.txt`;
     const listContent = segmentPaths
-      .map((path) => `file '${path}'`)
+      .map((segmentPath) => `file '${segmentPath}'`)
       .join("\n");
     await sandbox.files.write(listFilePath, listContent);
 
@@ -831,9 +825,11 @@ export async function concatSegmentVideos({
       );
     }
     const fileBytes = Buffer.from(fileBytesArray);
-
     const base64 = fileBytes.toString("base64");
     const dataUrl = `data:video/mp4;base64,${base64}`;
+    console.log(
+      `Prepared concatenated base64 data URL (length: ${base64.length} chars)`
+    );
 
     await ensureCleanup();
     return {
@@ -848,7 +844,8 @@ export async function concatSegmentVideos({
     if (error instanceof CommandExitError) {
       const stderr = error.stderr ?? "";
       const stdout = error.stdout ?? "";
-      const message = error.error ?? error.message ?? "Segment concatenation failed";
+      const message =
+        error.error ?? error.message ?? "Segment concatenation failed";
       throw new ManimValidationError(
         [
           message,

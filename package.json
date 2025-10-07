@@ -12,7 +12,7 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
     "lint:fix": "next lint --fix",
     "preview": "next build && next start",
-"check": "next lint && tsc --noEmit"
+    "check": "next lint && tsc --noEmit"
   },
   "dependencies": {
     "@ai-sdk/google": "^2.0.11",
