@@ -21,7 +21,7 @@ Primary documentation links: Scene: docs, Mobject: docs, VMobject: docs, Animati
   - `add_updater(func)` / `remove_updater(func)`: scene-level updaters (take `dt` argument).
   - Event handlers: `on_mouse_motion`, `on_mouse_scroll`, `on_mouse_press`, `on_mouse_drag`, `on_key_press`, `on_key_release` – override to handle input.
   - Orbit controls: `mouse_scroll_orbit_controls` and `mouse_drag_orbit_controls` can be enabled for 3D scenes.
-- **Camera:** Scenes have a `camera` (defaults to `Camera`). For moving-camera scenes (`camera_class=MovingCamera` or `MovingCameraScene`), `scene.camera.frame` is a rectangular `VMobject` defining the view. You can pan/zoom by animating `scene.camera.frame` with `.shift()`, `.scale()`, or `.move_to()`. (In a default `Scene` with `Camera`, no frame exists.) You can supply `camera_class` at construction (e.g. `ThreeDCamera` for 3D scenes).
+- **Camera:** Scenes have a `camera` (defaults to `Camera`). For moving-camera scenes (`camera_class=MovingCamera` or `MovingCameraScene`), `scene.camera.frame` is a rectangular `VMobject` defining the view. You can pan/zoom by animating `scene.camera.frame` with `.shift()`, `.scale()`, or `.move_to()`. Always size the frame so the focused group still has the safe margin on every side (e.g. set the frame width to `target.width + 2*MARGIN` before moving to `target`). (In a default `Scene` with `Camera`, no frame exists.) You can supply `camera_class` at construction (e.g. `ThreeDCamera` for 3D scenes).
 
 ## Mobject fundamentals (`manim.mobject.mobject.Mobject`)
 
@@ -185,6 +185,7 @@ These hard rules are designed to prevent overlapping labels and off‑screen con
    - Use a margin of at least 0.4 units on all sides (`MARGIN = 0.4`).
    - Only use `to_edge` / `to_corner` with `buff=MARGIN`.
    - If an object is too large, use `scale_to_fit_width(13.4)` or `.scale_to_fit_height(7.2)` (assuming MARGIN=0.4).
+   - When zooming with `self.camera.frame` in a moving-camera scene, ensure the frame width/height stay at least the focus group's bounds plus `2*MARGIN` so nothing hits the edges during the zoom.
 
 3) **Ensure everything is on screen before playing.**
    - DO NOT use `self.camera.frame` in VoiceoverScene (it doesn't exist!)
