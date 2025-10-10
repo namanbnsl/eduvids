@@ -186,7 +186,7 @@ Hard Layout Contract (strict, do not violate):
 - All labels must be placed with next_to and a nonzero buff; never place a label exactly on top of another mobject.
 - Before adding/animating any group, scale to fit the frame minus margins using scale_to_fit_width/height.
 - Ensure shapes are fully visible: if any item would extend beyond the frame, scale it down and recenter.
-- When zooming with `self.camera.frame` (only in MovingCameraScene), set the frame width/height to the focus group's bounds plus at least 2*SAFE_MARGIN before centering so the zoom keeps the padding.
+- When zooming with \`self.camera.frame\` (only in MovingCameraScene), set the frame width/height to the focus group's bounds plus at least 2*SAFE_MARGIN before centering so the zoom keeps the padding.
 - Option 1: Fade out title before showing content. Option 2: Keep title at top, place content centered/below.
 - Use set_z_index to ensure text/labels are above shapes when needed.
 - For two-set mapping diagrams (domain→codomain), arrange items inside each set as a vertical VGroup with buff>=0.3, align the two sets left/right with ample spacing, and ensure arrows have buff=0.1 so arrowheads don't overlap labels.

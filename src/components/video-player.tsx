@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { VideoJob } from "@/lib/job-store";
 
-type JobStatus = "generating" | "ready" | "error";
+export type JobStatus = "generating" | "ready" | "error";
 
 interface VideoPlayerProps {
   // Returned from the generate_video tool
@@ -39,21 +40,55 @@ export function VideoPlayer({
     let pollInterval: ReturnType<typeof setInterval> | undefined;
     let es: EventSource | null = null;
 
-    const handleJob = (job: any) => {
-      if (cancelled || !job) return;
-      setProgress(typeof job.progress === "number" ? job.progress : 0);
-      if (job.step) setStep(job.step);
-      if (job.status === "ready" && job.videoUrl) {
-        setVideoUrl(job.videoUrl);
+    const parseJob = (job: unknown):
+      | (Pick<VideoJob, "progress" | "step" | "videoUrl" | "error" | "details" | "status"> & {
+          jobId?: string;
+        })
+      | null => {
+      if (!job || typeof job !== "object") return null;
+      const value = job as Record<string, unknown>;
+      const status = value.status;
+      if (status !== "generating" && status !== "ready" && status !== "error") {
+        return null;
+      }
+      const normalized: Pick<VideoJob, "progress" | "step" | "videoUrl" | "error" | "details" | "status"> & {
+        jobId?: string;
+      } = {
+        status,
+        progress: typeof value.progress === "number" ? value.progress : undefined,
+        step: typeof value.step === "string" ? value.step : undefined,
+        videoUrl: typeof value.videoUrl === "string" ? value.videoUrl : undefined,
+        error: typeof value.error === "string" ? value.error : undefined,
+        details: typeof value.details === "string" ? value.details : undefined,
+        jobId:
+          typeof value.jobId === "string"
+            ? value.jobId
+            : typeof value.id === "string"
+              ? value.id
+              : undefined,
+      };
+      return normalized;
+    };
+
+    const handleJob = (job: unknown) => {
+      if (cancelled) return;
+      const parsed = parseJob(job);
+      if (!parsed || (parsed.jobId && parsed.jobId !== jobId)) {
+        return;
+      }
+      setProgress(parsed.progress ?? 0);
+      if (parsed.step) setStep(parsed.step);
+      if (parsed.status === "ready" && parsed.videoUrl) {
+        setVideoUrl(parsed.videoUrl);
         setJobStatus("ready");
         // Signal that we should notify once the video element can play
         setNotifyWhenPlayable(true);
         es?.close();
         if (pollInterval) clearInterval(pollInterval);
-      } else if (job.status === "error") {
+      } else if (parsed.status === "error") {
         setJobStatus("error");
-        setError(job.error ?? "Video generation failed");
-        setErrorDetails(job.details);
+        setError(parsed.error ?? "Video generation failed");
+        setErrorDetails(parsed.details);
         es?.close();
         if (pollInterval) clearInterval(pollInterval);
       }
@@ -76,7 +111,7 @@ export function VideoPlayer({
       es = new EventSource(`/api/jobs/${jobId}/events`);
       es.addEventListener("progress", (evt) => {
         try {
-          const job = JSON.parse((evt as MessageEvent).data);
+          const job = JSON.parse((evt as MessageEvent).data) as unknown;
           handleJob(job);
         } catch {}
       });

@@ -114,7 +114,7 @@ export function OnboardingTour({ steps, onClose }: OnboardingTourProps) {
       width: bounds.width + padding * 2,
       height: bounds.height + padding * 2,
     });
-  }, [activeStep]);
+  }, [activeStep, viewport]);
 
   useLayoutEffect(() => {
     updateRect();

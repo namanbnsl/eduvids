@@ -74,13 +74,18 @@ export async function uploadToYouTube({
     prompt,
     voiceoverScript: voiceoverScript!,
   });
+  const providedDescription = description?.trim();
+  const finalDescription =
+    providedDescription && providedDescription.length > 0
+      ? providedDescription
+      : `${generatedYoutubeDescription} \n This video was generated completely by eduvids AI. There may be some factual inconsistencies, please verify from trusted sources. \n\n Create your own AI-generated educational videos at https://eduvids.vercel.app or run it locally for yourself at https://github.com/namanbnsl/eduvids \n\n`;
 
   const insertRes = await youtube.videos.insert({
     part: ["snippet", "status"],
     requestBody: {
       snippet: {
         title: generatedYoutubeTitle + " | namanbnsl/eduvids",
-        description: `${generatedYoutubeDescription} \n This video was generated completely by eduvids AI. There may be some factual inconsistencies, please verify from trusted sources. \n\n Create your own AI-generated educational videos at https://eduvids.vercel.app or run it locally for yourself at https://github.com/namanbnsl/eduvids \n\n`,
+        description: finalDescription,
         tags,
         categoryId: "27",
       },

@@ -20,20 +20,61 @@ import {
   OnboardingTour,
   type OnboardingStep,
 } from "@/components/onboarding-tour";
+import type { ToolUIPart, UIDataTypes, UIMessage } from "ai";
+import type { JobStatus } from "@/components/video-player";
 
 const ONBOARDING_STORAGE_KEY = "eduvids:onboarding:v1";
+
+type ExecutePythonToolOutput = {
+  text?: string;
+  results?: unknown;
+  logs?: unknown;
+  error?: unknown;
+};
+
+type GenerateVideoToolOutput = {
+  jobId: string;
+  description: string;
+  status?: JobStatus;
+  src?: string;
+  videoUrl?: string;
+  error?: string;
+  details?: string;
+  progress?: number;
+  step?: string;
+};
+
+type AppTools = {
+  execute_python: {
+    input: { code: string };
+    output: ExecutePythonToolOutput;
+  };
+  generate_video: {
+    input: { description: string };
+    output: GenerateVideoToolOutput;
+  };
+};
+
+type ChatMessage = UIMessage<unknown, UIDataTypes, AppTools>;
+type ChatMessagePart = ChatMessage["parts"][number];
+type GenerateVideoToolUIPart = ToolUIPart<AppTools>;
+
+const isGenerateVideoToolPart = (
+  part: ChatMessagePart
+): part is Extract<GenerateVideoToolUIPart, { type: "tool-generate_video" }> =>
+  part.type === "tool-generate_video";
 
 export default function ChatPage() {
   const [input, setInput] = useState("");
   const [videoMode, setVideoMode] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
-  const conversationSpotlightRef = useRef<HTMLElement | null>(null);
-  const newChatSpotlightRef = useRef<HTMLElement | null>(null);
-  const videoToggleSpotlightRef = useRef<HTMLElement | null>(null);
-  const composerSpotlightRef = useRef<HTMLElement | null>(null);
+  const conversationSpotlightRef = useRef<HTMLDivElement | null>(null);
+  const newChatSpotlightRef = useRef<HTMLDivElement | null>(null);
+  const videoToggleSpotlightRef = useRef<HTMLDivElement | null>(null);
+  const composerSpotlightRef = useRef<HTMLDivElement | null>(null);
 
-  const { messages, status, sendMessage } = useChat();
+  const { messages, status, sendMessage } = useChat<ChatMessage>();
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -148,16 +189,15 @@ export default function ChatPage() {
         >
           <Conversation>
             <ConversationContent>
-              {messages.map((message: any) => (
+              {messages.map((message) => (
                 <Message from={message.role} key={message.id}>
                   <MessageContent>
-                    {message.parts?.map((part: any, i: number) => {
-                      switch (part.type) {
-                        case "text":
-                          return (
-                            <Response
-                              key={`${message.id}-${i}`}
-                              className={`
+                    {message.parts?.map((part, i) => {
+                      if (part.type === "text") {
+                        return (
+                          <Response
+                            key={`${message.id}-${i}`}
+                            className={`
         max-w-none text-base leading-relaxed break-words ${
           message.role == "assistant" ? "p-4" : ""
         } rounded-lg
@@ -187,32 +227,30 @@ export default function ChatPage() {
         [&_.math-display]:my-4 [&_.math-display]:text-center
         [&_.math-inline]:mx-1
       `}
-                            >
-                              {part.text}
-                            </Response>
-                          );
-                        case "tool-generate_video": {
-                          const toolPart = part;
-                          switch (toolPart.state) {
-                            case "input-available":
-                              return <div key={i}>Loading video...</div>;
-                            case "output-available":
-                              return (
-                                <div key={i}>
-                                  <VideoPlayer {...toolPart.output} />
-                                </div>
-                              );
-                            case "output-error":
-                              return (
-                                <div key={i}>Error: {toolPart.errorText}</div>
-                              );
-                            default:
-                              return null;
-                          }
-                        }
-                        default:
-                          return null;
+                          >
+                            {part.text}
+                          </Response>
+                        );
                       }
+
+                      if (isGenerateVideoToolPart(part)) {
+                        switch (part.state) {
+                          case "input-available":
+                            return <div key={i}>Loading video...</div>;
+                          case "output-available":
+                            return (
+                              <div key={i}>
+                                <VideoPlayer {...part.output} />
+                              </div>
+                            );
+                          case "output-error":
+                            return <div key={i}>Error: {part.errorText}</div>;
+                          default:
+                            return null;
+                        }
+                      }
+
+                      return null;
                     })}
                   </MessageContent>
                   <MessageAvatar
@@ -264,96 +302,4 @@ export default function ChatPage() {
       ) : null}
     </div>
   );
-}
-
-function formatExecutePythonOutput(output: unknown): string {
-  if (output === undefined || output === null) {
-    return "No output.";
-  }
-
-  // If the tool returned a simple string, show it directly
-  if (typeof output === "string") {
-    return output;
-  }
-
-  // If the tool returned a structured payload from e2b
-  // Expected shape: { text?: string; results?: unknown; logs?: unknown; error?: unknown }
-  const o = output as Record<string, unknown>;
-  const text = typeof o.text === "string" ? o.text : undefined;
-  const error = o.error as unknown;
-  const results = o.results as unknown;
-  const logs = o.logs as unknown;
-  // Narrow `logs` (unknown) into a typed shape and avoid using `any`
-  const logsObj =
-    logs && typeof logs === "object"
-      ? (logs as { stdout?: unknown[]; stderr?: unknown[] })
-      : undefined;
-
-  const stdoutArr =
-    logsObj && Array.isArray(logsObj.stdout) ? logsObj.stdout : undefined;
-  const stderrArr =
-    logsObj && Array.isArray(logsObj.stderr) ? logsObj.stderr : undefined;
-  const stdoutText = stdoutArr
-    ?.map((x) => String(x))
-    .join("")
-    ?.trim();
-  const stderrText = stderrArr
-    ?.map((x) => String(x))
-    .join("")
-    ?.trim();
-
-  // Show error prominently if present
-  if (error) {
-    try {
-      return `Error:\n\n\`\`\`\n${
-        typeof error === "string" ? error : JSON.stringify(error, null, 2)
-      }\n\`\`\``;
-    } catch {
-      return `Error: ${String(error)}`;
-    }
-  }
-
-  // Prefer stdout text if available
-  if (text && text.trim().length > 0) {
-    return text;
-  }
-  if (stdoutText && stdoutText.length > 0) {
-    return stdoutText;
-  }
-
-  // Otherwise, show results and logs if present
-  const sections: string[] = [];
-  const hasNonEmptyResults = (() => {
-    if (results === undefined || results === null) return false;
-    if (Array.isArray(results)) return results.length > 0;
-    if (typeof results === "object")
-      return Object.keys(results as object).length > 0;
-    return true;
-  })();
-  if (hasNonEmptyResults) {
-    try {
-      sections.push(
-        "Results:\n\n" +
-          "```json\n" +
-          JSON.stringify(results, null, 2) +
-          "\n```"
-      );
-    } catch {
-      sections.push("Results:\n\n" + String(results));
-    }
-  }
-  if (stderrText && stderrText.length > 0) {
-    sections.push("Stderr:\n\n" + "```\n" + stderrText + "\n```");
-  }
-
-  if (sections.length > 0) {
-    return sections.join("\n\n");
-  }
-
-  // Fallback to showing the whole object
-  try {
-    return "```json\n" + JSON.stringify(output, null, 2) + "\n```";
-  } catch {
-    return String(output);
-  }
 }

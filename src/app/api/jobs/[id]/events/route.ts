@@ -48,15 +48,15 @@ export async function GET(
 
       const abort = () => {
         if (!closed) controller.close();
-        clearInterval(interval as any);
+        clearInterval(interval);
         closed = true;
       };
 
       // Best-effort close when client disconnects
-      // @ts-ignore - not all runtimes expose signal on Request here
-      const signal: AbortSignal | undefined = (globalThis as any).request
-        ?.signal;
-      signal?.addEventListener("abort", abort);
+      const requestGlobal = globalThis as {
+        request?: { signal?: AbortSignal };
+      };
+      requestGlobal.request?.signal?.addEventListener("abort", abort);
     },
   });
 
