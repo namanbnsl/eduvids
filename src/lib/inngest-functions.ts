@@ -29,6 +29,14 @@ type HeuristicSeverity = "noncode" | "fixable" | "critical";
 type HeuristicIssue = { message: string; severity: HeuristicSeverity };
 type HeuristicOptions = { allowVerificationFixes?: boolean };
 
+interface SegmentRenderOutput {
+  segmentId: string;
+  title: string;
+  videoDataUrl: string;
+  warnings: Array<{ stage: ValidationStage; message: string }>;
+  renderAttempts: number;
+}
+
 const REQUIRED_IMPORTS = [
   "from manim import",
   "from manim_voiceover import VoiceoverScene",
@@ -96,6 +104,64 @@ const stripStringLiterals = (source: string): string =>
 
 const formatIssueList = (issues: HeuristicIssue[]): string =>
   issues.map((issue, index) => `${index + 1}. ${issue.message}`).join("\n");
+
+const clampDetail = (value?: string, limit = 2000): string | undefined => {
+  if (!value) return undefined;
+  return value.length > limit ? value.slice(0, limit) : value;
+};
+
+const DEFAULT_SEGMENT_CONCURRENCY = 3;
+
+const getSegmentConcurrency = (segmentCount: number): number => {
+  const raw = process.env.SEGMENT_RENDER_CONCURRENCY;
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  const configured = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SEGMENT_CONCURRENCY;
+  const safeSegmentCount = Math.max(1, segmentCount);
+  return Math.max(1, Math.min(configured, safeSegmentCount));
+};
+
+
+const formatJobError = (
+  error: unknown
+): {
+  message: string;
+  detail?: string;
+} => {
+  const baseMessage =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "Unknown error";
+
+  if (!error || typeof error !== "object") {
+    return { message: baseMessage };
+  }
+
+  const stage = (error as Partial<RenderProcessError>).stage;
+  const hint = (error as Partial<RenderProcessError>).hint;
+  const exitCode = (error as Partial<RenderProcessError>).exitCode;
+  const stderr = clampDetail((error as Partial<RenderProcessError>).stderr);
+  const stdout = clampDetail((error as Partial<RenderProcessError>).stdout);
+
+  const messageExtras: string[] = [];
+  if (stage) messageExtras.push(`stage: ${stage}`);
+  if (typeof exitCode === "number") messageExtras.push(`exit: ${exitCode}`);
+  if (hint) messageExtras.push(`hint: ${hint}`);
+
+  const message = messageExtras.length
+    ? `${baseMessage} (${messageExtras.join(", ")})`
+    : baseMessage;
+
+  const detailParts: string[] = [];
+  if (stderr) detailParts.push(`stderr: ${stderr}`);
+  else if (stdout) detailParts.push(`stdout: ${stdout}`);
+
+  return {
+    message,
+    detail: detailParts.length ? detailParts.join(" | ") : undefined,
+  };
+};
 
 // Quick pre-check for absolutely required elements (fast fail)
 function validateRequiredElements(script: string): { ok: boolean; error?: string } {
@@ -564,29 +630,6 @@ export const generateVideo = inngest.createFunction(
         .filter((line) => line.length > 0)
         .join("\n");
 
-    const runWithConcurrency = async <T, R>(
-      items: T[],
-      limit: number,
-      task: (item: T, index: number) => Promise<R>
-    ): Promise<R[]> => {
-      if (!items.length) return [];
-      const maxWorkers = Math.max(1, Math.min(limit, items.length));
-      const results: R[] = new Array(items.length);
-      let nextIndex = 0;
-
-      const worker = async () => {
-        while (nextIndex < items.length) {
-          const currentIndex = nextIndex;
-          nextIndex += 1;
-          results[currentIndex] = await task(items[currentIndex]!, currentIndex);
-        }
-      };
-
-      const workers = Array.from({ length: maxWorkers }, () => worker());
-      await Promise.all(workers);
-      return results;
-    };
-
     try {
       await jobStore.setProgress(jobId!, {
         progress: 5,
@@ -607,12 +650,15 @@ export const generateVideo = inngest.createFunction(
         progress: 18,
         step: "planning segments",
       });
-      const segments = await step.run("plan-manim-segments", async () => {
-        return await planManimSegments({
-          prompt,
-          voiceoverScript,
-        });
-      });
+      const segments = (await step.run(
+        "plan-manim-segments",
+        async () => {
+          return await planManimSegments({
+            prompt,
+            voiceoverScript,
+          });
+        }
+      )) as PlannedManimSegment[];
 
       console.log("Planned segments", {
         count: segments.length,
@@ -624,17 +670,11 @@ export const generateVideo = inngest.createFunction(
         step: "preparing segments",
       });
 
-      const SEGMENT_RENDER_CONCURRENCY = Math.min(segments.length, 3);
       const MAX_SEGMENT_RENDER_RETRIES = 3;
       const MAX_FORCE_REGENERATIONS = 2;
       const ATTEMPT_HISTORY_LIMIT = 3;
 
       const segmentWarnings: Array<{ stage: ValidationStage; message: string }> = [];
-
-      const clampDetail = (value?: string, limit = 2000) => {
-        if (!value) return undefined;
-        return value.length > limit ? value.slice(0, limit) : value;
-      };
 
       let completedSegments = 0;
       const updateProgressAfterSegment = async (segmentTitle: string) => {
@@ -648,18 +688,40 @@ export const generateVideo = inngest.createFunction(
         });
       };
 
-      type SegmentOutput = {
-        segmentId: string;
-        title: string;
-        videoDataUrl: string;
-        warnings: Array<{ stage: ValidationStage; message: string }>;
-        renderAttempts: number;
+      const renderSegmentsWithConcurrency = async (
+        items: PlannedManimSegment[],
+        concurrency: number
+      ): Promise<SegmentRenderOutput[]> => {
+        if (!items.length) {
+          return [] as SegmentRenderOutput[];
+        }
+
+        const workerCount = Math.max(1, Math.min(concurrency, items.length));
+        const results = new Array<SegmentRenderOutput>(items.length);
+        let cursor = 0;
+
+        const worker = async (): Promise<void> => {
+          while (cursor < items.length) {
+            const currentIndex = cursor;
+            cursor += 1;
+            results[currentIndex] = await processSegment(
+              items[currentIndex]!,
+              currentIndex
+            );
+          }
+        };
+
+        await Promise.all(
+          Array.from({ length: workerCount }, () => worker())
+        );
+
+        return results;
       };
 
       const processSegment = async (
         segment: PlannedManimSegment,
         index: number
-      ): Promise<SegmentOutput> => {
+      ): Promise<SegmentRenderOutput> => {
         const baseId = sanitizeForStep(`segment-${index + 1}-${segment.id}`);
         let script = await step.run(
           `segment-${baseId}-generate-script`,
@@ -730,7 +792,9 @@ export const generateVideo = inngest.createFunction(
               );
             }
 
-            const { videoPath, warnings } = renderResult;
+            const { videoPath, warnings: renderWarnings } = renderResult;
+            const warnings: Array<{ stage: ValidationStage; message: string }> =
+              renderWarnings ?? [];
 
             if (warnings.length) {
               segmentRenderWarnings.push(...warnings);
@@ -888,13 +952,18 @@ export const generateVideo = inngest.createFunction(
         );
       };
 
-      const segmentOutputs = await runWithConcurrency(
-        segments,
-        SEGMENT_RENDER_CONCURRENCY,
-        processSegment
+      const segmentConcurrency = getSegmentConcurrency(segments.length);
+      console.log(
+        `Rendering ${segments.length} segments with concurrency ${segmentConcurrency}`
       );
 
-      segmentOutputs.forEach((output) => {
+      const segmentOutputs = await renderSegmentsWithConcurrency(
+        segments,
+        segmentConcurrency
+      );
+      const typedSegmentOutputs = segmentOutputs as unknown as SegmentRenderOutput[];
+
+      typedSegmentOutputs.forEach((output) => {
         if (output.warnings.length) {
           segmentWarnings.push(...output.warnings);
         }
@@ -909,7 +978,7 @@ export const generateVideo = inngest.createFunction(
         "concat-watermark-and-upload",
         async () => {
           const concatResult = await concatSegmentVideos({
-            segments: segmentOutputs.map((output) => ({
+            segments: typedSegmentOutputs.map((output) => ({
               id: output.segmentId,
               dataUrl: output.videoDataUrl,
             })),
@@ -946,7 +1015,7 @@ export const generateVideo = inngest.createFunction(
         });
       }
 
-      const totalRenderAttempts = segmentOutputs.reduce(
+      const totalRenderAttempts = typedSegmentOutputs.reduce(
         (sum, output) => sum + output.renderAttempts,
         0
       );
@@ -982,10 +1051,18 @@ export const generateVideo = inngest.createFunction(
         retriedAfterError: totalRenderAttempts > segments.length,
       };
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      console.error("Error in generateVideo function:", errorMessage);
+      const { message: jobErrorMessage, detail } = formatJobError(err);
+      console.error("Error in generateVideo function:", jobErrorMessage, err);
       if (jobId) {
-        await jobStore.setError(jobId, errorMessage);
+        try {
+          await jobStore.setProgress(jobId, {
+            step: "error",
+            details: detail,
+          });
+        } catch (progressError) {
+          console.warn("Failed to record error progress", progressError);
+        }
+        await jobStore.setError(jobId, jobErrorMessage);
       }
       throw err;
     }

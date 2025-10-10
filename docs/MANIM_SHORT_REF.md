@@ -1,4 +1,15 @@
-# Manim Community Edition v0.19.0 — verified reference
+# Manim Community Edition v0.18.0 — verified reference
+
+## Quick compliance checklist (LLM MUST satisfy before returning code)
+
+- **Imports & scene setup:** Always include `from manim import *`, `from manim_voiceover import VoiceoverScene`, and `from manim_voiceover.services.gtts import GTTSService`. Define `class MyScene(VoiceoverScene)` with `self.set_speech_service(GTTSService())` inside `construct`.
+- **Voiceover usage:** Every narration line must be wrapped in `with self.voiceover(text="...")` blocks. Match narration text exactly—no paraphrasing.
+- **Camera restrictions:** Never touch `self.camera.frame` inside a pure `VoiceoverScene`. If camera motion is required, inherit from both `VoiceoverScene` and `MovingCameraScene` and respect safe margins.
+- **Reveal style:** Use `FadeIn`/`FadeOut` (or `Create` for shapes). Do **not** use `Write`, `Transform`, or other complex animations.
+- **Layout safety:** Define `SAFE_MARGIN = 0.4`. Keep text width ≤ 13.4 units, titles at the top (`to_edge(UP, buff=SAFE_MARGIN)`), and content centered or slightly below with ≥0.8 units spacing. Split long sentences into multiple lines.
+- **Object count & pacing:** Keep ≤ 5–7 visible elements at once, use simple shapes (Text, MathTex, Circle, Square, Rectangle, Arrow, Line, Dot), and keep `run_time` between 0.5–1.5 seconds unless narration requires longer.
+- **Naming hygiene:** Never shadow Python built-ins (`str`, `list`, `dict`, `int`, `float`, `len`, `max`, `min`, `sum`, `all`, `any`).
+- **Safety:** Avoid prohibited modules (`os`, `sys`, `subprocess`, etc.) and stick to documented APIs only.
 
 Primary documentation links: Scene: docs, Mobject: docs, VMobject: docs, Animation (base): docs, Text/Tex: docs, ValueTracker: docs.
 

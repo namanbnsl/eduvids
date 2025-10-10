@@ -502,6 +502,8 @@ export async function verifyManimScript({
       `Script to validate (python):\n\u0060\u0060\u0060python\n${script}\n\u0060\u0060\u0060`,
     ].join("\n\n"),
     temperature: 0,
+    maxOutputTokens: 900,
+    maxRetries: 1,
   });
 
   const raw = text.trim();

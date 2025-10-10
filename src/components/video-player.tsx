@@ -25,6 +25,7 @@ export function VideoPlayer({
   );
   const [videoUrl, setVideoUrl] = useState<string | undefined>(src);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string | undefined>();
   const [progress, setProgress] = useState<number>(0);
   const [step, setStep] = useState<string | undefined>(undefined);
   // Track when we should fire a browser notification after the UI has updated
@@ -35,7 +36,7 @@ export function VideoPlayer({
     if (!jobId || jobStatus === "ready" || jobStatus === "error") return;
 
     let cancelled = false;
-    let pollInterval: any;
+    let pollInterval: ReturnType<typeof setInterval> | undefined;
     let es: EventSource | null = null;
 
     const handleJob = (job: any) => {
@@ -52,6 +53,7 @@ export function VideoPlayer({
       } else if (job.status === "error") {
         setJobStatus("error");
         setError(job.error ?? "Video generation failed");
+        setErrorDetails(job.details);
         es?.close();
         if (pollInterval) clearInterval(pollInterval);
       }
@@ -156,8 +158,16 @@ export function VideoPlayer({
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
         <p className="text-red-600">❌ {error}</p>
+        {errorDetails ? (
+          <p className="mt-2 whitespace-pre-wrap text-sm text-red-500">
+            {errorDetails}
+          </p>
+        ) : null}
         <button
-          onClick={() => setError(null)}
+          onClick={() => {
+            setError(null);
+            setErrorDetails(undefined);
+          }}
           className="mt-2 px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
         >
           Retry
