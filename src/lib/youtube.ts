@@ -14,6 +14,38 @@ export interface YouTubeUploadRequest {
   privacyStatus?: YouTubePrivacyStatus;
 }
 
+const YOUTUBE_DESCRIPTION_MAX_LENGTH = 5000;
+
+function sanitizeYoutubeDescription(input: string): string {
+  const normalized = input.replace(/\r\n/g, "\n");
+
+  const withoutCodeFences = normalized.replace(
+    /```[\s\S]*?```/g,
+    (segment) => segment.replace(/```/g, "")
+  );
+
+  let sanitized = withoutCodeFences
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/^[>\s]*[-*+]\s+/gm, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/_(.*?)_/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[(.*?)\]\((https?:\/\/[\w./?#=&%-]+)\)/g, "$1 ($2)")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (!sanitized) {
+    sanitized = normalized.trim();
+  }
+
+  if (sanitized.length > YOUTUBE_DESCRIPTION_MAX_LENGTH) {
+    sanitized = sanitized.slice(0, YOUTUBE_DESCRIPTION_MAX_LENGTH).trim();
+  }
+
+  return sanitized;
+}
+
 function getOAuth2Client(): OAuth2Client {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -80,12 +112,17 @@ export async function uploadToYouTube({
       ? providedDescription
       : `${generatedYoutubeDescription} \n This video was generated completely by eduvids AI. There may be some factual inconsistencies, please verify from trusted sources. \n\n Create your own AI-generated educational videos at https://eduvids.vercel.app or run it locally for yourself at https://github.com/namanbnsl/eduvids \n\n`;
 
+  const sanitizedDescription = sanitizeYoutubeDescription(finalDescription);
+  if (!sanitizedDescription) {
+    throw new Error("YouTube description is empty after sanitization");
+  }
+
   const insertRes = await youtube.videos.insert({
     part: ["snippet", "status"],
     requestBody: {
       snippet: {
         title: generatedYoutubeTitle + " | namanbnsl/eduvids",
-        description: finalDescription,
+        description: sanitizedDescription,
         tags,
         categoryId: "27",
       },
