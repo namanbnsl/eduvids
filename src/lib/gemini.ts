@@ -1,13 +1,11 @@
 import { MANIM_SYSTEM_PROMPT, VOICEOVER_SYSTEM_PROMPT } from "@/prompt";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText } from "ai";
 import fs from "fs";
 import path from "path";
 import type { RenderLogEntry, ValidationStage } from "./e2b";
+import { createGoogleProvider } from "./google-provider";
 
-const google = createGoogleGenerativeAI({
-  apiKey: process.env.GOOGLE_API_KEY!,
-});
+const google = (modelId: string) => createGoogleProvider()(modelId);
 
 interface ManimReferenceDocs {
   markdown: string;
