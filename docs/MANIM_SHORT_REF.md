@@ -1,19 +1,21 @@
-# Manim Community Edition v0.18.0 — verified reference
+# 🎨 Manim Community Edition v0.18.0 — Verified Reference
 
-## Quick compliance checklist (LLM MUST satisfy before returning code)
+## ✅ Quick Compliance Checklist (LLM MUST satisfy before returning code)
 
-- **Imports & scene setup:** Always include `from manim import *`, `from manim_voiceover import VoiceoverScene`, and `from manim_voiceover.services.gtts import GTTSService`. Define `class MyScene(VoiceoverScene)` with `self.set_speech_service(GTTSService())` inside `construct`.
-- **Voiceover usage:** Every narration line must be wrapped in `with self.voiceover(text="...")` blocks. Match narration text exactly—no paraphrasing.
-- **Camera restrictions:** Never touch `self.camera.frame` inside a pure `VoiceoverScene`. If camera motion is required, inherit from both `VoiceoverScene` and `MovingCameraScene` and respect safe margins.
-- **Reveal style:** Use `FadeIn`/`FadeOut` (or `Create` for shapes). Do **not** use `Write`, `Transform`, or other complex animations.
-- **Layout safety:** Define `SAFE_MARGIN = 0.4`. Keep text width ≤ 13.4 units, titles at the top (`to_edge(UP, buff=SAFE_MARGIN)`), and content centered or slightly below with ≥0.8 units spacing. Split long sentences into multiple lines.
-- **Object count & pacing:** Keep ≤ 5–7 visible elements at once, use simple shapes (Text, MathTex, Circle, Square, Rectangle, Arrow, Line, Dot), and keep `run_time` between 0.5–1.5 seconds unless narration requires longer.
-- **Naming hygiene:** Never shadow Python built-ins (`str`, `list`, `dict`, `int`, `float`, `len`, `max`, `min`, `sum`, `all`, `any`).
-- **Safety:** Avoid prohibited modules (`os`, `sys`, `subprocess`, etc.) and stick to documented APIs only.
+Use this vibrant quick-reference to keep every scene polished, readable, and delightfully consistent.
+
+- **Imports & scene setup:** Always include `from manim import *`, `from manim_voiceover import VoiceoverScene`, and `from manim_voiceover.services.gtts import GTTSService`. Define `class MyScene(VoiceoverScene)` with `self.set_speech_service(GTTSService())` inside `construct` for a crisp, reliable start.
+- **Voiceover usage:** Every narration line must be wrapped in `with self.voiceover(text="...")` blocks. Match narration text exactly—no paraphrasing to keep audio and visuals dancing in sync.
+- **Camera restrictions:** Never touch `self.camera.frame` inside a pure `VoiceoverScene`. If camera motion is required, inherit from both `VoiceoverScene` and `MovingCameraScene` and respect safe margins to keep the frame serene.
+- **Reveal style:** Use `FadeIn`/`FadeOut` (or `Create` for shapes). Do **not** use `Write`, `Transform`, or other complex animations—keep transitions silky smooth.
+- **Layout safety:** Define `SAFE_MARGIN = 0.4`. Keep text width ≤ 13.4 units, titles at the top (`to_edge(UP, buff=SAFE_MARGIN)`), and content centered or slightly below with ≥0.8 units spacing. Split long sentences into multiple lines so every composition stays breathable.
+- **Object count & pacing:** Keep ≤ 5–7 visible elements at once, use simple shapes (Text, MathTex, Circle, Square, Rectangle, Arrow, Line, Dot), and keep `run_time` between 0.5–1.5 seconds unless narration requires longer, maintaining a lively but orderly tempo.
+- **Naming hygiene:** Never shadow Python built-ins (`str`, `list`, `dict`, `int`, `float`, `len`, `max`, `min`, `sum`, `all`, `any`) so your code style stays classy and bug-free.
+- **Safety:** Avoid prohibited modules (`os`, `sys`, `subprocess`, etc.) and stick to documented APIs only, trusting the well-lit path.
 
 Primary documentation links: Scene: docs, Mobject: docs, VMobject: docs, Animation (base): docs, Text/Tex: docs, ValueTracker: docs.
 
-## Scene essentials (`manim.scene.scene.Scene`)
+## 🧭 Scene Essentials (`manim.scene.scene.Scene`)
 
 - **Construction:** `Scene(renderer=None, camera_class=Camera, always_update_mobjects=False, random_seed=None, skip_animations=False)`. Do not override `__init__`; put setup code in `setup()`.
 - **Lifecycle:** `render(preview=False)` runs `setup()` → `construct()` → `tear_down()`.
@@ -34,7 +36,7 @@ Primary documentation links: Scene: docs, Mobject: docs, VMobject: docs, Animati
   - Orbit controls: `mouse_scroll_orbit_controls` and `mouse_drag_orbit_controls` can be enabled for 3D scenes.
 - **Camera:** Scenes have a `camera` (defaults to `Camera`). For moving-camera scenes (`camera_class=MovingCamera` or `MovingCameraScene`), `scene.camera.frame` is a rectangular `VMobject` defining the view. You can pan/zoom by animating `scene.camera.frame` with `.shift()`, `.scale()`, or `.move_to()`. Always size the frame so the focused group still has the safe margin on every side (e.g. set the frame width to `target.width + 2*MARGIN` before moving to `target`). (In a default `Scene` with `Camera`, no frame exists.) You can supply `camera_class` at construction (e.g. `ThreeDCamera` for 3D scenes).
 
-## Mobject fundamentals (`manim.mobject.mobject.Mobject`)
+## 🧱 Mobject Fundamentals (`manim.mobject.mobject.Mobject`)
 
 - **Constructor:** `Mobject(color=WHITE, name=None, dim=3, target=None, z_index=0)`. Default color is white, dim is usually 3.
 - **Core attributes:**
@@ -59,7 +61,7 @@ Primary documentation links: Scene: docs, Mobject: docs, VMobject: docs, Animati
   - **Bounds and geometry:** `get_center()`, `get_left()`, `get_right()`, `get_top()`, `get_bottom()`, `get_corner(corner)`. `width`, `height`, `depth` properties measure bounding-box extents. (Use these to align or fit objects.)
   - **Special:** `generate_points()` (called internally); `get_critical_point(direction)` (corner extreme).
 
-## Vectorized mobjects (VMobject)
+## ✨ Vectorized Mobjects (VMobject)
 
 (`manim.mobject.types.vectorized_mobject.VMobject`)
 
@@ -98,7 +100,7 @@ VMobject(
 
 **Points:** VMobject works with NumPy arrays of 3D points. When manipulating raw points, use these helpers.
 
-## Common Animations (`manim.animation`)
+## 🎞️ Common Animations (`manim.animation`)
 
 - **Base class:** `Animation(mobject, lag_ratio=..., run_time=..., rate_func=..., reverse_rate_function=False, name=None, remover=False, suspend_mobject_updating=False, introducer=False)`. Key methods: `begin()`, `finish()`, `interpolate(alpha)`, `interpolate_mobject(alpha)`, `get_run_time()`, `set_rate_func(func)`, `copy()`.
 - **Animation builders:** `.animate` on a Mobject (or Scene) creates an `_AnimationBuilder` that records chained calls and animation kwargs. Example:
@@ -118,14 +120,14 @@ VMobject(
   - `Wait(run_time=duration)`.
   - Ease constants: rate functions like `smooth`, `linear`, etc.
 
-## Coordinates, angles, and colors
+## 🌈 Coordinates, Angles, and Colors
 
 Common constants (via `from manim import *`):
 - **Unit vectors:** `ORIGIN`, `UP`, `DOWN`, `LEFT`, `RIGHT`, `IN`, `OUT`, `UL`, `UR`, `DL`, `DR`.
 - **Angles:** `PI`, `TAU`, `DEGREES` (for converting radians/degrees).
 - **Colors:** Named colors: `WHITE`, `BLACK`, `RED`, `GREEN`, `BLUE`, `YELLOW`, `PINK`, `PURPLE`, etc. Also many CSS-style color names and hex codes are supported (via `color=...` in methods).
 
-## Minimal scene (from documented API)
+## 📝 Minimal Scene (from documented API)
 
 ```python
 from manim import *
@@ -150,7 +152,7 @@ class FormulaScene(Scene):
 
 The example only invokes names documented above. It uses `Text`, `MathTex`, `ValueTracker`, geometry, and common animations.
 
-## Text, Tex, and MathTex
+## 🖋️ Text, Tex, and MathTex
 
 - `Text("string", font_size=..., color=..., slant=ITALIC, weight=BOLD, t2c=None, t2s=None, ...)`: high-level text (non-LaTeX) rendered with Pango/Cairo. Use `t2c={'a': BLUE}` to color substrings (e.g. letters).
 - `Tex("LaTeX string", tex_environment='center', color=WHITE)`: a LaTeX-rendered string (internally a `MathTex`). `MathTex("math", tex_to_color_map=None, substrings_to_isolate=None)` is for math mode (default environment `'align*'`). You can color parts of a `MathTex` with `tex_to_color_map={'x': RED}`.
@@ -167,7 +169,7 @@ self.add(text, math)
 
 **Note:** LaTeX (`Tex` / `MathTex`) requires a TeX installation. If LaTeX is not installed, rendering will fail.
 
-## ValueTracker (`manim.mobject.value_tracker.ValueTracker`)
+## 🎚️ ValueTracker (`manim.mobject.value_tracker.ValueTracker`)
 
 `ValueTracker(value=0)`: stores a numeric value that can be animated. Not shown on screen; its position encodes a number.
 
@@ -184,7 +186,7 @@ self.play(tracker.animate.set_value(5))
 
 The updater moves dot as tracker changes.
 
-## Layout and visibility contract (LLM MUST follow)
+## 🛡️ Layout and Visibility Contract (LLM MUST follow)
 
 These hard rules are designed to prevent overlapping labels and off‑screen content in generated scenes.
 

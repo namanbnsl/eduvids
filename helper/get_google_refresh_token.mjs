@@ -4,7 +4,7 @@ import readline from "readline";
 const oauth2Client = new google.auth.OAuth2(
   "YOUR_CLIENT_ID",
   "YOUR_CLIENT_SECRET",
-  "urn:ietf:wg:oauth:2.0:oob" // <-- this avoids needing localhost
+  "http://localhost:3000/oauth2callback"
 );
 
 const scopes = ["https://www.googleapis.com/auth/youtube.upload"];
