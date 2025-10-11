@@ -121,12 +121,13 @@ Video Structure Requirements:
    - Prefer straightforward numeric values in calculations; avoid elaborate algebra or precision-heavy numbers
    - Limit objects on screen: max 5-7 visible elements at once
    - Clear the screen frequently with FadeOut to prevent clutter
+   - Only use Angle arcs when two visible segments share a clear vertex inside the figure; keep the arc radius small (<=0.6) so it stays within the figure and omit the highlight if the angle is uncertain
 
 2. 📝 Text Layout (CRITICAL - prevents cutoffs):
    - **Long sentences:** Split into multiple lines. NEVER create text wider than ~12 units.
    - **Line breaks:** Use \n in Text() or create separate Text objects arranged with VGroup
    - **Width check:** After creating text, ensure text.width <= 13.4. If too wide, split or scale.
-   - **Font sizes:** Use font_size=36 for body text, font_size=48 for titles
+   - **Font sizes:** Use font_size=36 for body text, font_size=48 for titles, and keep labels attached to shapes or angles between font_size=26 and font_size=32 so they stay compact
    - **Examples:**
      '''python
      # GOOD: Split long text
