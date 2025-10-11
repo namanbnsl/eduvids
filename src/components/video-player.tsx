@@ -21,6 +21,7 @@ const STEP_TITLES: Record<string, string> = {
 };
 
 const PROGRESS_HISTORY_WINDOW_MS = 5 * 60 * 1000;
+const SAFE_ETA_BUFFER_MS = 6 * 60 * 1000;
 
 interface VideoPlayerProps {
   // Returned from the generate_video tool
@@ -237,6 +238,22 @@ export function VideoPlayer({
     }
   }, [jobStatus]);
 
+  useEffect(() => {
+    if (jobStatus !== "generating") return;
+    if (etaTargetMs === null) return;
+
+    const ensureFutureEta = () => {
+      const now = Date.now();
+      if (etaTargetMs <= now) {
+        setEtaTargetMs(now + SAFE_ETA_BUFFER_MS);
+      }
+    };
+
+    ensureFutureEta();
+    const interval = setInterval(ensureFutureEta, 15000);
+    return () => clearInterval(interval);
+  }, [etaTargetMs, jobStatus]);
+
   // Request Notification permission early when component mounts (best-effort)
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -298,11 +315,6 @@ export function VideoPlayer({
   const normalizedProgress = useMemo(() => {
     return Number.isFinite(progress) ? Math.min(100, Math.max(0, progress)) : 0;
   }, [progress]);
-
-  const roundedProgress = useMemo(
-    () => Math.round(normalizedProgress),
-    [normalizedProgress]
-  );
 
   const stageTitle = useMemo(() => {
     const rawStep = (step ?? "").trim();
