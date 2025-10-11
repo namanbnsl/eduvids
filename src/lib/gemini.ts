@@ -445,11 +445,11 @@ export async function generateYoutubeTitle({
   const model = google("gemini-2.5-flash");
 
   const systemPrompt =
-    "You are a copywriter crafting magnetic, click-worthy YouTube titles for educational videos. Keep it under 80 characters. Reply with only the final title—no quotes, no extra text.";
+    "You are a copywriter crafting clear, informative YouTube titles for educational videos. Keep it under 80 characters, avoid clickbait phrasing, and respond with only the final title—no quotes or extra text.";
   const { text } = await generateText({
     model,
     system: systemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nCraft a curiosity-sparking YouTube title that teases the biggest aha moment, feels fun and human, and makes viewers want to click immediately. Keep it playful and emoji-powered:`,
+    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite an informative YouTube title that clearly states the main topic or insight of the video, highlights the primary takeaway, avoids sensational language, and stays under 80 characters:`,
     temperature: 0.5,
   });
 
@@ -463,11 +463,11 @@ export async function generateYoutubeDescription({
   const model = google("gemini-2.5-flash");
 
   const systemPrompt =
-    "You are an upbeat storyteller who writes irresistible YouTube descriptions for educational videos. Keep it concise, stack engaging short paragraphs, sprinkle in lively emojis, add a playful call-to-action, and finish with 2-3 relevant hashtags. Reply only with the description and do not use a any markdown.";
+    "You are a content strategist who writes concise, informative YouTube descriptions for educational videos. Summaries should explain what the video covers, avoid emojis, hashtags, and marketing language, and respond only with plain text.";
   const { text } = await generateText({
     model,
     system: systemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite a YouTube description that hooks viewers in the opening line, highlights the key takeaways, invites them to watch or subscribe, and ends with 2-3 discoverable hashtags:`,
+    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite a YouTube description that briefly introduces the topic, outlines the main concepts viewers will learn, references any notable examples or tools, stays concise, and does not copy the voiceover script verbatim:`,
     temperature: 0.5,
   });
 

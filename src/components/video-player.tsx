@@ -1,9 +1,31 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { VideoJob } from "@/lib/job-store";
 
 export type JobStatus = "generating" | "ready" | "error";
+
+const STEP_TITLES: Record<string, string> = {
+  queued: "Queued",
+  "generating voiceover": "Generating Voiceover",
+  "generating script": "Generating Script",
+  "validated script": "Validating Script",
+  "rendering video": "Rendering Video",
+  "rendered video": "Render Complete",
+  "uploading video": "Uploading Video",
+  "uploaded video": "Video Uploaded",
+  finalizing: "Finalizing",
+  completed: "Completed",
+  error: "Error",
+};
+
+const PROGRESS_HISTORY_WINDOW_MS = 5 * 60 * 1000;
 
 interface VideoPlayerProps {
   // Returned from the generate_video tool
@@ -29,8 +51,70 @@ export function VideoPlayer({
   const [errorDetails, setErrorDetails] = useState<string | undefined>();
   const [progress, setProgress] = useState<number>(0);
   const [step, setStep] = useState<string | undefined>(undefined);
+  const [etaMs, setEtaMs] = useState<number | null>(null);
+  const progressHistoryRef = useRef<
+    Array<{ progress: number; timestamp: number }>
+  >([]);
   // Track when we should fire a browser notification after the UI has updated
   const [notifyWhenPlayable, setNotifyWhenPlayable] = useState<boolean>(false);
+
+  const updateProgressMetrics = useCallback((nextProgress: number) => {
+    if (!Number.isFinite(nextProgress)) {
+      return;
+    }
+
+    const now = Date.now();
+    const clamped = Math.min(100, Math.max(0, nextProgress));
+
+    if (clamped <= 0 || clamped >= 100) {
+      progressHistoryRef.current = [{ progress: clamped, timestamp: now }];
+      setEtaMs(null);
+      return;
+    }
+
+    const recentHistory = progressHistoryRef.current.filter(
+      (entry) => now - entry.timestamp <= PROGRESS_HISTORY_WINDOW_MS
+    );
+    recentHistory.push({ progress: clamped, timestamp: now });
+    progressHistoryRef.current = recentHistory;
+
+    if (recentHistory.length < 2) {
+      setEtaMs(null);
+      return;
+    }
+
+    const first = recentHistory.find((entry) => entry.progress < clamped);
+    const last = recentHistory[recentHistory.length - 1];
+
+    if (!first || !last || last.timestamp <= first.timestamp) {
+      setEtaMs(null);
+      return;
+    }
+
+    const progressDelta = last.progress - first.progress;
+    const timeDelta = last.timestamp - first.timestamp;
+
+    if (progressDelta <= 0 || timeDelta <= 0) {
+      setEtaMs(null);
+      return;
+    }
+
+    const percentPerMs = progressDelta / timeDelta;
+    if (percentPerMs <= 0) {
+      setEtaMs(null);
+      return;
+    }
+
+    const remaining = Math.max(0, 100 - clamped);
+    const estimateMs = remaining / percentPerMs;
+
+    if (!Number.isFinite(estimateMs) || estimateMs <= 0) {
+      setEtaMs(null);
+      return;
+    }
+
+    setEtaMs(estimateMs);
+  }, []);
 
   // Subscribe to job updates via SSE, fallback to polling
   useEffect(() => {
@@ -76,7 +160,14 @@ export function VideoPlayer({
       if (!parsed || (parsed.jobId && parsed.jobId !== jobId)) {
         return;
       }
-      setProgress(parsed.progress ?? 0);
+      const nextProgress =
+        typeof parsed.progress === "number" ? parsed.progress : 0;
+      setProgress((prev) => {
+        if (nextProgress !== prev) {
+          updateProgressMetrics(nextProgress);
+        }
+        return nextProgress;
+      });
       if (parsed.step) setStep(parsed.step);
       if (parsed.status === "ready" && parsed.videoUrl) {
         setVideoUrl(parsed.videoUrl);
@@ -129,7 +220,19 @@ export function VideoPlayer({
       es?.close();
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [jobId, jobStatus]);
+  }, [jobId, jobStatus, updateProgressMetrics]);
+
+  useEffect(() => {
+    progressHistoryRef.current = [];
+    setEtaMs(null);
+  }, [jobId]);
+
+  useEffect(() => {
+    if (jobStatus === "ready" || jobStatus === "error") {
+      progressHistoryRef.current = [];
+      setEtaMs(null);
+    }
+  }, [jobStatus]);
 
   // Request Notification permission early when component mounts (best-effort)
   useEffect(() => {
@@ -189,6 +292,66 @@ export function VideoPlayer({
     };
   }, [notifyWhenPlayable, description]);
 
+  const normalizedProgress = useMemo(() => {
+    return Number.isFinite(progress)
+      ? Math.min(100, Math.max(0, progress))
+      : 0;
+  }, [progress]);
+
+  const roundedProgress = useMemo(
+    () => Math.round(normalizedProgress),
+    [normalizedProgress]
+  );
+
+  const stageTitle = useMemo(() => {
+    const rawStep = (step ?? "").trim();
+    if (rawStep.length) {
+      const normalizedStep = rawStep.toLowerCase();
+      if (STEP_TITLES[normalizedStep]) {
+        return STEP_TITLES[normalizedStep];
+      }
+      return rawStep
+        .split(/\s+/)
+        .map((word) =>
+          word.length > 0
+            ? `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`
+            : ""
+        )
+        .join(" ");
+    }
+
+    if (normalizedProgress >= 95) return "Finalizing";
+    if (normalizedProgress >= 82) return "Video Uploaded";
+    if (normalizedProgress >= 80) return "Uploading Video";
+    if (normalizedProgress >= 72) return "Render Complete";
+    if (normalizedProgress >= 50) return "Rendering Video";
+    if (normalizedProgress >= 35) return "Validating Script";
+    if (normalizedProgress >= 20) return "Generating Script";
+    if (normalizedProgress >= 5) return "Generating Voiceover";
+    return "Queued";
+  }, [normalizedProgress, step]);
+
+  const etaDisplay = useMemo(() => {
+    if (jobStatus === "ready") return null;
+    if (normalizedProgress <= 0 || normalizedProgress >= 100) return null;
+    if (etaMs === null) {
+      return "Calculating…";
+    }
+
+    const totalSeconds = Math.max(1, Math.round(etaMs / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+      return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+    }
+    if (minutes > 0) {
+      return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+    }
+    return `${seconds}s`;
+  }, [etaMs, jobStatus, normalizedProgress]);
+
   if (error) {
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -226,7 +389,7 @@ export function VideoPlayer({
             Video generating. Please wait
           </h2>
           <p className="text-sm text-muted-foreground">
-            {step ? step : "This may take a moment."}
+            {stageTitle ?? "This may take a moment."}
           </p>
 
           {/* Determinate progress bar with subtle animation */}
@@ -237,25 +400,31 @@ export function VideoPlayer({
               aria-label="Generating video"
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-valuenow={progress}
+              aria-valuenow={normalizedProgress}
             >
               <div
                 className="h-full rounded bg-primary transition-all duration-700 ease-out"
                 style={{
-                  width: `${Math.max(2, Math.min(100, progress || 0))}%`,
+                  width: `${normalizedProgress}%`,
                 }}
               />
             </div>
-            <div className="mt-2 text-xs text-muted-foreground">
-              {Math.round(progress || 0)}%
+            <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+              <span>{stageTitle ?? "Processing"}</span>
+              <span>{roundedProgress}%</span>
             </div>
+            {etaDisplay ? (
+              <div className="text-xs text-muted-foreground">
+                ETA: {etaDisplay}
+              </div>
+            ) : null}
           </div>
 
           {/* Screen reader live status */}
           <p className="sr-only" aria-live="polite" role="status">
-            {`Video generating. ${step ?? "Please wait"}. ${Math.round(
-              progress || 0
-            )}%`}
+            {`Video generating. ${
+              stageTitle ?? "Please wait"
+            }. ${roundedProgress}%${etaDisplay ? `. ETA ${etaDisplay}` : ""}`}
           </p>
         </div>
       </div>
