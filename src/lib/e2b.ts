@@ -15,8 +15,7 @@ export type ValidationStage =
   | "video-validation"
   | "watermark"
   | "watermark-validation"
-  | "download"
-  | "upload";
+  | "download";
 
 export interface RenderLogEntry {
   timestamp: string;
@@ -225,7 +224,11 @@ export async function renderManimVideo({
     renderLogs.push({ ...entry, timestamp });
   };
 
-  pushLog({ level: "info", message: "Beginning render pipeline", context: "render" });
+  pushLog({
+    level: "info",
+    message: "Beginning render pipeline",
+    context: "render",
+  });
   if (!normalizedScript.length) {
     pushLog({
       level: "error",
@@ -345,11 +348,14 @@ export async function renderManimVideo({
     const recordChunk = (chunk: string, level: "stdout" | "stderr") => {
       if (!chunk) return;
       const trimmed = chunk.replace(/\u001b\[[0-9;]*m/g, "");
-      const pieces = trimmed.split(/\r?\n/).filter((line) => line.trim().length > 0);
+      const pieces = trimmed
+        .split(/\r?\n/)
+        .filter((line) => line.trim().length > 0);
       for (const piece of pieces) {
-        const text = piece.length > MAX_COMMAND_OUTPUT_CHARS
-          ? `${piece.slice(0, MAX_COMMAND_OUTPUT_CHARS)}…`
-          : piece;
+        const text =
+          piece.length > MAX_COMMAND_OUTPUT_CHARS
+            ? `${piece.slice(0, MAX_COMMAND_OUTPUT_CHARS)}…`
+            : piece;
         pushLog({ level, message: text, context: contextLabel });
       }
     };
@@ -657,7 +663,9 @@ export async function renderManimVideo({
     console.error("E2B render error:", err);
     pushLog({
       level: "error",
-      message: `Render pipeline error: ${err instanceof Error ? err.message : String(err)}`,
+      message: `Render pipeline error: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
       context: "render",
     });
     await ensureCleanup();
@@ -702,7 +710,7 @@ export async function renderManimVideo({
       );
       detailedError.name = err.name;
       detailedError.stack = err.stack;
-    detailedError.logs = [...renderLogs];
+      detailedError.logs = [...renderLogs];
       Object.assign(detailedError, {
         exitCode,
         stderr,
