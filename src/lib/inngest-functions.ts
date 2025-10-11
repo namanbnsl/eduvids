@@ -1048,6 +1048,7 @@ export const generateVideo = inngest.createFunction(
       if (jobId) {
         await jobStore.setProgress(jobId, { progress: 95, step: "finalizing" });
         await jobStore.setReady(jobId, uploadUrl);
+        await jobStore.setYoutubeStatus(jobId, { youtubeStatus: "pending" });
       }
 
       const totalRenderAttempts = renderAttempts || 1;
@@ -1136,6 +1137,15 @@ export const uploadVideoToYouTube = inngest.createFunction(
         console.log("YouTube upload complete", yt);
       });
 
+      if (jobId) {
+        await jobStore.setYoutubeStatus(jobId, {
+          youtubeStatus: "uploaded",
+          youtubeUrl: yt.watchUrl,
+          youtubeVideoId: yt.videoId,
+          youtubeError: undefined,
+        });
+      }
+
       return { success: true, ...yt };
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -1143,6 +1153,12 @@ export const uploadVideoToYouTube = inngest.createFunction(
         console.error("YouTube upload failed", errorMessage);
       });
       if (jobId) {
+        await jobStore.setYoutubeStatus(jobId, {
+          youtubeStatus: "failed",
+          youtubeUrl: undefined,
+          youtubeVideoId: undefined,
+          youtubeError: errorMessage,
+        });
       }
       throw err;
     }

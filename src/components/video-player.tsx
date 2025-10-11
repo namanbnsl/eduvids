@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { VideoJob } from "@/lib/job-store";
+import type { VideoJob, YoutubeStatus } from "@/lib/job-store";
 import { VideoProgressCard } from "@/components/ui/video-progress-card";
 
 export type JobStatus = "generating" | "ready" | "error";
@@ -48,6 +48,9 @@ export function VideoPlayer({
   const [progress, setProgress] = useState<number>(0);
   const [step, setStep] = useState<string | undefined>(undefined);
   const [etaTargetMs, setEtaTargetMs] = useState<number | null>(null);
+  const [youtubeStatus, setYoutubeStatus] = useState<YoutubeStatus | undefined>(undefined);
+  const [youtubeUrl, setYoutubeUrl] = useState<string | undefined>(undefined);
+  const [youtubeError, setYoutubeError] = useState<string | undefined>(undefined);
   const progressHistoryRef = useRef<
     Array<{ progress: number; timestamp: number }>
   >([]);
@@ -110,33 +113,48 @@ export function VideoPlayer({
     setEtaTargetMs(now + estimateMs);
   }, []);
 
-  // Subscribe to job updates via SSE, fallback to polling
-  useEffect(() => {
-    if (!jobId || jobStatus === "ready" || jobStatus === "error") return;
-
-    let cancelled = false;
-    let pollInterval: ReturnType<typeof setInterval> | undefined;
-    let es: EventSource | null = null;
-
-    const parseJob = (
+  const normalizeJob = useCallback(
+    (
       job: unknown
-    ):
-      | (Pick<
-          VideoJob,
-          "progress" | "step" | "videoUrl" | "error" | "details" | "status"
-        > & {
-          jobId?: string;
-        })
-      | null => {
+    ): (Pick<
+      VideoJob,
+      | "progress"
+      | "step"
+      | "videoUrl"
+      | "error"
+      | "details"
+      | "status"
+      | "youtubeStatus"
+      | "youtubeUrl"
+      | "youtubeError"
+    > & { jobId?: string }) | null => {
       if (!job || typeof job !== "object") return null;
       const value = job as Record<string, unknown>;
       const status = value.status;
       if (status !== "generating" && status !== "ready" && status !== "error") {
         return null;
       }
+
+      const rawYoutubeStatus = value.youtubeStatus;
+      const youtubeStatus: YoutubeStatus | undefined =
+        typeof rawYoutubeStatus === "string" &&
+        (rawYoutubeStatus === "pending" ||
+          rawYoutubeStatus === "uploaded" ||
+          rawYoutubeStatus === "failed")
+          ? (rawYoutubeStatus as YoutubeStatus)
+          : undefined;
+
       const normalized: Pick<
         VideoJob,
-        "progress" | "step" | "videoUrl" | "error" | "details" | "status"
+        | "progress"
+        | "step"
+        | "videoUrl"
+        | "error"
+        | "details"
+        | "status"
+        | "youtubeStatus"
+        | "youtubeUrl"
+        | "youtubeError"
       > & {
         jobId?: string;
       } = {
@@ -148,6 +166,13 @@ export function VideoPlayer({
           typeof value.videoUrl === "string" ? value.videoUrl : undefined,
         error: typeof value.error === "string" ? value.error : undefined,
         details: typeof value.details === "string" ? value.details : undefined,
+        youtubeStatus,
+        youtubeUrl:
+          typeof value.youtubeUrl === "string" ? value.youtubeUrl : undefined,
+        youtubeError:
+          typeof value.youtubeError === "string"
+            ? value.youtubeError
+            : undefined,
         jobId:
           typeof value.jobId === "string"
             ? value.jobId
@@ -155,12 +180,23 @@ export function VideoPlayer({
             ? value.id
             : undefined,
       };
+
       return normalized;
-    };
+    },
+    []
+  );
+
+  // Subscribe to job updates via SSE, fallback to polling
+  useEffect(() => {
+    if (!jobId || jobStatus === "ready" || jobStatus === "error") return;
+
+    let cancelled = false;
+    let pollInterval: ReturnType<typeof setInterval> | undefined;
+    let es: EventSource | null = null;
 
     const handleJob = (job: unknown) => {
       if (cancelled) return;
-      const parsed = parseJob(job);
+      const parsed = normalizeJob(job);
       if (!parsed || (parsed.jobId && parsed.jobId !== jobId)) {
         return;
       }
@@ -173,6 +209,9 @@ export function VideoPlayer({
         return nextProgress;
       });
       if (parsed.step) setStep(parsed.step);
+      setYoutubeStatus(parsed.youtubeStatus);
+      setYoutubeUrl(parsed.youtubeUrl);
+      setYoutubeError(parsed.youtubeError);
       if (parsed.status === "ready" && parsed.videoUrl) {
         setVideoUrl(parsed.videoUrl);
         setJobStatus("ready");
@@ -224,11 +263,14 @@ export function VideoPlayer({
       es?.close();
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [jobId, jobStatus, updateProgressMetrics]);
+  }, [jobId, jobStatus, updateProgressMetrics, normalizeJob]);
 
   useEffect(() => {
     progressHistoryRef.current = [];
     setEtaTargetMs(null);
+    setYoutubeStatus(undefined);
+    setYoutubeUrl(undefined);
+    setYoutubeError(undefined);
   }, [jobId]);
 
   useEffect(() => {
@@ -237,6 +279,55 @@ export function VideoPlayer({
       setEtaTargetMs(null);
     }
   }, [jobStatus]);
+
+  useEffect(() => {
+    if (!jobId) return;
+    if (jobStatus !== "ready") return;
+    if (youtubeStatus === "uploaded" || youtubeStatus === "failed") return;
+
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 120;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const poll = async () => {
+      if (cancelled) return;
+      attempts += 1;
+      try {
+        const res = await fetch(`/api/jobs/${jobId}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const parsed = normalizeJob(data);
+        if (!parsed || (parsed.jobId && parsed.jobId !== jobId)) {
+          return;
+        }
+        setYoutubeStatus(parsed.youtubeStatus);
+        setYoutubeUrl(parsed.youtubeUrl);
+        setYoutubeError(parsed.youtubeError);
+        if (parsed.youtubeStatus === "uploaded" || parsed.youtubeStatus === "failed") {
+          if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+          }
+          cancelled = true;
+          return;
+        }
+      } catch {}
+
+      if (attempts >= maxAttempts && intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    poll();
+    intervalId = setInterval(poll, 5000);
+
+    return () => {
+      cancelled = true;
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [jobId, jobStatus, youtubeStatus, normalizeJob]);
 
   useEffect(() => {
     if (jobStatus !== "generating") return;
@@ -463,6 +554,28 @@ export function VideoPlayer({
         controls
         className="w-full h-full rounded-md"
       />
+      {youtubeStatus === "uploaded" && youtubeUrl ? (
+        <div className="mt-3 px-2">
+          <a
+            href={youtubeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-md bg-secondary px-3 py-1.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
+          >
+            Watch on YouTube
+          </a>
+        </div>
+      ) : youtubeStatus === "pending" ? (
+        <p className="mt-3 px-2 text-sm text-muted-foreground">
+          Uploading to YouTube… the link will appear here once ready.
+        </p>
+      ) : youtubeStatus === "failed" ? (
+        <p className="mt-3 px-2 text-sm text-red-500">
+          {youtubeError
+            ? `YouTube upload failed: ${youtubeError}`
+            : "YouTube upload failed. Please try again later."}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import { kv } from "@vercel/kv";
 
 export type JobStatus = "generating" | "ready" | "error";
+export type YoutubeStatus = "pending" | "uploaded" | "failed";
 
 export interface VideoJob {
   id: string;
@@ -16,6 +17,10 @@ export interface VideoJob {
   progress?: number;
   step?: string;
   details?: string;
+  youtubeStatus?: YoutubeStatus;
+  youtubeUrl?: string;
+  youtubeVideoId?: string;
+  youtubeError?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -30,6 +35,15 @@ interface JobStore {
   ): Promise<VideoJob | undefined>;
   setReady(id: string, videoUrl: string): Promise<VideoJob | undefined>;
   setError(id: string, message: string): Promise<VideoJob | undefined>;
+  setYoutubeStatus(
+    id: string,
+    update: {
+      youtubeStatus?: YoutubeStatus;
+      youtubeUrl?: string;
+      youtubeVideoId?: string;
+      youtubeError?: string;
+    }
+  ): Promise<VideoJob | undefined>;
 }
 
 // Persistent KV-backed store for production
@@ -103,6 +117,39 @@ class KVJobStore implements JobStore {
     return updated;
   }
 
+  async setYoutubeStatus(
+    id: string,
+    update: {
+      youtubeStatus?: YoutubeStatus;
+      youtubeUrl?: string;
+      youtubeVideoId?: string;
+      youtubeError?: string;
+    }
+  ): Promise<VideoJob | undefined> {
+    const job = await this.get(id);
+    if (!job) return undefined;
+    const updated: VideoJob = {
+      ...job,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (Object.prototype.hasOwnProperty.call(update, "youtubeStatus")) {
+      updated.youtubeStatus = update.youtubeStatus;
+    }
+    if (Object.prototype.hasOwnProperty.call(update, "youtubeUrl")) {
+      updated.youtubeUrl = update.youtubeUrl;
+    }
+    if (Object.prototype.hasOwnProperty.call(update, "youtubeVideoId")) {
+      updated.youtubeVideoId = update.youtubeVideoId;
+    }
+    if (Object.prototype.hasOwnProperty.call(update, "youtubeError")) {
+      updated.youtubeError = update.youtubeError;
+    }
+
+    await kv.set(this.key(id), updated, { ex: this.ttlSeconds });
+    return updated;
+  }
+
   private key(id: string) {
     return `job:${id}`;
   }
@@ -164,6 +211,36 @@ class InMemoryJobStore implements JobStore {
     job.status = "error";
     job.error = message;
     job.step = "error";
+    job.updatedAt = new Date().toISOString();
+    this.jobs.set(id, job);
+    return job;
+  }
+
+  async setYoutubeStatus(
+    id: string,
+    update: {
+      youtubeStatus?: YoutubeStatus;
+      youtubeUrl?: string;
+      youtubeVideoId?: string;
+      youtubeError?: string;
+    }
+  ): Promise<VideoJob | undefined> {
+    const job = this.jobs.get(id);
+    if (!job) return undefined;
+
+    if (Object.prototype.hasOwnProperty.call(update, "youtubeStatus")) {
+      job.youtubeStatus = update.youtubeStatus;
+    }
+    if (Object.prototype.hasOwnProperty.call(update, "youtubeUrl")) {
+      job.youtubeUrl = update.youtubeUrl;
+    }
+    if (Object.prototype.hasOwnProperty.call(update, "youtubeVideoId")) {
+      job.youtubeVideoId = update.youtubeVideoId;
+    }
+    if (Object.prototype.hasOwnProperty.call(update, "youtubeError")) {
+      job.youtubeError = update.youtubeError;
+    }
+
     job.updatedAt = new Date().toISOString();
     this.jobs.set(id, job);
     return job;
