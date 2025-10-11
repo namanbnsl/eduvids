@@ -1,22 +1,19 @@
 import { inngest } from "./inngest";
 import {
-  generateSegmentManimScript,
+  generateManimScript,
   generateVoiceoverScript,
-  planManimSegments,
   regenerateManimScriptWithError,
   verifyManimScript,
+  // planManimSegments,
+  // generateSegmentManimScript,
 } from "./gemini";
 import type {
   ManimGenerationAttempt,
   ManimGenerationErrorDetails,
-  PlannedManimSegment,
   VerifyManimScriptResult,
+  // PlannedManimSegment,
 } from "./gemini";
-import {
-  concatSegmentVideos,
-  renderManimVideo,
-  ValidationStage,
-} from "./e2b";
+import { renderManimVideo, ValidationStage } from "./e2b";
 import type { RenderLogEntry } from "./e2b";
 import { uploadVideo } from "./uploadthing";
 import { jobStore } from "./job-store";
@@ -31,10 +28,17 @@ type RenderProcessError = Error & {
   logs?: RenderLogEntry[];
 };
 
+type RenderAttemptSuccess = {
+  uploadUrl: string;
+  warnings: Array<{ stage: ValidationStage; message: string }>;
+  logs: RenderLogEntry[];
+};
+
 type HeuristicSeverity = "noncode" | "fixable" | "critical";
 type HeuristicIssue = { message: string; severity: HeuristicSeverity };
 type HeuristicOptions = { allowVerificationFixes?: boolean };
 
+/* Segment system temporarily disabled
 interface SegmentRenderOutput {
   segmentId: string;
   title: string;
@@ -43,6 +47,17 @@ interface SegmentRenderOutput {
   renderAttempts: number;
   logs: RenderLogEntry[];
 }
+*/
+
+const MAX_RENDER_LOG_ENTRIES = 200;
+
+const pruneRenderLogs = (
+  logs: RenderLogEntry[] | undefined
+): RenderLogEntry[] => {
+  if (!Array.isArray(logs) || logs.length === 0) return [];
+  if (logs.length <= MAX_RENDER_LOG_ENTRIES) return logs;
+  return logs.slice(-MAX_RENDER_LOG_ENTRIES);
+};
 
 const REQUIRED_IMPORTS = [
   "from manim import",
@@ -117,7 +132,7 @@ const clampDetail = (value?: string, limit = 2000): string | undefined => {
   return value.length > limit ? value.slice(0, limit) : value;
 };
 
-const DEFAULT_SEGMENT_CONCURRENCY = 3;
+// const DEFAULT_SEGMENT_CONCURRENCY = 3;
 
 const sanitizeStepComponent = (value: string | number): string =>
   String(value)
@@ -125,25 +140,23 @@ const sanitizeStepComponent = (value: string | number): string =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-const buildStepId = (
-  ...parts: Array<string | number | undefined>
-): string => {
+const buildStepId = (...parts: Array<string | number | undefined>): string => {
   const sanitized = parts
     .map((part) => (part === undefined ? "" : sanitizeStepComponent(part)))
     .filter((part) => part.length > 0);
   return sanitized.length ? sanitized.join("-") : "step";
 };
 
-const getSegmentConcurrency = (segmentCount: number): number => {
-  const raw = process.env.SEGMENT_RENDER_CONCURRENCY;
-  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-  const configured =
-    Number.isFinite(parsed) && parsed > 0
-      ? parsed
-      : DEFAULT_SEGMENT_CONCURRENCY;
-  const safeSegmentCount = Math.max(1, segmentCount);
-  return Math.max(1, Math.min(configured, safeSegmentCount));
-};
+// const getSegmentConcurrency = (segmentCount: number): number => {
+//   const raw = process.env.SEGMENT_RENDER_CONCURRENCY;
+//   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+//   const configured =
+//     Number.isFinite(parsed) && parsed > 0
+//       ? parsed
+//       : DEFAULT_SEGMENT_CONCURRENCY;
+//   const safeSegmentCount = Math.max(1, segmentCount);
+//   return Math.max(1, Math.min(configured, safeSegmentCount));
+// };
 
 const formatJobError = (
   error: unknown
@@ -495,7 +508,9 @@ export const generateVideo = inngest.createFunction(
       jobId?: string;
     };
 
-    console.log(`Starting video generation for prompt: "${prompt}"`);
+    console.log(
+      ` Starting full-script video generation for prompt: "${prompt}"`
+    );
 
     const verifyScriptWithAutoFix = async ({
       scriptToCheck,
@@ -675,490 +690,377 @@ export const generateVideo = inngest.createFunction(
         }
       );
 
-      console.log("Generated voiceover script", {
+      console.log(" Voiceover script generated", {
         length: voiceoverScript.length,
       });
 
       await jobStore.setProgress(jobId!, {
-        progress: 18,
-        step: "planning segments",
+        progress: 20,
+        step: "generating script",
       });
-      const segments = (await step.run("plan-manim-segments", async () => {
-        return await planManimSegments({
+
+      let script = await step.run("generate-full-manim-script", async () => {
+        return await generateManimScript({
           prompt,
           voiceoverScript,
         });
-      })) as PlannedManimSegment[];
+      });
 
-      console.log("Planned segments", {
-        count: segments.length,
-        ids: segments.map((segment) => segment.id),
+      console.log(" Initial Manim script generated", {
+        length: script.length,
+      });
+
+      const preValidation = validateRequiredElements(script);
+      if (!preValidation.ok) {
+        throw new Error(
+          `Full video script failed pre-validation: ${preValidation.error}`
+        );
+      }
+
+      script = await verifyScriptWithAutoFix({
+        scriptToCheck: script,
+        context: "full video script",
+        narration: voiceoverScript,
+        stepBaseParts: ["video", "verify", "initial"],
+      });
+
+      console.log(" Manim script verified", {
+        length: script.length,
       });
 
       await jobStore.setProgress(jobId!, {
-        progress: 32,
-        step: "preparing segments",
+        progress: 35,
+        step: "validated script",
       });
 
-      const MAX_SEGMENT_RENDER_RETRIES = 3;
+      const MAX_RENDER_RETRIES = 3;
       const MAX_FORCE_REGENERATIONS = 2;
       const ATTEMPT_HISTORY_LIMIT = 3;
 
-      const segmentWarnings: Array<{
+      const pipelineWarnings: Array<{
         stage: ValidationStage;
         message: string;
       }> = [];
 
-      let completedSegments = 0;
-      const updateProgressAfterSegment = async (segmentTitle: string) => {
-        completedSegments += 1;
-        const ratio = completedSegments / segments.length;
-        const progressValue = Math.round(40 + ratio * 30);
-        await jobStore.setProgress(jobId!, {
-          progress: Math.min(progressValue, 72),
-          step: `rendered segment ${completedSegments}/${segments.length}`,
-          details: segmentTitle,
-        });
-      };
-
-      const renderSegmentsWithConcurrency = async (
-        items: PlannedManimSegment[],
-        concurrency: number
-      ): Promise<SegmentRenderOutput[]> => {
-        if (!items.length) {
-          return [] as SegmentRenderOutput[];
+      let currentScript = script;
+      const failedAttempts: ManimGenerationAttempt[] = [];
+      const blockedScripts = new Map<string, string>();
+      const addBlockedScript = (code: string) => {
+        const trimmed = code.trim();
+        if (!trimmed) return;
+        const fingerprint = fingerprintScript(trimmed);
+        if (!blockedScripts.has(fingerprint)) {
+          blockedScripts.set(fingerprint, trimmed);
         }
-
-        const safeConcurrency = Math.max(1, Math.min(concurrency, items.length));
-        const results: SegmentRenderOutput[] = new Array(items.length);
-        let nextIndex = 0;
-
-        const worker = async (workerId: number) => {
-          while (true) {
-            const currentIndex = nextIndex;
-            if (currentIndex >= items.length) {
-              break;
-            }
-            nextIndex += 1;
-
-            const segment = items[currentIndex]!;
-            console.log(
-              `Worker ${workerId + 1}/${safeConcurrency} processing segment ${segment.id}`
-            );
-            results[currentIndex] = await processSegment(segment, currentIndex);
-          }
-        };
-
-        const workers = Array.from({ length: safeConcurrency }, (_, workerId) =>
-          worker(workerId)
-        );
-
-        await Promise.all(workers);
-        return results;
       };
 
-      const processSegment = async (
-        segment: PlannedManimSegment,
-        index: number
-      ): Promise<SegmentRenderOutput> => {
-        const segmentPosition = index + 1;
+      addBlockedScript(currentScript);
+
+      let renderOutcome: RenderAttemptSuccess | undefined;
+      let renderAttempts = 0;
+
+      for (let attempt = 1; attempt <= MAX_RENDER_RETRIES; attempt++) {
+        const attemptStart = Date.now();
         console.log(
-          `Preparing segment ${segment.id} (${segmentPosition}/${segments.length})`
-        );
-        let script = await step.run(
-          buildStepId("segment", segmentPosition, "generate-script"),
-          async () => {
-            return await generateSegmentManimScript({
-              prompt,
-              voiceoverScript,
-              segment,
-            });
-          }
+          ` Render attempt ${attempt}/${MAX_RENDER_RETRIES} starting`
         );
 
-        console.log(`Generated script for segment ${segment.id}`, {
-          length: script.length,
-        });
+        try {
+          const stepResult = await step.run(
+            buildStepId("video", "render", "attempt", attempt),
+            async () => {
+              const result = await renderManimVideo({
+                script: currentScript,
+                prompt,
+                applyWatermark: true,
+              });
 
-        const preValidation = validateRequiredElements(script);
-        if (!preValidation.ok) {
-          throw new Error(
-            `Segment ${segment.id} failed pre-validation: ${preValidation.error}`
-          );
-        }
+              if (
+                !result ||
+                typeof result !== "object" ||
+                typeof result.videoPath !== "string"
+              ) {
+                throw new Error(
+                  "Render step did not produce a valid video result"
+                );
+              }
 
-        script = await verifyScriptWithAutoFix({
-          scriptToCheck: script,
-          context: `segment ${segmentPosition}: ${segment.title}`,
-          narration: segment.narration,
-          stepBaseParts: [
-            "segment",
-            segmentPosition,
-            "verify",
-            "initial",
-          ],
-        });
+              const videoDataUrl = result.videoPath;
+              if (!videoDataUrl.startsWith("data:video/mp4;base64,")) {
+                throw new Error(
+                  "Render step returned video data in an unexpected format"
+                );
+              }
 
-        console.log(`Verified script for segment ${segment.id}`, {
-          length: script.length,
-        });
-
-        let currentScript = script;
-        const segmentRenderWarnings: Array<{
-          stage: ValidationStage;
-          message: string;
-        }> = [];
-        const failedAttempts: ManimGenerationAttempt[] = [];
-        const blockedScripts = new Map<string, string>();
-        const addBlockedScript = (code: string) => {
-          const trimmed = code.trim();
-          if (!trimmed) return;
-          const fingerprint = fingerprintScript(trimmed);
-          if (!blockedScripts.has(fingerprint)) {
-            blockedScripts.set(fingerprint, trimmed);
-          }
-        };
-        addBlockedScript(currentScript);
-
-        for (
-          let attempt = 1;
-          attempt <= MAX_SEGMENT_RENDER_RETRIES;
-          attempt++
-        ) {
-          const attemptStart = Date.now();
-          console.log(
-            `Segment ${segment.id} attempt ${attempt}/${MAX_SEGMENT_RENDER_RETRIES} starting`,
-            {
-              position: `${segmentPosition}/${segments.length}`,
-              scriptLength: currentScript.length,
-            }
-          );
-          try {
-            const renderResult = await step.run(
-              buildStepId("segment", segmentPosition, "render", "attempt", attempt),
-              async () => {
-                return await renderManimVideo({
-                  script: currentScript,
-                  prompt: `${prompt} (segment ${segment.title})`,
-                  applyWatermark: false,
+              if (jobId) {
+                await jobStore.setProgress(jobId, {
+                  progress: 72,
+                  step: "rendered video",
+                });
+                await jobStore.setProgress(jobId, {
+                  progress: 80,
+                  step: "uploading video",
                 });
               }
+
+              const uploadUrl = await uploadVideo({
+                videoPath: videoDataUrl,
+                userId,
+              });
+
+              console.log(" Video uploaded to storage", { uploadUrl });
+
+              return {
+                uploadUrl,
+                warnings: result.warnings ?? [],
+                logs: pruneRenderLogs(result.logs),
+              } satisfies RenderAttemptSuccess;
+            }
+          );
+
+          if (
+            !stepResult ||
+            typeof stepResult.uploadUrl !== "string" ||
+            !stepResult.uploadUrl.length
+          ) {
+            console.error(" Render step did not return an upload URL", {
+              result: stepResult,
+            });
+            throw new Error("Render pipeline did not produce an upload URL");
+          }
+
+          renderOutcome = {
+            uploadUrl: stepResult.uploadUrl,
+            warnings: stepResult.warnings ?? [],
+            logs: stepResult.logs ?? [],
+          };
+
+          if (renderOutcome.warnings.length) {
+            pipelineWarnings.push(...renderOutcome.warnings);
+          }
+
+          const attemptDurationMs = Date.now() - attemptStart;
+          renderAttempts = attempt;
+          console.log(` Render attempt ${attempt} succeeded`, {
+            durationMs: attemptDurationMs,
+            warnings: renderOutcome.warnings.length,
+          });
+          break;
+        } catch (error: unknown) {
+          const baseError =
+            error instanceof Error ? error : new Error(String(error));
+          const renderError = baseError as RenderProcessError;
+
+          const rawMessage = (renderError.message || "").trim();
+          const normalizedMessage = rawMessage.length
+            ? rawMessage
+            : String(error || "").trim() || "Unknown error";
+          const stack = renderError.stack;
+          const stderr = renderError.stderr;
+          const stdout = renderError.stdout;
+          const exitCode = renderError.exitCode;
+          const logs = renderError.logs ?? [];
+
+          const sanitizedErrorDetails = {
+            message: normalizedMessage,
+            stack: clampDetail(stack),
+            stderr: clampDetail(stderr),
+            stdout: clampDetail(stdout),
+            exitCode,
+            stage: renderError.stage,
+            hint: renderError.hint,
+            logs: logs.length ? logs.slice(-50) : undefined,
+          } satisfies ManimGenerationErrorDetails;
+
+          failedAttempts.push({
+            attemptNumber: attempt,
+            script: currentScript,
+            error: sanitizedErrorDetails,
+          });
+          if (failedAttempts.length > ATTEMPT_HISTORY_LIMIT) {
+            failedAttempts.splice(
+              0,
+              failedAttempts.length - ATTEMPT_HISTORY_LIMIT
             );
+          }
 
-            if (!renderResult || typeof renderResult !== "object") {
-              console.error(
-                `Render step returned no usable result for segment ${segment.id}`,
-                { type: typeof renderResult }
-              );
-              throw new Error(
-                `Render step did not produce a result for segment ${segment.id}`
-              );
-            }
+          console.error(` Render attempt ${attempt} failed`, {
+            message: normalizedMessage,
+            stage: renderError.stage,
+            exitCode,
+            hint: renderError.hint,
+          });
 
-            const {
-              videoPath,
-              warnings: renderWarnings,
-              logs: renderLogs,
-            } = renderResult;
+          await jobStore.setProgress(jobId!, {
+            details: `render attempt ${attempt}: ${normalizedMessage}`,
+          });
 
-            if (!videoPath || typeof videoPath !== "string") {
-              console.error(
-                `Render result missing videoPath for segment ${segment.id}`,
-                { hasVideoPath: Boolean(videoPath) }
-              );
-              throw new Error(
-                `Render step produced an invalid video for segment ${segment.id}`
-              );
-            }
-            const warnings: Array<{ stage: ValidationStage; message: string }> =
-              renderWarnings ?? [];
+          if (attempt === MAX_RENDER_RETRIES) {
+            throw renderError;
+          }
 
-            if (warnings.length) {
-              segmentRenderWarnings.push(...warnings);
-            }
+          const repeatedErrorOccurrences = Math.max(
+            1,
+            failedAttempts.filter((attemptRecord) => {
+              const message = attemptRecord.error.message?.trim();
+              return message && message === normalizedMessage;
+            }).length
+          );
 
-            await updateProgressAfterSegment(segment.title);
+          let previousScriptForRewrite = currentScript;
+          let acceptedNewScript = false;
+          let repeatedCount = repeatedErrorOccurrences;
 
-            const attemptDurationMs = Date.now() - attemptStart;
+          for (
+            let regenPass = 1;
+            regenPass <= MAX_FORCE_REGENERATIONS;
+            regenPass++
+          ) {
+            const isForcedRewrite = regenPass > 1;
+            const regenStepParts: Array<string | number> = [
+              "video",
+              isForcedRewrite ? "force-regen" : "regen",
+              attempt + 1,
+              "cycle",
+              regenPass,
+            ];
+
             console.log(
-              `Segment ${segment.id} attempt ${attempt} succeeded`,
-              {
-                warnings: warnings.length,
-                durationMs: attemptDurationMs,
+              ` Regeneration pass ${regenPass} (${
+                isForcedRewrite ? "forced" : "standard"
+              }) after render attempt ${attempt}`
+            );
+
+            const regeneratedScript = await step.run(
+              buildStepId(...regenStepParts),
+              async () => {
+                const nextScript = await regenerateManimScriptWithError({
+                  prompt,
+                  voiceoverScript,
+                  previousScript: previousScriptForRewrite,
+                  error: normalizedMessage,
+                  errorDetails: sanitizedErrorDetails,
+                  attemptNumber: attempt,
+                  attemptHistory: failedAttempts,
+                  blockedScripts: Array.from(blockedScripts.values()),
+                  forceRewrite: isForcedRewrite,
+                  forcedReason: isForcedRewrite
+                    ? "Regenerated script matched a previous failure and must be rewritten with substantial changes."
+                    : undefined,
+                  repeatedErrorCount: repeatedCount,
+                });
+                const trimmed = nextScript.trim();
+                if (!trimmed) {
+                  throw new Error(
+                    `Regeneration returned an empty script for render attempt ${
+                      attempt + 1
+                    } (pass ${regenPass})`
+                  );
+                }
+                return trimmed;
               }
             );
 
-            return {
-              segmentId: segment.id,
-              title: segment.title,
-              videoDataUrl: videoPath,
-              warnings: segmentRenderWarnings,
-              renderAttempts: attempt,
-              logs: renderLogs ?? [],
-            };
-          } catch (error: unknown) {
-            const baseError =
-              error instanceof Error ? error : new Error(String(error));
-            const renderError = baseError as RenderProcessError;
+            const verificationContext = isForcedRewrite
+              ? `full video forced regeneration pass ${regenPass}`
+              : `full video regeneration`;
 
-            const rawMessage = (renderError.message || "").trim();
-            const normalizedMessage = rawMessage.length
-              ? rawMessage
-              : String(error || "").trim() || "Unknown error";
-            const stack = renderError.stack;
-            const stderr = renderError.stderr;
-            const stdout = renderError.stdout;
-            const exitCode = renderError.exitCode;
-            const logs = renderError.logs ?? [];
-
-            const sanitizedErrorDetails = {
-              message: normalizedMessage,
-              stack: clampDetail(stack),
-              stderr: clampDetail(stderr),
-              stdout: clampDetail(stdout),
-              exitCode,
-              stage: renderError.stage,
-              hint: renderError.hint,
-              logs: logs.length ? logs.slice(-50) : undefined,
-            } satisfies ManimGenerationErrorDetails;
-
-            failedAttempts.push({
-              attemptNumber: attempt,
-              script: currentScript,
-              error: sanitizedErrorDetails,
-            });
-            if (failedAttempts.length > ATTEMPT_HISTORY_LIMIT) {
-              failedAttempts.splice(
-                0,
-                failedAttempts.length - ATTEMPT_HISTORY_LIMIT
-              );
-            }
-
-            console.error(
-              `Segment ${segment.id} render attempt ${attempt} failed`,
-              {
-                message: normalizedMessage,
-                stage: renderError.stage,
-                exitCode,
-                hint: renderError.hint,
-              }
-            );
-
-            await jobStore.setProgress(jobId!, {
-              details: `segment ${segmentPosition}/${segments.length}: ${normalizedMessage}`,
-            });
-
-            if (attempt === MAX_SEGMENT_RENDER_RETRIES) {
-              throw renderError;
-            }
-
-            const repeatedErrorOccurrences = Math.max(
-              1,
-              failedAttempts.filter((attemptRecord) => {
-                const message = attemptRecord.error.message?.trim();
-                return message && message === normalizedMessage;
-              }).length
-            );
-
-            let previousScriptForRewrite = currentScript;
-            let acceptedNewScript = false;
-            let repeatedCount = repeatedErrorOccurrences;
-
-            for (
-              let regenPass = 1;
-              regenPass <= MAX_FORCE_REGENERATIONS;
-              regenPass++
-            ) {
-              const isForcedRewrite = regenPass > 1;
-              const regenStepParts: Array<string | number> = [
-                "segment",
-                segmentPosition,
-                isForcedRewrite ? "force-regen" : "regen",
+            const verifiedScript = await verifyScriptWithAutoFix({
+              scriptToCheck: regeneratedScript,
+              context: verificationContext,
+              narration: voiceoverScript,
+              stepBaseParts: [
+                "video",
+                "verify",
+                isForcedRewrite ? "force" : "retry",
                 attempt + 1,
                 "cycle",
                 regenPass,
-              ];
+              ],
+            });
 
-              console.log(
-                `Segment ${segment.id} regeneration pass ${regenPass} (${isForcedRewrite ? "forced" : "standard"}) after attempt ${attempt}`
-              );
-
-              const regeneratedScript = await step.run(
-                buildStepId(...regenStepParts),
-                async () => {
-                  const nextScript = await regenerateManimScriptWithError({
-                    prompt,
-                    voiceoverScript,
-                    previousScript: previousScriptForRewrite,
-                    error: normalizedMessage,
-                    errorDetails: sanitizedErrorDetails,
-                    attemptNumber: attempt,
-                    attemptHistory: failedAttempts,
-                    blockedScripts: Array.from(blockedScripts.values()),
-                    forceRewrite: isForcedRewrite,
-                    forcedReason: isForcedRewrite
-                      ? "Regenerated script matched a previous failure and must be rewritten with substantial changes."
-                      : undefined,
-                    repeatedErrorCount: repeatedCount,
-                  });
-                  const trimmed = nextScript.trim();
-                  if (!trimmed) {
-                    throw new Error(
-                      `Regeneration returned an empty script for segment ${
-                        segment.id
-                      } attempt ${attempt + 1} (pass ${regenPass})`
-                    );
-                  }
-                  return trimmed;
-                }
-              );
-
-              const verificationContext = isForcedRewrite
-                ? `segment ${segmentPosition} forced regeneration pass ${regenPass}`
-                : `segment ${segmentPosition} regeneration`;
-
-              const verifiedScript = await verifyScriptWithAutoFix({
-                scriptToCheck: regeneratedScript,
-                context: verificationContext,
-                narration: segment.narration,
-                stepBaseParts: [
-                  "segment",
-                  segmentPosition,
-                  "verify",
-                  isForcedRewrite ? "force" : "retry",
-                  attempt + 1,
-                  "cycle",
-                  regenPass,
-                ],
-              });
-
-              const fingerprint = fingerprintScript(verifiedScript);
-              if (!blockedScripts.has(fingerprint)) {
-                blockedScripts.set(fingerprint, verifiedScript.trim());
-                currentScript = verifiedScript;
-                console.log(
-                  `Segment ${segment.id} accepted regenerated script on pass ${regenPass}`
-                );
-                acceptedNewScript = true;
-                break;
-              }
-
-              console.warn(
-                `Segment ${segment.id} regeneration produced a previously blocked script on pass ${regenPass}`
-              );
-              previousScriptForRewrite = verifiedScript;
+            const fingerprint = fingerprintScript(verifiedScript);
+            if (!blockedScripts.has(fingerprint)) {
               blockedScripts.set(fingerprint, verifiedScript.trim());
-              repeatedCount += 1;
-
-              if (regenPass === MAX_FORCE_REGENERATIONS) {
-                throw new Error(
-                  `Regeneration could not produce a new script for segment ${segment.id} after ${MAX_FORCE_REGENERATIONS} passes`
-                );
-              }
+              currentScript = verifiedScript;
+              console.log(
+                ` Accepted regenerated script on pass ${regenPass} for render attempt ${
+                  attempt + 1
+                }`
+              );
+              acceptedNewScript = true;
+              break;
             }
 
-            if (!acceptedNewScript) {
+            console.warn(
+              " Regeneration produced a previously blocked script; continuing"
+            );
+            previousScriptForRewrite = verifiedScript;
+            blockedScripts.set(fingerprint, verifiedScript.trim());
+            repeatedCount += 1;
+
+            if (regenPass === MAX_FORCE_REGENERATIONS) {
               throw new Error(
-                `Failed to produce a new script for segment ${segment.id} after regeneration attempts`
+                "Regeneration could not produce a new script after multiple passes"
               );
             }
           }
+
+          if (!acceptedNewScript) {
+            throw new Error(
+              "Failed to produce a new script after regeneration attempts"
+            );
+          }
         }
-
-        throw new Error(
-          `Segment ${segment.id} could not be rendered after ${MAX_SEGMENT_RENDER_RETRIES} attempts`
-        );
-      };
-
-      const segmentConcurrency = getSegmentConcurrency(segments.length);
-      console.log(
-        `Rendering ${segments.length} segments with concurrency ${segmentConcurrency}`
-      );
-
-      const segmentOutputs = await renderSegmentsWithConcurrency(
-        segments,
-        segmentConcurrency
-      );
-      const typedSegmentOutputs =
-        segmentOutputs as unknown as SegmentRenderOutput[];
-
-      typedSegmentOutputs.forEach((output) => {
-        if (output.warnings.length) {
-          segmentWarnings.push(...output.warnings);
-        }
-      });
-
-      await jobStore.setProgress(jobId!, {
-        progress: 75,
-        step: "concatenating segments",
-      });
-
-      const { uploadUrl, warnings: finalWarnings = [] } = await step.run(
-        "concat-watermark-and-upload",
-        async () => {
-          const concatResult = await concatSegmentVideos({
-            segments: typedSegmentOutputs.map((output) => ({
-              id: output.segmentId,
-              dataUrl: output.videoDataUrl,
-            })),
-          });
-
-          const uploadedUrl = await uploadVideo({
-            videoPath: concatResult.videoPath,
-            userId,
-          });
-
-          return {
-            uploadUrl: uploadedUrl,
-            warnings: concatResult.warnings,
-          };
-        }
-      );
-
-      if (finalWarnings.length) {
-        segmentWarnings.push(...finalWarnings);
       }
 
-      await jobStore.setProgress(jobId!, {
-        progress: 82,
-        step: "uploaded video",
-      });
+      if (!renderOutcome) {
+        throw new Error("Render pipeline exited without producing a video");
+      }
 
-      const videoUrl = uploadUrl;
+      const uploadUrl = renderOutcome.uploadUrl;
+      const renderLogs = Array.isArray(renderOutcome.logs)
+        ? renderOutcome.logs
+        : [];
 
-      if (segmentWarnings.length) {
+      if (jobId) {
+        await jobStore.setProgress(jobId, {
+          progress: 82,
+          step: "uploaded video",
+        });
+      }
+
+      if (pipelineWarnings.length) {
         await jobStore.setProgress(jobId!, {
-          details: segmentWarnings
+          details: pipelineWarnings
             .map((warning) => `[${warning.stage}] ${warning.message}`)
             .join(" | "),
         });
       }
 
-      const totalRenderAttempts = typedSegmentOutputs.reduce(
-        (sum, output) => sum + output.renderAttempts,
-        0
-      );
-
-      const segmentResults = typedSegmentOutputs.map((output) => ({
-        id: output.segmentId,
-        title: output.title,
-        attempts: output.renderAttempts,
-        warnings: output.warnings,
-        logs: output.logs,
-        success: true,
-      }));
-
       if (jobId) {
         await jobStore.setProgress(jobId, { progress: 95, step: "finalizing" });
-        await jobStore.setReady(jobId, videoUrl!);
+        await jobStore.setReady(jobId, uploadUrl);
       }
 
-      // Fire-and-forget YouTube upload after UploadThing is ready
+      const totalRenderAttempts = renderAttempts || 1;
+
+      const segmentResults = [
+        {
+          id: "full-video",
+          title: "Full Video",
+          attempts: totalRenderAttempts,
+          warnings: pipelineWarnings,
+          logs: renderLogs,
+          success: true,
+        },
+      ];
+
       const ytTitle = buildYouTubeTitle({ prompt, voiceoverScript });
       await step.sendEvent("dispatch-youtube-upload", {
         name: "video/youtube.upload.request",
         data: {
-          videoUrl: videoUrl!,
+          videoUrl: uploadUrl,
           title: ytTitle,
           description: `Generated by eduvids for: ${prompt}`,
           voiceoverScript: voiceoverScript,
@@ -1169,16 +1071,16 @@ export const generateVideo = inngest.createFunction(
 
       return {
         success: true,
-        videoUrl: videoUrl,
+        videoUrl: uploadUrl,
         prompt,
         userId,
         chatId,
         generatedAt: new Date().toISOString(),
         voiceoverLength: voiceoverScript.length,
         renderAttempts: totalRenderAttempts,
-        retriedAfterError: totalRenderAttempts > segments.length,
+        retriedAfterError: totalRenderAttempts > 1,
         segments: segmentResults,
-        warnings: segmentWarnings,
+        warnings: pipelineWarnings,
       };
     } catch (err: unknown) {
       const { message: jobErrorMessage, detail } = formatJobError(err);
