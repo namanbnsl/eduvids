@@ -5,3 +5,4 @@ extra:
 4. llm analytics <br />
 5. elevenlabs or better voice for voiceover  <br />
 6. make it easier to change model from one file <br/>
+7. make voiceovers and videos more factual, accurate and better with search and research
