@@ -736,6 +736,7 @@ export const generateVideo = inngest.createFunction(
       const MAX_RENDER_RETRIES = 3;
       const MAX_FORCE_REGENERATIONS = 2;
       const ATTEMPT_HISTORY_LIMIT = 3;
+      const MAX_UPLOAD_ATTEMPTS = 2;
 
       const pipelineWarnings: Array<{
         stage: ValidationStage;
@@ -766,7 +767,7 @@ export const generateVideo = inngest.createFunction(
         );
 
         try {
-          const stepResult = await step.run(
+          const renderStepResult = await step.run(
             buildStepId("video", "render", "attempt", attempt),
             async () => {
               const result = await renderManimVideo({
@@ -792,47 +793,115 @@ export const generateVideo = inngest.createFunction(
                 );
               }
 
-              if (jobId) {
-                await jobStore.setProgress(jobId, {
-                  progress: 72,
-                  step: "rendered video",
-                });
-                await jobStore.setProgress(jobId, {
-                  progress: 80,
-                  step: "uploading video",
-                });
-              }
-
-              const uploadUrl = await uploadVideo({
-                videoPath: videoDataUrl,
-                userId,
-              });
-
-              console.log(" Video uploaded to storage", { uploadUrl });
-
               return {
-                uploadUrl,
+                videoDataUrl,
                 warnings: result.warnings ?? [],
                 logs: pruneRenderLogs(result.logs),
-              } satisfies RenderAttemptSuccess;
+              };
             }
           );
 
-          if (
-            !stepResult ||
-            typeof stepResult.uploadUrl !== "string" ||
-            !stepResult.uploadUrl.length
-          ) {
-            console.error(" Render step did not return an upload URL", {
-              result: stepResult,
+          if (jobId) {
+            await jobStore.setProgress(jobId, {
+              progress: 72,
+              step: "rendered video",
             });
-            throw new Error("Render pipeline did not produce an upload URL");
+          }
+
+          if (
+            !renderStepResult ||
+            typeof renderStepResult.videoDataUrl !== "string" ||
+            !renderStepResult.videoDataUrl.length
+          ) {
+            console.error(" Render step did not return video data", {
+              result: renderStepResult,
+            });
+            throw new Error("Render pipeline did not produce video data");
+          }
+
+          const videoDataUrl = renderStepResult.videoDataUrl;
+          const renderWarnings = renderStepResult.warnings ?? [];
+          const renderLogs = renderStepResult.logs ?? [];
+
+          if (jobId) {
+            await jobStore.setProgress(jobId, {
+              progress: 80,
+              step: "uploading video",
+            });
+          }
+
+          let uploadUrl: string | undefined;
+          for (
+            let uploadAttempt = 1;
+            uploadAttempt <= MAX_UPLOAD_ATTEMPTS;
+            uploadAttempt++
+          ) {
+            try {
+              const attemptUploadUrl = await step.run(
+                buildStepId(
+                  "video",
+                  "upload",
+                  "attempt",
+                  attempt,
+                  uploadAttempt
+                ),
+                async () => {
+                  return await uploadVideo({
+                    videoPath: videoDataUrl,
+                    userId,
+                  });
+                }
+              );
+
+              if (typeof attemptUploadUrl !== "string" || !attemptUploadUrl.length) {
+                throw new Error("Upload attempt did not return a URL");
+              }
+
+              uploadUrl = attemptUploadUrl;
+              console.log(" Video uploaded to storage", {
+                uploadUrl: attemptUploadUrl,
+                renderAttempt: attempt,
+                uploadAttempt,
+              });
+              break;
+            } catch (uploadError: unknown) {
+              const normalizedUploadMessage =
+                uploadError instanceof Error
+                  ? uploadError.message
+                  : String(uploadError);
+              console.error(
+                ` Upload attempt ${uploadAttempt} failed for render attempt ${attempt}`,
+                { message: normalizedUploadMessage }
+              );
+
+              if (jobId) {
+                await jobStore.setProgress(jobId!, {
+                  progress: 80,
+                  step: "uploading video",
+                  details: `upload attempt ${uploadAttempt} failed: ${normalizedUploadMessage}`,
+                });
+              }
+
+              if (uploadAttempt === MAX_UPLOAD_ATTEMPTS) {
+                const finalError =
+                  uploadError instanceof Error
+                    ? uploadError
+                    : new Error(normalizedUploadMessage);
+                (finalError as RenderProcessError).stage = "upload";
+                (finalError as RenderProcessError).logs = renderLogs;
+                throw finalError;
+              }
+            }
+          }
+
+          if (!uploadUrl) {
+            throw new Error("Upload failed without producing a URL");
           }
 
           renderOutcome = {
-            uploadUrl: stepResult.uploadUrl,
-            warnings: stepResult.warnings ?? [],
-            logs: stepResult.logs ?? [],
+            uploadUrl,
+            warnings: renderWarnings,
+            logs: renderLogs,
           };
 
           if (renderOutcome.warnings.length) {

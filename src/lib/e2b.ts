@@ -15,7 +15,8 @@ export type ValidationStage =
   | "video-validation"
   | "watermark"
   | "watermark-validation"
-  | "download";
+  | "download"
+  | "upload";
 
 export interface RenderLogEntry {
   timestamp: string;
