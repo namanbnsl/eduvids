@@ -17,6 +17,13 @@ export type ValidationStage =
   | "watermark-validation"
   | "download";
 
+export interface RenderLogEntry {
+  timestamp: string;
+  level: "info" | "warn" | "error" | "stdout" | "stderr";
+  message: string;
+  context?: string;
+}
+
 class ManimValidationError extends Error {
   constructor(
     message: string,
@@ -26,6 +33,7 @@ class ManimValidationError extends Error {
       stdout?: string;
       stderr?: string;
       exitCode?: number;
+      logs?: RenderLogEntry[];
     } = {}
   ) {
     super(message);
@@ -37,6 +45,7 @@ class ManimValidationError extends Error {
   stderr?: string;
   exitCode?: number;
   hint?: string;
+  logs?: RenderLogEntry[];
 }
 
 interface ValidationWarning {
@@ -47,6 +56,7 @@ interface ValidationWarning {
 export interface RenderResult {
   videoPath: string;
   warnings: ValidationWarning[];
+  logs: RenderLogEntry[];
 }
 
 const PROHIBITED_MODULES = [
@@ -205,16 +215,38 @@ export async function renderManimVideo({
 }: RenderRequest): Promise<RenderResult> {
   void _prompt;
   const normalizedScript = script.trim();
+  const renderLogs: RenderLogEntry[] = [];
+
+  const pushLog = (
+    entry: Omit<RenderLogEntry, "timestamp"> & { timestamp?: string }
+  ) => {
+    const timestamp = entry.timestamp ?? new Date().toISOString();
+    renderLogs.push({ ...entry, timestamp });
+  };
+
+  pushLog({ level: "info", message: "Beginning render pipeline", context: "render" });
   if (!normalizedScript.length) {
+    pushLog({
+      level: "error",
+      message: "Aborting render: script is empty",
+      context: "input",
+    });
     throw new ManimValidationError(
       "Manim script is empty. Please provide a scene before rendering.",
-      "input"
+      "input",
+      { logs: [...renderLogs] }
     );
   }
   if (!hasExpectedSceneClass(normalizedScript)) {
+    pushLog({
+      level: "error",
+      message: "Aborting render: class MyScene missing",
+      context: "input",
+    });
     throw new ManimValidationError(
       "Manim script must declare `class MyScene` before rendering. Rename your scene or adjust the renderer to match.",
-      "input"
+      "input",
+      { logs: [...renderLogs] }
     );
   }
   const heuristicResult = runHeuristicChecks(normalizedScript);
@@ -222,9 +254,15 @@ export async function renderManimVideo({
     const summary = heuristicResult.errors
       .map((issue) => `- ${issue.message}`)
       .join("\n");
+    pushLog({
+      level: "error",
+      message: `Heuristic validation failed: ${summary}`,
+      context: "heuristic",
+    });
     throw new ManimValidationError(
       `Heuristic validation failed:\n${summary}`,
-      "heuristic"
+      "heuristic",
+      { logs: [...renderLogs] }
     );
   }
   const warnings: ValidationWarning[] = [...heuristicResult.warnings];
@@ -237,8 +275,18 @@ export async function renderManimVideo({
       try {
         await sandbox.kill();
         console.log("E2B sandbox cleaned up successfully");
+        pushLog({
+          level: "info",
+          message: "Sandbox cleaned up",
+          context: "cleanup",
+        });
       } catch (cleanupError) {
         console.warn("Sandbox cleanup error (non-fatal):", cleanupError);
+        pushLog({
+          level: "warn",
+          message: `Sandbox cleanup error: ${String(cleanupError)}`,
+          context: "cleanup",
+        });
       }
     }
   };
@@ -273,6 +321,7 @@ export async function renderManimVideo({
       streamOutput,
     } = options;
     const startedAt = Date.now();
+    const contextLabel = description ?? command;
     let streamStdout = false;
     let streamStderr = false;
     if (typeof streamOutput === "boolean") {
@@ -286,24 +335,62 @@ export async function renderManimVideo({
           : streamStdout;
     }
 
+    pushLog({
+      level: "info",
+      message: `Running command: ${contextLabel}`,
+      context: contextLabel,
+    });
+
+    const recordChunk = (chunk: string, level: "stdout" | "stderr") => {
+      if (!chunk) return;
+      const trimmed = chunk.replace(/\u001b\[[0-9;]*m/g, "");
+      const pieces = trimmed.split(/\r?\n/).filter((line) => line.trim().length > 0);
+      for (const piece of pieces) {
+        const text = piece.length > MAX_COMMAND_OUTPUT_CHARS
+          ? `${piece.slice(0, MAX_COMMAND_OUTPUT_CHARS)}…`
+          : piece;
+        pushLog({ level, message: text, context: contextLabel });
+      }
+    };
+
+    const userStdout = onStdout;
+    const userStderr = onStderr;
+
+    const defaultStdout = streamStdout
+      ? (chunk: string) => {
+          if (!chunk) return;
+          console.log(`[${contextLabel}][stdout] ${chunk}`);
+        }
+      : undefined;
+    const defaultStderr = streamStderr
+      ? (chunk: string) => {
+          if (!chunk) return;
+          console.error(`[${contextLabel}][stderr] ${chunk}`);
+        }
+      : undefined;
+
+    const combinedStdout = (chunk: string) => {
+      recordChunk(chunk, "stdout");
+      if (userStdout) {
+        userStdout(chunk);
+      } else if (defaultStdout) {
+        defaultStdout(chunk);
+      }
+    };
+
+    const combinedStderr = (chunk: string) => {
+      recordChunk(chunk, "stderr");
+      if (userStderr) {
+        userStderr(chunk);
+      } else if (defaultStderr) {
+        defaultStderr(chunk);
+      }
+    };
+
     const result = await sandbox.commands.run(command, {
       timeoutMs,
-      onStdout:
-        onStdout ??
-        (streamStdout
-          ? (chunk: string) => {
-              if (!chunk) return;
-              console.log(`[${description ?? command}][stdout] ${chunk}`);
-            }
-          : undefined),
-      onStderr:
-        onStderr ??
-        (streamStderr
-          ? (chunk: string) => {
-              if (!chunk) return;
-              console.error(`[${description ?? command}][stderr] ${chunk}`);
-            }
-          : undefined),
+      onStdout: streamStdout || onStdout ? combinedStdout : undefined,
+      onStderr: streamStderr || onStderr ? combinedStderr : undefined,
     });
     if (result.exitCode !== 0) {
       const label = description ?? command;
@@ -317,15 +404,23 @@ export async function renderManimVideo({
       const stdout = truncateOutput(result.stdout);
       if (stderr) {
         messageParts.push(`STDERR:\n${stderr}`);
+        recordChunk(stderr, "stderr");
       }
       if (stdout) {
         messageParts.push(`STDOUT:\n${stdout}`);
+        recordChunk(stdout, "stdout");
       }
+      pushLog({
+        level: "error",
+        message: `${label} failed with exit code ${result.exitCode}`,
+        context: contextLabel,
+      });
       const error = new ManimValidationError(messageParts.join("\n\n"), stage, {
         exitCode: result.exitCode,
         stderr: result.stderr,
         stdout: result.stdout,
         hint,
+        logs: [...renderLogs],
       });
       Object.assign(error, {
         command,
@@ -335,6 +430,18 @@ export async function renderManimVideo({
     }
     const elapsedSeconds = Math.round((Date.now() - startedAt) / 1000);
     console.log(`${description ?? command} succeeded in ${elapsedSeconds}s`);
+    pushLog({
+      level: "info",
+      message: `${contextLabel} succeeded in ${elapsedSeconds}s`,
+      context: contextLabel,
+    });
+
+    if (!streamStdout && !onStdout && (result.stdout ?? "").trim().length) {
+      recordChunk(result.stdout ?? "", "stdout");
+    }
+    if (!streamStderr && !onStderr && (result.stderr ?? "").trim().length) {
+      recordChunk(result.stderr ?? "", "stderr");
+    }
     return result;
   };
 
@@ -345,6 +452,11 @@ export async function renderManimVideo({
     console.log("E2B sandbox created successfully", {
       sandboxId: sandbox.sandboxId,
     });
+    pushLog({
+      level: "info",
+      message: `Sandbox created (${sandbox.sandboxId})`,
+      context: "sandbox",
+    });
 
     const scriptPath = `/home/user/script.py`;
     const mediaDir = `/home/user/media`;
@@ -353,6 +465,11 @@ export async function renderManimVideo({
     // Write Manim script
     await sandbox.files.write(scriptPath, normalizedScript);
     console.log("Manim script written to sandbox");
+    pushLog({
+      level: "info",
+      message: "Script written to sandbox",
+      context: "prepare",
+    });
 
     await runCommandOrThrow(`python -m py_compile ${scriptPath}`, {
       description: "Python syntax check",
@@ -408,6 +525,11 @@ export async function renderManimVideo({
         "Unable to verify video existence directly, falling back to directory listing",
         fsErr
       );
+      pushLog({
+        level: "warn",
+        message: `Unable to verify video existence directly: ${String(fsErr)}`,
+        context: "files",
+      });
     }
 
     if (!videoExists) {
@@ -421,12 +543,18 @@ export async function renderManimVideo({
           `No .mp4 file produced in ${outputDir}. Files found: ${files
             .map((f) => f.name)
             .join(", ")}`,
-          "render"
+          "render",
+          { logs: [...renderLogs] }
         );
       }
       videoPath = `${outputDir}/${videoFile.name}`;
     }
     console.log("Video file candidate:", videoPath);
+    pushLog({
+      level: "info",
+      message: `Video file located: ${videoPath}`,
+      context: "files",
+    });
 
     // Validate with ffprobe
     const probe = await runCommandOrThrow(
@@ -440,12 +568,18 @@ export async function renderManimVideo({
     );
     const duration = parseFloat((probe.stdout || "").trim());
     console.log("ffprobe duration:", duration);
+    pushLog({
+      level: "info",
+      message: `Render duration: ${duration}`,
+      context: "video-validation",
+    });
 
     if (!duration || duration <= 0) {
       await ensureCleanup();
       throw new ManimValidationError(
         `Rendered video has invalid duration: ${duration}s — aborting upload`,
-        "video-validation"
+        "video-validation",
+        { logs: [...renderLogs] }
       );
     }
 
@@ -480,7 +614,8 @@ export async function renderManimVideo({
         await ensureCleanup();
         throw new ManimValidationError(
           `Watermarked video has invalid duration: ${wmDuration}s — aborting upload`,
-          "watermark-validation"
+          "watermark-validation",
+          { logs: [...renderLogs] }
         );
       }
 
@@ -494,7 +629,8 @@ export async function renderManimVideo({
       await ensureCleanup();
       throw new ManimValidationError(
         "Downloaded watermarked video is empty; aborting upload",
-        "download"
+        "download",
+        { logs: [...renderLogs] }
       );
     }
     const fileBytes = Buffer.from(fileBytesArray);
@@ -503,18 +639,30 @@ export async function renderManimVideo({
     console.log(
       `Prepared base64 data URL for upload (length: ${base64.length} chars)`
     );
+    pushLog({
+      level: "info",
+      message: "Prepared base64 data URL for upload",
+      context: "download",
+    });
 
     // Cleanup before returning
     await ensureCleanup();
     return {
       videoPath: dataUrl,
       warnings,
+      logs: [...renderLogs],
     };
   } catch (err: unknown) {
     console.error("E2B render error:", err);
+    pushLog({
+      level: "error",
+      message: `Render pipeline error: ${err instanceof Error ? err.message : String(err)}`,
+      context: "render",
+    });
     await ensureCleanup();
 
     if (err instanceof ManimValidationError) {
+      err.logs = err.logs ?? [...renderLogs];
       throw err;
     }
     if (err instanceof CommandExitError) {
@@ -553,6 +701,7 @@ export async function renderManimVideo({
       );
       detailedError.name = err.name;
       detailedError.stack = err.stack;
+    detailedError.logs = [...renderLogs];
       Object.assign(detailedError, {
         exitCode,
         stderr,
@@ -563,9 +712,12 @@ export async function renderManimVideo({
       throw detailedError;
     }
     if (err instanceof Error) {
+      (err as ManimValidationError).logs = [...renderLogs];
       throw err;
     }
-    throw new ManimValidationError(String(err), "render");
+    throw new ManimValidationError(String(err), "render", {
+      logs: [...renderLogs],
+    });
   } finally {
     // Ensure cleanup happens even if not already done
     await ensureCleanup();
@@ -835,6 +987,7 @@ export async function concatSegmentVideos({
     return {
       videoPath: dataUrl,
       warnings: [],
+      logs: [],
     };
   } catch (error) {
     await ensureCleanup();

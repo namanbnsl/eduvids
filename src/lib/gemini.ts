@@ -3,7 +3,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText } from "ai";
 import fs from "fs";
 import path from "path";
-import type { ValidationStage } from "./e2b";
+import type { RenderLogEntry, ValidationStage } from "./e2b";
 
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_API_KEY!,
@@ -99,6 +99,7 @@ export interface ManimGenerationErrorDetails {
   exitCode?: number;
   stage?: ValidationStage;
   hint?: string;
+  logs?: RenderLogEntry[];
 }
 
 export interface ManimGenerationAttempt {
@@ -166,7 +167,8 @@ export async function planManimSegments({
   const systemPrompt = [
     "You are an experienced video editor who divides narration scripts into clean Manim segments.",
     "Identify natural cut points at pauses or topic shifts so voiceovers stay coherent when concatenated.",
-    "Return JSON describing 2-5 ordered segments covering the entire narration with no gaps or overlaps.",
+    "Return JSON describing 4-7 ordered segments covering the entire narration with no gaps or overlaps.",
+    "Keep each segment crisp: aim for roughly 1-3 short sentences or <= 45 words per segment.",
     "Each segment must include an id (slug), short title, narration text, and optional cues array.",
     "Respond with JSON only.",
   ].join(" ");
@@ -230,13 +232,15 @@ export async function planManimSegments({
     })
     .filter((segment) => segment.narration.length > 0);
 
-  if (!normalized.length) {
+  const refined = splitSegmentsIntoShortChunks(normalized);
+
+  if (!refined.length) {
     throw new Error(
       `Segment planner returned no usable segments. Parsed value: ${JSON.stringify(parsed).slice(0, 4000)}`
     );
   }
 
-  return normalized;
+  return refined;
 }
 
 export async function generateSegmentManimScript({
@@ -262,6 +266,10 @@ export async function generateSegmentManimScript({
       "Generate only the Python Manim code for this segment, matching the narration timing.",
       "The script must be a self-contained Manim scene named MyScene using manim_voiceover.",
       "Ensure the scene covers only this segment's narration and assumes preceding content has already played.",
+      "Keep the visuals tight: reuse existing mobjects when possible and remove anything no longer needed immediately.",
+      "Use only simple, dependable animations such as FadeIn, FadeOut, Transform, ReplacementTransform, Create, and Uncreate.",
+      "Avoid complex camera motion, trackers, path animations, or updaters.",
+      "Limit each segment to a small number of quick animations so the pacing remains crisp.",
       "Use FadeIn for all text elements (never Write) so narration stays brisk.",
       "Do not include markdown fences or commentary.",
     ].join("\n\n"),
@@ -279,6 +287,140 @@ export async function generateSegmentManimScript({
 
   return code;
 }
+
+const MAX_WORDS_PER_SEGMENT = 45;
+const MIN_WORDS_PER_SEGMENT = 8;
+
+const splitSegmentsIntoShortChunks = (
+  segments: PlannedManimSegment[]
+): PlannedManimSegment[] => {
+  const seenIds = new Set<string>();
+
+  const ensureUniqueId = (baseId: string): string => {
+    let candidate = baseId;
+    let counter = 2;
+    while (seenIds.has(candidate)) {
+      candidate = `${baseId}-${counter}`;
+      counter += 1;
+    }
+    seenIds.add(candidate);
+    return candidate;
+  };
+
+  const chunkTokenizedNarration = (input: string): string[] => {
+    const tokens = input
+      .split(/\s+/)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+
+    if (!tokens.length) {
+      return [];
+    }
+
+    const chunks: string[] = [];
+    let current: string[] = [];
+
+    const flushCurrent = () => {
+      if (!current.length) {
+        return;
+      }
+      const text = current.join(" ").trim();
+      current = [];
+      if (text.length) {
+        chunks.push(text);
+      }
+    };
+
+    for (const token of tokens) {
+      current.push(token);
+      const wordCount = current.length;
+      const sentenceEnds = /[.!?]["')]*$/.test(token);
+      const exceedsMax = wordCount >= MAX_WORDS_PER_SEGMENT;
+      const goodSentenceBreak = wordCount >= MIN_WORDS_PER_SEGMENT && sentenceEnds;
+
+      if (exceedsMax || goodSentenceBreak) {
+        flushCurrent();
+      }
+    }
+
+    if (current.length) {
+      const trailing = current.join(" ").trim();
+      if (chunks.length && trailing.split(/\s+/).length < MIN_WORDS_PER_SEGMENT) {
+        const last = chunks.pop() ?? "";
+        const merged = `${last} ${trailing}`.trim();
+        if (merged.length) {
+          chunks.push(merged);
+        }
+      } else if (trailing.length) {
+        chunks.push(trailing);
+      }
+    }
+
+    return chunks;
+  };
+
+  const buildTitle = (
+    baseTitle: string,
+    fallbackIndex: number,
+    partIndex: number,
+    totalParts: number,
+    narration: string
+  ): string => {
+    const trimmedTitle = baseTitle.trim();
+    const base = trimmedTitle.length ? trimmedTitle : `Segment ${fallbackIndex + 1}`;
+    if (totalParts <= 1) {
+      return base;
+    }
+
+    const shortNarration = narration
+      .split(/\s+/)
+      .slice(0, 6)
+      .join(" ");
+
+    const annotated = `${base} (Part ${partIndex + 1})`;
+    if (annotated.length <= 60) {
+      return annotated;
+    }
+    const fallback = `${shortNarration}`.trim();
+    return fallback.length ? `${fallback} (Part ${partIndex + 1})` : annotated;
+  };
+
+  return segments.flatMap((segment, segmentIndex) => {
+    const narration = segment.narration.trim();
+    if (!narration) {
+      return [] as PlannedManimSegment[];
+    }
+
+    const chunks = chunkTokenizedNarration(narration);
+    if (!chunks.length) {
+      return [
+        {
+          id: ensureUniqueId(segment.id),
+          title: segment.title,
+          narration,
+          cues: segment.cues,
+        },
+      ];
+    }
+
+    const totalParts = chunks.length;
+
+    return chunks.map((chunk, chunkIndex) => {
+      const baseId =
+        totalParts > 1
+          ? `${segment.id}-p${String(chunkIndex + 1).padStart(2, "0")}`
+          : segment.id;
+      const id = ensureUniqueId(baseId);
+      const title = buildTitle(segment.title, segmentIndex, chunkIndex, totalParts, chunk);
+      return {
+        id,
+        title,
+        narration: chunk,
+        cues: segment.cues,
+      } satisfies PlannedManimSegment;
+    });
+  });
+};
 
 export async function generateYoutubeTitle({
   prompt,
