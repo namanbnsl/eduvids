@@ -722,17 +722,38 @@ export const generateVideo = inngest.createFunction(
       };
 
       const renderSegmentsWithConcurrency = async (
-        items: PlannedManimSegment[]
+        items: PlannedManimSegment[],
+        concurrency: number
       ): Promise<SegmentRenderOutput[]> => {
         if (!items.length) {
           return [] as SegmentRenderOutput[];
         }
 
-        const results: SegmentRenderOutput[] = [];
-        for (let index = 0; index < items.length; index += 1) {
-          results.push(await processSegment(items[index]!, index));
-        }
+        const safeConcurrency = Math.max(1, Math.min(concurrency, items.length));
+        const results: SegmentRenderOutput[] = new Array(items.length);
+        let nextIndex = 0;
 
+        const worker = async (workerId: number) => {
+          while (true) {
+            const currentIndex = nextIndex;
+            if (currentIndex >= items.length) {
+              break;
+            }
+            nextIndex += 1;
+
+            const segment = items[currentIndex]!;
+            console.log(
+              `Worker ${workerId + 1}/${safeConcurrency} processing segment ${segment.id}`
+            );
+            results[currentIndex] = await processSegment(segment, currentIndex);
+          }
+        };
+
+        const workers = Array.from({ length: safeConcurrency }, (_, workerId) =>
+          worker(workerId)
+        );
+
+        await Promise.all(workers);
         return results;
       };
 
@@ -741,6 +762,9 @@ export const generateVideo = inngest.createFunction(
         index: number
       ): Promise<SegmentRenderOutput> => {
         const segmentPosition = index + 1;
+        console.log(
+          `Preparing segment ${segment.id} (${segmentPosition}/${segments.length})`
+        );
         let script = await step.run(
           buildStepId("segment", segmentPosition, "generate-script"),
           async () => {
@@ -801,15 +825,19 @@ export const generateVideo = inngest.createFunction(
           attempt <= MAX_SEGMENT_RENDER_RETRIES;
           attempt++
         ) {
+          const attemptStart = Date.now();
+          console.log(
+            `Segment ${segment.id} attempt ${attempt}/${MAX_SEGMENT_RENDER_RETRIES} starting`,
+            {
+              position: `${segmentPosition}/${segments.length}`,
+              scriptLength: currentScript.length,
+            }
+          );
           try {
-            let renderResult: Awaited<
-              ReturnType<typeof renderManimVideo>
-            > | null = null;
-
-            await step.run(
+            const renderResult = await step.run(
               buildStepId("segment", segmentPosition, "render", "attempt", attempt),
               async () => {
-                renderResult = await renderManimVideo({
+                return await renderManimVideo({
                   script: currentScript,
                   prompt: `${prompt} (segment ${segment.title})`,
                   applyWatermark: false,
@@ -817,7 +845,11 @@ export const generateVideo = inngest.createFunction(
               }
             );
 
-            if (!renderResult) {
+            if (!renderResult || typeof renderResult !== "object") {
+              console.error(
+                `Render step returned no usable result for segment ${segment.id}`,
+                { type: typeof renderResult }
+              );
               throw new Error(
                 `Render step did not produce a result for segment ${segment.id}`
               );
@@ -828,6 +860,16 @@ export const generateVideo = inngest.createFunction(
               warnings: renderWarnings,
               logs: renderLogs,
             } = renderResult;
+
+            if (!videoPath || typeof videoPath !== "string") {
+              console.error(
+                `Render result missing videoPath for segment ${segment.id}`,
+                { hasVideoPath: Boolean(videoPath) }
+              );
+              throw new Error(
+                `Render step produced an invalid video for segment ${segment.id}`
+              );
+            }
             const warnings: Array<{ stage: ValidationStage; message: string }> =
               renderWarnings ?? [];
 
@@ -836,6 +878,15 @@ export const generateVideo = inngest.createFunction(
             }
 
             await updateProgressAfterSegment(segment.title);
+
+            const attemptDurationMs = Date.now() - attemptStart;
+            console.log(
+              `Segment ${segment.id} attempt ${attempt} succeeded`,
+              {
+                warnings: warnings.length,
+                durationMs: attemptDurationMs,
+              }
+            );
 
             return {
               segmentId: segment.id,
@@ -884,14 +935,17 @@ export const generateVideo = inngest.createFunction(
             }
 
             console.error(
-              `Segment ${segment.id} render attempt ${attempt} failed:`,
-              normalizedMessage
+              `Segment ${segment.id} render attempt ${attempt} failed`,
+              {
+                message: normalizedMessage,
+                stage: renderError.stage,
+                exitCode,
+                hint: renderError.hint,
+              }
             );
 
             await jobStore.setProgress(jobId!, {
-              details: `segment ${segmentPosition}/${
-                segments.length
-              }: ${normalizedMessage}`,
+              details: `segment ${segmentPosition}/${segments.length}: ${normalizedMessage}`,
             });
 
             if (attempt === MAX_SEGMENT_RENDER_RETRIES) {
@@ -924,6 +978,10 @@ export const generateVideo = inngest.createFunction(
                 "cycle",
                 regenPass,
               ];
+
+              console.log(
+                `Segment ${segment.id} regeneration pass ${regenPass} (${isForcedRewrite ? "forced" : "standard"}) after attempt ${attempt}`
+              );
 
               const regeneratedScript = await step.run(
                 buildStepId(...regenStepParts),
@@ -978,10 +1036,16 @@ export const generateVideo = inngest.createFunction(
               if (!blockedScripts.has(fingerprint)) {
                 blockedScripts.set(fingerprint, verifiedScript.trim());
                 currentScript = verifiedScript;
+                console.log(
+                  `Segment ${segment.id} accepted regenerated script on pass ${regenPass}`
+                );
                 acceptedNewScript = true;
                 break;
               }
 
+              console.warn(
+                `Segment ${segment.id} regeneration produced a previously blocked script on pass ${regenPass}`
+              );
               previousScriptForRewrite = verifiedScript;
               blockedScripts.set(fingerprint, verifiedScript.trim());
               repeatedCount += 1;
@@ -1011,7 +1075,10 @@ export const generateVideo = inngest.createFunction(
         `Rendering ${segments.length} segments with concurrency ${segmentConcurrency}`
       );
 
-      const segmentOutputs = await renderSegmentsWithConcurrency(segments);
+      const segmentOutputs = await renderSegmentsWithConcurrency(
+        segments,
+        segmentConcurrency
+      );
       const typedSegmentOutputs =
         segmentOutputs as unknown as SegmentRenderOutput[];
 
