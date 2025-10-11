@@ -204,7 +204,9 @@ export async function planManimSegments({
     parsed = JSON.parse(jsonCandidate);
   } catch (error) {
     throw new Error(
-      `Failed to parse segment planning response as JSON: ${(error as Error).message}. Raw response: ${raw}`
+      `Failed to parse segment planning response as JSON: ${
+        (error as Error).message
+      }. Raw response: ${raw}`
     );
   }
 
@@ -212,8 +214,8 @@ export async function planManimSegments({
     (parsed && typeof parsed === "object" && "segments" in parsed
       ? (parsed as { segments?: PlannedManimSegment[] }).segments
       : Array.isArray(parsed)
-        ? (parsed as PlannedManimSegment[])
-        : undefined) ?? [];
+      ? (parsed as PlannedManimSegment[])
+      : undefined) ?? [];
 
   const normalized = segments
     .map((segment, index) => {
@@ -221,7 +223,10 @@ export async function planManimSegments({
       const title = segment?.title?.trim() || `Segment ${index + 1}`;
       const narration = segment?.narration?.trim() ?? "";
       const cues = Array.isArray(segment?.cues)
-        ? segment.cues.filter((cue): cue is string => typeof cue === "string" && cue.trim().length > 0)
+        ? segment.cues.filter(
+            (cue): cue is string =>
+              typeof cue === "string" && cue.trim().length > 0
+          )
         : undefined;
       return {
         id,
@@ -236,7 +241,9 @@ export async function planManimSegments({
 
   if (!refined.length) {
     throw new Error(
-      `Segment planner returned no usable segments. Parsed value: ${JSON.stringify(parsed).slice(0, 4000)}`
+      `Segment planner returned no usable segments. Parsed value: ${JSON.stringify(
+        parsed
+      ).slice(0, 4000)}`
     );
   }
 
@@ -336,7 +343,8 @@ const splitSegmentsIntoShortChunks = (
       const wordCount = current.length;
       const sentenceEnds = /[.!?]["')]*$/.test(token);
       const exceedsMax = wordCount >= MAX_WORDS_PER_SEGMENT;
-      const goodSentenceBreak = wordCount >= MIN_WORDS_PER_SEGMENT && sentenceEnds;
+      const goodSentenceBreak =
+        wordCount >= MIN_WORDS_PER_SEGMENT && sentenceEnds;
 
       if (exceedsMax || goodSentenceBreak) {
         flushCurrent();
@@ -345,7 +353,10 @@ const splitSegmentsIntoShortChunks = (
 
     if (current.length) {
       const trailing = current.join(" ").trim();
-      if (chunks.length && trailing.split(/\s+/).length < MIN_WORDS_PER_SEGMENT) {
+      if (
+        chunks.length &&
+        trailing.split(/\s+/).length < MIN_WORDS_PER_SEGMENT
+      ) {
         const last = chunks.pop() ?? "";
         const merged = `${last} ${trailing}`.trim();
         if (merged.length) {
@@ -367,15 +378,14 @@ const splitSegmentsIntoShortChunks = (
     narration: string
   ): string => {
     const trimmedTitle = baseTitle.trim();
-    const base = trimmedTitle.length ? trimmedTitle : `Segment ${fallbackIndex + 1}`;
+    const base = trimmedTitle.length
+      ? trimmedTitle
+      : `Segment ${fallbackIndex + 1}`;
     if (totalParts <= 1) {
       return base;
     }
 
-    const shortNarration = narration
-      .split(/\s+/)
-      .slice(0, 6)
-      .join(" ");
+    const shortNarration = narration.split(/\s+/).slice(0, 6).join(" ");
 
     const annotated = `${base} (Part ${partIndex + 1})`;
     if (annotated.length <= 60) {
@@ -411,7 +421,13 @@ const splitSegmentsIntoShortChunks = (
           ? `${segment.id}-p${String(chunkIndex + 1).padStart(2, "0")}`
           : segment.id;
       const id = ensureUniqueId(baseId);
-      const title = buildTitle(segment.title, segmentIndex, chunkIndex, totalParts, chunk);
+      const title = buildTitle(
+        segment.title,
+        segmentIndex,
+        chunkIndex,
+        totalParts,
+        chunk
+      );
       return {
         id,
         title,
@@ -429,7 +445,7 @@ export async function generateYoutubeTitle({
   const model = google("gemini-2.5-flash");
 
   const systemPrompt =
-    "You are a hype-building copywriter crafting magnetic, click-worthy YouTube titles for educational videos. Keep it under 80 characters, weave in 1-2 relevant emojis, and make it irresistible. Reply with only the final title—no quotes, no extra text.";
+    "You are a copywriter crafting magnetic, click-worthy YouTube titles for educational videos. Keep it under 80 characters. Reply with only the final title—no quotes, no extra text.";
   const { text } = await generateText({
     model,
     system: systemPrompt,
@@ -447,11 +463,11 @@ export async function generateYoutubeDescription({
   const model = google("gemini-2.5-flash");
 
   const systemPrompt =
-    "You are an upbeat storyteller who writes irresistible YouTube descriptions for educational videos. Keep it concise, stack engaging short paragraphs, sprinkle in lively emojis, add a playful call-to-action, and finish with 2-3 relevant hashtags. Reply only with the description.";
+    "You are an upbeat storyteller who writes irresistible YouTube descriptions for educational videos. Keep it concise, stack engaging short paragraphs, sprinkle in lively emojis, add a playful call-to-action, and finish with 2-3 relevant hashtags. Reply only with the description and do not use a any markdown.";
   const { text } = await generateText({
     model,
     system: systemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite a high-energy YouTube description that hooks viewers in the opening line, highlights the key takeaways, invites them to watch or subscribe, uses emojis throughout, and ends with 2-3 discoverable hashtags:`,
+    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite a YouTube description that hooks viewers in the opening line, highlights the key takeaways, invites them to watch or subscribe, and ends with 2-3 discoverable hashtags:`,
     temperature: 0.5,
   });
 
