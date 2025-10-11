@@ -1,13 +1,8 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { VideoJob } from "@/lib/job-store";
+import { VideoProgressCard } from "@/components/ui/video-progress-card";
 
 export type JobStatus = "generating" | "ready" | "error";
 
@@ -51,7 +46,7 @@ export function VideoPlayer({
   const [errorDetails, setErrorDetails] = useState<string | undefined>();
   const [progress, setProgress] = useState<number>(0);
   const [step, setStep] = useState<string | undefined>(undefined);
-  const [etaMs, setEtaMs] = useState<number | null>(null);
+  const [etaTargetMs, setEtaTargetMs] = useState<number | null>(null);
   const progressHistoryRef = useRef<
     Array<{ progress: number; timestamp: number }>
   >([]);
@@ -59,16 +54,16 @@ export function VideoPlayer({
   const [notifyWhenPlayable, setNotifyWhenPlayable] = useState<boolean>(false);
 
   const updateProgressMetrics = useCallback((nextProgress: number) => {
+    const now = Date.now();
     if (!Number.isFinite(nextProgress)) {
       return;
     }
 
-    const now = Date.now();
     const clamped = Math.min(100, Math.max(0, nextProgress));
 
     if (clamped <= 0 || clamped >= 100) {
       progressHistoryRef.current = [{ progress: clamped, timestamp: now }];
-      setEtaMs(null);
+      setEtaTargetMs(null);
       return;
     }
 
@@ -79,7 +74,6 @@ export function VideoPlayer({
     progressHistoryRef.current = recentHistory;
 
     if (recentHistory.length < 2) {
-      setEtaMs(null);
       return;
     }
 
@@ -87,7 +81,6 @@ export function VideoPlayer({
     const last = recentHistory[recentHistory.length - 1];
 
     if (!first || !last || last.timestamp <= first.timestamp) {
-      setEtaMs(null);
       return;
     }
 
@@ -95,13 +88,13 @@ export function VideoPlayer({
     const timeDelta = last.timestamp - first.timestamp;
 
     if (progressDelta <= 0 || timeDelta <= 0) {
-      setEtaMs(null);
+      setEtaTargetMs(null);
       return;
     }
 
     const percentPerMs = progressDelta / timeDelta;
     if (percentPerMs <= 0) {
-      setEtaMs(null);
+      setEtaTargetMs(null);
       return;
     }
 
@@ -109,11 +102,11 @@ export function VideoPlayer({
     const estimateMs = remaining / percentPerMs;
 
     if (!Number.isFinite(estimateMs) || estimateMs <= 0) {
-      setEtaMs(null);
+      setEtaTargetMs(null);
       return;
     }
 
-    setEtaMs(estimateMs);
+    setEtaTargetMs(now + estimateMs);
   }, []);
 
   // Subscribe to job updates via SSE, fallback to polling
@@ -124,8 +117,13 @@ export function VideoPlayer({
     let pollInterval: ReturnType<typeof setInterval> | undefined;
     let es: EventSource | null = null;
 
-    const parseJob = (job: unknown):
-      | (Pick<VideoJob, "progress" | "step" | "videoUrl" | "error" | "details" | "status"> & {
+    const parseJob = (
+      job: unknown
+    ):
+      | (Pick<
+          VideoJob,
+          "progress" | "step" | "videoUrl" | "error" | "details" | "status"
+        > & {
           jobId?: string;
         })
       | null => {
@@ -135,21 +133,26 @@ export function VideoPlayer({
       if (status !== "generating" && status !== "ready" && status !== "error") {
         return null;
       }
-      const normalized: Pick<VideoJob, "progress" | "step" | "videoUrl" | "error" | "details" | "status"> & {
+      const normalized: Pick<
+        VideoJob,
+        "progress" | "step" | "videoUrl" | "error" | "details" | "status"
+      > & {
         jobId?: string;
       } = {
         status,
-        progress: typeof value.progress === "number" ? value.progress : undefined,
+        progress:
+          typeof value.progress === "number" ? value.progress : undefined,
         step: typeof value.step === "string" ? value.step : undefined,
-        videoUrl: typeof value.videoUrl === "string" ? value.videoUrl : undefined,
+        videoUrl:
+          typeof value.videoUrl === "string" ? value.videoUrl : undefined,
         error: typeof value.error === "string" ? value.error : undefined,
         details: typeof value.details === "string" ? value.details : undefined,
         jobId:
           typeof value.jobId === "string"
             ? value.jobId
             : typeof value.id === "string"
-              ? value.id
-              : undefined,
+            ? value.id
+            : undefined,
       };
       return normalized;
     };
@@ -224,13 +227,13 @@ export function VideoPlayer({
 
   useEffect(() => {
     progressHistoryRef.current = [];
-    setEtaMs(null);
+    setEtaTargetMs(null);
   }, [jobId]);
 
   useEffect(() => {
     if (jobStatus === "ready" || jobStatus === "error") {
       progressHistoryRef.current = [];
-      setEtaMs(null);
+      setEtaTargetMs(null);
     }
   }, [jobStatus]);
 
@@ -293,9 +296,7 @@ export function VideoPlayer({
   }, [notifyWhenPlayable, description]);
 
   const normalizedProgress = useMemo(() => {
-    return Number.isFinite(progress)
-      ? Math.min(100, Math.max(0, progress))
-      : 0;
+    return Number.isFinite(progress) ? Math.min(100, Math.max(0, progress)) : 0;
   }, [progress]);
 
   const roundedProgress = useMemo(
@@ -334,23 +335,25 @@ export function VideoPlayer({
   const etaDisplay = useMemo(() => {
     if (jobStatus === "ready") return null;
     if (normalizedProgress <= 0 || normalizedProgress >= 100) return null;
-    if (etaMs === null) {
+    if (etaTargetMs === null) {
       return "Calculating…";
     }
 
-    const totalSeconds = Math.max(1, Math.round(etaMs / 1000));
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
+    const targetDate = new Date(etaTargetMs);
+    if (Number.isNaN(targetDate.getTime())) {
+      return "Calculating…";
+    }
 
-    if (hours > 0) {
-      return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-    }
-    if (minutes > 0) {
-      return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
-    }
-    return `${seconds}s`;
-  }, [etaMs, jobStatus, normalizedProgress]);
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      ...(Math.abs(etaTargetMs - Date.now()) > 24 * 3600 * 1000
+        ? { month: "short", day: "numeric" }
+        : {}),
+    });
+
+    return `~${formatter.format(targetDate)}`;
+  }, [etaTargetMs, jobStatus, normalizedProgress]);
 
   if (error) {
     return (
@@ -376,58 +379,64 @@ export function VideoPlayer({
 
   if (jobStatus !== "ready" || !videoUrl) {
     return (
-      <div
-        className={
-          "w-full rounded-lg border border-border bg-card text-card-foreground p-6 flex items-center justify-center"
-        }
-        style={{ aspectRatio: "16 / 9" }}
-        aria-busy="true"
-        aria-label="Video container generating"
-      >
-        <div className="mx-auto max-w-md text-center space-y-4">
-          <h2 className="text-balance text-lg font-medium">
-            Video generating. Please wait
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {stageTitle ?? "This may take a moment."}
-          </p>
+      <VideoProgressCard
+        title="Video Generating..."
+        subtitle={stageTitle}
+        progress={normalizedProgress}
+        eta={`ETA: ${etaDisplay ?? "Calculating…"}`}
+      />
+      // <div
+      //   className={
+      //     "w-full rounded-lg border border-border bg-card text-card-foreground p-6 flex items-center justify-center"
+      //   }
+      //   style={{ aspectRatio: "16 / 9" }}
+      //   aria-busy="true"
+      //   aria-label="Video container generating"
+      // >
+      //   <div className="mx-auto max-w-md text-center space-y-4">
+      //     <h2 className="text-balance text-lg font-medium">
+      //       Video generating. Please wait
+      //     </h2>
+      //     <p className="text-sm text-muted-foreground">
+      //       {stageTitle ?? "This may take a moment."}
+      //     </p>
 
-          {/* Determinate progress bar with subtle animation */}
-          <div className="mt-4">
-            <div
-              className="h-2 w-full overflow-hidden rounded bg-muted"
-              role="progressbar"
-              aria-label="Generating video"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={normalizedProgress}
-            >
-              <div
-                className="h-full rounded bg-primary transition-all duration-700 ease-out"
-                style={{
-                  width: `${normalizedProgress}%`,
-                }}
-              />
-            </div>
-            <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-              <span>{stageTitle ?? "Processing"}</span>
-              <span>{roundedProgress}%</span>
-            </div>
-            {etaDisplay ? (
-              <div className="text-xs text-muted-foreground">
-                ETA: {etaDisplay}
-              </div>
-            ) : null}
-          </div>
+      //     {/* Determinate progress bar with subtle animation */}
+      //     <div className="mt-4">
+      //       <div
+      //         className="h-2 w-full overflow-hidden rounded bg-muted"
+      //         role="progressbar"
+      //         aria-label="Generating video"
+      //         aria-valuemin={0}
+      //         aria-valuemax={100}
+      //         aria-valuenow={normalizedProgress}
+      //       >
+      //         <div
+      //           className="h-full rounded bg-primary transition-all duration-700 ease-out"
+      //           style={{
+      //             width: `${normalizedProgress}%`,
+      //           }}
+      //         />
+      //       </div>
+      //       <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+      //         <span>{stageTitle ?? "Processing"}</span>
+      //         <span>{roundedProgress}%</span>
+      //       </div>
+      //       {etaDisplay ? (
+      //         <div className="text-xs text-muted-foreground">
+      //           ETA: {etaDisplay} · Rendering times may vary.
+      //         </div>
+      //       ) : null}
+      //     </div>
 
-          {/* Screen reader live status */}
-          <p className="sr-only" aria-live="polite" role="status">
-            {`Video generating. ${
-              stageTitle ?? "Please wait"
-            }. ${roundedProgress}%${etaDisplay ? `. ETA ${etaDisplay}` : ""}`}
-          </p>
-        </div>
-      </div>
+      //     {/* Screen reader live status */}
+      //     <p className="sr-only" aria-live="polite" role="status">
+      //       {`Video generating. ${
+      //         stageTitle ?? "Please wait"
+      //       }. ${roundedProgress}%${etaDisplay ? `. ETA approximately ${etaDisplay}` : ""}`}
+      //     </p>
+      //   </div>
+      // </div>
     );
   }
 
