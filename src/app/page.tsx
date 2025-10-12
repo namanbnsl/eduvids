@@ -283,7 +283,7 @@ export default function ChatPage() {
                 generationMode === "video"
                   ? "Describe the topic or animation you want to turn into a video"
                   : generationMode === "short"
-                  ? "Describe the topic for your vertical Short"
+                  ? "Describe the topic for your vertical short"
                   : undefined
               }
             />

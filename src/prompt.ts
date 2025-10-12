@@ -2,7 +2,7 @@ const useElevenLabs =
   (process.env.USE_ELEVEN_LABS ?? "").toLowerCase() === "true";
 
 export const VOICEOVER_SERVICE_CLASS = useElevenLabs
-  ? `self.set_speech_service(ElevenLabsService(voice_id="HobRzuqtLputbKAXOdTj"))`
+  ? `self.set_speech_service(ElevenLabsService(voice_id="HobRzuqtLputbKAXOdTj", transcription_model=None))`
   : `self.set_speech_service(GTTSService())`;
 
 export const VOICEOVER_SERVICE_IMPORT = useElevenLabs
@@ -85,7 +85,6 @@ You are a Manim Community v0.18.0 animation expert using the manim_voiceover plu
 8. Limit each beat to 1-3 quick actions with run_time <= 1.5 seconds to keep pacing brisk
 9. Keep all calculations simple with tidy values (integers, halves, thirds) to avoid error-prone arithmetic
 10. When using the ElevenLabs voiceover service, ensure the voice_id is always "HobRzuqtLputbKAXOdTj".
-11. When ElevenLabsService is active, embed <bookmark mark='...'/> tags in narration and sync key animations with wait_until_bookmark/time_until_bookmark so movements hit precise words.
 
 Video Structure Requirements:
 1. 🌅 Introduction Section:
@@ -128,7 +127,7 @@ Video Structure Requirements:
 1. ✨ Visual Clarity & Simplicity:
    - Keep ALL objects clearly visible on screen
    - Use consistent scale for similar elements
-   - Maintain readable text size (font_size=36 for body, 48 for titles)
+   - Maintain readable text size: for horizontal videos keep titles near font_size=48 and body text around 36, while vertical shorts must use smaller text (titles ≤40, body around 30) so nothing feels oversized
    - Reveal Text/MathTex with FadeIn instead of Write to keep pacing brisk
    - NEVER allow any objects to overlap—place comparisons side by side or staggered with visible spacing
    - Use proper spacing (LEFT, RIGHT, UP, DOWN)
@@ -143,7 +142,7 @@ Video Structure Requirements:
    - **Long sentences:** Split into multiple lines. NEVER create text wider than ~12 units.
    - **Line breaks:** Use \n in Text() or create separate Text objects arranged with VGroup
    - **Width check:** After creating text, ensure text.width <= 13.4. If too wide, split or scale.
-   - **Font sizes:** Use font_size=36 for body text, font_size=48 for titles, and keep labels attached to shapes or angles between font_size=26 and font_size=32 so they stay compact
+   - **Font sizes:** Default to font_size=48 for titles and 36 for body text on horizontal videos. When the prompt calls for a short or vertical format, cap titles at font_size=40 and body text at font_size=30 (smaller if needed). Keep labels attached to shapes or angles between font_size=26 and font_size=32 so they stay compact
    - **Examples:**
      '''python
      # GOOD: Split long text
@@ -162,6 +161,8 @@ Video Structure Requirements:
 3. 📐 Positioning (prevent overlaps):
    - **Titles:** Always at top: 'title.to_edge(UP, buff=0.5)'
    - **Content:** Center at ORIGIN or slightly below: 'content.move_to(ORIGIN)' or 'shift(DOWN*0.5)'
+   - **Horizontal videos:** Keep the main content group centered on screen (use 'group.move_to(ORIGIN)' or a small downward shift) so the layout feels balanced under the top title
+   - **Vertical shorts:** Keep text stacks narrow (for example, call 'group.scale_to_fit_width(8)') and centered so the reduced font sizes stay readable on portrait layouts
    - **NEVER overlap title and content** - minimum 0.8 units vertical spacing
    - **Pattern to follow:**
      '''python
@@ -342,6 +343,7 @@ Narration Guidelines:
 - Each segment should be on its own line without numbering
 - Avoid technical jargon unless explicitly explained
 - No Markdown formatting, bullet points, or quotes—plain text only
+- Spell out mathematical operations and relationships using words ("plus", "minus", "times", "divided by", "equals", "raised to", "x squared") instead of symbols like +, -, ×, ÷, =, ^, or ²
 - Favor one idea per sentence and keep wording simple and concrete
 - Aim for a concise overall runtime of about two minutes unless the user requests otherwise
 
