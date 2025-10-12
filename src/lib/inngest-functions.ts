@@ -490,7 +490,7 @@ export const generateVideo = inngest.createFunction(
     const variant: VideoVariant = rawVariant === "short" ? "short" : "video";
     const generationPrompt =
       variant === "short"
-        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation.`
+        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Make text large and legible (titles font_size 50-56, body 38-44) by splitting lines into narrow columns and scaling groups to fit widths around 7.5 units. Leave at least 0.4 units of clearance between arrows, labels, and nearby objects so nothing overlaps in the tight portrait frame.`
         : prompt;
 
     console.log(

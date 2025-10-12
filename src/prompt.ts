@@ -130,13 +130,14 @@ Video Structure Requirements:
 1. ✨ Visual Clarity & Simplicity:
    - Keep ALL objects clearly visible on screen
    - Use consistent scale for similar elements
-   - Maintain readable text size: for horizontal videos keep titles near font_size=54 and body text around 40, while vertical shorts must use smaller text (titles ≤44, body around 34) so nothing feels oversized
-   - Definition callouts must use body-scale fonts (≤40 horizontal, ≤34 vertical) and should be scaled down if they feel dominant
+   - Maintain readable text size: keep horizontal titles near font_size=54 and body text around 40, while vertical shorts must keep titles between font_size=50 and 56 and body text between 38 and 44; split phrases across multiple lines and scale groups (for example, 'group.scale_to_fit_width(7.5)') so large text still fits the narrow frame
+   - Definition callouts must track body-scale fonts (≤42 horizontal, ≤44 vertical) and should be scaled down only if they begin to crowd nearby elements
    - Leave generous padding (≥SAFE_MARGIN) between mobjects so compositions never feel cramped
    - Reveal Text/MathTex with FadeIn instead of Write to keep pacing brisk
    - NEVER allow any objects to overlap—place comparisons side by side or staggered with visible spacing
    - Use proper spacing (LEFT, RIGHT, UP, DOWN)
    - TextAlign or CENTER constants do not exist in Manim; position elements with '.move_to', '.to_edge', '.align_to', or '.next_to'
+   - When using arrows or connectors, leave at least 0.4 units of clearance around arrowheads and labels; prefer Arrow(..., buff=0.4) and label.next_to(..., buff=0.4) so nothing overlaps, especially in vertical layouts
    - AVOID complex animations - use simple movements only
    - Prefer straightforward numeric values in calculations; avoid elaborate algebra or precision-heavy numbers
    - Limit objects on screen: max 5-7 visible elements at once
@@ -148,7 +149,7 @@ Video Structure Requirements:
    - **Line breaks:** Use \n in Text() or create separate Text objects arranged with VGroup
    - **Width check:** After creating text, ensure text.width <= 13.4. If too wide, split or scale.
    - **Definition cards:** Match body text font sizes or smaller and keep them within the same width constraints so they never dwarf surrounding content
-   - **Font sizes:** Default to font_size=54 for titles and 40 for body text on horizontal videos. When the prompt calls for a short or vertical format, cap titles at font_size=44 and body text at font_size=34 (smaller if needed). Keep labels attached to shapes or angles between font_size=26 and font_size=32 so they stay compact
+   - **Font sizes:** Default to font_size=54 for titles and 40 for body text on horizontal videos. For short or vertical formats, keep titles between font_size=50 and 56 and body text between 38 and 44; split lines and use 'scale_to_fit_width(7.5)' on text groups if they exceed width limits. Keep labels attached to shapes or angles between font_size=28 and font_size=34 so they stay legible without crowding
    - **Examples:**
      '''python
      # GOOD: Split long text
@@ -170,7 +171,7 @@ Video Structure Requirements:
    - **Math formulas:** Center standalone MathTex/Tex groups with move_to(ORIGIN) (or align_to with ORIGIN) so equations stay balanced
    - **Padding:** Keep at least SAFE_MARGIN (0.4) of horizontal/vertical space between separate groups and increase buff values if elements start to feel crowded
    - **Horizontal videos:** Keep the main content group centered on screen (use 'group.move_to(ORIGIN)' or a small downward shift) so the layout feels balanced under the top title
-   - **Vertical shorts:** Keep text stacks narrow (for example, call 'group.scale_to_fit_width(8)') and centered so the reduced font sizes stay readable on portrait layouts
+   - **Vertical shorts:** Keep text stacks narrow (for example, call 'group.scale_to_fit_width(7.2)') and centered so the larger fonts stay fully visible on the portrait frame
    - **NEVER overlap title and content** - minimum 0.8 units vertical spacing
    - **Pattern to follow:**
      '''python
@@ -217,7 +218,7 @@ Hard Layout Contract (strict, do not violate):
 - When zooming with \`self.camera.frame\` (only in MovingCameraScene), set the frame width/height to the focus group's bounds plus at least 2*SAFE_MARGIN before centering so the zoom keeps the padding.
 - Option 1: Fade out title before showing content. Option 2: Keep title at top, place content centered/below.
 - Use set_z_index to ensure text/labels are above shapes when needed.
-- For two-set mapping diagrams (domain→codomain), arrange items inside each set as a vertical VGroup with buff>=0.3, align the two sets left/right with ample spacing, and ensure arrows have buff=0.1 so arrowheads don't overlap labels.
+- For two-set mapping diagrams (domain→codomain), arrange items inside each set as a vertical VGroup with buff>=0.3, align the two sets left/right with ample spacing, and ensure arrows use buff>=0.3 so arrowheads never overlap labels.
 - Always add a brief wait(0.5) between major layout steps to reveal structure.
 
 Checklist before self.play:
