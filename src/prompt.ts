@@ -130,8 +130,8 @@ Video Structure Requirements:
 1. ✨ Visual Clarity & Simplicity:
    - Keep ALL objects clearly visible on screen
    - Use consistent scale for similar elements
-   - Maintain readable text size: for horizontal videos keep titles near font_size=48 and body text around 36, while vertical shorts must use smaller text (titles ≤40, body around 30) so nothing feels oversized
-   - Definition callouts must use body-scale fonts (≤36 horizontal, ≤30 vertical) and should be scaled down if they feel dominant
+   - Maintain readable text size: for horizontal videos keep titles near font_size=54 and body text around 40, while vertical shorts must use smaller text (titles ≤44, body around 34) so nothing feels oversized
+   - Definition callouts must use body-scale fonts (≤40 horizontal, ≤34 vertical) and should be scaled down if they feel dominant
    - Leave generous padding (≥SAFE_MARGIN) between mobjects so compositions never feel cramped
    - Reveal Text/MathTex with FadeIn instead of Write to keep pacing brisk
    - NEVER allow any objects to overlap—place comparisons side by side or staggered with visible spacing
@@ -148,7 +148,7 @@ Video Structure Requirements:
    - **Line breaks:** Use \n in Text() or create separate Text objects arranged with VGroup
    - **Width check:** After creating text, ensure text.width <= 13.4. If too wide, split or scale.
    - **Definition cards:** Match body text font sizes or smaller and keep them within the same width constraints so they never dwarf surrounding content
-   - **Font sizes:** Default to font_size=48 for titles and 36 for body text on horizontal videos. When the prompt calls for a short or vertical format, cap titles at font_size=40 and body text at font_size=30 (smaller if needed). Keep labels attached to shapes or angles between font_size=26 and font_size=32 so they stay compact
+   - **Font sizes:** Default to font_size=54 for titles and 40 for body text on horizontal videos. When the prompt calls for a short or vertical format, cap titles at font_size=44 and body text at font_size=34 (smaller if needed). Keep labels attached to shapes or angles between font_size=26 and font_size=32 so they stay compact
    - **Examples:**
      '''python
      # GOOD: Split long text
@@ -175,7 +175,7 @@ Video Structure Requirements:
    - **Pattern to follow:**
      '''python
      # Show title
-     title = Text("Title", font_size=48).to_edge(UP, buff=0.5)
+     title = Text("Title", font_size=54).to_edge(UP, buff=0.5)
      self.play(FadeIn(title))
      
      # Option 1: Fade out title, then show content centered
@@ -194,9 +194,9 @@ Video Structure Requirements:
    - Use aligned_edge=LEFT in arrange: 'VGroup(...).arrange(DOWN, buff=0.3, aligned_edge=LEFT)'
    - Example:
      '''python
-     bullet1 = Text("• First point", font_size=36)
-     bullet2 = Text("• Second point", font_size=36)
-     bullet3 = Text("• Third point", font_size=36)
+     bullet1 = Text("• First point", font_size=40)
+     bullet2 = Text("• Second point", font_size=40)
+     bullet3 = Text("• Third point", font_size=40)
      bullets = VGroup(bullet1, bullet2, bullet3).arrange(DOWN, buff=0.3, aligned_edge=LEFT)
      bullets.to_edge(LEFT, buff=1.0)  # Start from left side
      '''

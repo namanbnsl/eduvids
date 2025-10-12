@@ -2,6 +2,7 @@ import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import { Readable } from "node:stream";
 import { generateYoutubeDescription, generateYoutubeTitle } from "@/lib/gemini";
+import type { VideoVariant } from "./job-store";
 
 export type YouTubePrivacyStatus = "public" | "unlisted" | "private";
 
@@ -12,6 +13,7 @@ export interface YouTubeUploadRequest {
   tags?: string[];
   voiceoverScript?: string;
   privacyStatus?: YouTubePrivacyStatus;
+  variant?: VideoVariant;
 }
 
 const YOUTUBE_DESCRIPTION_MAX_LENGTH = 5000;
@@ -71,6 +73,7 @@ export async function uploadToYouTube({
   tags,
   voiceoverScript,
   privacyStatus,
+  variant,
 }: YouTubeUploadRequest): Promise<{ videoId: string; watchUrl: string }> {
   const auth = getOAuth2Client();
   const youtube = google.youtube({ version: "v3", auth });
@@ -117,11 +120,16 @@ export async function uploadToYouTube({
     throw new Error("YouTube description is empty after sanitization");
   }
 
+  const baseTitle = generatedYoutubeTitle.trim();
+  const shouldTagShorts =
+    variant === "short" && !baseTitle.toLowerCase().includes("#shorts");
+  const finalTitle = shouldTagShorts ? `${baseTitle} #shorts` : baseTitle;
+
   const insertRes = await youtube.videos.insert({
     part: ["snippet", "status"],
     requestBody: {
       snippet: {
-        title: generatedYoutubeTitle + " | namanbnsl/eduvids",
+        title: finalTitle + " | namanbnsl/eduvids",
         description: sanitizedDescription,
         tags,
         categoryId: "27",

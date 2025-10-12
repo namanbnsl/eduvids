@@ -1135,6 +1135,7 @@ export const uploadVideoToYouTube = inngest.createFunction(
           description,
           voiceoverScript: voiceoverScript,
           tags,
+          variant,
         });
       });
 
