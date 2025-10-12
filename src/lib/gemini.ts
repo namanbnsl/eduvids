@@ -1,4 +1,9 @@
-import { MANIM_SYSTEM_PROMPT, VOICEOVER_SYSTEM_PROMPT } from "@/prompt";
+import {
+  MANIM_SYSTEM_PROMPT,
+  VOICEOVER_SYSTEM_PROMPT,
+  VOICEOVER_SERVICE_CLASS,
+  VOICEOVER_SERVICE_SETTER,
+} from "@/prompt";
 import { generateText } from "ai";
 import fs from "fs";
 import path from "path";
@@ -632,7 +637,7 @@ export async function verifyManimScript({
       "Approve scripts unchanged when they are safe, even if minor stylistic improvements are possible.",
       "",
       "Treat the following as blocking issues that must be fixed:",
-      "1. Missing required imports (VoiceoverScene, GTTSService, etc.) or missing self.set_speech_service(GTTSService()).",
+      `1. Missing required imports (VoiceoverScene, ${VOICEOVER_SERVICE_CLASS}, etc.) or missing ${VOICEOVER_SERVICE_SETTER}.`,
       "2. Using self.camera.frame or assigning frame = self.camera.frame (or accessing frame.width/frame.height) inside VoiceoverScene without MovingCameraScene.",
       "3. Shadowing Python built-ins (str=, list=, dict=, int=, float=, len=, max=, min=, sum=, all=, any=) or calling string literals like 'text'().",
       "4. Text layouts that will obviously fail (e.g., a single Text wider than ~13 units) or titles overlapping content with no spacing.",

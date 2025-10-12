@@ -12,6 +12,7 @@ import type {
 } from "./gemini";
 import { renderManimVideo, ValidationStage } from "./e2b";
 import type { RenderLogEntry } from "./e2b";
+import { VOICEOVER_SERVICE_IMPORT, VOICEOVER_SERVICE_SETTER } from "@/prompt";
 import { uploadVideo } from "./uploadthing";
 import { jobStore, type VideoVariant } from "./job-store";
 import { uploadToYouTube } from "./youtube";
@@ -48,7 +49,7 @@ const pruneRenderLogs = (
 const REQUIRED_IMPORTS = [
   "from manim import",
   "from manim_voiceover import VoiceoverScene",
-  "from manim_voiceover.services.gtts import GTTSService",
+  VOICEOVER_SERVICE_IMPORT,
 ];
 
 const PROSE_PHRASES = [
@@ -209,7 +210,7 @@ function validateRequiredElements(script: string): {
 
   // Check for set_speech_service
   if (!normalized.includes("set_speech_service")) {
-    issues.push("Missing self.set_speech_service(GTTSService()) call");
+    issues.push(`Missing ${VOICEOVER_SERVICE_SETTER} call`);
   }
 
   if (issues.length > 0) {
@@ -387,8 +388,7 @@ function runHeuristicChecks(
     !normalized.includes("set_speech_service")
   ) {
     issues.push({
-      message:
-        "❌ VoiceoverScene requires self.set_speech_service(GTTSService()).",
+      message: `❌ VoiceoverScene requires ${VOICEOVER_SERVICE_SETTER}.`,
       severity: "fixable",
     });
   }

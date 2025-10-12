@@ -462,6 +462,9 @@ export async function renderManimVideo({
   try {
     sandbox = await Sandbox.create("manim-ffmpeg-latex-voiceover-watermark", {
       timeoutMs: 2_400_000,
+      envs: {
+        ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
+      },
     });
     console.log("E2B sandbox created successfully", {
       sandboxId: sandbox.sandboxId,
