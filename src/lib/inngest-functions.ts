@@ -4,19 +4,16 @@ import {
   generateVoiceoverScript,
   regenerateManimScriptWithError,
   verifyManimScript,
-  // planManimSegments,
-  // generateSegmentManimScript,
 } from "./gemini";
 import type {
   ManimGenerationAttempt,
   ManimGenerationErrorDetails,
   VerifyManimScriptResult,
-  // PlannedManimSegment,
 } from "./gemini";
 import { renderManimVideo, ValidationStage } from "./e2b";
 import type { RenderLogEntry } from "./e2b";
 import { uploadVideo } from "./uploadthing";
-import { jobStore } from "./job-store";
+import { jobStore, type VideoVariant } from "./job-store";
 import { uploadToYouTube } from "./youtube";
 
 type RenderProcessError = Error & {
@@ -37,17 +34,6 @@ type RenderAttemptSuccess = {
 type HeuristicSeverity = "noncode" | "fixable" | "critical";
 type HeuristicIssue = { message: string; severity: HeuristicSeverity };
 type HeuristicOptions = { allowVerificationFixes?: boolean };
-
-/* Segment system temporarily disabled
-interface SegmentRenderOutput {
-  segmentId: string;
-  title: string;
-  videoDataUrl: string;
-  warnings: Array<{ stage: ValidationStage; message: string }>;
-  renderAttempts: number;
-  logs: RenderLogEntry[];
-}
-*/
 
 const MAX_RENDER_LOG_ENTRIES = 200;
 
@@ -110,7 +96,6 @@ const BUILTIN_SHADOWING_PATTERNS = [
   /\bmin\s*=\s*/i,
 ];
 
-// const STRING_CALL_PATTERN = /(^|[^a-zA-Z0-9_])(['"][^'"]*['"])\s*\(/;
 const STRING_CALL_PATTERN = /(?<![A-Za-z0-9_])(['"][^'"]+['"])\s*\(/;
 
 const stripStringLiterals = (source: string): string =>
@@ -132,8 +117,6 @@ const clampDetail = (value?: string, limit = 2000): string | undefined => {
   return value.length > limit ? value.slice(0, limit) : value;
 };
 
-// const DEFAULT_SEGMENT_CONCURRENCY = 3;
-
 const sanitizeStepComponent = (value: string | number): string =>
   String(value)
     .toLowerCase()
@@ -146,17 +129,6 @@ const buildStepId = (...parts: Array<string | number | undefined>): string => {
     .filter((part) => part.length > 0);
   return sanitized.length ? sanitized.join("-") : "step";
 };
-
-// const getSegmentConcurrency = (segmentCount: number): number => {
-//   const raw = process.env.SEGMENT_RENDER_CONCURRENCY;
-//   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-//   const configured =
-//     Number.isFinite(parsed) && parsed > 0
-//       ? parsed
-//       : DEFAULT_SEGMENT_CONCURRENCY;
-//   const safeSegmentCount = Math.max(1, segmentCount);
-//   return Math.max(1, Math.min(configured, safeSegmentCount));
-// };
 
 const formatJobError = (
   error: unknown
@@ -501,15 +473,30 @@ export const generateVideo = inngest.createFunction(
   },
   { event: "video/generate.request" },
   async ({ event, step }) => {
-    const { prompt, userId, chatId, jobId } = event.data as {
+    const {
+      prompt,
+      userId,
+      chatId,
+      jobId,
+      variant: rawVariant,
+    } = event.data as {
       prompt: string;
       userId: string;
       chatId: string;
       jobId?: string;
+      variant?: VideoVariant;
     };
 
+    const variant: VideoVariant = rawVariant === "short" ? "short" : "video";
+    const generationPrompt =
+      variant === "short"
+        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation.`
+        : prompt;
+
     console.log(
-      ` Starting full-script video generation for prompt: "${prompt}"`
+      ` Starting ${
+        variant === "short" ? "vertical short" : "full video"
+      } generation for prompt: "${prompt}"`
     );
 
     const verifyScriptWithAutoFix = async ({
@@ -634,7 +621,7 @@ export const generateVideo = inngest.createFunction(
             buildStepId(...baseStepParts, "regen", "pass", pass),
             async () => {
               const regenerated = await regenerateManimScriptWithError({
-                prompt,
+                prompt: generationPrompt,
                 voiceoverScript: narration,
                 previousScript: current,
                 error: lastError ?? "Unknown verification error",
@@ -686,7 +673,7 @@ export const generateVideo = inngest.createFunction(
       const voiceoverScript = await step.run(
         "generate-voiceover-script",
         async () => {
-          return await generateVoiceoverScript({ prompt });
+          return await generateVoiceoverScript({ prompt: generationPrompt });
         }
       );
 
@@ -701,7 +688,7 @@ export const generateVideo = inngest.createFunction(
 
       let script = await step.run("generate-full-manim-script", async () => {
         return await generateManimScript({
-          prompt,
+          prompt: generationPrompt,
           voiceoverScript,
         });
       });
@@ -774,6 +761,13 @@ export const generateVideo = inngest.createFunction(
                 script: currentScript,
                 prompt,
                 applyWatermark: true,
+                renderOptions:
+                  variant === "short"
+                    ? {
+                        orientation: "portrait",
+                        resolution: { width: 720, height: 1280 },
+                      }
+                    : undefined,
               });
 
               if (
@@ -942,7 +936,7 @@ export const generateVideo = inngest.createFunction(
               buildStepId(...regenStepParts),
               async () => {
                 const nextScript = await regenerateManimScriptWithError({
-                  prompt,
+                  prompt: generationPrompt,
                   voiceoverScript,
                   previousScript: previousScriptForRewrite,
                   error: normalizedMessage,
@@ -1056,7 +1050,7 @@ export const generateVideo = inngest.createFunction(
       const segmentResults = [
         {
           id: "full-video",
-          title: "Full Video",
+          title: variant === "short" ? "Vertical Short" : "Full Video",
           attempts: totalRenderAttempts,
           warnings: pipelineWarnings,
           logs: renderLogs,
@@ -1074,6 +1068,7 @@ export const generateVideo = inngest.createFunction(
           voiceoverScript: voiceoverScript,
           jobId,
           userId,
+          variant,
         },
       });
 
@@ -1113,14 +1108,24 @@ export const uploadVideoToYouTube = inngest.createFunction(
   { id: "upload-video-to-youtube", timeouts: { start: "20m", finish: "45m" } },
   { event: "video/youtube.upload.request" },
   async ({ event, step }) => {
-    const { videoUrl, title, description, jobId, voiceoverScript } =
+    const { videoUrl, title, description, jobId, voiceoverScript, variant } =
       event.data as {
         videoUrl: string;
         title: string;
         description?: string;
         jobId?: string;
         voiceoverScript?: string;
+        variant?: VideoVariant;
       };
+
+    const isShprt = variant === "short";
+    const tags = [
+      "education",
+      "manim",
+      "math",
+      "science",
+      ...(isShprt ? ["shorts", "vertical"] : []),
+    ];
 
     try {
       const yt = await step.run("upload-to-youtube", async () => {
@@ -1129,7 +1134,7 @@ export const uploadVideoToYouTube = inngest.createFunction(
           prompt: title,
           description,
           voiceoverScript: voiceoverScript,
-          tags: ["education", "manim", "math", "science"],
+          tags,
         });
       });
 

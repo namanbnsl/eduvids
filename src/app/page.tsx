@@ -42,6 +42,7 @@ type GenerateVideoToolOutput = {
   details?: string;
   progress?: number;
   step?: string;
+  variant?: "video" | "short";
 };
 
 type AppTools = {
@@ -66,7 +67,9 @@ const isGenerateVideoToolPart = (
 
 export default function ChatPage() {
   const [input, setInput] = useState("");
-  const [videoMode, setVideoMode] = useState(false);
+  const [generationMode, setGenerationMode] = useState<
+    "video" | "short" | null
+  >(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   const conversationSpotlightRef = useRef<HTMLDivElement | null>(null);
@@ -79,9 +82,13 @@ export default function ChatPage() {
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
+    const trimmed = input.trim();
+    const mode = generationMode;
     const text =
-      videoMode && input.trim().length > 0
-        ? `Generate a video of ${input.trim()}`
+      mode === "video" && trimmed.length > 0
+        ? `Generate a video of ${trimmed}`
+        : mode === "short" && trimmed.length > 0
+        ? `Generate a short vertical video of ${trimmed}`
         : input;
 
     sendMessage(
@@ -89,13 +96,14 @@ export default function ChatPage() {
       {
         body: {
           model: "gemini-2.5-flash",
-          forceGenerateVideo: videoMode === true,
+          forceGenerateVideo: mode === "video",
+          forceGenerateShprt: mode === "short",
         },
       }
     );
 
     setInput("");
-    setVideoMode(false);
+    setGenerationMode(null);
   };
 
   useEffect(() => {
@@ -272,20 +280,42 @@ export default function ChatPage() {
               onChange={(e) => setInput(e.target.value)}
               value={input}
               placeholder={
-                videoMode
+                generationMode === "video"
                   ? "Describe the topic or animation you want to turn into a video"
+                  : generationMode === "short"
+                  ? "Describe the topic for your vertical Short"
                   : undefined
               }
             />
             <PromptInputToolbar>
               <PromptInputTools>
                 <div ref={videoToggleSpotlightRef} className="inline-flex">
-                  <PromptInputButton
-                    onClick={() => setVideoMode((v) => !v)}
-                    variant={videoMode ? "default" : "outline"}
-                  >
-                    Video
-                  </PromptInputButton>
+                  <div className="inline-flex gap-1">
+                    <PromptInputButton
+                      onClick={() =>
+                        setGenerationMode((mode) =>
+                          mode === "video" ? null : "video"
+                        )
+                      }
+                      variant={
+                        generationMode === "video" ? "default" : "outline"
+                      }
+                    >
+                      Video
+                    </PromptInputButton>
+                    <PromptInputButton
+                      onClick={() =>
+                        setGenerationMode((mode) =>
+                          mode === "short" ? null : "short"
+                        )
+                      }
+                      variant={
+                        generationMode === "short" ? "default" : "outline"
+                      }
+                    >
+                      Short
+                    </PromptInputButton>
+                  </div>
                 </div>
               </PromptInputTools>
               <PromptInputSubmit disabled={!input} status={status} />

@@ -36,19 +36,34 @@ export async function POST(req: Request) {
       }),
       generate_video: tool({
         description:
-          "Generate a Manim animation video based on the user's description. Use this when users ask for animations, drawings, graphics, or video creation.",
+          "Generate a Manim animation video or vertical short based on the user's description.",
         inputSchema: z.object({
           description: z
             .string()
             .describe(
               "A clear description of the animation or video to create"
             ),
+          variant: z
+            .enum(["video", "short"])
+            .optional()
+            .describe("Specify 'short' to generate a vertical short."),
         }),
-        execute: async ({ description }) => {
+        execute: async ({ description, variant }) => {
           console.log("Starting video generation for:", description);
 
+          const normalized = description.trim();
+          const normalizedLower = normalized.toLowerCase();
+          const inferredVariant = variant
+            ? variant
+            : normalizedLower.includes("short") ||
+              normalizedLower.includes("vertical short")
+            ? "short"
+            : "video";
+
           // Create a job in the job store (KV in prod, memory in dev)
-          const job = await jobStore.create(description);
+          const job = await jobStore.create(description, {
+            variant: inferredVariant,
+          });
 
           // Dispatch background job to Inngest, including jobId for status updates
           await inngest.send({
@@ -58,6 +73,7 @@ export async function POST(req: Request) {
               userId: "anonymous",
               chatId: Date.now().toString(), // Generate a chat ID
               jobId: job.id,
+              variant: inferredVariant,
             },
           });
 
@@ -65,6 +81,7 @@ export async function POST(req: Request) {
             status: "generating",
             description,
             jobId: job.id,
+            variant: inferredVariant,
           };
         },
       }),

@@ -1,16 +1,15 @@
-// Simple in-memory job store. Lives in memory of the server process only.
-// NOTE: This will reset on server restarts or hot reloads.
-
 import { randomUUID } from "crypto";
 import { kv } from "@vercel/kv";
 
 export type JobStatus = "generating" | "ready" | "error";
 export type YoutubeStatus = "pending" | "uploaded" | "failed";
+export type VideoVariant = "video" | "short";
 
 export interface VideoJob {
   id: string;
   description: string;
   status: JobStatus;
+  variant: VideoVariant;
   videoUrl?: string;
   error?: string;
   // Progress fields (0-100)
@@ -27,7 +26,10 @@ export interface VideoJob {
 
 // Interface for our job store
 interface JobStore {
-  create(description: string): Promise<VideoJob>;
+  create(
+    description: string,
+    options?: { variant?: VideoVariant }
+  ): Promise<VideoJob>;
   get(id: string): Promise<VideoJob | undefined>;
   setProgress(
     id: string,
@@ -50,13 +52,18 @@ interface JobStore {
 class KVJobStore implements JobStore {
   private ttlSeconds = 60 * 60 * 24; // 24 hours
 
-  async create(description: string): Promise<VideoJob> {
+  async create(
+    description: string,
+    options?: { variant?: VideoVariant }
+  ): Promise<VideoJob> {
     const id = randomUUID();
     const now = new Date().toISOString();
+    const variant = options?.variant ?? "video";
     const job: VideoJob = {
       id,
       description,
       status: "generating",
+      variant,
       progress: 0,
       step: "queued",
       createdAt: now,
@@ -155,102 +162,4 @@ class KVJobStore implements JobStore {
   }
 }
 
-// In-memory fallback for local dev when KV is not configured
-class InMemoryJobStore implements JobStore {
-  private jobs = new Map<string, VideoJob>();
-
-  async create(description: string): Promise<VideoJob> {
-    const id = randomUUID();
-    const now = new Date().toISOString();
-    const job: VideoJob = {
-      id,
-      description,
-      status: "generating",
-      progress: 0,
-      step: "queued",
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.jobs.set(id, job);
-    return job;
-  }
-
-  async get(id: string): Promise<VideoJob | undefined> {
-    return this.jobs.get(id);
-  }
-
-  async setProgress(
-    id: string,
-    update: { progress?: number; step?: string; details?: string }
-  ): Promise<VideoJob | undefined> {
-    const job = this.jobs.get(id);
-    if (!job) return undefined;
-    if (typeof update.progress === "number") job.progress = update.progress;
-    if (typeof update.step === "string") job.step = update.step;
-    if (typeof update.details === "string") job.details = update.details;
-    job.updatedAt = new Date().toISOString();
-    this.jobs.set(id, job);
-    return job;
-  }
-
-  async setReady(id: string, videoUrl: string): Promise<VideoJob | undefined> {
-    const job = this.jobs.get(id);
-    if (!job) return undefined;
-    job.status = "ready";
-    job.videoUrl = videoUrl;
-    job.progress = 100;
-    job.step = "completed";
-    job.updatedAt = new Date().toISOString();
-    this.jobs.set(id, job);
-    return job;
-  }
-
-  async setError(id: string, message: string): Promise<VideoJob | undefined> {
-    const job = this.jobs.get(id);
-    if (!job) return undefined;
-    job.status = "error";
-    job.error = message;
-    job.step = "error";
-    job.updatedAt = new Date().toISOString();
-    this.jobs.set(id, job);
-    return job;
-  }
-
-  async setYoutubeStatus(
-    id: string,
-    update: {
-      youtubeStatus?: YoutubeStatus;
-      youtubeUrl?: string;
-      youtubeVideoId?: string;
-      youtubeError?: string;
-    }
-  ): Promise<VideoJob | undefined> {
-    const job = this.jobs.get(id);
-    if (!job) return undefined;
-
-    if (Object.prototype.hasOwnProperty.call(update, "youtubeStatus")) {
-      job.youtubeStatus = update.youtubeStatus;
-    }
-    if (Object.prototype.hasOwnProperty.call(update, "youtubeUrl")) {
-      job.youtubeUrl = update.youtubeUrl;
-    }
-    if (Object.prototype.hasOwnProperty.call(update, "youtubeVideoId")) {
-      job.youtubeVideoId = update.youtubeVideoId;
-    }
-    if (Object.prototype.hasOwnProperty.call(update, "youtubeError")) {
-      job.youtubeError = update.youtubeError;
-    }
-
-    job.updatedAt = new Date().toISOString();
-    this.jobs.set(id, job);
-    return job;
-  }
-}
-
-// Select KV store if configured, otherwise fallback to in-memory (useful for local dev)
-const hasKV = Boolean(
-  process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN
-);
-export const jobStore: JobStore = hasKV
-  ? new KVJobStore()
-  : new InMemoryJobStore();
+export const jobStore: JobStore = new KVJobStore();

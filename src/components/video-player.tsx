@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { VideoJob, YoutubeStatus } from "@/lib/job-store";
+import type { VideoJob, VideoVariant, YoutubeStatus } from "@/lib/job-store";
 import { VideoProgressCard } from "@/components/ui/video-progress-card";
 
 export type JobStatus = "generating" | "ready" | "error";
@@ -30,6 +30,7 @@ interface VideoPlayerProps {
   status?: JobStatus;
   // Optional direct src (if already available)
   src?: string;
+  variant?: VideoVariant;
 }
 
 export function VideoPlayer({
@@ -37,6 +38,7 @@ export function VideoPlayer({
   status,
   src,
   description,
+  variant: initialVariant,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus>(
@@ -48,14 +50,27 @@ export function VideoPlayer({
   const [progress, setProgress] = useState<number>(0);
   const [step, setStep] = useState<string | undefined>(undefined);
   const [etaTargetMs, setEtaTargetMs] = useState<number | null>(null);
-  const [youtubeStatus, setYoutubeStatus] = useState<YoutubeStatus | undefined>(undefined);
+  const [youtubeStatus, setYoutubeStatus] = useState<YoutubeStatus | undefined>(
+    undefined
+  );
   const [youtubeUrl, setYoutubeUrl] = useState<string | undefined>(undefined);
-  const [youtubeError, setYoutubeError] = useState<string | undefined>(undefined);
+  const [youtubeError, setYoutubeError] = useState<string | undefined>(
+    undefined
+  );
+  const [currentVariant, setCurrentVariant] = useState<VideoVariant>(
+    initialVariant ?? "video"
+  );
   const progressHistoryRef = useRef<
     Array<{ progress: number; timestamp: number }>
   >([]);
   // Track when we should fire a browser notification after the UI has updated
   const [notifyWhenPlayable, setNotifyWhenPlayable] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (initialVariant) {
+      setCurrentVariant(initialVariant);
+    }
+  }, [initialVariant]);
 
   const updateProgressMetrics = useCallback((nextProgress: number) => {
     const now = Date.now();
@@ -116,18 +131,21 @@ export function VideoPlayer({
   const normalizeJob = useCallback(
     (
       job: unknown
-    ): (Pick<
-      VideoJob,
-      | "progress"
-      | "step"
-      | "videoUrl"
-      | "error"
-      | "details"
-      | "status"
-      | "youtubeStatus"
-      | "youtubeUrl"
-      | "youtubeError"
-    > & { jobId?: string }) | null => {
+    ):
+      | (Pick<
+          VideoJob,
+          | "progress"
+          | "step"
+          | "videoUrl"
+          | "error"
+          | "details"
+          | "status"
+          | "youtubeStatus"
+          | "youtubeUrl"
+          | "youtubeError"
+          | "variant"
+        > & { jobId?: string })
+      | null => {
       if (!job || typeof job !== "object") return null;
       const value = job as Record<string, unknown>;
       const status = value.status;
@@ -144,6 +162,9 @@ export function VideoPlayer({
           ? (rawYoutubeStatus as YoutubeStatus)
           : undefined;
 
+      const rawVariant = value.variant;
+      const variant: VideoVariant = rawVariant === "short" ? "short" : "video";
+
       const normalized: Pick<
         VideoJob,
         | "progress"
@@ -155,6 +176,7 @@ export function VideoPlayer({
         | "youtubeStatus"
         | "youtubeUrl"
         | "youtubeError"
+        | "variant"
       > & {
         jobId?: string;
       } = {
@@ -173,6 +195,7 @@ export function VideoPlayer({
           typeof value.youtubeError === "string"
             ? value.youtubeError
             : undefined,
+        variant,
         jobId:
           typeof value.jobId === "string"
             ? value.jobId
@@ -199,6 +222,9 @@ export function VideoPlayer({
       const parsed = normalizeJob(job);
       if (!parsed || (parsed.jobId && parsed.jobId !== jobId)) {
         return;
+      }
+      if (parsed.variant) {
+        setCurrentVariant(parsed.variant);
       }
       const nextProgress =
         typeof parsed.progress === "number" ? parsed.progress : 0;
@@ -271,7 +297,8 @@ export function VideoPlayer({
     setYoutubeStatus(undefined);
     setYoutubeUrl(undefined);
     setYoutubeError(undefined);
-  }, [jobId]);
+    setCurrentVariant(initialVariant ?? "video");
+  }, [jobId, initialVariant]);
 
   useEffect(() => {
     if (jobStatus === "ready" || jobStatus === "error") {
@@ -304,7 +331,10 @@ export function VideoPlayer({
         setYoutubeStatus(parsed.youtubeStatus);
         setYoutubeUrl(parsed.youtubeUrl);
         setYoutubeError(parsed.youtubeError);
-        if (parsed.youtubeStatus === "uploaded" || parsed.youtubeStatus === "failed") {
+        if (
+          parsed.youtubeStatus === "uploaded" ||
+          parsed.youtubeStatus === "failed"
+        ) {
           if (intervalId) {
             clearInterval(intervalId);
             intervalId = null;
@@ -407,6 +437,8 @@ export function VideoPlayer({
     return Number.isFinite(progress) ? Math.min(100, Math.max(0, progress)) : 0;
   }, [progress]);
 
+  const generationLabel = currentVariant === "short" ? "Short" : "Video";
+
   const stageTitle = useMemo(() => {
     const rawStep = (step ?? "").trim();
     if (rawStep.length) {
@@ -483,7 +515,7 @@ export function VideoPlayer({
   if (jobStatus !== "ready" || !videoUrl) {
     return (
       <VideoProgressCard
-        title="Video Generating..."
+        title={`${generationLabel} Generating...`}
         subtitle={stageTitle}
         progress={normalizedProgress}
         eta={`ETA: ${etaDisplay ?? "Calculating…"}`}
@@ -546,7 +578,7 @@ export function VideoPlayer({
   return (
     <div
       className="w-full rounded-lg border border-border bg-card text-card-foreground p-2"
-      style={{ aspectRatio: "16 / 9" }}
+      style={{ aspectRatio: currentVariant === "short" ? "9 / 16" : "16 / 9" }}
     >
       <video
         ref={videoRef}

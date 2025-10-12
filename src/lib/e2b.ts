@@ -59,6 +59,11 @@ export interface RenderResult {
   logs: RenderLogEntry[];
 }
 
+export interface RenderOptions {
+  resolution?: { width: number; height: number };
+  orientation?: "landscape" | "portrait";
+}
+
 const PROHIBITED_MODULES = [
   "os",
   "sys",
@@ -206,12 +211,14 @@ export interface RenderRequest {
   script: string;
   prompt: string;
   applyWatermark?: boolean;
+  renderOptions?: RenderOptions;
 }
 
 export async function renderManimVideo({
   script,
   prompt: _prompt,
   applyWatermark = true,
+  renderOptions,
 }: RenderRequest): Promise<RenderResult> {
   void _prompt;
   const normalizedScript = script.trim();
@@ -467,7 +474,7 @@ export async function renderManimVideo({
 
     const scriptPath = `/home/user/script.py`;
     const mediaDir = `/home/user/media`;
-    const outputDir = `${mediaDir}/videos/script/480p15`;
+    const baseVideosDir = `${mediaDir}/videos`;
 
     // Write Manim script
     await sandbox.files.write(scriptPath, normalizedScript);
@@ -509,53 +516,136 @@ export async function renderManimVideo({
       latexEnvironmentVerified = true;
     }
 
-    console.log("Starting manim render...");
-    await runCommandOrThrow(
-      `manim ${scriptPath} MyScene --media_dir ${mediaDir} -ql --disable_caching --format=mp4`,
-      {
-        description: "Manim render",
-        stage: "render",
-        timeoutMs: 2_700_000,
-        hint: "Review the traceback to resolve errors inside your Manim scene.",
-        streamOutput: true,
-      }
-    );
-
-    // Find output file
-    console.log("Looking for rendered video in:", outputDir);
-    let videoPath = `${outputDir}/MyScene.mp4`;
-    let videoExists = false;
-    try {
-      videoExists = await sandbox.files.exists(videoPath);
-    } catch (fsErr) {
-      console.warn(
-        "Unable to verify video existence directly, falling back to directory listing",
-        fsErr
-      );
+    const resolution = renderOptions?.resolution;
+    const orientation = renderOptions?.orientation;
+    let safeWidth: number | undefined;
+    let safeHeight: number | undefined;
+    if (resolution) {
       pushLog({
-        level: "warn",
-        message: `Unable to verify video existence directly: ${String(fsErr)}`,
-        context: "files",
+        level: "info",
+        message: `Using custom resolution ${resolution.width}x${resolution.height}`,
+        context: "render-config",
+      });
+    }
+    if (orientation) {
+      pushLog({
+        level: "info",
+        message: `Orientation set to ${orientation}`,
+        context: "render-config",
       });
     }
 
-    if (!videoExists) {
-      const files = (await sandbox.files.list(outputDir)) as Array<{
-        name: string;
-      }>;
-      const videoFile = files.find((f) => f.name.endsWith(".mp4"));
-      if (!videoFile) {
-        await ensureCleanup();
-        throw new ManimValidationError(
-          `No .mp4 file produced in ${outputDir}. Files found: ${files
-            .map((f) => f.name)
-            .join(", ")}`,
-          "render",
-          { logs: [...renderLogs] }
-        );
-      }
-      videoPath = `${outputDir}/${videoFile.name}`;
+    const manimArgs = [
+      scriptPath,
+      "MyScene",
+      "--media_dir",
+      mediaDir,
+      "--disable_caching",
+      "--format=mp4",
+      "-ql",
+    ];
+    if (resolution) {
+      safeWidth = Math.max(1, Math.round(resolution.width));
+      safeHeight = Math.max(1, Math.round(resolution.height));
+      manimArgs.push("-r", `${safeWidth},${safeHeight}`);
     }
+
+    const manimCmd = `manim ${manimArgs.join(" ")}`;
+
+    console.log("Starting manim render with command:", manimCmd);
+    await runCommandOrThrow(manimCmd, {
+      description: "Manim render",
+      stage: "render",
+      timeoutMs: 2_700_000,
+      hint: "Review the traceback to resolve errors inside your Manim scene.",
+      streamOutput: true,
+    });
+
+    const scriptFilename = scriptPath.split("/").pop() ?? "script.py";
+    const moduleName = scriptFilename.replace(/\.py$/i, "");
+    const sceneName = "MyScene";
+    const qualityCandidates: string[] = [];
+
+    if (safeWidth && safeHeight) {
+      qualityCandidates.push(`custom_quality_${safeWidth}x${safeHeight}`);
+    }
+    qualityCandidates.push("480p15", "low_quality");
+
+    const candidatePaths = Array.from(
+      new Set([
+        ...qualityCandidates.map(
+          (quality) =>
+            `${baseVideosDir}/${moduleName}/${quality}/${sceneName}.mp4`
+        ),
+        `${baseVideosDir}/${moduleName}/${sceneName}.mp4`,
+      ])
+    );
+
+    if (!sandbox) {
+      await ensureCleanup();
+      throw new ManimValidationError(
+        "Sandbox is unavailable while locating the rendered video.",
+        "render",
+        { logs: [...renderLogs] }
+      );
+    }
+
+    let videoPath: string | undefined;
+    for (const candidate of candidatePaths) {
+      const existsCheck = await sandbox.commands.run(
+        [
+          "python - <<'PY'",
+          "import os",
+          `path = r"${candidate}"`,
+          "print('1' if os.path.isfile(path) else '', end='')",
+          "PY",
+        ].join("\n")
+      );
+      if ((existsCheck.stdout ?? "").trim() === "1") {
+        videoPath = candidate;
+        break;
+      }
+    }
+
+    if (!videoPath) {
+      const searchResult = await sandbox.commands.run(
+        [
+          "python - <<'PY'",
+          "import os",
+          `base = r"${baseVideosDir}/${moduleName}"`,
+          "target = 'MyScene.mp4'",
+          "if os.path.isdir(base):",
+          "    for root, _, files in os.walk(base):",
+          "        if target in files:",
+          "            print(os.path.join(root, target))",
+          "            break",
+          "PY",
+        ].join("\n")
+      );
+      const locatedPath = (searchResult.stdout ?? "").trim();
+      if (locatedPath) {
+        videoPath = locatedPath;
+        pushLog({
+          level: "info",
+          message: `Video file located via fallback search: ${locatedPath}`,
+          context: "files",
+        });
+      }
+    }
+
+    if (!videoPath) {
+      await ensureCleanup();
+      throw new ManimValidationError(
+        `Unable to locate MyScene.mp4 under ${baseVideosDir}/${moduleName}.`,
+        "render",
+        { logs: [...renderLogs] }
+      );
+    }
+
+    const outputDirIndex = videoPath.lastIndexOf("/");
+    const outputDir =
+      outputDirIndex > 0 ? videoPath.slice(0, outputDirIndex) : baseVideosDir;
+
     console.log("Video file candidate:", videoPath);
     pushLog({
       level: "info",
@@ -730,303 +820,5 @@ export async function renderManimVideo({
   } finally {
     // Ensure cleanup happens even if not already done
     await ensureCleanup();
-  }
-}
-
-export interface SegmentVideoInput {
-  id: string;
-  dataUrl: string;
-}
-
-export interface ConcatWatermarkRequest {
-  segments: SegmentVideoInput[];
-  watermarkText?: string;
-}
-
-export async function concatSegmentVideos({
-  segments,
-  watermarkText = "eduvids",
-}: ConcatWatermarkRequest): Promise<RenderResult> {
-  if (!segments.length) {
-    throw new ManimValidationError(
-      "No segment videos provided for concatenation.",
-      "input"
-    );
-  }
-
-  let sandbox: Sandbox | null = null;
-  let cleanupAttempted = false;
-
-  const ensureCleanup = async () => {
-    if (sandbox && !cleanupAttempted) {
-      cleanupAttempted = true;
-      try {
-        await sandbox.kill();
-        console.log("E2B concat sandbox cleaned up successfully");
-      } catch (cleanupError) {
-        console.warn("Concat sandbox cleanup error (non-fatal):", cleanupError);
-      }
-    }
-  };
-
-  const runCommandOrThrow = async (
-    command: string,
-    options: {
-      description?: string;
-      stage?: ValidationStage;
-      timeoutMs?: number;
-      hint?: string;
-      streamOutput?: boolean | { stdout?: boolean; stderr?: boolean };
-    } = {}
-  ) => {
-    if (!sandbox) {
-      throw new Error("Sandbox not initialised before running command");
-    }
-    const {
-      description,
-      stage = "render",
-      timeoutMs,
-      hint,
-      streamOutput,
-    } = options;
-
-    let streamStdout = false;
-    let streamStderr = false;
-    if (typeof streamOutput === "boolean") {
-      streamStdout = streamOutput;
-      streamStderr = streamOutput;
-    } else if (streamOutput) {
-      streamStdout = Boolean(streamOutput.stdout);
-      streamStderr =
-        streamOutput.stderr !== undefined
-          ? Boolean(streamOutput.stderr)
-          : streamStdout;
-    }
-
-    const result = await sandbox.commands.run(command, {
-      timeoutMs,
-      onStdout: streamStdout
-        ? (chunk: string) => {
-            if (!chunk) return;
-            console.log(`[${description ?? command}][stdout] ${chunk}`);
-          }
-        : undefined,
-      onStderr: streamStderr
-        ? (chunk: string) => {
-            if (!chunk) return;
-            console.error(`[${description ?? command}][stderr] ${chunk}`);
-          }
-        : undefined,
-    });
-
-    if (result.exitCode !== 0) {
-      const label = description ?? command;
-      const stderr = truncateOutput(result.stderr);
-      const stdout = truncateOutput(result.stdout);
-      const messageParts = [
-        `${label} failed with exit code ${result.exitCode}`,
-      ];
-      if (hint) {
-        messageParts.push(hint);
-      }
-      if (stderr) {
-        messageParts.push(`STDERR:\n${stderr}`);
-      }
-      if (stdout) {
-        messageParts.push(`STDOUT:\n${stdout}`);
-      }
-      throw new ManimValidationError(messageParts.join("\n\n"), stage, {
-        exitCode: result.exitCode,
-        stderr: result.stderr,
-        stdout: result.stdout,
-        hint,
-      });
-    }
-
-    return result;
-  };
-
-  try {
-    sandbox = await Sandbox.create("manim-ffmpeg-latex-voiceover-watermark", {
-      timeoutMs: 900_000,
-    });
-    console.log("Concat sandbox created", { sandboxId: sandbox.sandboxId });
-
-    const segmentPaths: string[] = [];
-    let totalDuration = 0;
-
-    for (let index = 0; index < segments.length; index++) {
-      const segment = segments[index]!;
-      const match = segment.dataUrl.match(/^data:video\/mp4;base64,(.+)$/);
-      if (!match) {
-        await ensureCleanup();
-        throw new ManimValidationError(
-          `Segment ${segment.id} is not a base64 MP4 data URL`,
-          "input"
-        );
-      }
-      const base64 = match[1]!;
-      const bytes = Buffer.from(base64, "base64");
-      if (!bytes.length) {
-        await ensureCleanup();
-        throw new ManimValidationError(
-          `Segment ${segment.id} is empty after decoding`,
-          "input"
-        );
-      }
-      const filePath = `/home/user/segment-${index}.mp4`;
-      const arrayBuffer = bytes.buffer.slice(
-        bytes.byteOffset,
-        bytes.byteOffset + bytes.byteLength
-      );
-      await sandbox.files.write(filePath, arrayBuffer);
-      segmentPaths.push(filePath);
-
-      const probe = await runCommandOrThrow(
-        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${filePath}`,
-        {
-          description: `Validate segment ${segment.id}`,
-          stage: "video-validation",
-          timeoutMs: 120_000,
-        }
-      );
-      const duration = parseFloat((probe.stdout || "").trim());
-      if (!duration || duration <= 0) {
-        await ensureCleanup();
-        throw new ManimValidationError(
-          `Segment ${segment.id} has invalid duration: ${duration}`,
-          "video-validation"
-        );
-      }
-      totalDuration += duration;
-    }
-
-    const listFilePath = `/home/user/segments.txt`;
-    const listContent = segmentPaths
-      .map((segmentPath) => `file '${segmentPath}'`)
-      .join("\n");
-    await sandbox.files.write(listFilePath, listContent);
-
-    const concatPath = `/home/user/combined.mp4`;
-    await runCommandOrThrow(
-      `ffmpeg -y -f concat -safe 0 -i ${listFilePath} -c copy ${concatPath}`,
-      {
-        description: "Segment concatenation",
-        stage: "render",
-        timeoutMs: Math.max(360_000, segments.length * 120_000),
-        hint: "ffmpeg failed while concatenating segment videos.",
-        streamOutput: { stderr: true },
-      }
-    );
-
-    const concatProbe = await runCommandOrThrow(
-      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${concatPath}`,
-      {
-        description: "Concatenated duration check",
-        stage: "video-validation",
-        timeoutMs: 120_000,
-      }
-    );
-    const concatenatedDuration = parseFloat((concatProbe.stdout || "").trim());
-    if (!concatenatedDuration || concatenatedDuration <= 0) {
-      await ensureCleanup();
-      throw new ManimValidationError(
-        "Concatenated video duration is invalid.",
-        "video-validation"
-      );
-    }
-
-    const expectedMinDuration = totalDuration * 0.9;
-    if (concatenatedDuration < expectedMinDuration) {
-      console.warn(
-        `Concatenated duration ${concatenatedDuration}s is less than expected ${expectedMinDuration}s`
-      );
-    }
-
-    const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
-    const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@0.85:fontsize=24:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw-20:y=h-th-20`;
-    const watermarkedPath = `/home/user/combined-watermarked.mp4`;
-
-    await runCommandOrThrow(
-      `ffmpeg -y -i ${concatPath} -vf "${drawText}" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart -c:a copy ${watermarkedPath}`,
-      {
-        description: "Watermark concatenated video",
-        stage: "watermark",
-        timeoutMs: 360_000,
-        hint: "ffmpeg failed while watermarking the final video.",
-        streamOutput: { stderr: true },
-      }
-    );
-
-    const finalProbe = await runCommandOrThrow(
-      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${watermarkedPath}`,
-      {
-        description: "Final video validation",
-        stage: "watermark-validation",
-        timeoutMs: 120_000,
-      }
-    );
-    const finalDuration = parseFloat((finalProbe.stdout || "").trim());
-    if (!finalDuration || finalDuration <= 0) {
-      await ensureCleanup();
-      throw new ManimValidationError(
-        "Final watermarked video has invalid duration.",
-        "watermark-validation"
-      );
-    }
-
-    const fileBytesArray = (await sandbox.files.read(watermarkedPath, {
-      format: "bytes",
-    })) as Uint8Array;
-    if (!fileBytesArray || !fileBytesArray.length) {
-      await ensureCleanup();
-      throw new ManimValidationError(
-        "Downloaded concatenated video is empty.",
-        "download"
-      );
-    }
-    const fileBytes = Buffer.from(fileBytesArray);
-    const base64 = fileBytes.toString("base64");
-    const dataUrl = `data:video/mp4;base64,${base64}`;
-    console.log(
-      `Prepared concatenated base64 data URL (length: ${base64.length} chars)`
-    );
-
-    await ensureCleanup();
-    return {
-      videoPath: dataUrl,
-      warnings: [],
-      logs: [],
-    };
-  } catch (error) {
-    await ensureCleanup();
-    if (error instanceof ManimValidationError) {
-      throw error;
-    }
-    if (error instanceof CommandExitError) {
-      const stderr = error.stderr ?? "";
-      const stdout = error.stdout ?? "";
-      const message =
-        error.error ?? error.message ?? "Segment concatenation failed";
-      throw new ManimValidationError(
-        [
-          message,
-          stderr ? `STDERR:\n${stderr}` : undefined,
-          stdout ? `STDOUT:\n${stdout}` : undefined,
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
-        "render",
-        {
-          stderr,
-          stdout,
-          exitCode: error.exitCode,
-        }
-      );
-    }
-    if (error instanceof Error) {
-      throw error;
-    }
-    throw new ManimValidationError(String(error), "render");
   }
 }
