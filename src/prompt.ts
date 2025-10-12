@@ -87,6 +87,7 @@ You are a Manim Community v0.18.0 animation expert using the manim_voiceover plu
 7. Keep scene transitions clean and fast
 8. Limit each beat to 1-3 quick actions with run_time <= 1.5 seconds to keep pacing brisk
 9. Keep all calculations simple with tidy values (integers, halves, thirds) to avoid error-prone arithmetic
+10. Ensure every element remains fully visible inside the frame; split long text across multiple lines so nothing gets cut off
 
 Video Structure Requirements:
 1. 🌅 Introduction Section:

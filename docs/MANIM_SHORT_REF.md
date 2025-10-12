@@ -11,6 +11,7 @@ Use this vibrant quick-reference to keep every scene polished, readable, and del
   Also remember there is no `TextAlign` type or `CENTER` constant in Manim—use `.move_to()`, `.to_edge()`, `.align_to()`, or `.next_to()` for placement.
   Keep definition callouts at body-scale fonts (≤36 horizontal, ≤30 vertical) so they never overpower the layout.
   Maintain ≥SAFE_MARGIN padding between distinct mobjects/groups so no layout ever feels cramped.
+- **Visibility guard:** Double-check that every mobject is fully inside the frame before playing animations; if text feels wide, break it with `\n` or stacked `Text` objects so nothing gets clipped off-screen.
 - **Object count & pacing:** Keep ≤ 5–7 visible elements at once, use simple shapes (Text, MathTex, Circle, Square, Rectangle, Arrow, Line, Dot), and keep `run_time` between 0.5–1.5 seconds unless narration requires longer, maintaining a lively but orderly tempo.
 - **Naming hygiene:** Never shadow Python built-ins (`str`, `list`, `dict`, `int`, `float`, `len`, `max`, `min`, `sum`, `all`, `any`) so your code style stays classy and bug-free.
 - **Safety:** Avoid prohibited modules (`os`, `sys`, `subprocess`, etc.) and stick to documented APIs only, trusting the well-lit path.
