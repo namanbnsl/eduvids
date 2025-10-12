@@ -46,6 +46,9 @@
       "constructor": "Mobject(color=WHITE, fill_opacity=1.0, stroke_width=0, z_index=0, name=\"\")",
       "attrs": ["submobjects", "points", "dim", "z_index", "name"],
       "properties": ["width", "height", "depth"],
+      "notes": [
+        "Manim does not provide TextAlign or CENTER helpers; reposition text with move_to, to_edge, align_to, or next_to instead."
+      ],
       "methods": {
         "add": "add(*mobjects)",
         "add_to_back": "add_to_back(*mobjects)",

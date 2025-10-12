@@ -9,6 +9,7 @@ Use this vibrant quick-reference to keep every scene polished, readable, and del
 - **Camera restrictions:** Never touch `self.camera.frame` inside a pure `VoiceoverScene`. If camera motion is required, inherit from both `VoiceoverScene` and `MovingCameraScene` and respect safe margins to keep the frame serene.
 - **Reveal style:** Use `FadeIn`/`FadeOut` (or `Create` for shapes). Do **not** use `Write`, `Transform`, or other complex animations—keep transitions silky smooth.
 - **Layout safety:** Define `SAFE_MARGIN = 0.4`. Keep text width ≤ 13.4 units, titles at the top (`to_edge(UP, buff=SAFE_MARGIN)`), and content centered or slightly below with ≥0.8 units spacing. Split long sentences into multiple lines so every composition stays breathable.
+  Also remember there is no `TextAlign` type or `CENTER` constant in Manim—use `.move_to()`, `.to_edge()`, `.align_to()`, or `.next_to()` for placement.
 - **Object count & pacing:** Keep ≤ 5–7 visible elements at once, use simple shapes (Text, MathTex, Circle, Square, Rectangle, Arrow, Line, Dot), and keep `run_time` between 0.5–1.5 seconds unless narration requires longer, maintaining a lively but orderly tempo.
 - **Naming hygiene:** Never shadow Python built-ins (`str`, `list`, `dict`, `int`, `float`, `len`, `max`, `min`, `sum`, `all`, `any`) so your code style stays classy and bug-free.
 - **Safety:** Avoid prohibited modules (`os`, `sys`, `subprocess`, etc.) and stick to documented APIs only, trusting the well-lit path.

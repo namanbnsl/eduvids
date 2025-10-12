@@ -117,6 +117,7 @@ Video Structure Requirements:
    - Reveal Text/MathTex with FadeIn instead of Write to keep pacing brisk
    - NEVER allow any objects to overlap—place comparisons side by side or staggered with visible spacing
    - Use proper spacing (LEFT, RIGHT, UP, DOWN)
+   - TextAlign or CENTER constants do not exist in Manim; position elements with `.move_to`, `.to_edge`, `.align_to`, or `.next_to`
    - AVOID complex animations - use simple movements only
    - Prefer straightforward numeric values in calculations; avoid elaborate algebra or precision-heavy numbers
    - Limit objects on screen: max 5-7 visible elements at once
