@@ -21,9 +21,8 @@ const YOUTUBE_DESCRIPTION_MAX_LENGTH = 5000;
 function sanitizeYoutubeDescription(input: string): string {
   const normalized = input.replace(/\r\n/g, "\n");
 
-  const withoutCodeFences = normalized.replace(
-    /```[\s\S]*?```/g,
-    (segment) => segment.replace(/```/g, "")
+  const withoutCodeFences = normalized.replace(/```[\s\S]*?```/g, (segment) =>
+    segment.replace(/```/g, "")
   );
 
   let sanitized = withoutCodeFences
@@ -112,7 +111,7 @@ export async function uploadToYouTube({
   const providedDescription = description?.trim();
   const finalDescription =
     providedDescription && providedDescription.length > 0
-      ? providedDescription
+      ? `${providedDescription} \n `
       : `${generatedYoutubeDescription} \n This video was generated completely by eduvids AI. There may be some factual inconsistencies, please verify from trusted sources. \n\n Create your own AI-generated educational videos at https://eduvids.vercel.app or run it locally for yourself at https://github.com/namanbnsl/eduvids \n\n`;
 
   const sanitizedDescription = sanitizeYoutubeDescription(finalDescription);
@@ -129,7 +128,7 @@ export async function uploadToYouTube({
     part: ["snippet", "status"],
     requestBody: {
       snippet: {
-        title: finalTitle + " | namanbnsl/eduvids",
+        title: finalTitle,
         description: sanitizedDescription,
         tags,
         categoryId: "27",
