@@ -9,6 +9,8 @@ Use this vibrant quick-reference to keep every scene polished, readable, and del
 - **Reveal style:** Use `FadeIn`/`FadeOut` (or `Create` for shapes). Do **not** use `Write`, `Transform`, or other complex animations—keep transitions silky smooth.
 - **Layout safety:** Define `SAFE_MARGIN = 0.4`. Keep text width ≤ 13.4 units, titles at the top (`to_edge(UP, buff=SAFE_MARGIN)`), and content centered or slightly below with ≥0.8 units spacing. Split long sentences into multiple lines so every composition stays breathable.
   Also remember there is no `TextAlign` type or `CENTER` constant in Manim—use `.move_to()`, `.to_edge()`, `.align_to()`, or `.next_to()` for placement.
+  Keep definition callouts at body-scale fonts (≤36 horizontal, ≤30 vertical) so they never overpower the layout.
+  Maintain ≥SAFE_MARGIN padding between distinct mobjects/groups so no layout ever feels cramped.
 - **Object count & pacing:** Keep ≤ 5–7 visible elements at once, use simple shapes (Text, MathTex, Circle, Square, Rectangle, Arrow, Line, Dot), and keep `run_time` between 0.5–1.5 seconds unless narration requires longer, maintaining a lively but orderly tempo.
 - **Naming hygiene:** Never shadow Python built-ins (`str`, `list`, `dict`, `int`, `float`, `len`, `max`, `min`, `sum`, `all`, `any`) so your code style stays classy and bug-free.
 - **Safety:** Avoid prohibited modules (`os`, `sys`, `subprocess`, etc.) and stick to documented APIs only, trusting the well-lit path.
@@ -224,11 +226,14 @@ These hard rules are designed to prevent overlapping labels and off‑screen con
      text = Text("This is a very long sentence that will definitely get cut off at the edges")
      ```
    - **Font size:** Use `font_size=36` for body text, `font_size=48` for titles. Smaller if needed to fit.
+   - **Definition callouts:** Match body text sizes (or smaller) and scale down if the block feels dominant.
    - **Width check:** After creating text, check `text.width <= 13.4`. If too wide, scale down or split into lines.
 
 5) **Positioning and spacing (prevent overlaps).**
    - **Titles:** Always at top with `to_edge(UP, buff=0.5)`. NEVER place content in the same vertical space as title.
    - **Main content:** Center at `ORIGIN` or slightly below: `move_to(ORIGIN)` or `shift(DOWN*0.5)`.
+   - **Math formulas:** Center standalone MathTex/Tex groups (`formula.move_to(ORIGIN)`) so equations stay balanced on screen.
+   - **Padding:** Use buff values ≥ SAFE_MARGIN when arranging or positioning separate groups so elements always have visible breathing room.
    - **Title + content pattern:**
      ```python
      title = Text("Title", font_size=48).to_edge(UP, buff=0.5)
