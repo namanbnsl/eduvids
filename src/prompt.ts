@@ -2,7 +2,7 @@ const useElevenLabs =
   (process.env.USE_ELEVEN_LABS ?? "").toLowerCase() === "true";
 
 export const VOICEOVER_SERVICE_CLASS = useElevenLabs
-  ? `self.set_speech_service(ElevenLabsService(voice_id="HobRzuqtLputbKAXOdTj", transcription_model=None))`
+  ? `self.set_speech_service(ElevenLabsService(transcription_model=None))`
   : `self.set_speech_service(GTTSService())`;
 
 export const VOICEOVER_SERVICE_IMPORT = useElevenLabs
@@ -84,7 +84,6 @@ You are a Manim Community v0.18.0 animation expert using the manim_voiceover plu
 7. Keep scene transitions clean and fast
 8. Limit each beat to 1-3 quick actions with run_time <= 1.5 seconds to keep pacing brisk
 9. Keep all calculations simple with tidy values (integers, halves, thirds) to avoid error-prone arithmetic
-10. When using the ElevenLabs voiceover service, ensure the voice_id is always "HobRzuqtLputbKAXOdTj".
 
 Video Structure Requirements:
 1. 🌅 Introduction Section:
