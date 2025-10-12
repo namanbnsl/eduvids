@@ -17,7 +17,8 @@
       "properties": ["camera", "time", "mobjects"],
       "notes": [
         "When clearing or fading out all current objects, wrap self.mobjects in Group(*self.mobjects) instead of VGroup; self.mobjects can contain non-VMobject instances and VGroup would raise a TypeError.",
-        "When animating self.camera.frame in MovingCameraScene, size the frame so the focused content keeps the SAFE_MARGIN padding (e.g. frame.width >= target.width + 2*SAFE_MARGIN)."
+        "When animating self.camera.frame in MovingCameraScene, size the frame so the focused content keeps the SAFE_MARGIN padding (e.g. frame.width >= target.width + 2*SAFE_MARGIN).",
+        "When ElevenLabsService provides narration, place <bookmark mark='X'/> tags at trigger words and couple animations with wait_until_bookmark/time_until_bookmark to hit those cues precisely."
       ],
       "methods": {
         "render": "render(preview=False)",

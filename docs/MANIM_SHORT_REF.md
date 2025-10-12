@@ -5,7 +5,7 @@
 Use this vibrant quick-reference to keep every scene polished, readable, and delightfully consistent.
 
 - **Imports & scene setup:** Always include `from manim import *`, `from manim_voiceover import VoiceoverScene`, and `from manim_voiceover.services.gtts import GTTSService`. Define `class MyScene(VoiceoverScene)` with `self.set_speech_service(GTTSService())` inside `construct` for a crisp, reliable start.
-- **Voiceover usage:** Every narration line must be wrapped in `with self.voiceover(text="...")` blocks. Match narration text exactly—no paraphrasing to keep audio and visuals dancing in sync.
+- **Voiceover usage:** Every narration line must be wrapped in `with self.voiceover(text="...")` blocks. Match narration text exactly—no paraphrasing to keep audio and visuals dancing in sync. When ElevenLabsService is active, sprinkle `<bookmark mark='A'/>`-style tags around trigger words and pair them with `wait_until_bookmark` / `time_until_bookmark` so animations land precisely on the narration.
 - **Camera restrictions:** Never touch `self.camera.frame` inside a pure `VoiceoverScene`. If camera motion is required, inherit from both `VoiceoverScene` and `MovingCameraScene` and respect safe margins to keep the frame serene.
 - **Reveal style:** Use `FadeIn`/`FadeOut` (or `Create` for shapes). Do **not** use `Write`, `Transform`, or other complex animations—keep transitions silky smooth.
 - **Layout safety:** Define `SAFE_MARGIN = 0.4`. Keep text width ≤ 13.4 units, titles at the top (`to_edge(UP, buff=SAFE_MARGIN)`), and content centered or slightly below with ≥0.8 units spacing. Split long sentences into multiple lines so every composition stays breathable.
