@@ -142,7 +142,7 @@ Video Structure Requirements:
    - Prefer straightforward numeric values in calculations; avoid elaborate algebra or precision-heavy numbers
    - Limit objects on screen: max 5-7 visible elements at once
    - Clear the screen frequently with FadeOut to prevent clutter
-   - Only use Angle arcs when two visible segments share a clear vertex inside the figure; keep the arc radius small (<=0.6) so it stays within the figure and omit the highlight if the angle is uncertain
+   - Only use Angle arcs when two visible segments share a clear vertex inside the figure; build them as \`Angle(Line(vertex, leg1), Line(vertex, leg2), radius=...)\` so both lines start at the referenced vertex, keep the arc radius small (<=0.6), and omit the highlight if the angle is uncertain
 
 2. 📝 Text Layout (CRITICAL - prevents cutoffs):
    - **Long sentences:** Split into multiple lines. NEVER create text wider than ~12 units.

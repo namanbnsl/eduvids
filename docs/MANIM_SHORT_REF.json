@@ -144,6 +144,14 @@
         "get_value": "get_value()", 
         "set_value": "set_value(z)"
       }
+    },
+    "Angle": {
+      "name": "Angle",
+      "module": "manim.mobject.geometry.angle.Angle",
+      "constructor": "Angle(line1, line2, radius=0.5, other_angle=None, dot=None, elbow=False, color=YELLOW, stroke_width=2)",
+      "notes": [
+        "Pass both supporting Line segments with the shared vertex as their starting point (e.g., Angle(Line(vertex, leg1), Line(vertex, leg2), radius=0.6, color=YELLOW)) so the arc is drawn at the correct corner."
+      ]
     }
   },
   "common_animations": {

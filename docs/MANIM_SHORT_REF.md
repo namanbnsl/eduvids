@@ -285,6 +285,7 @@ These hard rules are designed to prevent overlapping labels and off‑screen con
 9) **Diagram recipes:**
    - Function box: use `SurroundingRectangle` or `RoundedRectangle` sized to text with `buff=0.3`. Place input label above (`.next_to(box, UP, buff=0.3)`) and output below (`.next_to(box, DOWN, buff=0.3)`).
    - Mapping diagram: create two `Circle` or `Ellipse` for domain/codomain. Place points as `VGroup(*dots).arrange(DOWN, buff=0.4).move_to(left_ellipse)` and similarly for right. Use `Arrow(start, end, buff=0.1)` so arrows end outside the circles.
+   - Angle highlight: build angle arcs with `Angle(Line(vertex, leg1), Line(vertex, leg2), radius=0.6, color=ANGLE_COLOR)` so **both** supporting lines start at the shared vertex; keep the radius modest so the arc stays inside the figure.
 
 7) **Safe helper (include at top of each Scene):**
 
