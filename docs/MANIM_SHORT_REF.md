@@ -9,7 +9,8 @@ Use this vibrant quick-reference to keep every scene polished, readable, and del
 - **Reveal style:** Use `FadeIn`/`FadeOut` (or `Create` for shapes). Do **not** use `Write`, `Transform`, or other complex animations—keep transitions silky smooth.
 - **Layout safety:** Define `SAFE_MARGIN = 0.4`. Keep text width ≤ 13.4 units, titles at the top (`to_edge(UP, buff=SAFE_MARGIN)`), and content centered or slightly below with ≥0.8 units spacing. Split long sentences into multiple lines so every composition stays breathable.
   Also remember there is no `TextAlign` type or `CENTER` constant in Manim—use `.move_to()`, `.to_edge()`, `.align_to()`, or `.next_to()` for placement.
-  Keep definition callouts at body-scale fonts (≤36 horizontal, ≤30 vertical) so they never overpower the layout.
+- Keep definition callouts at body-scale fonts (≤36 horizontal, ≤30 vertical) so they never overpower the layout.
+- Shorts should only flash quick labels—cap on-screen phrases at about five words and move full definitions or multi-sentence explanations into narration or staged reveals.
   Maintain ≥SAFE_MARGIN padding between distinct mobjects/groups so no layout ever feels cramped.
 - **Visibility guard:** Double-check that every mobject is fully inside the frame before playing animations; if text feels wide, break it with `\n` or stacked `Text` objects so nothing gets clipped off-screen.
 - **Object count & pacing:** Keep ≤ 5–7 visible elements at once, use simple shapes (Text, MathTex, Circle, Square, Rectangle, Arrow, Line, Dot), and keep `run_time` between 0.5–1.5 seconds unless narration requires longer, maintaining a lively but orderly tempo.
