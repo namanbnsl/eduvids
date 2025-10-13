@@ -113,7 +113,19 @@ Video Structure Requirements:
 🔧 Technical Requirements:
 - Return ONLY complete Python code
 - NEVER USE 3D - stick to 2D animations only
-- USE ONLY SIMPLE COLORS (BLUE, RED, GREEN, YELLOW, WHITE, ORANGE, PURPLE)
+- **STANDARDIZED COLOR SCHEME (NO EXCEPTIONS):**
+  * Titles: WHITE
+  * Body text: WHITE
+  * Bullet points: WHITE  
+  * Math formulas: WHITE
+  * Emphasis/highlight: YELLOW
+  * Examples: BLUE
+  * Definitions: PURE_GREEN
+  * Code/system content: ORANGE
+  * Arrows/lines: WHITE
+  * Background shapes: GRAY (low opacity)
+- USE ONLY THESE COLORS: WHITE, YELLOW, BLUE, PURE_GREEN, ORANGE, GRAY, RED, PURPLE
+- NEVER use arbitrary colors or hex codes
 - USE ONLY BASIC SHAPES: Circle, Square, Rectangle, Text, MathTex, Arrow, Line, Dot
 - Scene must be named "MyScene" and inherit from VoiceoverScene
 - REQUIRED IMPORTS (always include these):
@@ -130,14 +142,15 @@ Video Structure Requirements:
 1. ✨ Visual Clarity & Simplicity:
    - Keep ALL objects clearly visible on screen
    - Use consistent scale for similar elements
-   - Maintain readable text size: keep horizontal titles near font_size=54 and body text around 40, while vertical shorts must keep titles between font_size=50 and 56 and body text between 38 and 44; split phrases across multiple lines and scale groups (for example, 'group.scale_to_fit_width(7.5)') so large text still fits the narrow frame
-   - Definition callouts must track body-scale fonts (≤42 horizontal, ≤44 vertical) and should be scaled down only if they begin to crowd nearby elements
-   - Leave generous padding (≥SAFE_MARGIN) between mobjects so compositions never feel cramped
+   - FIXED FONT SIZES (NO VARIATION): titles = font_size=48, body text = font_size=36, bullet points = font_size=36, definition callouts = font_size=32, math formulas = font_size=36
+   - NEVER exceed these font sizes - scale text down if needed but never increase
+   - Definition callouts must use font_size=32 and always be smaller than main text
+   - MANDATORY PADDING: minimum 0.8 units between all text elements, 0.6 units between text and shapes
    - Reveal Text/MathTex with FadeIn instead of Write to keep pacing brisk
    - NEVER allow any objects to overlap—place comparisons side by side or staggered with visible spacing
    - Use proper spacing (LEFT, RIGHT, UP, DOWN)
    - TextAlign or CENTER constants do not exist in Manim; position elements with '.move_to', '.to_edge', '.align_to', or '.next_to'
-   - When using arrows or connectors, leave at least 0.4 units of clearance around arrowheads and labels; prefer Arrow(..., buff=0.4) and label.next_to(..., buff=0.4) so nothing overlaps, especially in vertical layouts
+   - When using arrows or connectors, leave at least 0.8 units of clearance around arrowheads and labels; prefer Arrow(..., buff=0.8) and label.next_to(..., buff=0.8)
    - AVOID complex animations - use simple movements only
    - Prefer straightforward numeric values in calculations; avoid elaborate algebra or precision-heavy numbers
    - Limit objects on screen: max 5-7 visible elements at once
@@ -145,92 +158,108 @@ Video Structure Requirements:
    - Only use Angle arcs when two visible segments share a clear vertex inside the figure; build them as \`Angle(Line(vertex, leg1), Line(vertex, leg2), radius=...)\` so both lines start at the referenced vertex, keep the arc radius small (<=0.6), and omit the highlight if the angle is uncertain
 
 2. 📝 Text Layout (CRITICAL - prevents cutoffs):
-   - **Long sentences:** Split into multiple lines. NEVER create text wider than ~12 units.
+   - **Long sentences:** Split into multiple lines. NEVER create text wider than ~10 units.
    - **Line breaks:** Use \n in Text() or create separate Text objects arranged with VGroup
-   - **Width check:** After creating text, ensure text.width <= 13.4. If too wide, split or scale.
-   - **Definition cards:** Match body text font sizes or smaller and keep them within the same width constraints so they never dwarf surrounding content
-   - **Font sizes:** Default to font_size=54 for titles and 40 for body text on horizontal videos. For short or vertical formats, keep titles between font_size=50 and 56 and body text between 38 and 44; split lines and use 'scale_to_fit_width(7.5)' on text groups if they exceed width limits. Keep labels attached to shapes or angles between font_size=28 and font_size=34 so they stay legible without crowding
+   - **Width check:** After creating text, ensure text.width <= 10.0. If too wide, split or scale.
+   - **FIXED FONT SIZES (NO EXCEPTIONS):** titles=48, body text=36, bullet points=36, definitions=32, math formulas=36, small labels=28
+   - **MANDATORY SPACING:** Use buff=0.8 between text elements, buff=0.6 between text and shapes, buff=1.0 for section breaks
    - **Examples:**
      '''python
-     # GOOD: Split long text
-     line1 = Text("This is a long sentence")
-     line2 = Text("split across two lines")
-     text = VGroup(line1, line2).arrange(DOWN, buff=0.2)
+     # GOOD: Split long text with proper spacing
+     line1 = Text("This is a long sentence", font_size=36)
+     line2 = Text("split across two lines", font_size=36)
+     text = VGroup(line1, line2).arrange(DOWN, buff=0.8)
      
-     # GOOD: Use newlines
-     text = Text("Line 1\nLine 2\nLine 3")
+     # GOOD: Use newlines with proper font size
+     text = Text("Line 1\nLine 2\nLine 3", font_size=36)
      
      # BAD: Long single line (gets cut off!)
-     text = Text("This extremely long sentence will get cut off at edges")
+     text = Text("This extremely long sentence will get cut off at edges", font_size=36)
+     
+     # BAD: No spacing between elements
+     text = VGroup(line1, line2).arrange(DOWN, buff=0.1)  # Too small!
      '''
    - Animate text appearance with FadeIn (never Write) so narration keeps momentum
+   - ALWAYS verify text.width <= 10.0 BEFORE animating
 
 3. 📐 Positioning (prevent overlaps):
-   - **Titles:** Always at top: 'title.to_edge(UP, buff=0.5)'
-   - **Content:** Center at ORIGIN or slightly below: 'content.move_to(ORIGIN)' or 'shift(DOWN*0.5)'
-   - **Math formulas:** Center standalone MathTex/Tex groups with move_to(ORIGIN) (or align_to with ORIGIN) so equations stay balanced
-   - **Padding:** Keep at least SAFE_MARGIN (0.4) of horizontal/vertical space between separate groups and increase buff values if elements start to feel crowded
-   - **Horizontal videos:** Keep the main content group centered on screen (use 'group.move_to(ORIGIN)' or a small downward shift) so the layout feels balanced under the top title
-   - **Vertical shorts:** Keep text stacks narrow (for example, call 'group.scale_to_fit_width(7.2)') and centered so the larger fonts stay fully visible on the portrait frame
-   - **NEVER overlap title and content** - minimum 0.8 units vertical spacing
-   - **Pattern to follow:**
+   - **Titles:** Always at top: 'title.to_edge(UP, buff=1.0)' (increased from 0.5)
+   - **Content:** Center at ORIGIN or below: 'content.move_to(ORIGIN)' or 'shift(DOWN*1.2)'
+   - **Math formulas:** Center with 'formula.move_to(ORIGIN)' and ensure adequate spacing from other elements
+   - **MANDATORY PADDING:** Minimum 1.0 units between all major groups, 0.8 between text elements, 0.6 between text and shapes
+   - **NEVER overlap:** Always check bounding boxes before animating
+   - **Title-content spacing:** Minimum 1.5 units vertical gap between title and content
+   - **MANDATORY TRANSITION PATTERN (for new topics/sections):**
      '''python
-     # Show title
-     title = Text("Title", font_size=54).to_edge(UP, buff=0.5)
+     # Step 1: Show title in center first
+     title = Text("New Topic", font_size=48, color=WHITE)
      self.play(FadeIn(title))
      
-     # Option 1: Fade out title, then show content centered
-     self.play(FadeOut(title))
+     # Step 2: Move title to top position with proper margin  
+     self.play(title.animate.to_edge(UP, buff=1.0))
+     
+     # Step 3: Now fade in new content at center
      content = VGroup(...).move_to(ORIGIN)
      self.play(FadeIn(content))
+     self.wait(0.5)
+     '''
      
-     # Option 2: Keep title, place content below
-     content = VGroup(...).move_to(ORIGIN)  # or shift(DOWN*0.5)
+   - **For sub-sections (keeping main title visible):**
+     '''python
+     # Keep main title at top, add subtitle below it
+     subtitle = Text("Sub-topic", font_size=40, color=YELLOW)
+     subtitle.next_to(title, DOWN, buff=0.8)
+     self.play(FadeIn(subtitle))
+     
+     # Add content below subtitle
+     content = VGroup(...).next_to(subtitle, DOWN, buff=1.0)
      self.play(FadeIn(content))
      '''
 
 4. 🔸 Bullet Points:
    - **MUST be LEFT-aligned**, never centered
-   - Start from left edge: 'bullets.to_edge(LEFT, buff=1.0)'
-   - Use aligned_edge=LEFT in arrange: 'VGroup(...).arrange(DOWN, buff=0.3, aligned_edge=LEFT)'
+   - Start from left edge: 'bullets.to_edge(LEFT, buff=1.2)' (increased)
+   - Use aligned_edge=LEFT with proper spacing: 'VGroup(...).arrange(DOWN, buff=0.8, aligned_edge=LEFT)'
+   - **FIXED SETTINGS:** font_size=36 for all bullets, buff=0.8 between bullets, left edge buff=1.2
    - Example:
      '''python
-     bullet1 = Text("• First point", font_size=40)
-     bullet2 = Text("• Second point", font_size=40)
-     bullet3 = Text("• Third point", font_size=40)
-     bullets = VGroup(bullet1, bullet2, bullet3).arrange(DOWN, buff=0.3, aligned_edge=LEFT)
-     bullets.to_edge(LEFT, buff=1.0)  # Start from left side
+     bullet1 = Text("• First point", font_size=36)
+     bullet2 = Text("• Second point", font_size=36)
+     bullet3 = Text("• Third point", font_size=36)
+     bullets = VGroup(bullet1, bullet2, bullet3).arrange(DOWN, buff=0.8, aligned_edge=LEFT)
+     bullets.to_edge(LEFT, buff=1.2)  # More left margin
      '''
-   - Spacing: buff=0.3 to 0.4 between items
+   - NEVER use buff<0.8 between bullet points
    - Max 5-6 bullets visible at once
 
 Hard Layout Contract (strict, do not violate):
-- Define SAFE_MARGIN = 0.4 in every scene and leave this empty border inside the camera frame.
-- ABSOLUTE NO-OVERLAP RULE: Before any animation, ensure bounding boxes of text, shapes, labels, and connectors never intersect; reposition with arrange/next_to (buff>=0.3) or scale down until every element has clear separation.
-- **Text width limit:** No text wider than ~12 units. Check text.width after creation; split into lines if needed.
+- Define SAFE_MARGIN = 0.8 in every scene (increased from 0.4).
+- ABSOLUTE NO-OVERLAP RULE: Before any animation, ensure bounding boxes of text, shapes, labels, and connectors never intersect; reposition with arrange/next_to (buff>=0.8) or scale down until every element has clear separation.
+- **Text width limit:** No text wider than ~10 units (reduced from 12). Check text.width after creation; split into lines if needed.
 - **Long sentences:** Always split into multiple Text objects or use \n for line breaks.
-- **Titles vs Content:** Titles at 'to_edge(UP, buff=0.5)', content at 'ORIGIN' or below. Minimum 0.8 units vertical spacing.
-- **Bullet points:** MUST be LEFT-aligned with 'to_edge(LEFT, buff=1.0)' and 'arrange(DOWN, aligned_edge=LEFT)'.
-- Build layouts with VGroup(...).arrange(...) or next_to(..., buff>=0.3). Do not stack items manually with the same center.
-- All labels must be placed with next_to and a nonzero buff; never place a label exactly on top of another mobject.
+- **Titles vs Content:** Titles at 'to_edge(UP, buff=1.0)', content at 'ORIGIN' or below. Minimum 1.5 units vertical spacing (increased).
+- **Bullet points:** MUST be LEFT-aligned with 'to_edge(LEFT, buff=1.2)' and 'arrange(DOWN, aligned_edge=LEFT, buff=0.8)'.
+- Build layouts with VGroup(...).arrange(...) or next_to(..., buff>=0.8). Never use buff<0.8.
+- All labels must be placed with next_to and buff>=0.8; never place a label exactly on top of another mobject.
 - Before adding/animating any group, scale to fit the frame minus margins using scale_to_fit_width/height.
 - Ensure shapes are fully visible: if any item would extend beyond the frame, scale it down and recenter.
 - When zooming with \`self.camera.frame\` (only in MovingCameraScene), set the frame width/height to the focus group's bounds plus at least 2*SAFE_MARGIN before centering so the zoom keeps the padding.
 - Option 1: Fade out title before showing content. Option 2: Keep title at top, place content centered/below.
 - Use set_z_index to ensure text/labels are above shapes when needed.
-- For two-set mapping diagrams (domain→codomain), arrange items inside each set as a vertical VGroup with buff>=0.3, align the two sets left/right with ample spacing, and ensure arrows use buff>=0.3 so arrowheads never overlap labels.
+- For two-set mapping diagrams (domain→codomain), arrange items inside each set as a vertical VGroup with buff>=0.8, align the two sets left/right with ample spacing, and ensure arrows use buff>=1.0 so arrowheads never overlap labels.
 - Always add a brief wait(0.5) between major layout steps to reveal structure.
 
 Checklist before self.play:
-1) Is text width <= 13.4? If not, split into lines or scale down.
+1) Is text width <= 10.0? If not, split into lines or scale down.
 2) Is every new mobject inside the camera frame with the SAFE_MARGIN? If not, scale_to_fit and move_to(ORIGIN).
-3) Are titles at top (to_edge UP) and content at center/below (min 0.8 units spacing)?
+3) Are titles at top (to_edge UP with buff=1.0) and content at center/below (min 1.5 units spacing)?
 4) Are bullet points LEFT-aligned (not centered)?
-5) Are labels positioned with next_to and a visible buff? If not, fix.
+5) Are labels positioned with next_to and buff>=0.8? If not, fix.
 6) Are z-indexes set so text is readable? If text could be hidden, raise its z-index.
 7) Is the previous section cleared (FadeOut old_group) before introducing a new diagram?
 8) If animating the camera frame for a zoom, has the frame size been set so the focus keeps SAFE_MARGIN padding on every side?
 9) Do any text boxes, shapes, or arrows overlap? If yes, reposition or scale before playing the animation.
+10) Are colors following the standardized scheme (titles=WHITE, emphasis=YELLOW, etc.)?
 
 2. Timing and Flow (KEEP SIMPLE):
    - Natural pacing (wait calls 0.5-1.0 seconds)
@@ -295,6 +324,14 @@ Code Implementation (KEEP ROBUST):
 - ALWAYS check if imports are valid before using features
 - Use try-except NEVER - write correct code from the start
 - Test positioning with SAFE_MARGIN before animating
+
+Visibility Requirements (CRITICAL):
+- ALWAYS use WHITE for main text to ensure maximum contrast
+- Use YELLOW only for emphasis/highlighting (never for main content)
+- NEVER use light colors on light backgrounds
+- Background shapes should use GRAY with opacity≤0.3
+- Before animating, verify text is not hidden behind shapes using set_z_index()
+- Text and labels must have z-index higher than background shapes
 
 Mandatory Script Structure:
 '''python

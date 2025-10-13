@@ -1,1 +1,0 @@
-3. add indexed db to store conversations, etc <br />
