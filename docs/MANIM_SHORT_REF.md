@@ -6,7 +6,6 @@ Use this vibrant quick-reference to keep every scene polished, readable, and del
 
 - **Imports & scene setup:** Always include `from manim import *`, `from manim_voiceover import VoiceoverScene`, and `from manim_voiceover.services.gtts import GTTSService`. Define `class MyScene(VoiceoverScene)` with `self.set_speech_service(GTTSService())` inside `construct` for a crisp, reliable start.
 - **Camera restrictions:** Never touch `self.camera.frame` inside a pure `VoiceoverScene`. If camera motion is required, inherit from both `VoiceoverScene` and `MovingCameraScene` and respect safe margins to keep the frame serene.
-- **Reveal style:** Use `FadeIn`/`FadeOut` (or `Create` for shapes). Do **not** use `Write`, `Transform`, or other complex animations—keep transitions silky smooth.
 - **Layout safety:** Define `SAFE_MARGIN = 0.4`. Keep text width ≤ 13.4 units, titles at the top (`to_edge(UP, buff=SAFE_MARGIN)`), and content centered or slightly below with ≥0.8 units spacing. Split long sentences into multiple lines so every composition stays breathable.
   Also remember there is no `TextAlign` type or `CENTER` constant in Manim—use `.move_to()`, `.to_edge()`, `.align_to()`, or `.next_to()` for placement.
 - Keep definition callouts at body-scale fonts (≤36 horizontal, ≤30 vertical) so they never overpower the layout.
@@ -127,6 +126,7 @@ VMobject(
 ## 🌈 Coordinates, Angles, and Colors
 
 Common constants (via `from manim import *`):
+
 - **Unit vectors:** `ORIGIN`, `UP`, `DOWN`, `LEFT`, `RIGHT`, `IN`, `OUT`, `UL`, `UR`, `DL`, `DR`.
 - **Angles:** `PI`, `TAU`, `DEGREES` (for converting radians/degrees).
 - **Colors:** Named colors: `WHITE`, `BLACK`, `RED`, `GREEN`, `BLUE`, `YELLOW`, `PINK`, `PURPLE`, etc. Also many CSS-style color names and hex codes are supported (via `color=...` in methods).
@@ -141,13 +141,13 @@ class FormulaScene(Scene):
         title = Text("Divergence Theorem").to_edge(UP)
         formula = MathTex(r"\iiint_V (\nabla \cdot F)\,dV = \oiint_{\partial V} F \cdot n\,dS")
         formula.next_to(title, DOWN, buff=0.6)
-        
+
         tracker = ValueTracker(0)
         circle = Circle(radius=1.8, color=BLUE)
         dot = Dot().move_to(circle.point_from_proportion(tracker.get_value()))
-        dot.add_updater(lambda d: 
+        dot.add_updater(lambda d:
             d.move_to(circle.point_from_proportion(tracker.get_value())))
-        
+
         self.add(title, formula, circle, dot)
         self.play(Create(circle), Write(formula))
         self.play(tracker.animate.set_value(1), run_time=4, rate_func=linear)
@@ -182,7 +182,7 @@ self.add(text, math)
 
 ```python
 tracker = ValueTracker(0)
-dot = Dot().add_updater(lambda d: 
+dot = Dot().add_updater(lambda d:
     d.move_to(number_line.n2p(tracker.get_value())))
 self.add(number_line, dot)
 self.play(tracker.animate.set_value(5))
@@ -194,67 +194,78 @@ The updater moves dot as tracker changes.
 
 These hard rules are designed to prevent overlapping labels and off‑screen content in generated scenes.
 
-1) **Always build layouts with groups instead of manual coordinates.**
+1. **Always build layouts with groups instead of manual coordinates.**
+
    - Prefer `VGroup(...).arrange(direction=RIGHT, buff=0.5, center=True)` or `arrange_in_grid(...)` over ad‑hoc `shift`.
    - Use `next_to(target, direction, buff=0.3)` for labels/arrows. Never place a label directly at the same center as its target.
 
-2) **Maintain a safe frame margin.**
+2. **Maintain a safe frame margin.**
+
    - Use a margin of at least 0.4 units on all sides (`MARGIN = 0.4`).
    - Only use `to_edge` / `to_corner` with `buff=MARGIN`.
    - If an object is too large, use `scale_to_fit_width(13.4)` or `.scale_to_fit_height(7.2)` (assuming MARGIN=0.4).
    - When zooming with `self.camera.frame` in a moving-camera scene, ensure the frame width/height stay at least the focus group's bounds plus `2*MARGIN` so nothing hits the edges during the zoom.
 
-3) **Ensure everything is on screen before playing.**
+3. **Ensure everything is on screen before playing.**
+
    - DO NOT use `self.camera.frame` in VoiceoverScene (it doesn't exist!)
    - Default frame: ~14.2 units wide, ~8 units tall
    - Before `self.play(...)`, for any newly created `m`, ensure:
      - `m.width <= 14.2 - 2*MARGIN` (≈13.4) and `m.height <= 8 - 2*MARGIN` (≈7.2)
      - Move `m` to view: e.g. `m.move_to(ORIGIN)` or `m.to_edge(..., buff=MARGIN)`.
 
-4) **Text layout and wrapping (CRITICAL for readability).**
+4. **Text layout and wrapping (CRITICAL for readability).**
+
    - **Long sentences:** Split into multiple Text/MathTex objects, one per line. NEVER let text exceed ~12 units width.
    - **Line breaks:** Use `\n` in Text strings or create separate Text objects arranged vertically.
    - **Multi-line text example:**
+
      ```python
      # GOOD: Split long text into lines
      line1 = Text("This is the first part of a long sentence")
      line2 = Text("and this is the continuation")
      lines = VGroup(line1, line2).arrange(DOWN, buff=0.2)
-     
+
      # GOOD: Use newlines
      text = Text("First line\nSecond line\nThird line")
-     
+
      # BAD: Long text that gets cut off
      text = Text("This is a very long sentence that will definitely get cut off at the edges")
      ```
+
    - **Font size:** Use `font_size=36` for body text, `font_size=48` for titles. Smaller if needed to fit.
    - **Definition callouts:** Match body text sizes (or smaller) and scale down if the block feels dominant.
    - **Width check:** After creating text, check `text.width <= 13.4`. If too wide, scale down or split into lines.
 
-5) **Positioning and spacing (prevent overlaps).**
+5. **Positioning and spacing (prevent overlaps).**
+
    - **Titles:** Always at top with `to_edge(UP, buff=0.5)`. NEVER place content in the same vertical space as title.
    - **Main content:** Center at `ORIGIN` or slightly below: `move_to(ORIGIN)` or `shift(DOWN*0.5)`.
    - **Math formulas:** Center standalone MathTex/Tex groups (`formula.move_to(ORIGIN)`) so equations stay balanced on screen.
    - **Padding:** Use buff values ≥ SAFE_MARGIN when arranging or positioning separate groups so elements always have visible breathing room.
    - **Title + content pattern:**
+
      ```python
      title = Text("Title", font_size=48).to_edge(UP, buff=0.5)
      self.play(Write(title))
-     
+
      # Content MUST be below title, never overlapping
      content = VGroup(...).move_to(ORIGIN)  # or shift(DOWN*0.5)
      self.play(FadeIn(content))
-     
+
      # OR: Fade out title before showing content
      self.play(FadeOut(title))
      content = VGroup(...).move_to(ORIGIN)
      self.play(FadeIn(content))
      ```
+
    - **Minimum vertical spacing:** At least 0.8 units between title and content.
 
-6) **Bullet points and lists.**
+6. **Bullet points and lists.**
+
    - **Alignment:** Bullet points MUST start at the LEFT side of the frame, not centered.
    - **Left-aligned pattern:**
+
      ```python
      # GOOD: Left-aligned bullets
      bullet1 = Text("• First point", font_size=36)
@@ -262,18 +273,21 @@ These hard rules are designed to prevent overlapping labels and off‑screen con
      bullet3 = Text("• Third point", font_size=36)
      bullets = VGroup(bullet1, bullet2, bullet3).arrange(DOWN, buff=0.3, aligned_edge=LEFT)
      bullets.to_edge(LEFT, buff=1.0)  # Start from left side
-     
+
      # BAD: Centered bullets (looks wrong)
      bullets = VGroup(bullet1, bullet2, bullet3).arrange(DOWN).move_to(ORIGIN)
      ```
+
    - **Bullet spacing:** `buff=0.3` to `buff=0.4` between items.
    - **Max bullets visible:** No more than 5-6 bullets on screen at once.
 
-7) **Z-order and readability.**
+7. **Z-order and readability.**
+
    - Labels should be above shapes: e.g. `label.set_z_index(shape.z_index + 1)` (or simply a high z-index).
    - When highlighting, use translucent fills and thick strokes: `set_fill(opacity=0.15)`, `set_stroke(width=3)` (with an appropriate color).
 
-8) **Clear between sections.**
+8. **Clear between sections.**
+
    - Fade out or remove previous elements before new ones. Example:
      ```python
      self.play(FadeOut(Group(*self.mobjects)))
@@ -283,12 +297,13 @@ These hard rules are designed to prevent overlapping labels and off‑screen con
      `VMobject`s and would raise a `TypeError` if added to a `VGroup`.
    - Or keep track of a `current_group` and `self.play(FadeOut(current_group))`.
 
-9) **Diagram recipes:**
+9. **Diagram recipes:**
+
    - Function box: use `SurroundingRectangle` or `RoundedRectangle` sized to text with `buff=0.3`. Place input label above (`.next_to(box, UP, buff=0.3)`) and output below (`.next_to(box, DOWN, buff=0.3)`).
    - Mapping diagram: create two `Circle` or `Ellipse` for domain/codomain. Place points as `VGroup(*dots).arrange(DOWN, buff=0.4).move_to(left_ellipse)` and similarly for right. Use `Arrow(start, end, buff=0.1)` so arrows end outside the circles.
    - Angle highlight: build angle arcs with `Angle(Line(vertex, leg1), Line(vertex, leg2), radius=0.6, color=ANGLE_COLOR)` so **both** supporting lines start at the shared vertex; keep the radius modest so the arc stays inside the figure.
 
-7) **Safe helper (include at top of each Scene):**
+10. **Safe helper (include at top of each Scene):**
 
 ```python
 from manim import *
@@ -312,7 +327,7 @@ def fit_and_keep_on_screen(m: Mobject, margin: float = SAFE_MARGIN):
 
 Call `fit_and_keep_on_screen(group)` for any complex group before displaying it. This works in Scene, VoiceoverScene, MovingCameraScene, etc.
 
-8) **Timing hygiene:** Use short waits (`self.wait(0.5)`) between layout steps so viewers can perceive structure.
+8. **Timing hygiene:** Use short waits (`self.wait(0.5)`) between layout steps so viewers can perceive structure.
 
 These rules prevent overlapping titles/labels, off-screen shapes, and unreadable diagrams.
 
@@ -358,12 +373,12 @@ class ValueTrackerExample(Scene):
         number_line = NumberLine()
         pointer = Vector(DOWN)
         label = MathTex("x").add_updater(lambda m: m.next_to(pointer, UP))
-        
+
         tracker = ValueTracker(0)
         pointer.add_updater(lambda m: m.next_to(
             number_line.n2p(tracker.get_value()), UP
         ))
-        
+
         self.add(number_line, pointer, label)
         # Animate tracker increasing
         self.play(tracker.animate.set_value(5), run_time=3)
@@ -373,14 +388,17 @@ class ValueTrackerExample(Scene):
 ## More LLM verifier guidance (programmatic checks)
 
 ### API and Type Checks
+
 - Ensure all used symbols exist in Manim (with `from manim import *` or explicit import). Only use methods/attributes listed above or in official docs. The verifier should flag any unknown names.
 - `.points` and anchor manipulations should use NumPy arrays of shape (N, 3). If code manipulates raw points, check array shapes. Prefer using higher-level helpers (`set_points_as_corners`, `append_points`, `add_line_to`, etc.) rather than manual NumPy math unless intentional.
 - For transforms between differently-shaped mobjects, use `Transform` or `ReplacementTransform` (or call `align_points()` / `match_points()` first).
 
 ### ⚠️ Python Built-in Shadowing (CRITICAL)
+
 **This causes "'str' object is not callable" and similar cryptic errors!**
 
 **NEVER use these as variable names:**
+
 - String/collection types: `str`, `list`, `dict`, `tuple`, `set`, `frozenset`
 - Numeric types: `int`, `float`, `complex`, `bool`
 - Built-in functions: `len`, `max`, `min`, `sum`, `abs`, `round`, `pow`
@@ -389,6 +407,7 @@ class ValueTrackerExample(Scene):
 - Other: `type`, `id`, `hash`, `format`, `sorted`, `reversed`
 
 **Use descriptive alternatives:**
+
 ```python
 # ❌ BAD - shadows built-ins (causes "'X' is not callable")
 str = "Hello World"
@@ -406,6 +425,7 @@ length = 5                # or: count, size
 ```
 
 **Common problematic patterns to catch:**
+
 ```python
 # ❌ BAD
 for str in strings:           # shadows built-in str()
@@ -419,7 +439,7 @@ for text in strings:
 list = some_function()        # shadows built-in list()
 my_list = list(data)          # ERROR: list is now a variable!
 
-# ✅ GOOD  
+# ✅ GOOD
 items = some_function()
 my_list = list(data)          # works correctly
 ```
@@ -452,6 +472,7 @@ my_list = list(data)          # works correctly
 **See the comprehensive Layout and visibility contract section above for full details.**
 
 Key reminders:
+
 - Split long text into multiple lines (max width ~12 units)
 - Titles at top (`to_edge(UP, buff=0.5)`), content at center (`ORIGIN`) or below
 - Bullet points must be LEFT-aligned (`to_edge(LEFT, buff=1.0)`)
