@@ -1,8 +1,22 @@
 import { CommandExitError, Sandbox } from "@e2b/code-interpreter";
 import { Buffer } from "node:buffer";
+import {
+  detectUsedPlugins,
+  validateAllPlugins,
+  getPluginInstallCommands,
+  MANIM_PLUGINS,
+} from "./manim-plugins";
+import {
+  getLayoutConfig,
+  getCompleteLayoutCode,
+  detectContentType,
+} from "./manim-layout-engine";
 
 const MAX_COMMAND_OUTPUT_CHARS = 4000;
 let latexEnvironmentVerified = false;
+
+// Track which plugins have been installed per sandbox session
+const installedPluginsCache = new Map<string, Set<string>>();
 
 export type ValidationStage =
   | "input"
@@ -10,6 +24,10 @@ export type ValidationStage =
   | "syntax"
   | "ast-guard"
   | "scene-validation"
+  | "plugin-detection"
+  | "plugin-installation"
+  | "plugin-validation"
+  | "layout-injection"
   | "latex"
   | "render"
   | "video-validation"
@@ -480,11 +498,148 @@ export async function renderManimVideo({
     const baseVideosDir = `${mediaDir}/videos`;
 
     // Write Manim script
-    await sandbox.files.write(scriptPath, normalizedScript);
-    console.log("Manim script written to sandbox");
+    // Detect and validate plugins
     pushLog({
       level: "info",
-      message: "Script written to sandbox",
+      message: "Detecting manim plugins",
+      context: "plugin-detection",
+    });
+
+    const usedPlugins = detectUsedPlugins(normalizedScript);
+    if (usedPlugins.length > 0) {
+      console.log("Detected plugins:", usedPlugins);
+      pushLog({
+        level: "info",
+        message: `Detected plugins: ${usedPlugins.join(", ")}`,
+        context: "plugin-detection",
+      });
+
+      // Validate plugin usage
+      const pluginValidation = validateAllPlugins(normalizedScript);
+      if (!pluginValidation.valid) {
+        pushLog({
+          level: "error",
+          message: `Plugin validation failed: ${pluginValidation.errors.join("; ")}`,
+          context: "plugin-validation",
+        });
+        throw new ManimValidationError(
+          `Plugin validation failed:\n${pluginValidation.errors.join("\n")}`,
+          "plugin-validation",
+          { logs: [...renderLogs] }
+        );
+      }
+
+      if (pluginValidation.warnings.length > 0) {
+        for (const warning of pluginValidation.warnings) {
+          pushLog({
+            level: "warn",
+            message: warning,
+            context: "plugin-validation",
+          });
+          warnings.push({ stage: "plugin-validation", message: warning });
+        }
+      }
+
+      // Install plugins
+      const sandboxId = sandbox.sandboxId;
+      let installedPlugins = installedPluginsCache.get(sandboxId);
+      if (!installedPlugins) {
+        installedPlugins = new Set<string>();
+        installedPluginsCache.set(sandboxId, installedPlugins);
+      }
+
+      for (const pluginId of usedPlugins) {
+        if (!installedPlugins.has(pluginId)) {
+          const plugin = MANIM_PLUGINS[pluginId];
+          if (!plugin) {
+            console.warn(`Unknown plugin ID: ${pluginId}`);
+            continue;
+          }
+
+          pushLog({
+            level: "info",
+            message: `Installing plugin: ${plugin.name}`,
+            context: "plugin-installation",
+          });
+
+          const installCommands = getPluginInstallCommands(normalizedScript);
+          for (const installCmd of installCommands) {
+            if (installCmd) {
+              try {
+                await runCommandOrThrow(installCmd, {
+                  description: `Install ${plugin.name}`,
+                  stage: "plugin-installation",
+                  timeoutMs: 300_000, // 5 minutes for plugin installation
+                  hint: `Failed to install ${plugin.name}. The plugin may not be compatible with this manim version.`,
+                  streamOutput: true,
+                });
+                installedPlugins.add(pluginId);
+              } catch (installError) {
+                console.error(`Failed to install plugin ${plugin.name}:`, installError);
+                pushLog({
+                  level: "error",
+                  message: `Failed to install ${plugin.name}: ${String(installError)}`,
+                  context: "plugin-installation",
+                });
+                // Continue without this plugin - the script may still work
+                warnings.push({
+                  stage: "plugin-installation",
+                  message: `Plugin ${plugin.name} could not be installed but continuing`,
+                });
+              }
+            }
+          }
+        } else {
+          pushLog({
+            level: "info",
+            message: `Plugin ${MANIM_PLUGINS[pluginId]?.name || pluginId} already installed in this sandbox`,
+            context: "plugin-installation",
+          });
+        }
+      }
+    }
+
+    // Inject layout helpers based on render options
+    let enhancedScript = normalizedScript;
+    const contentType = detectContentType(normalizedScript);
+    const layoutConfig = getLayoutConfig({
+      orientation: renderOptions?.orientation,
+      resolution: renderOptions?.resolution,
+      contentType,
+    });
+
+    pushLog({
+      level: "info",
+      message: `Injecting layout helpers (${layoutConfig.orientation}, ${contentType})`,
+      context: "layout-injection",
+    });
+
+    const layoutCode = getCompleteLayoutCode(layoutConfig);
+
+    // Insert layout code after imports but before class definition
+    const classMatch = enhancedScript.match(/^((?:.*\n)*?)(class\s+MyScene)/m);
+    if (classMatch) {
+      const beforeClass = classMatch[1];
+      const fromClass = classMatch[2];
+      const afterClass = enhancedScript.slice(classMatch.index! + classMatch[0].length);
+      enhancedScript = `${beforeClass}\n${layoutCode}\n\n${fromClass}${afterClass}`;
+    } else {
+      // Fallback: append at the beginning after imports
+      const lines = enhancedScript.split("\n");
+      const lastImportIdx = lines.findLastIndex((line) =>
+        line.trim().startsWith("import ") || line.trim().startsWith("from ")
+      );
+      if (lastImportIdx >= 0) {
+        lines.splice(lastImportIdx + 1, 0, "", layoutCode, "");
+        enhancedScript = lines.join("\n");
+      }
+    }
+
+    await sandbox.files.write(scriptPath, enhancedScript);
+    console.log("Manim script (with plugins and layout helpers) written to sandbox");
+    pushLog({
+      level: "info",
+      message: "Script written to sandbox with enhancements",
       context: "prepare",
     });
 
