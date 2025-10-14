@@ -683,15 +683,79 @@ export async function renderManimVideo({
       );
     }
 
-    let finalVideoPath = videoPath;
+    const probeDimensions = await runCommandOrThrow(
+      `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 ${videoPath}`,
+      {
+        description: "Video dimension probe",
+        stage: "video-validation",
+        timeoutMs: 180_000,
+        hint: "Unable to read rendered video dimensions.",
+      }
+    );
+    const dimensionOutput = (probeDimensions.stdout || "").trim();
+    let videoWidth: number | undefined;
+    let videoHeight: number | undefined;
+    if (dimensionOutput.length) {
+      const [widthToken, heightToken] = dimensionOutput.split("x");
+      const parsedWidth = Number.parseInt(widthToken ?? "", 10);
+      const parsedHeight = Number.parseInt(heightToken ?? "", 10);
+      if (Number.isFinite(parsedWidth) && parsedWidth > 0) {
+        videoWidth = parsedWidth;
+      }
+      if (Number.isFinite(parsedHeight) && parsedHeight > 0) {
+        videoHeight = parsedHeight;
+      }
+    }
+    if (videoWidth && videoHeight) {
+      pushLog({
+        level: "info",
+        message: `Detected video dimensions: ${videoWidth}x${videoHeight}`,
+        context: "video-validation",
+      });
+    } else {
+      pushLog({
+        level: "warn",
+        message: `Could not determine video dimensions from ffprobe output: "${dimensionOutput}"`,
+        context: "video-validation",
+      });
+    }
+
+    let processedVideoPath = videoPath;
+    let safeAreaFilter: string | undefined;
+    if (videoWidth && videoHeight) {
+      const safeScale = orientation === "portrait" ? 0.86 : 0.92;
+      const scaledWidth = Math.max(
+        2,
+        Math.floor(((videoWidth * safeScale) / 2)) * 2
+      );
+      const scaledHeight = Math.max(
+        2,
+        Math.floor(((videoHeight * safeScale) / 2)) * 2
+      );
+      if (
+        scaledWidth > 0 &&
+        scaledHeight > 0 &&
+        (scaledWidth < videoWidth || scaledHeight < videoHeight)
+      ) {
+        safeAreaFilter = `scale=${scaledWidth}:${scaledHeight}:flags=lanczos,pad=${videoWidth}:${videoHeight}:(ow-iw)/2:(oh-ih)/2`;
+        pushLog({
+          level: "info",
+          message: `Applying safe area padding with scale factor ${safeScale}`,
+          context: "render",
+        });
+      }
+    }
 
     if (applyWatermark) {
       const watermarkedPath = `${outputDir}/watermarked.mp4`;
       const watermarkText = "eduvids";
       const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
       const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@0.85:fontsize=24:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw-20:y=h-th-20`;
-
-      const ffmpegCmd = `ffmpeg -y -i ${videoPath} -vf "${drawText}" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart -c:a copy ${watermarkedPath}`;
+      const filters = [safeAreaFilter, drawText].filter(Boolean).join(",");
+      const ffmpegCmd =
+        filters.length > 0
+          ? `ffmpeg -y -i ${processedVideoPath} -vf "${filters}" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart -c:a copy ${watermarkedPath}`
+          : `ffmpeg -y -i ${processedVideoPath} -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart -c:a copy ${watermarkedPath}`;
       await runCommandOrThrow(ffmpegCmd, {
         description: "Watermark application",
         stage: "watermark",
@@ -719,8 +783,41 @@ export async function renderManimVideo({
         );
       }
 
-      finalVideoPath = watermarkedPath;
+      processedVideoPath = watermarkedPath;
+    } else if (safeAreaFilter) {
+      const paddedPath = `${outputDir}/padded.mp4`;
+      const ffmpegCmd = `ffmpeg -y -i ${processedVideoPath} -vf "${safeAreaFilter}" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart -c:a copy ${paddedPath}`;
+      await runCommandOrThrow(ffmpegCmd, {
+        description: "Safe area padding",
+        stage: "render",
+        timeoutMs: 360_000,
+        hint: "ffmpeg failed while applying safe area padding.",
+        streamOutput: { stdout: true, stderr: true },
+      });
+
+      const probePadded = await runCommandOrThrow(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${paddedPath}`,
+        {
+          description: "Padded video validation",
+          stage: "video-validation",
+          timeoutMs: 180_000,
+          hint: "The padded video appears to be corrupted.",
+        }
+      );
+      const paddedDuration = parseFloat((probePadded.stdout || "").trim());
+      if (!paddedDuration || paddedDuration <= 0) {
+        await ensureCleanup();
+        throw new ManimValidationError(
+          `Safe-area padded video has invalid duration: ${paddedDuration}s — aborting upload`,
+          "video-validation",
+          { logs: [...renderLogs] }
+        );
+      }
+
+      processedVideoPath = paddedPath;
     }
+
+    const finalVideoPath = processedVideoPath;
 
     const fileBytesArray = (await sandbox.files.read(finalVideoPath, {
       format: "bytes",
