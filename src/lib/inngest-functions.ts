@@ -413,7 +413,75 @@ function runHeuristicChecks(
   }
 
   const FONT_SIZE_PATTERN = /font_size\s*=\s*([0-9]+(?:\.[0-9]+)?)/g;
-  const ALLOWED_FONT_SIZES = [28, 32, 36, 40, 48];
+  const ALLOWED_FONT_SIZES = [20, 24, 28, 36];
+  const TEXT_CONSTRUCTOR_PATTERN =
+    /\b(Text|MathTex|Tex|TexText|MarkupText|Paragraph)\s*\(/g;
+  const missingFontSizeConstructors = new Set<string>();
+  const scanConstructorsForFontSize = () => {
+    TEXT_CONSTRUCTOR_PATTERN.lastIndex = 0;
+    let constructorMatch: RegExpExecArray | null;
+    while ((constructorMatch = TEXT_CONSTRUCTOR_PATTERN.exec(normalized)) !== null) {
+      const constructorName = constructorMatch[1] ?? "Text";
+      let cursor = TEXT_CONSTRUCTOR_PATTERN.lastIndex;
+      let depth = 1;
+      let inString: string | null = null;
+      let escaped = false;
+      let hasFontSize = false;
+
+      for (; cursor < normalized.length; cursor++) {
+        const char = normalized[cursor];
+
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+            continue;
+          }
+          if (char === "\\") {
+            escaped = true;
+            continue;
+          }
+          if (char === inString) {
+            inString = null;
+          }
+          continue;
+        }
+
+        if (char === "'" || char === '"') {
+          inString = char;
+          continue;
+        }
+
+        if (char === "(") {
+          depth += 1;
+          continue;
+        }
+
+        if (char === ")") {
+          depth -= 1;
+          if (depth === 0) {
+            cursor += 1;
+            break;
+          }
+          continue;
+        }
+
+        if (
+          depth === 1 &&
+          normalized.slice(cursor, cursor + 9).startsWith("font_size")
+        ) {
+          hasFontSize = true;
+        }
+      }
+
+      if (!hasFontSize) {
+        missingFontSizeConstructors.add(constructorName);
+      }
+
+      TEXT_CONSTRUCTOR_PATTERN.lastIndex = cursor;
+    }
+  };
+
+  scanConstructorsForFontSize();
   let fontSizeMatch: RegExpExecArray | null;
   while ((fontSizeMatch = FONT_SIZE_PATTERN.exec(normalized)) !== null) {
     const rawValue = fontSizeMatch[1];
@@ -428,11 +496,22 @@ function runHeuristicChecks(
       issues.push({
         message: `❌ Non-standard font_size=${rawValue} detected. Use only ${ALLOWED_FONT_SIZES.join(
           ", "
-        )} to keep typography consistent within the safe area.`,
+        )} to keep typography compact and within the safe zone.`,
         severity: "fixable",
       });
       break;
     }
+  }
+
+  if (missingFontSizeConstructors.size > 0) {
+    issues.push({
+      message: `❌ Missing font_size on ${Array.from(
+        missingFontSizeConstructors
+      ).join(", ")}. Set font_size to one of ${ALLOWED_FONT_SIZES.join(
+        ", "
+      )} so text stays within the reduced typography scale.`,
+      severity: "fixable",
+    });
   }
 
   const SCALE_PATTERN = /\.scale\(\s*([0-9]+(?:\.[0-9]+)?)\s*(?:[,)]|$)/g;
@@ -547,7 +626,7 @@ export const generateVideo = inngest.createFunction(
     const variant: VideoVariant = rawVariant === "short" ? "short" : "video";
     const generationPrompt =
       variant === "short"
-        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Maintain the fixed typography scale (titles font_size=48, body font_size=36, callouts font_size=32, labels font_size=28) used in the long-form spec—never exceed these sizes or upscale text after creation. Split copy across multiple lines instead of enlarging it, keep visual groups within roughly 7 units of width, and leave at least 0.4 units of clearance between arrows, labels, and nearby objects so nothing overlaps in the tight portrait frame.`
+        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Maintain the reduced typography scale (titles font_size=36, body font_size=28, callouts font_size=24, labels font_size=20) used in the long-form spec—never exceed these sizes or upscale text after creation. Split copy across multiple lines instead of enlarging it, keep visual groups within roughly 7 units of width, and leave at least 0.4 units of clearance between arrows, labels, and nearby objects so nothing overlaps in the tight portrait frame.`
         : prompt;
 
     console.log(
