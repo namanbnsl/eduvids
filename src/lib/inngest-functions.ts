@@ -412,6 +412,63 @@ function runHeuristicChecks(
     });
   }
 
+  const FONT_SIZE_PATTERN = /font_size\s*=\s*([0-9]+(?:\.[0-9]+)?)/g;
+  const ALLOWED_FONT_SIZES = [28, 32, 36, 40, 48];
+  let fontSizeMatch: RegExpExecArray | null;
+  while ((fontSizeMatch = FONT_SIZE_PATTERN.exec(normalized)) !== null) {
+    const rawValue = fontSizeMatch[1];
+    const numericValue = Number.parseFloat(rawValue);
+    if (!Number.isFinite(numericValue)) {
+      continue;
+    }
+    const usesAllowedFont = ALLOWED_FONT_SIZES.some(
+      (allowed) => Math.abs(numericValue - allowed) < 0.01
+    );
+    if (!usesAllowedFont) {
+      issues.push({
+        message: `❌ Non-standard font_size=${rawValue} detected. Use only ${ALLOWED_FONT_SIZES.join(
+          ", "
+        )} to keep typography consistent within the safe area.`,
+        severity: "fixable",
+      });
+      break;
+    }
+  }
+
+  const SCALE_PATTERN = /\.scale\(\s*([0-9]+(?:\.[0-9]+)?)\s*(?:[,)]|$)/g;
+  let scaleMatch: RegExpExecArray | null;
+  while ((scaleMatch = SCALE_PATTERN.exec(normalized)) !== null) {
+    const rawValue = scaleMatch[1];
+    const numericValue = Number.parseFloat(rawValue);
+    if (!Number.isFinite(numericValue)) {
+      continue;
+    }
+    if (numericValue > 1.3) {
+      issues.push({
+        message: `❌ Detected scale(${rawValue}) which enlarges objects beyond the safe typography range. Split content or adjust layout instead of scaling above 1.3x.`,
+        severity: "fixable",
+      });
+      break;
+    }
+  }
+
+  const SCALE_TO_FIT_WIDTH_PATTERN = /\.scale_to_fit_width\(\s*([0-9]+(?:\.[0-9]+)?)\s*(?:[,)]|$)/g;
+  let scaleToFitMatch: RegExpExecArray | null;
+  while ((scaleToFitMatch = SCALE_TO_FIT_WIDTH_PATTERN.exec(normalized)) !== null) {
+    const rawValue = scaleToFitMatch[1];
+    const numericValue = Number.parseFloat(rawValue);
+    if (!Number.isFinite(numericValue)) {
+      continue;
+    }
+    if (numericValue > 10.2) {
+      issues.push({
+        message: `❌ scale_to_fit_width(${rawValue}) exceeds the 10-unit safe width. Keep text groups within the frame and use the approved font sizes instead.`,
+        severity: "fixable",
+      });
+      break;
+    }
+  }
+
   const relevantIssues = allowVerificationFixes
     ? issues.filter((issue) => issue.severity !== "fixable")
     : issues;
@@ -490,7 +547,7 @@ export const generateVideo = inngest.createFunction(
     const variant: VideoVariant = rawVariant === "short" ? "short" : "video";
     const generationPrompt =
       variant === "short"
-        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Make text large and legible (titles font_size 50-56, body 38-44) by splitting lines into narrow columns and scaling groups to fit widths around 7.5 units. Leave at least 0.4 units of clearance between arrows, labels, and nearby objects so nothing overlaps in the tight portrait frame.`
+        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Maintain the fixed typography scale (titles font_size=48, body font_size=36, callouts font_size=32, labels font_size=28) used in the long-form spec—never exceed these sizes or upscale text after creation. Split copy across multiple lines instead of enlarging it, keep visual groups within roughly 7 units of width, and leave at least 0.4 units of clearance between arrows, labels, and nearby objects so nothing overlaps in the tight portrait frame.`
         : prompt;
 
     console.log(
