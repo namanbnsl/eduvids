@@ -413,7 +413,7 @@ function runHeuristicChecks(
   }
 
   const FONT_SIZE_PATTERN = /font_size\s*=\s*([0-9]+(?:\.[0-9]+)?)/g;
-  const ALLOWED_FONT_SIZES = [20, 24, 28, 36];
+  const ALLOWED_FONT_SIZES = [22, 26, 30, 38];
   const TEXT_CONSTRUCTOR_PATTERN =
     /\b(Text|MathTex|Tex|TexText|MarkupText|Paragraph)\s*\(/g;
   const missingFontSizeConstructors = new Set<string>();
@@ -626,7 +626,7 @@ export const generateVideo = inngest.createFunction(
     const variant: VideoVariant = rawVariant === "short" ? "short" : "video";
     const generationPrompt =
       variant === "short"
-        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Maintain the reduced typography scale (titles font_size=36, body font_size=28, callouts font_size=24, labels font_size=20) used in the long-form spec—never exceed these sizes or upscale text after creation. Split copy across multiple lines instead of enlarging it, keep visual groups within roughly 7 units of width, and leave at least 0.4 units of clearance between arrows, labels, and nearby objects so nothing overlaps in the tight portrait frame.`
+        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Maintain the reduced typography scale (titles font_size=38, body font_size=30, callouts font_size=26, labels font_size=22) used in the long-form spec—never exceed these sizes or upscale text after creation. Split copy across multiple lines instead of enlarging it, keep visual groups within roughly 7 units of width, and leave at least 0.4 units of clearance between arrows, labels, and nearby objects so nothing overlaps in the tight portrait frame.`
         : prompt;
 
     console.log(
