@@ -96,8 +96,7 @@ export default function ChatPage() {
       {
         body: {
           model: "gemini-2.5-flash",
-          forceGenerateVideo: mode === "video",
-          forceGenerateShprt: mode === "short",
+          forceVariant: mode,
         },
       }
     );

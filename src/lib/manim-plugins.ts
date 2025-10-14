@@ -1,6 +1,6 @@
 /**
  * Manim Plugin Library System
- * 
+ *
  * Manages dynamic installation and validation of manim plugins on E2B sandboxes.
  * Plugins are installed at runtime without modifying sandbox templates.
  */
@@ -67,7 +67,10 @@ class MLScene(Scene):
     validation: {
       requiredImport: "from manim_ml",
       customValidator: (script: string) => {
-        if (script.includes("from manim_ml") || script.includes("import manim_ml")) {
+        if (
+          script.includes("from manim_ml") ||
+          script.includes("import manim_ml")
+        ) {
           // Check for common classes
           const hasNNClasses =
             script.includes("NeuralNetwork") ||
@@ -115,7 +118,10 @@ class PhysicsScene(SpaceScene):
       requiredImport: "from manim_physics",
       requiredInheritance: [/SpaceScene|ElectricFieldScene|MagneticFieldScene/],
       customValidator: (script: string) => {
-        if (script.includes("from manim_physics") || script.includes("import manim_physics")) {
+        if (
+          script.includes("from manim_physics") ||
+          script.includes("import manim_physics")
+        ) {
           const hasPhysicsScene =
             script.includes("SpaceScene") ||
             script.includes("ElectricFieldScene") ||
@@ -132,54 +138,8 @@ class PhysicsScene(SpaceScene):
         return { valid: true };
       },
     },
-    recommendedFor: [
-      "physics",
-      "mechanics",
-      "electromagnetism",
-      "simulations",
-    ],
+    recommendedFor: ["physics", "mechanics", "electromagnetism", "simulations"],
   },
-
-  "manim-slides": {
-    id: "manim-slides",
-    name: "Manim Slides",
-    pipPackages: ["manim-slides"],
-    description:
-      "Create presentation slides with manim. Useful for structured educational content with clear sections.",
-    examples: [
-      `from manim import *
-from manim_slides import Slide
-
-class SlideExample(Slide):
-    def construct(self):
-        title = Text("Introduction")
-        self.play(Write(title))
-        self.next_slide()
-        
-        content = Text("Content here")
-        self.play(FadeIn(content))
-        self.wait()`,
-    ],
-    validation: {
-      requiredImport: "from manim_slides",
-      requiredInheritance: [/Slide/],
-      requiredMethods: ["next_slide"],
-      customValidator: (script: string) => {
-        if (script.includes("from manim_slides") && script.includes("Slide")) {
-          if (!script.includes("next_slide()")) {
-            return {
-              valid: false,
-              error:
-                "manim-slides Slide class requires calling next_slide() to separate slides",
-            };
-          }
-        }
-        return { valid: true };
-      },
-    },
-    recommendedFor: ["presentations", "structured lessons", "step-by-step tutorials"],
-  },
-
   "manim-data-structures": {
     id: "manim-data-structures",
     name: "Manim Data Structures",
@@ -252,7 +212,12 @@ class ChemScene(Scene):
     validation: {
       requiredImport: "from manim_chemistry",
     },
-    recommendedFor: ["chemistry", "molecules", "reactions", "organic chemistry"],
+    recommendedFor: [
+      "chemistry",
+      "molecules",
+      "reactions",
+      "organic chemistry",
+    ],
   },
 };
 
@@ -288,7 +253,10 @@ export function validatePluginUsage(
   const validation = plugin.validation;
 
   // Check required import
-  if (validation.requiredImport && !script.includes(validation.requiredImport)) {
+  if (
+    validation.requiredImport &&
+    !script.includes(validation.requiredImport)
+  ) {
     errors.push(
       `Missing required import: ${validation.requiredImport} for plugin ${plugin.name}`
     );
@@ -296,12 +264,14 @@ export function validatePluginUsage(
 
   // Check required inheritance
   if (validation.requiredInheritance) {
-    const hasRequiredInheritance = validation.requiredInheritance.some((pattern) =>
-      pattern.test(script)
+    const hasRequiredInheritance = validation.requiredInheritance.some(
+      (pattern) => pattern.test(script)
     );
     if (!hasRequiredInheritance) {
       errors.push(
-        `Plugin ${plugin.name} requires scene to inherit from: ${validation.requiredInheritance
+        `Plugin ${
+          plugin.name
+        } requires scene to inherit from: ${validation.requiredInheritance
           .map((r) => r.source)
           .join(" or ")}`
       );
@@ -323,9 +293,7 @@ export function validatePluginUsage(
   if (validation.forbiddenPatterns) {
     for (const pattern of validation.forbiddenPatterns) {
       if (pattern.test(script)) {
-        errors.push(
-          `Plugin ${plugin.name} forbids pattern: ${pattern.source}`
-        );
+        errors.push(`Plugin ${plugin.name} forbids pattern: ${pattern.source}`);
       }
     }
   }
@@ -369,7 +337,9 @@ export function validateAllPlugins(script: string): {
       );
       if (shouldRecommend) {
         warnings.push(
-          `Consider using ${plugin.name} plugin for better ${plugin.recommendedFor.join(
+          `Consider using ${
+            plugin.name
+          } plugin for better ${plugin.recommendedFor.join(
             ", "
           )} visualizations`
         );
@@ -426,9 +396,7 @@ export function getPluginGuidelines(): string {
     guidelines.push(`**Import:** \`${plugin.validation.requiredImport}\``);
 
     if (plugin.recommendedFor && plugin.recommendedFor.length > 0) {
-      guidelines.push(
-        `**Best for:** ${plugin.recommendedFor.join(", ")}`
-      );
+      guidelines.push(`**Best for:** ${plugin.recommendedFor.join(", ")}`);
     }
 
     if (plugin.examples && plugin.examples.length > 0) {

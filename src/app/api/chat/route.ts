@@ -8,14 +8,29 @@ import { createGoogleProvider } from "@/lib/google-provider";
 export const maxDuration = 30;
 
 export async function POST(req: Request) {
-  const { model: modelId, messages }: { messages: UIMessage[]; model: string } =
-    await req.json();
+  const { 
+    model: modelId, 
+    messages,
+    forceVariant
+  }: { 
+    messages: UIMessage[]; 
+    model: string;
+    forceVariant?: "video" | "short" | null;
+  } = await req.json();
 
   // Video generation is now handled by the generate_video tool
+  
+  // Build system prompt with variant instruction if forced
+  let systemPrompt = SYSTEM_PROMPT;
+  if (forceVariant === "video") {
+    systemPrompt += "\n\nIMPORTANT: The user has requested a HORIZONTAL VIDEO (not a short). When calling generate_video tool, you MUST pass variant=\"video\" to create a standard landscape/horizontal video format.";
+  } else if (forceVariant === "short") {
+    systemPrompt += "\n\nIMPORTANT: The user has requested a VERTICAL SHORT. When calling generate_video tool, you MUST pass variant=\"short\" to create a vertical/portrait video format.";
+  }
 
   const result = streamText({
     model: createGoogleProvider()(modelId),
-    system: SYSTEM_PROMPT,
+    system: systemPrompt,
     messages: convertToModelMessages(messages),
     tools: {
       generate_video: tool({
@@ -30,19 +45,25 @@ export async function POST(req: Request) {
           variant: z
             .enum(["video", "short"])
             .optional()
-            .describe("Specify 'short' to generate a vertical short."),
+            .describe("Specify 'short' to generate a vertical short, or 'video' for horizontal video."),
         }),
         execute: async ({ description, variant }) => {
           console.log("Starting video generation for:", description);
 
           const normalized = description.trim();
           const normalizedLower = normalized.toLowerCase();
-          const inferredVariant = variant
+          
+          // Use forced variant first, then tool parameter, then infer from description
+          const inferredVariant = forceVariant && forceVariant !== null
+            ? forceVariant
+            : variant
             ? variant
             : normalizedLower.includes("short") ||
               normalizedLower.includes("vertical short")
             ? "short"
             : "video";
+
+          console.log("Variant determination:", { forceVariant, toolVariant: variant, inferredVariant });
 
           // Create a job in the job store (KV in prod, memory in dev)
           const job = await jobStore.create(description, {

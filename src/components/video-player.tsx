@@ -437,8 +437,6 @@ export function VideoPlayer({
     return Number.isFinite(progress) ? Math.min(100, Math.max(0, progress)) : 0;
   }, [progress]);
 
-  const generationLabel = currentVariant === "short" ? "Short" : "Video";
-
   const stageTitle = useMemo(() => {
     const rawStep = (step ?? "").trim();
     if (rawStep.length) {
@@ -515,7 +513,7 @@ export function VideoPlayer({
   if (jobStatus !== "ready" || !videoUrl) {
     return (
       <VideoProgressCard
-        title={`${generationLabel} Generating...`}
+        title={`Generating...`}
         subtitle={stageTitle}
         progress={normalizedProgress}
         eta={`ETA: ${etaDisplay ?? "Calculating…"}`}
