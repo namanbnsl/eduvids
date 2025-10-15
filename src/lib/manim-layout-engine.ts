@@ -149,13 +149,13 @@ export function getRecommendedFontSizes(
   const { orientation, contentType } = config;
 
   if (orientation === "portrait") {
-    // Portrait needs smaller fonts to fit more
+    // Portrait/vertical videos use larger fonts for better readability on mobile
     return {
-      title: contentType === "text-heavy" ? 32 : 36,
-      heading: 28,
-      body: 24,
-      caption: 20,
-      label: 18,
+      title: contentType === "text-heavy" ? 44 : 48,
+      heading: 38,
+      body: 32,
+      caption: 28,
+      label: 24,
     };
   } else {
     // Landscape can use slightly larger fonts
