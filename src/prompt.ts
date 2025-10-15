@@ -281,7 +281,7 @@ Video Structure Requirements:
    - Max 5-6 bullets visible at once
 
 Hard Layout Contract (strict, do not violate):
-- Define SAFE_MARGIN = 0.8 in every scene (increased from 0.4).
+- DO NOT manually define SAFE_MARGIN - it is automatically injected by the layout system with optimal values for the video orientation (larger for portrait/shorts).
 - ABSOLUTE NO-OVERLAP RULE: Before any animation, ensure bounding boxes of text, shapes, labels, and connectors never intersect; reposition with arrange/next_to (buff>=0.8) or scale down until every element has clear separation.
 - **Text width limit:** No text wider than ~10 units (reduced from 12). Check text.width after creation; split into lines if needed.
 - **Long sentences:** Always split into multiple Text objects or use \n for line breaks.
@@ -337,17 +337,15 @@ Checklist before self.play:
    - If an animation runs longer than the voiceover segment, Manim will wait until the animation is done. If it runs shorter, the scene might freeze until the voiceover ends. You might want to match animation duration with narration (e.g., self.play(..., run_time=3) if narration is 3 seconds).
 - Some of your formulas are wide. In Manim, long MathTex can overflow or shrink badly. Safer to split into multiple lines or scale down: math_eq = MathTex(r"V(D,G) = ...", font_size=30)
 
-MOST IMPORTANTLY: Always leave a margin around the screen so that nothing goes outside the screen and is only half or not visible at all. Always leave a margin/padding around the video frame. Use SAFE_MARGIN = 0.4 unless the prompt says otherwise.
+MOST IMPORTANTLY: Always leave a margin around the screen so that nothing goes outside the screen and is only half or not visible at all. Always leave a margin/padding around the video frame. The layout system automatically injects safe margins (larger for portrait/shorts) - use the provided layout helpers (get_title_position, get_content_center, ensure_fits_screen) to ensure proper positioning.
 
 ⚠️ CRITICAL - CAMERA FRAME RESTRICTION ⚠️
 - VoiceoverScene DOES NOT have 'self.camera.frame' - accessing it will cause AttributeError!
 - NEVER write: 'frame = self.camera.frame' in VoiceoverScene
 - NEVER use: 'frame.width', 'frame.height', 'frame.get_center()' in VoiceoverScene
-- Default frame is fixed: 14.2 units wide × 8 units tall, centered at ORIGIN
-- Use these constants instead:
-  FRAME_WIDTH = 14.2
-  FRAME_HEIGHT = 8.0
-  SAFE_MARGIN = 0.4
+- Default frame dimensions and safe margins are automatically injected by the layout system
+- The layout system provides: FRAME_WIDTH, FRAME_HEIGHT, SAFE_MARGIN_TOP, SAFE_MARGIN_BOTTOM, SAFE_MARGIN_LEFT, SAFE_MARGIN_RIGHT, MAX_CONTENT_WIDTH, MAX_CONTENT_HEIGHT
+- USE the provided layout helpers instead of manual calculations: get_title_position(), get_content_center(), ensure_fits_screen()
 - For camera movement, use: 'class MyScene(VoiceoverScene, MovingCameraScene):'
 - In 99% of cases, you should NOT use camera.frame at all!
 

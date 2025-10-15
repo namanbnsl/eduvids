@@ -50,10 +50,11 @@ export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
   // Adjust for orientation
   if (orientation === "portrait") {
     // Portrait needs more horizontal margins proportionally
-    leftMargin *= 1.2;
-    rightMargin *= 1.2;
-    // And more vertical space reserved for titles
-    topMargin *= 1.3;
+    leftMargin *= 1.4;
+    rightMargin *= 1.4;
+    // And more vertical space reserved for titles and bottom safety
+    topMargin *= 1.5;
+    bottomMargin *= 1.3;
   } else {
     // Landscape can be slightly more generous
     topMargin *= 1.1;
@@ -67,9 +68,9 @@ export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
     rightMargin *= 1.3;
     topMargin *= 1.2;
   } else if (contentType === "diagram") {
-    // Diagrams need more uniform space
+    // Diagrams need more uniform space and extra safety margins
     const avgMargin = (leftMargin + rightMargin + topMargin + bottomMargin) / 4;
-    leftMargin = rightMargin = topMargin = bottomMargin = avgMargin * 1.15;
+    leftMargin = rightMargin = topMargin = bottomMargin = avgMargin * 1.35;
   } else if (contentType === "math") {
     // Math formulas often wider, need horizontal space
     leftMargin *= 1.2;
@@ -77,7 +78,7 @@ export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
   }
 
   // Title zone - reserve more space for titles with proper separation
-  const titleHeight = orientation === "portrait" ? 1.8 : 1.5;
+  const titleHeight = orientation === "portrait" ? 2.0 : 1.5;
 
   // Calculate usable content area
   const maxContentWidth = frameWidth - leftMargin - rightMargin;
@@ -359,7 +360,7 @@ export const DEFAULT_LANDSCAPE_CONFIG: LayoutConfig = {
 export const DEFAULT_PORTRAIT_CONFIG: LayoutConfig = {
   frameWidth: 7.2,
   frameHeight: 12.8,
-  safeMargin: 0.4,
+  safeMargin: 0.6,
   orientation: "portrait",
   contentType: "mixed",
 };
