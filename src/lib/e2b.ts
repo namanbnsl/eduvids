@@ -877,6 +877,62 @@ export async function renderManimVideo({
 
     let processedVideoPath = videoPath;
 
+    // Apply padding for short vertical videos
+    const isVerticalVideo = orientation === "portrait" || (videoWidth && videoHeight && videoHeight > videoWidth);
+    const isShortVideo = duration <= 60; // Videos under 60 seconds
+    
+    if (isVerticalVideo && isShortVideo) {
+      const paddedPath = `${outputDir}/padded.mp4`;
+      const targetWidth = 1080; // Target width for padding (9:16 aspect ratio standard)
+      const targetHeight = 1920; // Target height for padding
+      
+      // Calculate padding to center the video
+      const padFilter = `pad=${targetWidth}:${targetHeight}:(${targetWidth}-iw)/2:(${targetHeight}-ih)/2:black`;
+      
+      pushLog({
+        level: "info",
+        message: `Applying padding to short vertical video (${videoWidth}x${videoHeight} -> ${targetWidth}x${targetHeight})`,
+        context: "padding",
+      });
+      
+      const paddingCmd = `ffmpeg -y -i ${processedVideoPath} -vf "${padFilter}" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart -c:a copy ${paddedPath}`;
+      
+      await runCommandOrThrow(paddingCmd, {
+        description: "Video padding for short vertical format",
+        stage: "render",
+        timeoutMs: 360_000,
+        hint: "ffmpeg failed while applying padding to the vertical video.",
+        streamOutput: { stdout: true, stderr: true },
+      });
+      
+      // Validate padded video
+      const probePadded = await runCommandOrThrow(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${paddedPath}`,
+        {
+          description: "Padded video validation",
+          stage: "video-validation",
+          timeoutMs: 180_000,
+          hint: "The padded video appears to be corrupted.",
+        }
+      );
+      const paddedDuration = parseFloat((probePadded.stdout || "").trim());
+      if (!paddedDuration || paddedDuration <= 0) {
+        await ensureCleanup();
+        throw new ManimValidationError(
+          `Padded video has invalid duration: ${paddedDuration}s — aborting upload`,
+          "video-validation",
+          { logs: [...renderLogs] }
+        );
+      }
+      
+      processedVideoPath = paddedPath;
+      pushLog({
+        level: "info",
+        message: "Padding applied successfully",
+        context: "padding",
+      });
+    }
+
     if (applyWatermark) {
       const watermarkedPath = `${outputDir}/watermarked.mp4`;
       const watermarkText = "eduvids";
