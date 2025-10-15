@@ -186,9 +186,9 @@ Video Structure Requirements:
 1. ✨ Visual Clarity & Simplicity:
    - Keep ALL objects clearly visible on screen
    - Use consistent scale for similar elements
-   - FIXED FONT SIZES (NO VARIATION): titles = font_size=38, body text = font_size=30, bullet points = font_size=30, definition callouts = font_size=26, math formulas = font_size=30, small labels = font_size=22
-   - NEVER exceed these font sizes - scale text down if needed but never increase
-   - Definition callouts must use font_size=26 and always be smaller than main text
+   - USE AUTO-INJECTED FONT SIZES: The layout system provides FONT_TITLE, FONT_HEADING, FONT_BODY, FONT_CAPTION, FONT_LABEL constants that are automatically sized for the video orientation (larger for portrait/shorts)
+   - ALWAYS use these constants instead of hardcoding font sizes: Text("Title", font_size=FONT_TITLE)
+   - Definition callouts should use FONT_CAPTION and be smaller than main text
    - MANDATORY PADDING: minimum 0.8 units between all text elements, 0.6 units between text and shapes
    - NEVER allow any objects to overlap—place comparisons side by side or staggered with visible spacing
    - Use proper spacing (LEFT, RIGHT, UP, DOWN)
@@ -205,20 +205,20 @@ Video Structure Requirements:
    - **Line breaks:** Use \n in Text() or create separate Text objects arranged with VGroup
    - **Width check:** After creating text, ensure text.width <= 10.0. If too wide, split or scale.
    - **Short-form labels:** Especially for shorts, cap each visible phrase at ≲5 words; longer definitions must be broken into successive fades or handled by voiceover-only narration.
-   - **FIXED FONT SIZES (NO EXCEPTIONS):** titles=38, body text=30, bullet points=30, definitions=26, math formulas=30, small labels=22
+   - **USE FONT CONSTANTS:** Always use FONT_TITLE, FONT_HEADING, FONT_BODY, FONT_CAPTION, FONT_LABEL (automatically sized larger for portrait/shorts)
    - **MANDATORY SPACING:** Use buff=0.8 between text elements, buff=0.6 between text and shapes, buff=1.0 for section breaks
    - **Examples:**
      '''python
-     # GOOD: Split long text with proper spacing
-     line1 = Text("This is a long sentence", font_size=30)
-     line2 = Text("split across two lines", font_size=30)
+     # GOOD: Split long text with proper spacing using auto-sized fonts
+     line1 = Text("This is a long sentence", font_size=FONT_BODY)
+     line2 = Text("split across two lines", font_size=FONT_BODY)
      text = VGroup(line1, line2).arrange(DOWN, buff=0.8)
      
      # GOOD: Use newlines with proper font size
-     text = Text("Line 1\nLine 2\nLine 3", font_size=30)
+     text = Text("Line 1\nLine 2\nLine 3", font_size=FONT_BODY)
      
      # BAD: Long single line (gets cut off!)
-     text = Text("This extremely long sentence will get cut off at edges", font_size=30)
+     text = Text("This extremely long sentence will get cut off at edges", font_size=FONT_BODY)
      
      # BAD: No spacing between elements
      text = VGroup(line1, line2).arrange(DOWN, buff=0.1)  # Too small!
@@ -255,7 +255,7 @@ Video Structure Requirements:
    - **For sub-sections (keeping main title visible):**
      '''python
      # Keep main title at top, add subtitle below it
-     subtitle = Text("Sub-topic", font_size=30, color=YELLOW)
+     subtitle = Text("Sub-topic", font_size=FONT_HEADING, color=YELLOW)
      subtitle.next_to(title, DOWN, buff=0.8)
      self.play(FadeIn(subtitle))
      
@@ -268,12 +268,12 @@ Video Structure Requirements:
    - **MUST be LEFT-aligned**, never centered
    - Start from left edge: 'bullets.to_edge(LEFT, buff=1.2)' (increased)
    - Use aligned_edge=LEFT with proper spacing: 'VGroup(...).arrange(DOWN, buff=0.8, aligned_edge=LEFT)'
-   - **FIXED SETTINGS:** font_size=30 for all bullets, buff=0.8 between bullets, left edge buff=1.2
+   - **SETTINGS:** Use FONT_BODY for all bullets, buff=0.8 between bullets, left edge buff=1.2
    - Example:
      '''python
-     bullet1 = Text("• First point", font_size=30)
-     bullet2 = Text("• Second point", font_size=30)
-     bullet3 = Text("• Third point", font_size=30)
+     bullet1 = Text("• First point", font_size=FONT_BODY)
+     bullet2 = Text("• Second point", font_size=FONT_BODY)
+     bullet3 = Text("• Third point", font_size=FONT_BODY)
      bullets = VGroup(bullet1, bullet2, bullet3).arrange(DOWN, buff=0.8, aligned_edge=LEFT)
      bullets.to_edge(LEFT, buff=1.2)  # More left margin
      '''
@@ -335,7 +335,7 @@ Checklist before self.play:
 
 5. 💡 Things to always keep in mind:
    - If an animation runs longer than the voiceover segment, Manim will wait until the animation is done. If it runs shorter, the scene might freeze until the voiceover ends. You might want to match animation duration with narration (e.g., self.play(..., run_time=3) if narration is 3 seconds).
-- Some of your formulas are wide. In Manim, long MathTex can overflow or shrink badly. Safer to split into multiple lines or scale down: math_eq = MathTex(r"V(D,G) = ...", font_size=30)
+- Some of your formulas are wide. In Manim, long MathTex can overflow or shrink badly. Safer to split into multiple lines or scale down: math_eq = MathTex(r"V(D,G) = ...", font_size=FONT_BODY)
 
 MOST IMPORTANTLY: Always leave a margin around the screen so that nothing goes outside the screen and is only half or not visible at all. Always leave a margin/padding around the video frame. The layout system automatically injects safe margins (larger for portrait/shorts) - use the provided layout helpers (get_title_position, get_content_center, ensure_fits_screen) to ensure proper positioning.
 

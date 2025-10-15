@@ -626,7 +626,7 @@ export const generateVideo = inngest.createFunction(
     const variant: VideoVariant = rawVariant === "short" ? "short" : "video";
     const generationPrompt =
       variant === "short"
-        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Maintain the reduced typography scale (titles font_size=38, body font_size=30, callouts font_size=26, labels font_size=22) used in the long-form spec—never exceed these sizes or upscale text after creation. Split copy across multiple lines instead of enlarging it, keep visual groups within roughly 7 units of width, and leave at least 0.4 units of clearance between arrows, labels, and nearby objects so nothing overlaps in the tight portrait frame.`
+        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. The layout system automatically provides larger font constants optimized for portrait (FONT_TITLE=46, FONT_HEADING=36, FONT_BODY=32, FONT_CAPTION=28, FONT_LABEL=26) - always use these constants instead of hardcoded sizes. Split copy across multiple lines for readability, keep visual groups within the safe content area, and leave proper clearance between arrows, labels, and nearby objects using the auto-calculated margins.`
         : prompt;
 
     console.log(

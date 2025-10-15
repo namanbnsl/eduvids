@@ -150,13 +150,13 @@ export function getRecommendedFontSizes(
   const { orientation, contentType } = config;
 
   if (orientation === "portrait") {
-    // Portrait/vertical videos use reduced typography scale
+    // Portrait/vertical videos use larger fonts for better readability
     return {
-      title: 38,
-      heading: 30,
-      body: 26,
-      caption: 22,
-      label: 22,
+      title: 46,
+      heading: 36,
+      body: 32,
+      caption: 28,
+      label: 26,
     };
   } else {
     // Landscape can use slightly larger fonts
