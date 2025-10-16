@@ -27,17 +27,19 @@ This system provides **automatic plugin installation** and **advanced layout man
 **Purpose**: Neural network diagrams and ML visualizations
 
 **Import**:
+
 ```python
 from manim_ml.neural_network import NeuralNetwork, FeedForwardLayer
 ```
 
 **Example**:
+
 ```python
 class MLScene(Scene):
     def construct(self):
         nn = NeuralNetwork([
             FeedForwardLayer(3),
-            FeedForwardLayer(5), 
+            FeedForwardLayer(5),
             FeedForwardLayer(2)
         ])
         self.play(Create(nn))
@@ -52,6 +54,7 @@ class MLScene(Scene):
 **Purpose**: Physics simulations with rigid bodies, pendulums, and fields
 
 **Import**:
+
 ```python
 from manim_physics import *
 ```
@@ -59,6 +62,7 @@ from manim_physics import *
 **Requirements**: Must inherit from `SpaceScene`, `ElectricFieldScene`, or `MagneticFieldScene`
 
 **Example**:
+
 ```python
 class PhysicsScene(SpaceScene):
     def construct(self):
@@ -78,11 +82,13 @@ class PhysicsScene(SpaceScene):
 **Purpose**: Visualize data structures like arrays, trees, graphs
 
 **Import**:
+
 ```python
 from manim_data_structures import *
 ```
 
 **Example**:
+
 ```python
 class DSScene(Scene):
     def construct(self):
@@ -100,11 +106,13 @@ class DSScene(Scene):
 **Purpose**: Molecular structures and chemical reactions
 
 **Import**:
+
 ```python
 from manim_chemistry import *
 ```
 
 **Example**:
+
 ```python
 class ChemScene(Scene):
     def construct(self):
@@ -113,33 +121,6 @@ class ChemScene(Scene):
 ```
 
 **Best For**: Chemistry, molecular structures, reactions
-
----
-
-### 5. manim-slides (Presentation Mode)
-
-**Purpose**: Create structured presentations with slide transitions
-
-**Import**:
-```python
-from manim_slides import Slide
-```
-
-**Requirements**: Inherit from `Slide`, call `next_slide()` between slides
-
-**Example**:
-```python
-class SlideExample(Slide):
-    def construct(self):
-        title = Text("Introduction")
-        self.play(Write(title))
-        self.next_slide()
-        
-        content = Text("Content here")
-        self.play(FadeIn(content))
-```
-
-**Best For**: Structured lessons, presentations, step-by-step tutorials
 
 ---
 
@@ -178,6 +159,7 @@ FONT_LABEL = 20
 #### Helper Functions
 
 ##### `get_title_position()`
+
 Returns the safe position for titles (top with margin).
 
 ```python
@@ -186,6 +168,7 @@ title.move_to(get_title_position())
 ```
 
 ##### `get_content_center()`
+
 Returns the safe center position for content (below title zone).
 
 ```python
@@ -194,6 +177,7 @@ content.move_to(get_content_center())
 ```
 
 ##### `ensure_fits_screen(mobject)`
+
 Auto-scales a mobject to fit within safe content area.
 
 ```python
@@ -202,12 +186,15 @@ ensure_fits_screen(diagram)  # Automatically scales if too large
 ```
 
 ##### `ensure_fits_width(mobject, max_width=MAX_CONTENT_WIDTH)`
+
 Scales mobject to fit within max width.
 
 ##### `ensure_fits_height(mobject, max_height=MAX_CONTENT_HEIGHT)`
+
 Scales mobject to fit within max height.
 
 ##### `validate_position(mobject, label="object")`
+
 Checks if mobject is within safe bounds, prints warnings if not.
 
 ```python
@@ -215,9 +202,11 @@ validate_position(text, "title")  # Prints warning if out of bounds
 ```
 
 ##### `wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH)`
+
 Auto-wraps text to fit within width, returns string with newlines.
 
 ##### `create_wrapped_text(text, font_size=FONT_BODY, **kwargs)`
+
 Creates a Text mobject with automatic wrapping.
 
 ```python
@@ -239,24 +228,24 @@ from manim_voiceover.services.gtts import GTTSService
 class MyScene(VoiceoverScene):
     def construct(self):
         self.set_speech_service(GTTSService())
-        
+
         # 1. Create title using helper
         title = Text("Topic Name", font_size=FONT_TITLE, color=WHITE)
         title.move_to(get_title_position())
-        
+
         # 2. Create content
         content = VGroup(
             Text("Point 1", font_size=FONT_BODY),
             Text("Point 2", font_size=FONT_BODY),
         ).arrange(DOWN, buff=0.8)
-        
+
         # 3. Ensure it fits
         ensure_fits_screen(content)
         content.move_to(get_content_center())
-        
+
         # 4. Validate (optional but recommended)
         validate_position(content, "content")
-        
+
         # 5. Animate
         self.play(FadeIn(title))
         self.play(FadeIn(content))
@@ -305,12 +294,14 @@ Standard Manim Pipeline
 The system automatically adjusts for orientation:
 
 **Landscape** (default):
+
 - Frame: 14.2 × 8.0
 - Larger content area
 - Standard font sizes
 
 **Portrait** (shorts):
-- Frame: 7.2 × 12.8  
+
+- Frame: 7.2 × 12.8
 - Tighter horizontal margins
 - Slightly smaller fonts
 - More vertical space for scrolling content
@@ -329,23 +320,27 @@ System detects and optimizes for:
 ### ✅ DO
 
 1. **Always use layout helpers** for positioning
+
    ```python
    title.move_to(get_title_position())
    content.move_to(get_content_center())
    ```
 
 2. **Call ensure_fits_screen()** before displaying complex content
+
    ```python
    ensure_fits_screen(diagram)
    ```
 
 3. **Use recommended font sizes** from constants
+
    ```python
    title = Text("Title", font_size=FONT_TITLE)
    body = Text("Body", font_size=FONT_BODY)
    ```
 
 4. **Validate positions** for critical content
+
    ```python
    validate_position(important_text, "key_concept")
    ```
@@ -358,20 +353,22 @@ System detects and optimizes for:
 ### ❌ DON'T
 
 1. **Don't hardcode positions** without helpers
+
    ```python
    # BAD
    title.move_to(UP * 3.5)
-   
+
    # GOOD
    title.move_to(get_title_position())
    ```
 
 2. **Don't skip ensure_fits_screen()** for large content
+
    ```python
    # BAD
    huge_diagram = VGroup(...)
    self.play(Create(huge_diagram))  # May overflow!
-   
+
    # GOOD
    huge_diagram = VGroup(...)
    ensure_fits_screen(huge_diagram)
@@ -379,21 +376,23 @@ System detects and optimizes for:
    ```
 
 3. **Don't ignore plugin requirements**
+
    ```python
    # BAD - manim-physics without SpaceScene
    from manim_physics import *
    class MyScene(Scene):  # Wrong!
-   
+
    # GOOD
    from manim_physics import *
    class MyScene(SpaceScene):  # Correct!
    ```
 
 4. **Don't create text wider than MAX_CONTENT_WIDTH**
+
    ```python
    # BAD
    text = Text("Very long text that goes on and on...", font_size=48)
-   
+
    # GOOD
    text = create_wrapped_text("Very long text that goes on and on...", font_size=FONT_BODY)
    ```
@@ -403,7 +402,8 @@ System detects and optimizes for:
 ### Plugin Not Installing
 
 **Symptom**: Plugin installation fails
-**Solution**: 
+**Solution**:
+
 - Check plugin exists and name is correct
 - Check compatibility with manim version
 - Script will continue without plugin (warning logged)
@@ -412,6 +412,7 @@ System detects and optimizes for:
 
 **Symptom**: Elements still going off-screen
 **Solution**:
+
 1. Make sure you're calling `ensure_fits_screen()`
 2. Check you're using layout helpers for positioning
 3. Validate position with `validate_position()`
@@ -421,6 +422,7 @@ System detects and optimizes for:
 
 **Symptom**: Plugin validation fails
 **Solution**:
+
 - Check plugin inheritance requirements (e.g., SpaceScene for physics)
 - Ensure required methods are called (e.g., next_slide() for slides)
 - Follow plugin-specific usage patterns
@@ -429,6 +431,7 @@ System detects and optimizes for:
 
 **Symptom**: Text too wide or tall
 **Solution**:
+
 1. Use `create_wrapped_text()` for automatic wrapping
 2. Or manually split text into VGroup with multiple lines
 3. Use appropriate font sizes (FONT_BODY, FONT_CAPTION)
@@ -473,6 +476,7 @@ class MultiPluginScene(VoiceoverScene):
 ## API Reference
 
 See:
+
 - `src/lib/manim-plugins.ts` - Plugin registry and validation
 - `src/lib/manim-layout-engine.ts` - Layout configuration and helpers
 - `src/lib/e2b.ts` - Integration with rendering pipeline
@@ -489,11 +493,11 @@ from manim_voiceover.services.gtts import GTTSService
 class FormulaScene(VoiceoverScene):
     def construct(self):
         self.set_speech_service(GTTSService())
-        
+
         # Title
         title = Text("Quadratic Formula", font_size=FONT_TITLE)
         title.move_to(get_title_position())
-        
+
         # Formula
         formula = MathTex(
             r"x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}",
@@ -501,7 +505,7 @@ class FormulaScene(VoiceoverScene):
         )
         ensure_fits_screen(formula)
         formula.move_to(get_content_center())
-        
+
         self.play(FadeIn(title))
         self.play(Write(formula))
 ```
@@ -517,10 +521,10 @@ from manim_ml.neural_network import NeuralNetwork, FeedForwardLayer
 class NNScene(VoiceoverScene):
     def construct(self):
         self.set_speech_service(GTTSService())
-        
+
         title = Text("Neural Network", font_size=FONT_TITLE)
         title.move_to(get_title_position())
-        
+
         nn = NeuralNetwork([
             FeedForwardLayer(3, node_radius=0.15),
             FeedForwardLayer(5, node_radius=0.15),
@@ -528,7 +532,7 @@ class NNScene(VoiceoverScene):
         ])
         ensure_fits_screen(nn)
         nn.move_to(get_content_center())
-        
+
         self.play(FadeIn(title))
         self.play(Create(nn))
 ```
@@ -544,14 +548,14 @@ from manim_data_structures import Array
 class ArrayScene(VoiceoverScene):
     def construct(self):
         self.set_speech_service(GTTSService())
-        
+
         title = Text("Array Visualization", font_size=FONT_TITLE)
         title.move_to(get_title_position())
-        
+
         arr = Array([1, 2, 3, 4, 5])
         ensure_fits_screen(arr)
         arr.move_to(get_content_center())
-        
+
         self.play(FadeIn(title))
         self.play(Create(arr))
         self.play(arr.animate_elem_highlight(2))
@@ -560,6 +564,7 @@ class ArrayScene(VoiceoverScene):
 ## Future Enhancements
 
 Potential improvements:
+
 - [ ] More plugins (manim-editor, manim-fonts, etc.)
 - [ ] Custom plugin registry from config
 - [ ] Per-plugin version pinning
@@ -571,12 +576,14 @@ Potential improvements:
 ## Support
 
 For issues:
+
 1. Check logs for plugin installation errors
 2. Verify plugin usage matches requirements
 3. Ensure layout helpers are being called
 4. Use validate_position() to debug positioning issues
 
 For plugin-specific issues, refer to plugin documentation:
+
 - manim-ml: https://github.com/helblazer811/ManimML
 - manim-physics: https://github.com/Matheart/manim-physics
 - manim-data-structures: https://github.com/drageelr/manim-data-structures
