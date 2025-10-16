@@ -155,6 +155,7 @@ export function getRecommendedFontSizes(
       title: 46,
       heading: 36,
       body: 32,
+      math: 38,  // Larger font for mathematical formulae
       caption: 28,
       label: 26,
     };
@@ -164,6 +165,7 @@ export function getRecommendedFontSizes(
       title: contentType === "text-heavy" ? 36 : 40,
       heading: 32,
       body: 28,
+      math: 34,  // Larger font for mathematical formulae
       caption: 24,
       label: 20,
     };
@@ -262,6 +264,7 @@ export function generateLayoutSetup(
   parts.push(`FONT_TITLE = ${fonts.title}`);
   parts.push(`FONT_HEADING = ${fonts.heading}`);
   parts.push(`FONT_BODY = ${fonts.body}`);
+  parts.push(`FONT_MATH = ${fonts.math}  # Use for mathematical formulae (MathTex, Tex)`);
   parts.push(`FONT_CAPTION = ${fonts.caption}`);
   parts.push(`FONT_LABEL = ${fonts.label}`);
 

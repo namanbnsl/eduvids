@@ -186,8 +186,9 @@ Video Structure Requirements:
 1. ✨ Visual Clarity & Simplicity:
    - Keep ALL objects clearly visible on screen
    - Use consistent scale for similar elements
-   - USE AUTO-INJECTED FONT SIZES: The layout system provides FONT_TITLE, FONT_HEADING, FONT_BODY, FONT_CAPTION, FONT_LABEL constants that are automatically sized for the video orientation (larger for portrait/shorts)
+   - USE AUTO-INJECTED FONT SIZES: The layout system provides FONT_TITLE, FONT_HEADING, FONT_BODY, FONT_MATH, FONT_CAPTION, FONT_LABEL constants that are automatically sized for the video orientation (larger for portrait/shorts)
    - ALWAYS use these constants instead of hardcoding font sizes: Text("Title", font_size=FONT_TITLE)
+   - USE FONT_MATH for all mathematical formulae: MathTex(r"E = mc^2", font_size=FONT_MATH)
    - Definition callouts should use FONT_CAPTION and be smaller than main text
    - MANDATORY PADDING: minimum 0.8 units between all text elements, 0.6 units between text and shapes
    - NEVER allow any objects to overlap—place comparisons side by side or staggered with visible spacing
@@ -335,7 +336,7 @@ Checklist before self.play:
 
 5. 💡 Things to always keep in mind:
    - If an animation runs longer than the voiceover segment, Manim will wait until the animation is done. If it runs shorter, the scene might freeze until the voiceover ends. You might want to match animation duration with narration (e.g., self.play(..., run_time=3) if narration is 3 seconds).
-- Some of your formulas are wide. In Manim, long MathTex can overflow or shrink badly. Safer to split into multiple lines or scale down: math_eq = MathTex(r"V(D,G) = ...", font_size=FONT_BODY)
+- Some of your formulas are wide. In Manim, long MathTex can overflow or shrink badly. Safer to split into multiple lines or scale down: math_eq = MathTex(r"V(D,G) = ...", font_size=FONT_MATH)
 
 MOST IMPORTANTLY: Always leave a margin around the screen so that nothing goes outside the screen and is only half or not visible at all. Always leave a margin/padding around the video frame. The layout system automatically injects safe margins (larger for portrait/shorts) - use the provided layout helpers (get_title_position, get_content_center, ensure_fits_screen) to ensure proper positioning.
 
@@ -395,10 +396,11 @@ class MyScene(VoiceoverScene):
         
         # Layout helpers are auto-injected and available:
         # - FRAME_WIDTH, FRAME_HEIGHT, MAX_CONTENT_WIDTH, MAX_CONTENT_HEIGHT
-        # - FONT_TITLE, FONT_HEADING, FONT_BODY, FONT_CAPTION, FONT_LABEL
+        # - FONT_TITLE, FONT_HEADING, FONT_BODY, FONT_MATH, FONT_CAPTION, FONT_LABEL
         # - get_title_position(), get_content_center()
         # - ensure_fits_screen(mobject), validate_position(mobject, label)
         # - wrap_text(text, font_size), create_wrapped_text(text, font_size)
+        # - Use FONT_MATH for all MathTex/Tex: MathTex(r"formula", font_size=FONT_MATH)
         
         # ALWAYS use these helpers for positioning and validation!
         

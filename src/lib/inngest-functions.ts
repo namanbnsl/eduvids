@@ -413,7 +413,7 @@ function runHeuristicChecks(
   }
 
   const FONT_SIZE_PATTERN = /font_size\s*=\s*([0-9]+(?:\.[0-9]+)?)/g;
-  const ALLOWED_FONT_SIZES = [22, 26, 30, 38];
+  const ALLOWED_FONT_SIZES = [20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 46];
   const TEXT_CONSTRUCTOR_PATTERN =
     /\b(Text|MathTex|Tex|TexText|MarkupText|Paragraph)\s*\(/g;
   const missingFontSizeConstructors = new Set<string>();
