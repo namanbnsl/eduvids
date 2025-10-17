@@ -637,6 +637,43 @@ function buildYouTubeTitle(params: {
   return candidate;
 }
 
+function buildYouTubeDescription(params: {
+  prompt?: string;
+  voiceoverScript?: string;
+}): string | undefined {
+  const { prompt, voiceoverScript } = params;
+  const sanitize = (input: string) =>
+    input
+      .replace(/```[\s\S]*?```/g, "")
+      .replace(/\[[^\]]+\]\([^\)]+\)/g, "$1")
+      .replace(/\*\*(.*?)\*\*/g, "$1")
+      .replace(/\*(.*?)\*/g, "$1")
+      .replace(/_(.*?)_/g, "$1")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/[\r\n]+/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+  const clamp = (input: string, max: number) =>
+    input.length <= max ? input : `${input.slice(0, max).trim()}…`;
+
+  const candidatePrompt = sanitize(prompt ?? "");
+  if (candidatePrompt) {
+    return clamp(candidatePrompt, 2000);
+  }
+
+  const candidateLine = (voiceoverScript ?? "")
+    .split(/\r?\n/)
+    .map((line) => sanitize(line))
+    .find((line) => line.length > 0);
+
+  if (candidateLine) {
+    return clamp(candidateLine, 2000);
+  }
+
+  return undefined;
+}
+
 export const generateVideo = inngest.createFunction(
   {
     id: "generate-manim-video",
@@ -1231,11 +1268,16 @@ export const generateVideo = inngest.createFunction(
       ];
 
       const ytTitle = buildYouTubeTitle({ prompt, voiceoverScript });
+      const ytDescription = buildYouTubeDescription({
+        prompt,
+        voiceoverScript,
+      });
       await step.sendEvent("dispatch-youtube-upload", {
         name: "video/youtube.upload.request",
         data: {
           videoUrl: uploadUrl,
           title: ytTitle,
+          description: ytDescription,
           prompt: prompt,
           voiceoverScript: voiceoverScript,
           jobId,
@@ -1280,11 +1322,12 @@ export const uploadVideoToYouTube = inngest.createFunction(
   { id: "upload-video-to-youtube", timeouts: { start: "20m", finish: "45m" } },
   { event: "video/youtube.upload.request" },
   async ({ event, step }) => {
-    const { videoUrl, title, prompt, jobId, voiceoverScript, variant } =
+    const { videoUrl, title, prompt, description, jobId, voiceoverScript, variant } =
       event.data as {
         videoUrl: string;
         title: string;
         prompt: string;
+        description?: string;
         jobId?: string;
         voiceoverScript?: string;
         variant?: VideoVariant;
@@ -1335,6 +1378,7 @@ export const uploadVideoToYouTube = inngest.createFunction(
           videoUrl,
           prompt,
           title,
+          description,
           voiceoverScript: voiceoverScript,
           tags,
           variant,

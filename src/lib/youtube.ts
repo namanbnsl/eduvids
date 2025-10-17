@@ -13,6 +13,7 @@ export interface YouTubeUploadRequest {
   videoUrl: string;
   prompt: string;
   title: string;
+  description?: string;
   tags?: string[];
   voiceoverScript?: string;
   privacyStatus?: YouTubePrivacyStatus;
@@ -119,6 +120,7 @@ export async function uploadToYouTube({
   videoUrl,
   prompt,
   title,
+  description,
   tags,
   voiceoverScript,
   privacyStatus,
@@ -165,15 +167,17 @@ export async function uploadToYouTube({
 
   const DEFAULT_DESCRIPTION = "An AI-generated educational video created with eduvids. This video explores various concepts and ideas.\n\nThis video was generated completely by eduvids AI. There may be some factual inconsistencies, please verify from trusted sources.\n\nCreate your own AI-generated educational videos at https://eduvids.vercel.app or run it locally for yourself at https://github.com/namanbnsl/eduvids";
   
-  let generatedYoutubeDescription = "";
-  try {
-    generatedYoutubeDescription = await generateYoutubeDescription({
-      prompt,
-      voiceoverScript: voiceoverScript ?? "",
-    });
-  } catch (error) {
-    console.warn("Failed to generate AI description, using default:", error);
-    generatedYoutubeDescription = "";
+  let generatedYoutubeDescription = description?.trim() ?? "";
+  if (!generatedYoutubeDescription) {
+    try {
+      generatedYoutubeDescription = await generateYoutubeDescription({
+        prompt,
+        voiceoverScript: voiceoverScript ?? "",
+      });
+    } catch (error) {
+      console.warn("Failed to generate AI description, using default:", error);
+      generatedYoutubeDescription = "";
+    }
   }
 
   const mergedDescription = generatedYoutubeDescription?.trim()
