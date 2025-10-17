@@ -1221,6 +1221,8 @@ export async function generateSimpleThumbnail({
   title,
   orientation = "landscape",
 }: SimpleThumbnailRequest): Promise<ThumbnailResult> {
+  void videoDataUrl; // Not using video frame anymore
+  
   let sandbox: Sandbox | null = null;
   let cleanupAttempted = false;
 
@@ -1244,51 +1246,136 @@ export async function generateSimpleThumbnail({
       sandboxId: sandbox.sandboxId,
     });
 
-    const videoPath = "/home/user/input_video.mp4";
-    const framePath = "/home/user/frame.png";
     const thumbnailPath = "/home/user/thumbnail.png";
-
-    // Extract base64 data from data URL
-    const base64Data = videoDataUrl.replace(/^data:video\/mp4;base64,/, "");
-    const videoBuffer = Buffer.from(base64Data, "base64");
-    
-    // Write video to sandbox (use ArrayBuffer from Buffer)
-    await sandbox.files.write(videoPath, videoBuffer.buffer.slice(videoBuffer.byteOffset, videoBuffer.byteOffset + videoBuffer.byteLength));
-    console.log("Video written to sandbox for thumbnail extraction");
-
-    // Extract frame at 3 seconds (or middle of video)
-    const extractCmd = `ffmpeg -i ${videoPath} -ss 3 -vframes 1 -y ${framePath}`;
-    const extractResult = await sandbox.commands.run(extractCmd, {
-      timeoutMs: 60_000,
-    });
-
-    if (extractResult.exitCode !== 0) {
-      throw new Error(`Frame extraction failed: ${extractResult.stderr || extractResult.stdout}`);
-    }
-
-    console.log("Frame extracted successfully");
 
     // Determine dimensions based on orientation
     const width = orientation === "portrait" ? 720 : 1280;
     const height = orientation === "portrait" ? 1280 : 720;
-    const fontSize = orientation === "portrait" ? 64 : 72;
+    const fontSize = orientation === "portrait" ? 48 : 64;
 
-    // Escape single quotes in title for shell command
-    const escapedTitle = title.replace(/'/g, "'\\''");
+    // Escape single quotes in title for Python
+    const escapedTitle = title.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '\\"');
     
-    // Add text overlay with ffmpeg
-    const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
-    const textOverlayCmd = `ffmpeg -i ${framePath} -vf "scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},drawtext=fontfile=${fontFile}:text='${escapedTitle}':fontcolor=white:fontsize=${fontSize}:box=1:boxcolor=black@0.7:boxborderw=20:x=(w-text_w)/2:y=(h-text_h)/2" -y ${thumbnailPath}`;
+    // Generate thumbnail with Python and PIL
+    const generateScript = `
+import random
+from PIL import Image, ImageDraw, ImageFont
+
+# Create image with gradient background
+width, height = ${width}, ${height}
+img = Image.new('RGB', (width, height))
+draw = ImageDraw.Draw(img)
+
+# Create gradient background with random colors
+colors = [
+    [(58, 134, 255), (147, 51, 234)],  # Blue to Purple
+    [(239, 68, 68), (251, 146, 60)],   # Red to Orange
+    [(16, 185, 129), (59, 130, 246)],  # Green to Blue
+    [(236, 72, 153), (168, 85, 247)],  # Pink to Purple
+    [(251, 191, 36), (245, 158, 11)],  # Yellow to Amber
+]
+color_pair = random.choice(colors)
+for y in range(height):
+    ratio = y / height
+    r = int(color_pair[0][0] * (1 - ratio) + color_pair[1][0] * ratio)
+    g = int(color_pair[0][1] * (1 - ratio) + color_pair[1][1] * ratio)
+    b = int(color_pair[0][2] * (1 - ratio) + color_pair[1][2] * ratio)
+    draw.rectangle([(0, y), (width, y+1)], fill=(r, g, b))
+
+# Add geometric shapes for visualization
+shapes_count = random.randint(3, 6)
+for _ in range(shapes_count):
+    shape_type = random.choice(['circle', 'rect'])
+    x = random.randint(0, width)
+    y = random.randint(0, height)
+    size = random.randint(50, 200)
+    opacity = random.randint(10, 30)
     
-    const overlayResult = await sandbox.commands.run(textOverlayCmd, {
+    overlay = Image.new('RGBA', (width, height), (255, 255, 255, 0))
+    overlay_draw = ImageDraw.Draw(overlay)
+    
+    if shape_type == 'circle':
+        overlay_draw.ellipse([x-size, y-size, x+size, y+size], 
+                            fill=(255, 255, 255, opacity))
+    else:
+        overlay_draw.rectangle([x-size, y-size, x+size, y+size], 
+                              fill=(255, 255, 255, opacity))
+    
+    img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
+
+# Add text with better wrapping and sizing
+draw = ImageDraw.Draw(img)
+title = """${escapedTitle}"""
+
+# Try to load a font, fallback to default if not available
+try:
+    font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', ${fontSize})
+except:
+    font = ImageFont.load_default()
+
+# Word wrap the title
+words = title.split()
+lines = []
+current_line = []
+max_width = width - 100
+
+for word in words:
+    test_line = ' '.join(current_line + [word])
+    bbox = draw.textbbox((0, 0), test_line, font=font)
+    line_width = bbox[2] - bbox[0]
+    
+    if line_width <= max_width:
+        current_line.append(word)
+    else:
+        if current_line:
+            lines.append(' '.join(current_line))
+        current_line = [word]
+
+if current_line:
+    lines.append(' '.join(current_line))
+
+# Calculate total text height
+line_heights = []
+for line in lines:
+    bbox = draw.textbbox((0, 0), line, font=font)
+    line_heights.append(bbox[3] - bbox[1])
+
+total_height = sum(line_heights) + (len(lines) - 1) * 20
+start_y = (height - total_height) // 2
+
+# Draw text with outline for better readability
+for i, line in enumerate(lines):
+    bbox = draw.textbbox((0, 0), line, font=font)
+    line_width = bbox[2] - bbox[0]
+    x = (width - line_width) // 2
+    y = start_y + sum(line_heights[:i]) + i * 20
+    
+    # Draw outline
+    for adj_x in [-2, 0, 2]:
+        for adj_y in [-2, 0, 2]:
+            draw.text((x + adj_x, y + adj_y), line, font=font, fill=(0, 0, 0))
+    
+    # Draw main text
+    draw.text((x, y), line, font=font, fill=(255, 255, 255))
+
+# Save
+img.save('${thumbnailPath}')
+print('Thumbnail generated successfully')
+`;
+
+    // Write and execute the Python script
+    const scriptPath = "/home/user/generate_thumbnail.py";
+    await sandbox.files.write(scriptPath, generateScript);
+    
+    const generateResult = await sandbox.commands.run(`python3 ${scriptPath}`, {
       timeoutMs: 60_000,
     });
 
-    if (overlayResult.exitCode !== 0) {
-      throw new Error(`Text overlay failed: ${overlayResult.stderr || overlayResult.stdout}`);
+    if (generateResult.exitCode !== 0) {
+      throw new Error(`Thumbnail generation failed: ${generateResult.stderr || generateResult.stdout}`);
     }
 
-    console.log("Text overlay applied successfully");
+    console.log("Thumbnail generated successfully");
 
     // Read the thumbnail as bytes
     const thumbnailBytesArray = (await sandbox.files.read(thumbnailPath, {
