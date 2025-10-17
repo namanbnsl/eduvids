@@ -10,7 +10,6 @@ export interface YouTubeUploadRequest {
   videoUrl: string;
   prompt: string;
   title: string;
-  description?: string;
   tags?: string[];
   voiceoverScript?: string;
   privacyStatus?: YouTubePrivacyStatus;
@@ -19,6 +18,21 @@ export interface YouTubeUploadRequest {
 }
 
 const YOUTUBE_DESCRIPTION_MAX_LENGTH = 5000;
+const YOUTUBE_TITLE_MAX_LENGTH = 100;
+
+function sanitizeYoutubeTitle(input: string): string {
+  let sanitized = input
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[\p{Cf}\u0000-\u001F]/gu, "");
+
+  if (sanitized.length > YOUTUBE_TITLE_MAX_LENGTH) {
+    sanitized = sanitized.slice(0, YOUTUBE_TITLE_MAX_LENGTH).trim();
+  }
+
+  return sanitized;
+}
 
 function sanitizeYoutubeDescription(input: string): string {
   const normalized = input.replace(/\r\n/g, "\n");
@@ -71,7 +85,6 @@ export async function uploadToYouTube({
   videoUrl,
   prompt,
   title,
-  description,
   tags,
   voiceoverScript,
   privacyStatus,
@@ -104,25 +117,32 @@ export async function uploadToYouTube({
     throw new Error("YouTube upload title is empty after normalization");
   }
 
+  const sanitizedTitle = sanitizeYoutubeTitle(normalizedTitle);
+  if (!sanitizedTitle) {
+    throw new Error("YouTube upload title is empty after sanitization");
+  }
+
   const generatedYoutubeDescription = await generateYoutubeDescription({
     prompt,
     voiceoverScript: voiceoverScript!,
   });
-  const providedDescription = description?.trim();
-  const finalDescription =
-    providedDescription && providedDescription.length > 0
-      ? `${providedDescription} \n `
-      : `${generatedYoutubeDescription} \n\nThis video was generated completely by eduvids AI. There may be some factual inconsistencies, please verify from trusted sources. \n\nCreate your own AI-generated educational videos at https://eduvids.vercel.app or run it locally for yourself at https://github.com/namanbnsl/eduvids \n\n`;
+  
+  if (!generatedYoutubeDescription || generatedYoutubeDescription.trim().length === 0) {
+    throw new Error("Failed to generate YouTube description from AI");
+  }
+
+  const finalDescription = `${generatedYoutubeDescription}\n\nThis video was generated completely by eduvids AI. There may be some factual inconsistencies, please verify from trusted sources.\n\nCreate your own AI-generated educational videos at https://eduvids.vercel.app or run it locally for yourself at https://github.com/namanbnsl/eduvids`;
 
   const sanitizedDescription = sanitizeYoutubeDescription(finalDescription);
   if (!sanitizedDescription) {
     throw new Error("YouTube description is empty after sanitization");
   }
 
-  const baseTitle = normalizedTitle;
   const shouldTagShorts =
-    variant === "short" && !baseTitle.toLowerCase().includes("#shorts");
-  const finalYoutubeTitle = shouldTagShorts ? `${baseTitle} #shorts` : baseTitle;
+    variant === "short" && !sanitizedTitle.toLowerCase().includes("#shorts");
+  const finalYoutubeTitle = shouldTagShorts
+    ? `${sanitizedTitle} #shorts`
+    : sanitizedTitle;
 
   const insertRes = await youtube.videos.insert({
     part: ["snippet", "status"],
