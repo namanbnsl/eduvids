@@ -1306,58 +1306,62 @@ export const uploadVideoToYouTube = inngest.createFunction(
         variant?: VideoVariant;
       };
 
-    const isShprt = variant === "short";
+    const isShort = variant === "short";
     const tags = [
       "education",
       "manim",
       "math",
       "science",
-      ...(isShprt ? ["shorts", "vertical"] : []),
+      ...(isShort ? ["shorts", "vertical"] : []),
     ];
 
     try {
-      // Generate simple thumbnail with retry logic
+      // Generate simple thumbnail with retry logic (skip for shorts as YouTube doesn't support custom thumbnails for shorts)
       const MAX_THUMBNAIL_RETRIES = 2;
       let thumbnailDataUrl: string | undefined;
 
-      for (let attempt = 1; attempt <= MAX_THUMBNAIL_RETRIES; attempt++) {
-        try {
-          thumbnailDataUrl = await step.run(
-            buildStepId("thumbnail", "generate", "attempt", attempt),
-            async () => {
-              console.log(`Generating simple thumbnail (attempt ${attempt}/${MAX_THUMBNAIL_RETRIES})...`);
-              
-              const thumbnailResult = await generateSimpleThumbnail({
-                videoDataUrl: videoUrl,
-                title,
-                orientation: variant === "short" ? "portrait" : "landscape",
-              });
+      if (!isShort) {
+        for (let attempt = 1; attempt <= MAX_THUMBNAIL_RETRIES; attempt++) {
+          try {
+            thumbnailDataUrl = await step.run(
+              buildStepId("thumbnail", "generate", "attempt", attempt),
+              async () => {
+                console.log(`Generating simple thumbnail (attempt ${attempt}/${MAX_THUMBNAIL_RETRIES})...`);
+                
+                const thumbnailResult = await generateSimpleThumbnail({
+                  videoDataUrl: videoUrl,
+                  title,
+                  orientation: isShort ? "portrait" : "landscape",
+                });
 
-              return thumbnailResult.imagePath;
-            }
-          );
-
-          console.log(`✓ Simple thumbnail generated successfully on attempt ${attempt}`);
-          break;
-        } catch (thumbnailError: unknown) {
-          const errorMessage = thumbnailError instanceof Error 
-            ? thumbnailError.message 
-            : String(thumbnailError);
-          
-          console.error(
-            `✗ Thumbnail generation attempt ${attempt}/${MAX_THUMBNAIL_RETRIES} failed:`,
-            errorMessage
-          );
-
-          if (attempt === MAX_THUMBNAIL_RETRIES) {
-            console.warn(
-              "⚠️  Thumbnail generation failed after all retries. Proceeding with video upload without thumbnail."
+                return thumbnailResult.imagePath;
+              }
             );
-            thumbnailDataUrl = undefined;
-          } else {
-            console.log(`Retrying thumbnail generation (attempt ${attempt + 1}/${MAX_THUMBNAIL_RETRIES})...`);
+
+            console.log(`✓ Simple thumbnail generated successfully on attempt ${attempt}`);
+            break;
+          } catch (thumbnailError: unknown) {
+            const errorMessage = thumbnailError instanceof Error 
+              ? thumbnailError.message 
+              : String(thumbnailError);
+            
+            console.error(
+              `✗ Thumbnail generation attempt ${attempt}/${MAX_THUMBNAIL_RETRIES} failed:`,
+              errorMessage
+            );
+
+            if (attempt === MAX_THUMBNAIL_RETRIES) {
+              console.warn(
+                "⚠️  Thumbnail generation failed after all retries. Proceeding with video upload without thumbnail."
+              );
+              thumbnailDataUrl = undefined;
+            } else {
+              console.log(`Retrying thumbnail generation (attempt ${attempt + 1}/${MAX_THUMBNAIL_RETRIES})...`);
+            }
           }
         }
+      } else {
+        console.log("Skipping thumbnail generation for short (YouTube doesn't support custom thumbnails for shorts)");
       }
 
       const yt = await step.run("upload-to-youtube", async () => {
