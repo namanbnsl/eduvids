@@ -1342,36 +1342,179 @@ export const uploadVideoToYouTube = inngest.createFunction(
       ...(isShprt ? ["shorts", "vertical"] : []),
     ];
 
-    try {
-      // Generate thumbnail
-      const thumbnailDataUrl = await step.run("generate-thumbnail", async () => {
-        console.log("Generating thumbnail Manim script...");
-        const thumbnailScript = await generateThumbnailManimScript({
-          prompt,
-          title,
-          voiceoverScript: voiceoverScript || "",
-        });
+    // Helper function to verify thumbnail script with auto-fix
+    const verifyThumbnailScriptWithAutoFix = async ({
+      scriptToCheck,
+      context,
+      stepBaseParts,
+    }: {
+      scriptToCheck: string;
+      context: string;
+      stepBaseParts: ReadonlyArray<string | number | undefined>;
+    }): Promise<string> => {
+      const MAX_VERIFY_PASSES = 1;
+      const baseStepParts = stepBaseParts;
+      const seenScripts = new Set<string>();
+      let current = scriptToCheck.trim();
+      let lastError: string | undefined;
 
-        // Validate thumbnail script has required elements
-        const thumbnailValidation = validateThumbnailScript(thumbnailScript);
-        if (!thumbnailValidation.ok) {
+      for (let pass = 1; pass <= MAX_VERIFY_PASSES; pass++) {
+        if (seenScripts.has(current)) {
           throw new Error(
-            `Thumbnail script validation failed: ${thumbnailValidation.error}`
+            `Auto-fix loop detected during ${context}; the verifier repeated a script it previously evaluated. Last error: ${
+              lastError ?? "unknown"
+            }`
           );
         }
+        seenScripts.add(current);
 
-        console.log("Rendering thumbnail...");
-        const thumbnailResult = await renderManimThumbnail({
-          script: thumbnailScript,
-          prompt,
-          renderOptions:
-            variant === "short"
-              ? { orientation: "portrait", resolution: { width: 720, height: 1280 } }
-              : { orientation: "landscape", resolution: { width: 1280, height: 720 } },
-        });
+        const result = await step.run(
+          buildStepId(...baseStepParts, "pass", pass),
+          async () => {
+            const trimmedCurrent = current.trim();
+            
+            // Run heuristic checks without voiceover requirements
+            const preCheck = runHeuristicChecks(trimmedCurrent, {
+              allowVerificationFixes: true,
+            });
 
-        return thumbnailResult.imagePath;
-      });
+            if (!preCheck.ok) {
+              return {
+                ok: false,
+                error: preCheck.error,
+              } satisfies VerifyManimScriptResult;
+            }
+
+            // For thumbnails, we skip the full verifyManimScript call since
+            // thumbnails don't have voiceover requirements. Just validate structure.
+            const thumbnailValidation = validateThumbnailScript(trimmedCurrent);
+            if (!thumbnailValidation.ok) {
+              return {
+                ok: false,
+                error: thumbnailValidation.error,
+              } satisfies VerifyManimScriptResult;
+            }
+
+            return {
+              ok: true,
+              fixedScript: trimmedCurrent,
+            } satisfies VerifyManimScriptResult;
+          }
+        );
+
+        if (result.ok) {
+          const approvedScript =
+            result.fixedScript && result.fixedScript.trim().length > 0
+              ? result.fixedScript.trim()
+              : current;
+
+          if (pass > 1) {
+            console.log(
+              `Thumbnail verifier approved script after ${pass} passes (${context}).`
+            );
+          }
+
+          return approvedScript;
+        }
+
+        lastError = result.error;
+
+        console.warn(
+          `Thumbnail verifier found issues during ${context} on pass ${pass}; regenerating with error feedback.`
+        );
+        
+        const nextScript = await step.run(
+          buildStepId(...baseStepParts, "regen", "pass", pass),
+          async () => {
+            const regenerated = await regenerateManimScriptWithError({
+              prompt: `Generate a YouTube thumbnail for: ${prompt}\nTitle: ${title}`,
+              voiceoverScript: voiceoverScript || "",
+              previousScript: current,
+              error: lastError ?? "Unknown verification error",
+              attemptNumber: pass,
+              attemptHistory: [],
+            });
+            const trimmed = regenerated.trim();
+            if (!trimmed) {
+              throw new Error(
+                `Thumbnail regeneration returned an empty script during ${context} pass ${pass}`
+              );
+            }
+            return trimmed;
+          }
+        );
+
+        current = nextScript;
+      }
+
+      console.warn(
+        `Thumbnail verifier could not approve the script during ${context} after ${MAX_VERIFY_PASSES} passes. Last error: ${
+          lastError ?? "unknown"
+        } — proceeding with the best-effort script.`
+      );
+      return current;
+    };
+
+    try {
+      // Generate thumbnail with retry logic
+      const MAX_THUMBNAIL_RETRIES = 3;
+      let thumbnailDataUrl: string | undefined;
+
+      for (let attempt = 1; attempt <= MAX_THUMBNAIL_RETRIES; attempt++) {
+        try {
+          thumbnailDataUrl = await step.run(
+            buildStepId("thumbnail", "generate", "attempt", attempt),
+            async () => {
+              console.log(`Generating thumbnail Manim script (attempt ${attempt}/${MAX_THUMBNAIL_RETRIES})...`);
+              let thumbnailScript = await generateThumbnailManimScript({
+                prompt,
+                title,
+                voiceoverScript: voiceoverScript || "",
+              });
+
+              // Verify and potentially fix the thumbnail script
+              thumbnailScript = await verifyThumbnailScriptWithAutoFix({
+                scriptToCheck: thumbnailScript,
+                context: `thumbnail generation attempt ${attempt}`,
+                stepBaseParts: ["thumbnail", "verify", "attempt", attempt],
+              });
+
+              console.log("Rendering thumbnail...");
+              const thumbnailResult = await renderManimThumbnail({
+                script: thumbnailScript,
+                prompt,
+                renderOptions:
+                  variant === "short"
+                    ? { orientation: "portrait", resolution: { width: 720, height: 1280 } }
+                    : { orientation: "landscape", resolution: { width: 1280, height: 720 } },
+              });
+
+              return thumbnailResult.imagePath;
+            }
+          );
+
+          console.log(`✓ Thumbnail generated successfully on attempt ${attempt}`);
+          break; // Success, exit retry loop
+        } catch (thumbnailError: unknown) {
+          const errorMessage = thumbnailError instanceof Error 
+            ? thumbnailError.message 
+            : String(thumbnailError);
+          
+          console.error(
+            `✗ Thumbnail generation attempt ${attempt}/${MAX_THUMBNAIL_RETRIES} failed:`,
+            errorMessage
+          );
+
+          if (attempt === MAX_THUMBNAIL_RETRIES) {
+            console.warn(
+              "⚠️  Thumbnail generation failed after all retries. Proceeding with video upload without thumbnail."
+            );
+            thumbnailDataUrl = undefined;
+          } else {
+            console.log(`Retrying thumbnail generation (attempt ${attempt + 1}/${MAX_THUMBNAIL_RETRIES})...`);
+          }
+        }
+      }
 
       const yt = await step.run("upload-to-youtube", async () => {
         return await uploadToYouTube({
