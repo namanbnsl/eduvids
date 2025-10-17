@@ -1075,6 +1075,13 @@ export const generateVideo = inngest.createFunction(
             throw renderError;
           }
 
+          // Skip retry with same script - go directly to regenerating a new script
+          console.log(
+            ` Skipping render retry, regenerating script for attempt ${
+              attempt + 1
+            }`
+          );
+
           const repeatedErrorOccurrences = Math.max(
             1,
             failedAttempts.filter((attemptRecord) => {
