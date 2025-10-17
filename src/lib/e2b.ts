@@ -1209,3 +1209,110 @@ export async function renderManimThumbnail({
     await ensureCleanup();
   }
 }
+
+export interface SimpleThumbnailRequest {
+  videoDataUrl: string;
+  title: string;
+  orientation?: "landscape" | "portrait";
+}
+
+export async function generateSimpleThumbnail({
+  videoDataUrl,
+  title,
+  orientation = "landscape",
+}: SimpleThumbnailRequest): Promise<ThumbnailResult> {
+  let sandbox: Sandbox | null = null;
+  let cleanupAttempted = false;
+
+  const ensureCleanup = async () => {
+    if (sandbox && !cleanupAttempted) {
+      cleanupAttempted = true;
+      try {
+        await sandbox.kill();
+        console.log("Simple thumbnail sandbox cleaned up successfully");
+      } catch (cleanupError) {
+        console.warn("Simple thumbnail cleanup error (non-fatal):", cleanupError);
+      }
+    }
+  };
+
+  try {
+    sandbox = await Sandbox.create("manim-ffmpeg-latex-voiceover-watermark", {
+      timeoutMs: 300_000, // 5 minutes for thumbnail
+    });
+    console.log("Simple thumbnail sandbox created", {
+      sandboxId: sandbox.sandboxId,
+    });
+
+    const videoPath = "/home/user/input_video.mp4";
+    const framePath = "/home/user/frame.png";
+    const thumbnailPath = "/home/user/thumbnail.png";
+
+    // Extract base64 data from data URL
+    const base64Data = videoDataUrl.replace(/^data:video\/mp4;base64,/, "");
+    const videoBuffer = Buffer.from(base64Data, "base64");
+    
+    // Write video to sandbox (use ArrayBuffer from Buffer)
+    await sandbox.files.write(videoPath, videoBuffer.buffer.slice(videoBuffer.byteOffset, videoBuffer.byteOffset + videoBuffer.byteLength));
+    console.log("Video written to sandbox for thumbnail extraction");
+
+    // Extract frame at 3 seconds (or middle of video)
+    const extractCmd = `ffmpeg -i ${videoPath} -ss 3 -vframes 1 -y ${framePath}`;
+    const extractResult = await sandbox.commands.run(extractCmd, {
+      timeoutMs: 60_000,
+    });
+
+    if (extractResult.exitCode !== 0) {
+      throw new Error(`Frame extraction failed: ${extractResult.stderr || extractResult.stdout}`);
+    }
+
+    console.log("Frame extracted successfully");
+
+    // Determine dimensions based on orientation
+    const width = orientation === "portrait" ? 720 : 1280;
+    const height = orientation === "portrait" ? 1280 : 720;
+    const fontSize = orientation === "portrait" ? 64 : 72;
+
+    // Escape single quotes in title for shell command
+    const escapedTitle = title.replace(/'/g, "'\\''");
+    
+    // Add text overlay with ffmpeg
+    const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
+    const textOverlayCmd = `ffmpeg -i ${framePath} -vf "scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},drawtext=fontfile=${fontFile}:text='${escapedTitle}':fontcolor=white:fontsize=${fontSize}:box=1:boxcolor=black@0.7:boxborderw=20:x=(w-text_w)/2:y=(h-text_h)/2" -y ${thumbnailPath}`;
+    
+    const overlayResult = await sandbox.commands.run(textOverlayCmd, {
+      timeoutMs: 60_000,
+    });
+
+    if (overlayResult.exitCode !== 0) {
+      throw new Error(`Text overlay failed: ${overlayResult.stderr || overlayResult.stdout}`);
+    }
+
+    console.log("Text overlay applied successfully");
+
+    // Read the thumbnail as bytes
+    const thumbnailBytesArray = (await sandbox.files.read(thumbnailPath, {
+      format: "bytes",
+    })) as Uint8Array;
+    
+    if (!thumbnailBytesArray || !thumbnailBytesArray.length) {
+      throw new Error("Generated thumbnail is empty");
+    }
+
+    const thumbnailBytes = Buffer.from(thumbnailBytesArray);
+    const base64 = thumbnailBytes.toString("base64");
+    const dataUrl = `data:image/png;base64,${base64}`;
+    console.log(`Simple thumbnail generated (length: ${base64.length} chars)`);
+
+    await ensureCleanup();
+    return {
+      imagePath: dataUrl,
+    };
+  } catch (err: unknown) {
+    console.error("Simple thumbnail generation error:", err);
+    await ensureCleanup();
+    throw err;
+  } finally {
+    await ensureCleanup();
+  }
+}

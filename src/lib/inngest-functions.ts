@@ -4,14 +4,13 @@ import {
   generateVoiceoverScript,
   regenerateManimScriptWithError,
   verifyManimScript,
-  generateThumbnailManimScript,
 } from "./gemini";
 import type {
   ManimGenerationAttempt,
   ManimGenerationErrorDetails,
   VerifyManimScriptResult,
 } from "./gemini";
-import { renderManimVideo, renderManimThumbnail, ValidationStage } from "./e2b";
+import { renderManimVideo, generateSimpleThumbnail, ValidationStage } from "./e2b";
 import type { RenderLogEntry } from "./e2b";
 import { VOICEOVER_SERVICE_IMPORT, VOICEOVER_SERVICE_SETTER } from "@/prompt";
 import { uploadVideo } from "./uploadthing";
@@ -226,40 +225,7 @@ function validateRequiredElements(script: string): {
   return { ok: true };
 }
 
-// Validation for thumbnail scripts (no voiceover required)
-function validateThumbnailScript(script: string): {
-  ok: boolean;
-  error?: string;
-} {
-  const normalized = script.trim().replace(/\r/g, "");
-  const issues: string[] = [];
 
-  // Check for manim import
-  if (!normalized.includes("from manim import")) {
-    issues.push("Missing required import: from manim import");
-  }
-
-  // Check for class MyScene
-  if (!normalized.includes("class MyScene")) {
-    issues.push("Missing class MyScene definition");
-  }
-
-  // Check for construct method
-  if (!normalized.includes("def construct(self)")) {
-    issues.push("Missing def construct(self) method");
-  }
-
-  if (issues.length > 0) {
-    return {
-      ok: false,
-      error: `Thumbnail script validation failed - missing required elements:\n${issues
-        .map((issue, idx) => `${idx + 1}. ${issue}`)
-        .join("\n")}`,
-    };
-  }
-
-  return { ok: true };
-}
 
 function runHeuristicChecks(
   script: string,
@@ -1342,122 +1308,9 @@ export const uploadVideoToYouTube = inngest.createFunction(
       ...(isShprt ? ["shorts", "vertical"] : []),
     ];
 
-    // Helper function to verify thumbnail script with auto-fix
-    const verifyThumbnailScriptWithAutoFix = async ({
-      scriptToCheck,
-      context,
-      stepBaseParts,
-    }: {
-      scriptToCheck: string;
-      context: string;
-      stepBaseParts: ReadonlyArray<string | number | undefined>;
-    }): Promise<string> => {
-      const MAX_VERIFY_PASSES = 1;
-      const baseStepParts = stepBaseParts;
-      const seenScripts = new Set<string>();
-      let current = scriptToCheck.trim();
-      let lastError: string | undefined;
-
-      for (let pass = 1; pass <= MAX_VERIFY_PASSES; pass++) {
-        if (seenScripts.has(current)) {
-          throw new Error(
-            `Auto-fix loop detected during ${context}; the verifier repeated a script it previously evaluated. Last error: ${
-              lastError ?? "unknown"
-            }`
-          );
-        }
-        seenScripts.add(current);
-
-        const result = await step.run(
-          buildStepId(...baseStepParts, "pass", pass),
-          async () => {
-            const trimmedCurrent = current.trim();
-            
-            // Run heuristic checks without voiceover requirements
-            const preCheck = runHeuristicChecks(trimmedCurrent, {
-              allowVerificationFixes: true,
-            });
-
-            if (!preCheck.ok) {
-              return {
-                ok: false,
-                error: preCheck.error,
-              } satisfies VerifyManimScriptResult;
-            }
-
-            // For thumbnails, we skip the full verifyManimScript call since
-            // thumbnails don't have voiceover requirements. Just validate structure.
-            const thumbnailValidation = validateThumbnailScript(trimmedCurrent);
-            if (!thumbnailValidation.ok) {
-              return {
-                ok: false,
-                error: thumbnailValidation.error,
-              } satisfies VerifyManimScriptResult;
-            }
-
-            return {
-              ok: true,
-              fixedScript: trimmedCurrent,
-            } satisfies VerifyManimScriptResult;
-          }
-        );
-
-        if (result.ok) {
-          const approvedScript =
-            result.fixedScript && result.fixedScript.trim().length > 0
-              ? result.fixedScript.trim()
-              : current;
-
-          if (pass > 1) {
-            console.log(
-              `Thumbnail verifier approved script after ${pass} passes (${context}).`
-            );
-          }
-
-          return approvedScript;
-        }
-
-        lastError = result.error;
-
-        console.warn(
-          `Thumbnail verifier found issues during ${context} on pass ${pass}; regenerating with error feedback.`
-        );
-        
-        const nextScript = await step.run(
-          buildStepId(...baseStepParts, "regen", "pass", pass),
-          async () => {
-            const regenerated = await regenerateManimScriptWithError({
-              prompt: `Generate a YouTube thumbnail for: ${prompt}\nTitle: ${title}`,
-              voiceoverScript: voiceoverScript || "",
-              previousScript: current,
-              error: lastError ?? "Unknown verification error",
-              attemptNumber: pass,
-              attemptHistory: [],
-            });
-            const trimmed = regenerated.trim();
-            if (!trimmed) {
-              throw new Error(
-                `Thumbnail regeneration returned an empty script during ${context} pass ${pass}`
-              );
-            }
-            return trimmed;
-          }
-        );
-
-        current = nextScript;
-      }
-
-      console.warn(
-        `Thumbnail verifier could not approve the script during ${context} after ${MAX_VERIFY_PASSES} passes. Last error: ${
-          lastError ?? "unknown"
-        } — proceeding with the best-effort script.`
-      );
-      return current;
-    };
-
     try {
-      // Generate thumbnail with retry logic
-      const MAX_THUMBNAIL_RETRIES = 3;
+      // Generate simple thumbnail with retry logic
+      const MAX_THUMBNAIL_RETRIES = 2;
       let thumbnailDataUrl: string | undefined;
 
       for (let attempt = 1; attempt <= MAX_THUMBNAIL_RETRIES; attempt++) {
@@ -1465,36 +1318,20 @@ export const uploadVideoToYouTube = inngest.createFunction(
           thumbnailDataUrl = await step.run(
             buildStepId("thumbnail", "generate", "attempt", attempt),
             async () => {
-              console.log(`Generating thumbnail Manim script (attempt ${attempt}/${MAX_THUMBNAIL_RETRIES})...`);
-              let thumbnailScript = await generateThumbnailManimScript({
-                prompt,
+              console.log(`Generating simple thumbnail (attempt ${attempt}/${MAX_THUMBNAIL_RETRIES})...`);
+              
+              const thumbnailResult = await generateSimpleThumbnail({
+                videoDataUrl: videoUrl,
                 title,
-                voiceoverScript: voiceoverScript || "",
-              });
-
-              // Verify and potentially fix the thumbnail script
-              thumbnailScript = await verifyThumbnailScriptWithAutoFix({
-                scriptToCheck: thumbnailScript,
-                context: `thumbnail generation attempt ${attempt}`,
-                stepBaseParts: ["thumbnail", "verify", "attempt", attempt],
-              });
-
-              console.log("Rendering thumbnail...");
-              const thumbnailResult = await renderManimThumbnail({
-                script: thumbnailScript,
-                prompt,
-                renderOptions:
-                  variant === "short"
-                    ? { orientation: "portrait", resolution: { width: 720, height: 1280 } }
-                    : { orientation: "landscape", resolution: { width: 1280, height: 720 } },
+                orientation: variant === "short" ? "portrait" : "landscape",
               });
 
               return thumbnailResult.imagePath;
             }
           );
 
-          console.log(`✓ Thumbnail generated successfully on attempt ${attempt}`);
-          break; // Success, exit retry loop
+          console.log(`✓ Simple thumbnail generated successfully on attempt ${attempt}`);
+          break;
         } catch (thumbnailError: unknown) {
           const errorMessage = thumbnailError instanceof Error 
             ? thumbnailError.message 
