@@ -232,6 +232,16 @@ export interface RenderRequest {
   renderOptions?: RenderOptions;
 }
 
+export interface ThumbnailResult {
+  imagePath: string;
+}
+
+export interface ThumbnailRequest {
+  script: string;
+  prompt: string;
+  renderOptions?: RenderOptions;
+}
+
 export async function renderManimVideo({
   script,
   prompt: _prompt,
@@ -1015,6 +1025,187 @@ export async function renderManimVideo({
     });
   } finally {
     // Ensure cleanup happens even if not already done
+    await ensureCleanup();
+  }
+}
+
+export async function renderManimThumbnail({
+  script,
+  prompt: _prompt,
+  renderOptions,
+}: ThumbnailRequest): Promise<ThumbnailResult> {
+  void _prompt;
+  const normalizedScript = script.trim();
+
+  if (!normalizedScript.length) {
+    throw new Error("Thumbnail script is empty");
+  }
+  if (!hasExpectedSceneClass(normalizedScript)) {
+    throw new Error("Thumbnail script must declare `class MyScene`");
+  }
+
+  let sandbox: Sandbox | null = null;
+  let cleanupAttempted = false;
+
+  const ensureCleanup = async () => {
+    if (sandbox && !cleanupAttempted) {
+      cleanupAttempted = true;
+      try {
+        await sandbox.kill();
+        console.log("Thumbnail E2B sandbox cleaned up successfully");
+      } catch (cleanupError) {
+        console.warn("Thumbnail sandbox cleanup error (non-fatal):", cleanupError);
+      }
+    }
+  };
+
+  try {
+    sandbox = await Sandbox.create("manim-ffmpeg-latex-voiceover-watermark", {
+      timeoutMs: 600_000, // 10 minutes should be plenty for a single frame
+    });
+    console.log("Thumbnail E2B sandbox created", {
+      sandboxId: sandbox.sandboxId,
+    });
+
+    const scriptPath = `/home/user/thumbnail_script.py`;
+    const mediaDir = `/home/user/media`;
+    const baseImagesDir = `${mediaDir}/images`;
+
+    // Inject layout helpers
+    const contentType = detectContentType(normalizedScript);
+    const layoutConfig = getLayoutConfig({
+      orientation: renderOptions?.orientation,
+      resolution: renderOptions?.resolution || { width: 1280, height: 720 },
+      contentType,
+    });
+
+    const layoutCode = getCompleteLayoutCode(layoutConfig);
+    const classMatch = normalizedScript.match(/^((?:.*\n)*?)(class\s+MyScene)/m);
+    let enhancedScript = normalizedScript;
+    if (classMatch) {
+      const beforeClass = classMatch[1];
+      const fromClass = classMatch[2];
+      const afterClass = normalizedScript.slice(classMatch.index! + classMatch[0].length);
+      enhancedScript = `${beforeClass}\n${layoutCode}\n\n${fromClass}${afterClass}`;
+    }
+
+    await sandbox.files.write(scriptPath, enhancedScript);
+    console.log("Thumbnail script written to sandbox");
+
+    // Syntax check
+    const syntaxCheck = await sandbox.commands.run(`python -m py_compile ${scriptPath}`);
+    if (syntaxCheck.exitCode !== 0) {
+      throw new Error(`Thumbnail script syntax error: ${syntaxCheck.stderr}`);
+    }
+
+    // Render as single frame (PNG)
+    const resolution = renderOptions?.resolution || { width: 1280, height: 720 };
+    const safeWidth = Math.max(1, Math.round(resolution.width));
+    const safeHeight = Math.max(1, Math.round(resolution.height));
+
+    const manimArgs = [
+      scriptPath,
+      "MyScene",
+      "--media_dir",
+      mediaDir,
+      "--disable_caching",
+      "-s",  // Single frame
+      "-r", `${safeWidth},${safeHeight}`,
+      "--format=png",
+    ];
+
+    const manimCmd = `manim ${manimArgs.join(" ")}`;
+    console.log("Starting thumbnail render with command:", manimCmd);
+
+    const renderResult = await sandbox.commands.run(manimCmd, {
+      timeoutMs: 300_000, // 5 minutes
+    });
+
+    if (renderResult.exitCode !== 0) {
+      throw new Error(`Thumbnail render failed: ${renderResult.stderr || renderResult.stdout}`);
+    }
+
+    // Find the generated PNG
+    const scriptFilename = scriptPath.split("/").pop() ?? "thumbnail_script.py";
+    const moduleName = scriptFilename.replace(/\.py$/i, "");
+    const sceneName = "MyScene";
+
+    const candidatePaths = [
+      `${baseImagesDir}/${moduleName}/${sceneName}.png`,
+      `${baseImagesDir}/${moduleName}/MyScene_ManimCE_v*.png`,
+    ];
+
+    let imagePath: string | undefined;
+    for (const candidate of candidatePaths) {
+      const existsCheck = await sandbox.commands.run(
+        [
+          "python - <<'PY'",
+          "import os",
+          "import glob",
+          `pattern = r"${candidate}"`,
+          "matches = glob.glob(pattern)",
+          "if matches:",
+          "    print(matches[0], end='')",
+          "PY",
+        ].join("\n")
+      );
+      const found = (existsCheck.stdout ?? "").trim();
+      if (found) {
+        imagePath = found;
+        break;
+      }
+    }
+
+    if (!imagePath) {
+      // Fallback search
+      const searchResult = await sandbox.commands.run(
+        [
+          "python - <<'PY'",
+          "import os",
+          `base = r"${baseImagesDir}/${moduleName}"`,
+          "if os.path.isdir(base):",
+          "    for root, _, files in os.walk(base):",
+          "        for f in files:",
+          "            if f.endswith('.png'):",
+          "                print(os.path.join(root, f), end='')",
+          "                break",
+          "PY",
+        ].join("\n")
+      );
+      const found = (searchResult.stdout ?? "").trim();
+      if (found) {
+        imagePath = found;
+      }
+    }
+
+    if (!imagePath) {
+      throw new Error(`Unable to locate thumbnail PNG under ${baseImagesDir}/${moduleName}`);
+    }
+
+    console.log("Thumbnail file located:", imagePath);
+
+    // Read the image as bytes
+    const imageBytesArray = (await sandbox.files.read(imagePath, {
+      format: "bytes",
+    })) as Uint8Array;
+    if (!imageBytesArray || !imageBytesArray.length) {
+      throw new Error("Downloaded thumbnail image is empty");
+    }
+
+    const imageBytes = Buffer.from(imageBytesArray);
+    const base64 = imageBytes.toString("base64");
+    const dataUrl = `data:image/png;base64,${base64}`;
+    console.log(`Prepared base64 data URL for thumbnail (length: ${base64.length} chars)`);
+
+    await ensureCleanup();
+    return {
+      imagePath: dataUrl,
+    };
+  } catch (err: unknown) {
+    console.error("Thumbnail render error:", err);
+    await ensureCleanup();
+    throw err;
+  } finally {
     await ensureCleanup();
   }
 }

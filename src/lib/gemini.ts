@@ -475,6 +475,71 @@ export async function generateYoutubeDescription({
   return text.trim();
 }
 
+export interface ThumbnailScriptRequest {
+  prompt: string;
+  title: string;
+  voiceoverScript: string;
+}
+
+export async function generateThumbnailManimScript({
+  prompt,
+  title,
+  voiceoverScript,
+}: ThumbnailScriptRequest): Promise<string> {
+  const model = google("gemini-2.5-pro");
+  const augmentedSystemPrompt = buildAugmentedSystemPrompt(
+    "You are a Manim Community v0.18.0 expert creating eye-catching YouTube thumbnail frames. Generate a single static frame that captures the video's essence. The scene should be visually striking, clear, and professional. Use bold text, vibrant colors, and simple shapes. DO NOT use voiceover or animations. The construct method should create all objects and add them to the scene without any animations. Use self.add() instead of self.play() for all objects."
+  );
+
+  const { text } = await generateText({
+    model,
+    system: augmentedSystemPrompt,
+    prompt: [
+      `Video prompt: ${prompt}`,
+      `Video title: ${title}`,
+      `Voiceover narration (for context):\n${voiceoverScript}`,
+      "",
+      "Generate a Manim script for a YouTube thumbnail that:",
+      "1. Creates a single static frame (no animations)",
+      "2. Features the video title prominently with large, bold text",
+      "3. Uses WHITE for main text and YELLOW for emphasis",
+      "4. Includes 1-2 key visual elements that represent the video topic",
+      "5. Has a clean, professional layout with good spacing",
+      "6. Uses self.add() to add all objects (NO self.play() calls)",
+      "7. Keeps text readable and visually balanced",
+      "8. Uses simple shapes and clear hierarchy",
+      "",
+      "Example structure:",
+      "```python",
+      "from manim import *",
+      "",
+      "class MyScene(Scene):",
+      "    def construct(self):",
+      "        # Create title",
+      "        title = Text('Video Title', font_size=72, color=WHITE)",
+      "        title.to_edge(UP, buff=1.0)",
+      "        ",
+      "        # Create key visual",
+      "        visual = Circle(radius=2, color=YELLOW)",
+      "        visual.move_to(ORIGIN)",
+      "        ",
+      "        # Add all objects without animation",
+      "        self.add(title, visual)",
+      "```",
+      "",
+      "Return ONLY the complete Python code with no commentary or markdown fences:",
+    ].join("\n"),
+    temperature: 0.1,
+  });
+
+  const code = text
+    .replace(/```python?\n?/g, "")
+    .replace(/```\n?/g, "")
+    .trim();
+
+  return code;
+}
+
 export interface RegenerateManimScriptRequest {
   prompt: string;
   voiceoverScript: string;

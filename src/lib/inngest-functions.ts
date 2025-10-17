@@ -4,13 +4,14 @@ import {
   generateVoiceoverScript,
   regenerateManimScriptWithError,
   verifyManimScript,
+  generateThumbnailManimScript,
 } from "./gemini";
 import type {
   ManimGenerationAttempt,
   ManimGenerationErrorDetails,
   VerifyManimScriptResult,
 } from "./gemini";
-import { renderManimVideo, ValidationStage } from "./e2b";
+import { renderManimVideo, renderManimThumbnail, ValidationStage } from "./e2b";
 import type { RenderLogEntry } from "./e2b";
 import { VOICEOVER_SERVICE_IMPORT, VOICEOVER_SERVICE_SETTER } from "@/prompt";
 import { uploadVideo } from "./uploadthing";
@@ -1200,7 +1201,7 @@ export const generateVideo = inngest.createFunction(
         data: {
           videoUrl: uploadUrl,
           title: ytTitle,
-          description: `${prompt}`,
+          prompt: prompt,
           voiceoverScript: voiceoverScript,
           jobId,
           userId,
@@ -1244,11 +1245,11 @@ export const uploadVideoToYouTube = inngest.createFunction(
   { id: "upload-video-to-youtube", timeouts: { start: "20m", finish: "45m" } },
   { event: "video/youtube.upload.request" },
   async ({ event, step }) => {
-    const { videoUrl, title, description, jobId, voiceoverScript, variant } =
+    const { videoUrl, title, prompt, jobId, voiceoverScript, variant } =
       event.data as {
         videoUrl: string;
         title: string;
-        description?: string;
+        prompt: string;
         jobId?: string;
         voiceoverScript?: string;
         variant?: VideoVariant;
@@ -1264,14 +1265,37 @@ export const uploadVideoToYouTube = inngest.createFunction(
     ];
 
     try {
+      // Generate thumbnail
+      const thumbnailDataUrl = await step.run("generate-thumbnail", async () => {
+        console.log("Generating thumbnail Manim script...");
+        const thumbnailScript = await generateThumbnailManimScript({
+          prompt,
+          title,
+          voiceoverScript: voiceoverScript || "",
+        });
+
+        console.log("Rendering thumbnail...");
+        const thumbnailResult = await renderManimThumbnail({
+          script: thumbnailScript,
+          prompt,
+          renderOptions:
+            variant === "short"
+              ? { orientation: "portrait", resolution: { width: 720, height: 1280 } }
+              : { orientation: "landscape", resolution: { width: 1280, height: 720 } },
+        });
+
+        return thumbnailResult.imagePath;
+      });
+
       const yt = await step.run("upload-to-youtube", async () => {
         return await uploadToYouTube({
           videoUrl,
-          prompt: title,
-          description,
+          prompt,
+          title,
           voiceoverScript: voiceoverScript,
           tags,
           variant,
+          thumbnailDataUrl,
         });
       });
 
