@@ -21,82 +21,7 @@ export interface YouTubeUploadRequest {
   thumbnailDataUrl?: string;
 }
 
-const YOUTUBE_DESCRIPTION_MAX_LENGTH = 5000;
-const YOUTUBE_TITLE_MAX_LENGTH = 100;
 
-function sanitizeYoutubeTitle(input: string): string {
-  let sanitized = input
-    .replace(/[\r\n]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/[\p{Cf}\u0000-\u001F]/gu, "");
-
-  if (sanitized.length > YOUTUBE_TITLE_MAX_LENGTH) {
-    sanitized = sanitized.slice(0, YOUTUBE_TITLE_MAX_LENGTH).trim();
-  }
-
-  return sanitized;
-}
-
-function ensureValidYoutubeTitle(candidate: string, fallback: string): string {
-  const sanitizedCandidate = sanitizeYoutubeTitle(candidate);
-  if (sanitizedCandidate.length) {
-    return sanitizedCandidate;
-  }
-
-  const sanitizedFallback = sanitizeYoutubeTitle(fallback);
-  if (sanitizedFallback.length) {
-    return sanitizedFallback;
-  }
-
-  return fallback.trim() || "Untitled Video";
-}
-
-function sanitizeYoutubeDescription(input: string): string {
-  const normalized = input.replace(/\r\n/g, "\n");
-
-  const withoutCodeFences = normalized.replace(/```[\s\S]*?```/g, (segment) =>
-    segment.replace(/```/g, "")
-  );
-
-  let sanitized = withoutCodeFences
-    .replace(/^#{1,6}\s*/gm, "")
-    .replace(/^[>\s]*[-*+]\s+/gm, "")
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/\*(.*?)\*/g, "$1")
-    .replace(/_(.*?)_/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[(.*?)\]\((https?:\/\/[\w./?#=&%-]+)\)/g, "$1 ($2)")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-  if (!sanitized) {
-    sanitized = normalized.trim();
-  }
-
-  if (sanitized.length > YOUTUBE_DESCRIPTION_MAX_LENGTH) {
-    sanitized = sanitized.slice(0, YOUTUBE_DESCRIPTION_MAX_LENGTH).trim();
-  }
-
-  return sanitized;
-}
-
-function ensureValidYoutubeDescription(
-  candidate: string,
-  fallback: string
-): string {
-  const sanitizedCandidate = sanitizeYoutubeDescription(candidate);
-  if (sanitizedCandidate.length) {
-    return sanitizedCandidate;
-  }
-
-  const sanitizedFallback = sanitizeYoutubeDescription(fallback);
-  if (sanitizedFallback.length) {
-    return sanitizedFallback;
-  }
-
-  return fallback.trim() || "This video was generated with eduvids.";
-}
 
 function getOAuth2Client(): OAuth2Client {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -147,61 +72,40 @@ export async function uploadToYouTube({
   const mediaBuffer = Buffer.from(arrayBuffer);
   const mediaBody = Readable.from(mediaBuffer);
 
-  // Ensure title is a non-empty string acceptable by YouTube API
-  const DEFAULT_TITLE = "AI-Generated Educational Video";
-  let normalizedTitle = (title ?? "").toString();
-
-  if (!normalizedTitle.trim()) {
+  // Generate title if not provided
+  let finalYoutubeTitle = title?.trim() ?? "";
+  if (!finalYoutubeTitle) {
     try {
-      normalizedTitle = await generateYoutubeTitle({
+      finalYoutubeTitle = await generateYoutubeTitle({
         prompt,
         voiceoverScript: voiceoverScript ?? "",
       });
     } catch (titleError) {
-      console.warn("Failed to generate AI title, using default:", titleError);
-      normalizedTitle = DEFAULT_TITLE;
+      console.warn("Failed to generate AI title:", titleError);
+      finalYoutubeTitle = "AI-Generated Educational Video";
     }
   }
 
-  const baseTitle = ensureValidYoutubeTitle(normalizedTitle, DEFAULT_TITLE);
-
-  const DEFAULT_DESCRIPTION = "An AI-generated educational video created with eduvids. This video explores various concepts and ideas.\n\nThis video was generated completely by eduvids AI. There may be some factual inconsistencies, please verify from trusted sources.\n\nCreate your own AI-generated educational videos at https://eduvids.vercel.app or run it locally for yourself at https://github.com/namanbnsl/eduvids";
-  
-  let generatedYoutubeDescription = description?.trim() ?? "";
-  if (!generatedYoutubeDescription) {
+  // Generate description if not provided
+  let finalDescription = description?.trim() ?? "";
+  if (!finalDescription) {
     try {
-      generatedYoutubeDescription = await generateYoutubeDescription({
+      finalDescription = await generateYoutubeDescription({
         prompt,
         voiceoverScript: voiceoverScript ?? "",
       });
     } catch (error) {
-      console.warn("Failed to generate AI description, using default:", error);
-      generatedYoutubeDescription = "";
+      console.warn("Failed to generate AI description:", error);
+      finalDescription = "An AI-generated educational video created with eduvids.";
     }
   }
-
-  const mergedDescription = generatedYoutubeDescription?.trim()
-    ? `${generatedYoutubeDescription}\n\nThis video was generated completely by eduvids AI. There may be some factual inconsistencies, please verify from trusted sources.\n\nCreate your own AI-generated educational videos at https://eduvids.vercel.app or run it locally for yourself at https://github.com/namanbnsl/eduvids`
-    : DEFAULT_DESCRIPTION;
-
-  const finalSanitizedDescription = ensureValidYoutubeDescription(
-    mergedDescription,
-    DEFAULT_DESCRIPTION
-  );
-
-  const shouldTagShorts =
-    variant === "short" && !baseTitle.toLowerCase().includes("#shorts");
-  const titleWithHashtag = shouldTagShorts
-    ? `${baseTitle} #shorts`
-    : baseTitle;
-  const finalYoutubeTitle = ensureValidYoutubeTitle(titleWithHashtag, baseTitle);
 
   const insertRes = await youtube.videos.insert({
     part: ["snippet", "status"],
     requestBody: {
       snippet: {
         title: finalYoutubeTitle,
-        description: finalSanitizedDescription,
+        description: finalDescription,
         tags,
         categoryId: "27",
       },
