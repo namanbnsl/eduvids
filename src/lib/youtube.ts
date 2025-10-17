@@ -1,7 +1,10 @@
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import { Readable } from "node:stream";
-import { generateYoutubeDescription } from "@/lib/gemini";
+import {
+  generateYoutubeDescription,
+  generateYoutubeTitle,
+} from "@/lib/gemini";
 import type { VideoVariant } from "./job-store";
 
 export type YouTubePrivacyStatus = "public" | "unlisted" | "private";
@@ -34,6 +37,20 @@ function sanitizeYoutubeTitle(input: string): string {
   return sanitized;
 }
 
+function ensureValidYoutubeTitle(candidate: string, fallback: string): string {
+  const sanitizedCandidate = sanitizeYoutubeTitle(candidate);
+  if (sanitizedCandidate.length) {
+    return sanitizedCandidate;
+  }
+
+  const sanitizedFallback = sanitizeYoutubeTitle(fallback);
+  if (sanitizedFallback.length) {
+    return sanitizedFallback;
+  }
+
+  return fallback.trim() || "Untitled Video";
+}
+
 function sanitizeYoutubeDescription(input: string): string {
   const normalized = input.replace(/\r\n/g, "\n");
 
@@ -61,6 +78,23 @@ function sanitizeYoutubeDescription(input: string): string {
   }
 
   return sanitized;
+}
+
+function ensureValidYoutubeDescription(
+  candidate: string,
+  fallback: string
+): string {
+  const sanitizedCandidate = sanitizeYoutubeDescription(candidate);
+  if (sanitizedCandidate.length) {
+    return sanitizedCandidate;
+  }
+
+  const sanitizedFallback = sanitizeYoutubeDescription(fallback);
+  if (sanitizedFallback.length) {
+    return sanitizedFallback;
+  }
+
+  return fallback.trim() || "This video was generated with eduvids.";
 }
 
 function getOAuth2Client(): OAuth2Client {
@@ -112,15 +146,22 @@ export async function uploadToYouTube({
   const mediaBody = Readable.from(mediaBuffer);
 
   // Ensure title is a non-empty string acceptable by YouTube API
-  const normalizedTitle = (title ?? "").toString().trim();
   const DEFAULT_TITLE = "AI-Generated Educational Video";
-  
-  const sanitizedTitle = normalizedTitle
-    ? sanitizeYoutubeTitle(normalizedTitle)
-    : sanitizeYoutubeTitle(DEFAULT_TITLE);
+  let normalizedTitle = (title ?? "").toString();
 
-  // Use placeholder if sanitization resulted in empty string
-  const finalSanitizedTitle = sanitizedTitle || DEFAULT_TITLE;
+  if (!normalizedTitle.trim()) {
+    try {
+      normalizedTitle = await generateYoutubeTitle({
+        prompt,
+        voiceoverScript: voiceoverScript ?? "",
+      });
+    } catch (titleError) {
+      console.warn("Failed to generate AI title, using default:", titleError);
+      normalizedTitle = DEFAULT_TITLE;
+    }
+  }
+
+  const baseTitle = ensureValidYoutubeTitle(normalizedTitle, DEFAULT_TITLE);
 
   const DEFAULT_DESCRIPTION = "An AI-generated educational video created with eduvids. This video explores various concepts and ideas.\n\nThis video was generated completely by eduvids AI. There may be some factual inconsistencies, please verify from trusted sources.\n\nCreate your own AI-generated educational videos at https://eduvids.vercel.app or run it locally for yourself at https://github.com/namanbnsl/eduvids";
   
@@ -128,26 +169,28 @@ export async function uploadToYouTube({
   try {
     generatedYoutubeDescription = await generateYoutubeDescription({
       prompt,
-      voiceoverScript: voiceoverScript!,
+      voiceoverScript: voiceoverScript ?? "",
     });
   } catch (error) {
     console.warn("Failed to generate AI description, using default:", error);
     generatedYoutubeDescription = "";
   }
 
-  const finalDescription = generatedYoutubeDescription?.trim()
+  const mergedDescription = generatedYoutubeDescription?.trim()
     ? `${generatedYoutubeDescription}\n\nThis video was generated completely by eduvids AI. There may be some factual inconsistencies, please verify from trusted sources.\n\nCreate your own AI-generated educational videos at https://eduvids.vercel.app or run it locally for yourself at https://github.com/namanbnsl/eduvids`
     : DEFAULT_DESCRIPTION;
 
-  const sanitizedDescription = sanitizeYoutubeDescription(finalDescription);
-  // Use placeholder if sanitization resulted in empty string
-  const finalSanitizedDescription = sanitizedDescription || DEFAULT_DESCRIPTION;
+  const finalSanitizedDescription = ensureValidYoutubeDescription(
+    mergedDescription,
+    DEFAULT_DESCRIPTION
+  );
 
   const shouldTagShorts =
-    variant === "short" && !finalSanitizedTitle.toLowerCase().includes("#shorts");
-  const finalYoutubeTitle = shouldTagShorts
-    ? `${finalSanitizedTitle} #shorts`
-    : finalSanitizedTitle;
+    variant === "short" && !baseTitle.toLowerCase().includes("#shorts");
+  const titleWithHashtag = shouldTagShorts
+    ? `${baseTitle} #shorts`
+    : baseTitle;
+  const finalYoutubeTitle = ensureValidYoutubeTitle(titleWithHashtag, baseTitle);
 
   const insertRes = await youtube.videos.insert({
     part: ["snippet", "status"],
