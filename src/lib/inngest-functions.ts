@@ -226,6 +226,41 @@ function validateRequiredElements(script: string): {
   return { ok: true };
 }
 
+// Validation for thumbnail scripts (no voiceover required)
+function validateThumbnailScript(script: string): {
+  ok: boolean;
+  error?: string;
+} {
+  const normalized = script.trim().replace(/\r/g, "");
+  const issues: string[] = [];
+
+  // Check for manim import
+  if (!normalized.includes("from manim import")) {
+    issues.push("Missing required import: from manim import");
+  }
+
+  // Check for class MyScene
+  if (!normalized.includes("class MyScene")) {
+    issues.push("Missing class MyScene definition");
+  }
+
+  // Check for construct method
+  if (!normalized.includes("def construct(self)")) {
+    issues.push("Missing def construct(self) method");
+  }
+
+  if (issues.length > 0) {
+    return {
+      ok: false,
+      error: `Thumbnail script validation failed - missing required elements:\n${issues
+        .map((issue, idx) => `${idx + 1}. ${issue}`)
+        .join("\n")}`,
+    };
+  }
+
+  return { ok: true };
+}
+
 function runHeuristicChecks(
   script: string,
   options: HeuristicOptions = {}
@@ -1273,6 +1308,14 @@ export const uploadVideoToYouTube = inngest.createFunction(
           title,
           voiceoverScript: voiceoverScript || "",
         });
+
+        // Validate thumbnail script has required elements
+        const thumbnailValidation = validateThumbnailScript(thumbnailScript);
+        if (!thumbnailValidation.ok) {
+          throw new Error(
+            `Thumbnail script validation failed: ${thumbnailValidation.error}`
+          );
+        }
 
         console.log("Rendering thumbnail...");
         const thumbnailResult = await renderManimThumbnail({
