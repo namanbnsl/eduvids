@@ -120,18 +120,29 @@ export async function uploadToYouTube({
     try {
       console.log("Uploading custom thumbnail for video:", videoId);
 
-      // Convert data URL to buffer
-      const base64Data = thumbnailDataUrl.replace(
-        /^data:image\/\w+;base64,/,
-        ""
+      const match = thumbnailDataUrl.match(
+        /^data:(image\/[A-Za-z0-9.+-]+);base64,(.+)$/
       );
+
+      if (!match) {
+        throw new Error("Invalid thumbnail data URL");
+      }
+
+      const [, mimeType, base64Data] = match;
       const thumbnailBuffer = Buffer.from(base64Data, "base64");
+
+      if (thumbnailBuffer.length > 2_000_000) {
+        throw new Error(
+          `Thumbnail exceeds 2MB limit (size: ${thumbnailBuffer.length} bytes)`
+        );
+      }
+
       const thumbnailStream = Readable.from(thumbnailBuffer);
 
       await youtube.thumbnails.set({
         videoId: videoId,
         media: {
-          mimeType: "image/png",
+          mimeType,
           body: thumbnailStream,
         },
       });

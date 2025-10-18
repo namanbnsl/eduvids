@@ -1283,7 +1283,7 @@ export async function generateSimpleThumbnail({
       sandboxId: sandbox.sandboxId,
     });
 
-    const thumbnailPath = "/home/user/thumbnail.png";
+    const thumbnailPath = "/home/user/thumbnail.jpg";
 
     // Determine dimensions based on orientation
     const width = orientation === "portrait" ? 720 : 1280;
@@ -1395,8 +1395,11 @@ for i, line in enumerate(lines):
     # Draw main text
     draw.text((x, y), line, font=font, fill=(255, 255, 255))
 
-# Save
-img.save('${thumbnailPath}')
+# Ensure final image is RGB before saving
+img = img.convert('RGB')
+
+# Save as optimized JPEG within size limits
+img.save('${thumbnailPath}', format='JPEG', quality=90, optimize=True, progressive=True)
 print('Thumbnail generated successfully')
 `;
 
@@ -1425,7 +1428,7 @@ print('Thumbnail generated successfully')
 
     const thumbnailBytes = Buffer.from(thumbnailBytesArray);
     const base64 = thumbnailBytes.toString("base64");
-    const dataUrl = `data:image/png;base64,${base64}`;
+    const dataUrl = `data:image/jpeg;base64,${base64}`;
     console.log(`Simple thumbnail generated (length: ${base64.length} chars)`);
 
     await ensureCleanup();
