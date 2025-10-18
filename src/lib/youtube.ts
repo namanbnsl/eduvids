@@ -2,7 +2,6 @@ import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import { Readable } from "node:stream";
 import { generateYoutubeDescription, generateYoutubeTitle } from "@/lib/gemini";
-import type { VideoVariant } from "./job-store";
 
 export type YouTubePrivacyStatus = "public" | "unlisted" | "private";
 
@@ -14,7 +13,6 @@ export interface YouTubeUploadRequest {
   tags?: string[];
   voiceoverScript?: string;
   privacyStatus?: YouTubePrivacyStatus;
-  variant?: VideoVariant;
   thumbnailDataUrl?: string;
 }
 
@@ -44,7 +42,6 @@ export async function uploadToYouTube({
   tags,
   voiceoverScript,
   privacyStatus,
-  variant,
   thumbnailDataUrl,
 }: YouTubeUploadRequest): Promise<{ videoId: string; watchUrl: string }> {
   const auth = getOAuth2Client();
@@ -69,33 +66,29 @@ export async function uploadToYouTube({
 
   // Generate title if not provided
   let finalYoutubeTitle = title?.trim() ?? "";
-  if (!finalYoutubeTitle) {
-    try {
-      finalYoutubeTitle = await generateYoutubeTitle({
-        prompt,
-        voiceoverScript: voiceoverScript ?? "",
-      });
+  try {
+    finalYoutubeTitle = await generateYoutubeTitle({
+      prompt,
+      voiceoverScript: voiceoverScript ?? "",
+    });
 
-      console.log("Generated AI YouTube title:", finalYoutubeTitle);
-    } catch (titleError) {
-      console.warn("Failed to generate AI title:", titleError);
-      finalYoutubeTitle = "AI-Generated Educational Video";
-    }
+    console.log("Generated AI YouTube title:", finalYoutubeTitle);
+  } catch (titleError) {
+    console.warn("Failed to generate AI title:", titleError);
+    finalYoutubeTitle = "AI-Generated Educational Video";
   }
 
   // Generate description if not provided
   let finalDescription = description?.trim() ?? "";
-  if (!finalDescription) {
-    try {
-      finalDescription = await generateYoutubeDescription({
-        prompt,
-        voiceoverScript: voiceoverScript ?? "",
-      });
-    } catch (error) {
-      console.warn("Failed to generate AI description:", error);
-      finalDescription =
-        "An AI-generated educational video created with eduvids.";
-    }
+  try {
+    finalDescription = await generateYoutubeDescription({
+      prompt,
+      voiceoverScript: voiceoverScript ?? "",
+    });
+  } catch (error) {
+    console.warn("Failed to generate AI description:", error);
+    finalDescription =
+      "An AI-generated educational video created with eduvids.";
   }
 
   const insertRes = await youtube.videos.insert({

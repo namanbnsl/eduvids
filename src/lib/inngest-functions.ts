@@ -4,6 +4,8 @@ import {
   generateVoiceoverScript,
   regenerateManimScriptWithError,
   verifyManimScript,
+  generateYoutubeDescription,
+  generateYoutubeTitle,
 } from "./gemini";
 import type {
   ManimGenerationAttempt,
@@ -1240,11 +1242,52 @@ export const generateVideo = inngest.createFunction(
         },
       ];
 
-      const ytTitle = buildYouTubeTitle({ prompt, voiceoverScript });
-      const ytDescription = buildYouTubeDescription({
-        prompt,
-        voiceoverScript,
-      });
+      const { title: generatedYoutubeTitle, description: generatedYoutubeDescription } =
+        await step.run(buildStepId("youtube", "metadata"), async () => {
+          const metadataPrompt = prompt ?? "";
+          const narration = voiceoverScript ?? "";
+
+          let aiTitle: string | undefined;
+          let aiDescription: string | undefined;
+
+          try {
+            const titleText = await generateYoutubeTitle({
+              prompt: metadataPrompt,
+              voiceoverScript: narration,
+            });
+            const trimmedTitle = titleText.trim();
+            aiTitle = trimmedTitle.length ? trimmedTitle : undefined;
+          } catch (error) {
+            console.warn("Failed to generate AI YouTube title:", error);
+          }
+
+          try {
+            const descriptionText = await generateYoutubeDescription({
+              prompt: metadataPrompt,
+              voiceoverScript: narration,
+            });
+            const trimmedDescription = descriptionText.trim();
+            aiDescription = trimmedDescription.length
+              ? trimmedDescription
+              : undefined;
+          } catch (error) {
+            console.warn("Failed to generate AI YouTube description:", error);
+          }
+
+          return {
+            title: aiTitle,
+            description: aiDescription,
+          };
+        });
+
+      const ytTitle =
+        generatedYoutubeTitle ?? buildYouTubeTitle({ prompt, voiceoverScript });
+      const ytDescription =
+        generatedYoutubeDescription ??
+        buildYouTubeDescription({
+          prompt,
+          voiceoverScript,
+        });
       await step.sendEvent("dispatch-youtube-upload", {
         name: "video/youtube.upload.request",
         data: {
