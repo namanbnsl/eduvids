@@ -1,10 +1,7 @@
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import { Readable } from "node:stream";
-import {
-  generateYoutubeDescription,
-  generateYoutubeTitle,
-} from "@/lib/gemini";
+import { generateYoutubeDescription, generateYoutubeTitle } from "@/lib/gemini";
 import type { VideoVariant } from "./job-store";
 
 export type YouTubePrivacyStatus = "public" | "unlisted" | "private";
@@ -20,8 +17,6 @@ export interface YouTubeUploadRequest {
   variant?: VideoVariant;
   thumbnailDataUrl?: string;
 }
-
-
 
 function getOAuth2Client(): OAuth2Client {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -80,6 +75,8 @@ export async function uploadToYouTube({
         prompt,
         voiceoverScript: voiceoverScript ?? "",
       });
+
+      console.log("Generated AI YouTube title:", finalYoutubeTitle);
     } catch (titleError) {
       console.warn("Failed to generate AI title:", titleError);
       finalYoutubeTitle = "AI-Generated Educational Video";
@@ -96,7 +93,8 @@ export async function uploadToYouTube({
       });
     } catch (error) {
       console.warn("Failed to generate AI description:", error);
-      finalDescription = "An AI-generated educational video created with eduvids.";
+      finalDescription =
+        "An AI-generated educational video created with eduvids.";
     }
   }
 
@@ -128,9 +126,12 @@ export async function uploadToYouTube({
   if (thumbnailDataUrl) {
     try {
       console.log("Uploading custom thumbnail for video:", videoId);
-      
+
       // Convert data URL to buffer
-      const base64Data = thumbnailDataUrl.replace(/^data:image\/\w+;base64,/, "");
+      const base64Data = thumbnailDataUrl.replace(
+        /^data:image\/\w+;base64,/,
+        ""
+      );
       const thumbnailBuffer = Buffer.from(base64Data, "base64");
       const thumbnailStream = Readable.from(thumbnailBuffer);
 

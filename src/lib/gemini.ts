@@ -446,7 +446,7 @@ export async function generateYoutubeTitle({
   const model = google("gemini-2.5-flash");
 
   const systemPrompt =
-    "You are a copywriter crafting clear, informative YouTube titles for educational videos. Keep it under 80 characters, avoid clickbait phrasing, and respond with only the final title—no quotes or extra text.";
+    "You are a creative writer crafting clear, informative YouTube titles for educational videos. Keep it under 80 characters, avoid clickbait phrasing, and respond with only the final title—no quotes or extra text.";
   const { text } = await generateText({
     model,
     system: systemPrompt,
