@@ -188,6 +188,7 @@ export default function ChatPage() {
         </div>
         <div className="flex items-center gap-2">
           <Link
+            target="_blank"
             href="https://www.youtube.com/@eduvids-ai"
             aria-label="YouTube"
             className="rounded-full p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
@@ -195,6 +196,7 @@ export default function ChatPage() {
             <Youtube className="size-4" />
           </Link>
           <Link
+            target="_blank"
             href="https://github.com/namanbnsl/eduvids"
             aria-label="GitHub"
             className="rounded-full p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
