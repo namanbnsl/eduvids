@@ -904,7 +904,7 @@ export async function renderManimVideo({
       const watermarkText = "eduvids";
       const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
       // const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@1.0:fontsize=24:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw-20:y=h-th-20`;
-      const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@1.9:fontsize=28:box=0:x=w-tw-20:y=h-th-20`;
+      const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@1.0:fontsize=28:box=0:x=w-tw-20:y=h-th-20`;
       const ffmpegCmd = `ffmpeg -y -i ${processedVideoPath} -vf "${drawText}" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart -c:a copy ${watermarkedPath}`;
       await runCommandOrThrow(ffmpegCmd, {
         description: "Watermark application",
