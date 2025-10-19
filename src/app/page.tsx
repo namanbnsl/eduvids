@@ -20,6 +20,7 @@ import {
   OnboardingTour,
   type OnboardingStep,
 } from "@/components/onboarding-tour";
+import { GithubIcon, YoutubeIcon } from "lucide-react";
 import type { ToolUIPart, UIDataTypes, UIMessage } from "ai";
 import type { JobStatus } from "@/components/video-player";
 
@@ -185,6 +186,22 @@ export default function ChatPage() {
           <span className="hidden md:inline text-zinc-400">/</span>
           <span className="hidden md:inline text-xs text-zinc-500">Chat</span>
         </div>
+        <div className="flex items-center gap-2">
+          <Link
+            href="#"
+            aria-label="YouTube"
+            className="rounded-full p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
+          >
+            <YoutubeIcon className="size-4" />
+          </Link>
+          <Link
+            href="#"
+            aria-label="GitHub"
+            className="rounded-full p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
+          >
+            <GithubIcon className="size-4" />
+          </Link>
+        </div>
       </header>
       {/* Chat area */}
       <div
@@ -320,6 +337,10 @@ export default function ChatPage() {
               <PromptInputSubmit disabled={!input} status={status} />
             </PromptInputToolbar>
           </PromptInput>
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            Please avoid sharing personal data—everything submitted here will be
+            uploaded to the community YouTube channel.
+          </p>
         </div>
       </div>
 
