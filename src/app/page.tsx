@@ -20,7 +20,7 @@ import {
   OnboardingTour,
   type OnboardingStep,
 } from "@/components/onboarding-tour";
-import { GithubIcon, YoutubeIcon } from "lucide-react";
+import { Github, Youtube } from "lucide-react";
 import type { ToolUIPart, UIDataTypes, UIMessage } from "ai";
 import type { JobStatus } from "@/components/video-player";
 
@@ -188,18 +188,18 @@ export default function ChatPage() {
         </div>
         <div className="flex items-center gap-2">
           <Link
-            href="#"
+            href="https://www.youtube.com/@eduvids-ai"
             aria-label="YouTube"
             className="rounded-full p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
           >
-            <YoutubeIcon className="size-4" />
+            <Youtube className="size-4" />
           </Link>
           <Link
-            href="#"
+            href="https://github.com/namanbnsl/eduvids"
             aria-label="GitHub"
             className="rounded-full p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
           >
-            <GithubIcon className="size-4" />
+            <Github className="size-4" />
           </Link>
         </div>
       </header>
