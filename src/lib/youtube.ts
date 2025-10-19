@@ -44,7 +44,6 @@ export async function uploadToYouTube({
   tags,
   voiceoverScript,
   privacyStatus,
-  thumbnailDataUrl,
 }: YouTubeUploadRequest): Promise<{ videoId: string; watchUrl: string }> {
   const auth = getOAuth2Client();
   const youtube = google.youtube({ version: "v3", auth });
@@ -115,45 +114,6 @@ export async function uploadToYouTube({
   const videoId = insertRes.data.id;
   if (!videoId) {
     throw new Error("YouTube upload did not return a video ID");
-  }
-
-  // Upload thumbnail if provided
-  if (thumbnailDataUrl) {
-    try {
-      console.log("Uploading custom thumbnail for video:", videoId);
-
-      const match = thumbnailDataUrl.match(
-        /^data:(image\/[A-Za-z0-9.+-]+);base64,(.+)$/
-      );
-
-      if (!match) {
-        throw new Error("Invalid thumbnail data URL");
-      }
-
-      const [, mimeType, base64Data] = match;
-      const thumbnailBuffer = Buffer.from(base64Data, "base64");
-
-      if (thumbnailBuffer.length > 2_000_000) {
-        throw new Error(
-          `Thumbnail exceeds 2MB limit (size: ${thumbnailBuffer.length} bytes)`
-        );
-      }
-
-      const thumbnailStream = Readable.from(thumbnailBuffer);
-
-      await youtube.thumbnails.set({
-        videoId: videoId,
-        media: {
-          mimeType,
-          body: thumbnailStream,
-        },
-      });
-
-      console.log("Custom thumbnail uploaded successfully for video:", videoId);
-    } catch (thumbnailError) {
-      console.error("Failed to upload thumbnail (non-fatal):", thumbnailError);
-      // Don't fail the whole upload if thumbnail fails
-    }
   }
 
   return { videoId, watchUrl: `https://www.youtube.com/watch?v=${videoId}` };
