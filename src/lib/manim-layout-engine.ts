@@ -257,6 +257,8 @@ export function generateLayoutSetup(
 
   // Add safe zone constants
   parts.push(generateSafeZoneConstants(config));
+  parts.push('config.background_color = "#252830"');
+  parts.push("");
 
   // Add font size recommendations
   const fonts = getRecommendedFontSizes(config);

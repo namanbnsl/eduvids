@@ -1,3 +1,4 @@
+import { NonRetriableError } from "inngest";
 import { inngest } from "./inngest";
 import {
   generateManimScript,
@@ -646,7 +647,7 @@ export const generateVideo = inngest.createFunction(
   {
     id: "generate-manim-video",
     timeouts: { start: "25m", finish: "90m" },
-    retries: 1, // Allow 1 additional retry at the function level
+    retries: 0, // Disable automatic retries; handle regeneration manually
   },
   { event: "video/generate.request" },
   async ({ event, step }) => {
@@ -934,62 +935,68 @@ export const generateVideo = inngest.createFunction(
           const stepResult = await step.run(
             buildStepId("video", "render", "attempt", attempt),
             async () => {
-              const result = await renderManimVideo({
-                script: currentScript,
-                prompt,
-                applyWatermark: true,
-                renderOptions:
-                  variant === "short"
-                    ? {
-                        orientation: "portrait",
-                        resolution: { width: 720, height: 1280 },
-                      }
-                    : undefined,
-              });
-
-              if (
-                !result ||
-                typeof result !== "object" ||
-                typeof result.videoPath !== "string"
-              ) {
-                throw new Error(
-                  "Render step did not produce a valid video result"
-                );
-              }
-
-              const videoDataUrl = result.videoPath;
-              if (!videoDataUrl.startsWith("data:video/mp4;base64,")) {
-                throw new Error(
-                  "Render step returned video data in an unexpected format"
-                );
-              }
-
-              if (jobId) {
-                await jobStore.setProgress(jobId, {
-                  progress: 72,
-                  step: "rendered video",
+              try {
+                const result = await renderManimVideo({
+                  script: currentScript,
+                  prompt,
+                  applyWatermark: true,
+                  renderOptions:
+                    variant === "short"
+                      ? {
+                          orientation: "portrait",
+                          resolution: { width: 720, height: 1280 },
+                        }
+                      : undefined,
                 });
-                await jobStore.setProgress(jobId, {
-                  progress: 80,
-                  step: "uploading video",
+
+                if (
+                  !result ||
+                  typeof result !== "object" ||
+                  typeof result.videoPath !== "string"
+                ) {
+                  throw new Error(
+                    "Render step did not produce a valid video result"
+                  );
+                }
+
+                const videoDataUrl = result.videoPath;
+                if (!videoDataUrl.startsWith("data:video/mp4;base64,")) {
+                  throw new Error(
+                    "Render step returned video data in an unexpected format"
+                  );
+                }
+
+                if (jobId) {
+                  await jobStore.setProgress(jobId, {
+                    progress: 72,
+                    step: "rendered video",
+                  });
+                  await jobStore.setProgress(jobId, {
+                    progress: 80,
+                    step: "uploading video",
+                  });
+                }
+
+                const uploadUrl = await uploadVideo({
+                  videoPath: videoDataUrl,
+                  userId,
                 });
+
+                console.log(" Video uploaded to storage", {
+                  uploadUrl,
+                  renderAttempt: attempt,
+                });
+
+                return {
+                  uploadUrl,
+                  warnings: result.warnings ?? [],
+                  logs: pruneRenderLogs(result.logs),
+                } satisfies RenderAttemptSuccess;
+              } catch (err) {
+                const base =
+                  err instanceof Error ? err : new Error(String(err));
+                throw new NonRetriableError(base.message, { cause: base });
               }
-
-              const uploadUrl = await uploadVideo({
-                videoPath: videoDataUrl,
-                userId,
-              });
-
-              console.log(" Video uploaded to storage", {
-                uploadUrl,
-                renderAttempt: attempt,
-              });
-
-              return {
-                uploadUrl,
-                warnings: result.warnings ?? [],
-                logs: pruneRenderLogs(result.logs),
-              } satisfies RenderAttemptSuccess;
             }
           );
 
@@ -1025,8 +1032,12 @@ export const generateVideo = inngest.createFunction(
           });
           break;
         } catch (error: unknown) {
+          const cause =
+            error instanceof NonRetriableError && error.cause
+              ? error.cause
+              : error;
           const baseError =
-            error instanceof Error ? error : new Error(String(error));
+            cause instanceof Error ? cause : new Error(String(cause));
           const renderError = baseError as RenderProcessError;
 
           const rawMessage = (renderError.message || "").trim();

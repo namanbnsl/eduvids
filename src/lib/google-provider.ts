@@ -13,10 +13,15 @@ if (!googleApiKeys.length) {
   );
 }
 
-const getRandomApiKey = () =>
-  googleApiKeys[Math.floor(Math.random() * googleApiKeys.length)];
+let nextApiKeyIndex = 0;
+
+const getNextApiKey = () => {
+  const apiKey = googleApiKeys[nextApiKeyIndex];
+  nextApiKeyIndex = (nextApiKeyIndex + 1) % googleApiKeys.length;
+  return apiKey;
+};
 
 export const createGoogleProvider = (): GoogleGenerativeAIProvider => {
-  const apiKey = getRandomApiKey();
+  const apiKey = getNextApiKey();
   return createGoogleGenerativeAI({ apiKey });
 };

@@ -1,12 +1,6 @@
 import { CommandExitError, Sandbox } from "@e2b/code-interpreter";
 import { Buffer } from "node:buffer";
 import {
-  detectUsedPlugins,
-  validateAllPlugins,
-  getPluginInstallCommands,
-  MANIM_PLUGINS,
-} from "./manim-plugins";
-import {
   getLayoutConfig,
   getCompleteLayoutCode,
   detectContentType,
@@ -14,9 +8,6 @@ import {
 
 const MAX_COMMAND_OUTPUT_CHARS = 4000;
 let latexEnvironmentVerified = false;
-
-// Track which plugins have been installed per sandbox session
-const installedPluginsCache = new Map<string, Set<string>>();
 
 const EDUVIDS_CALLOUT_TEXT = "Generate your own educational videos for free at";
 
@@ -591,117 +582,6 @@ export async function renderManimVideo({
     const mediaDir = `/home/user/media`;
     const baseVideosDir = `${mediaDir}/videos`;
 
-    // Write Manim script
-    // Detect and validate plugins
-    pushLog({
-      level: "info",
-      message: "Detecting manim plugins",
-      context: "plugin-detection",
-    });
-
-    const usedPlugins = detectUsedPlugins(normalizedScript);
-    if (usedPlugins.length > 0) {
-      console.log("Detected plugins:", usedPlugins);
-      pushLog({
-        level: "info",
-        message: `Detected plugins: ${usedPlugins.join(", ")}`,
-        context: "plugin-detection",
-      });
-
-      // Validate plugin usage
-      const pluginValidation = validateAllPlugins(normalizedScript);
-      if (!pluginValidation.valid) {
-        pushLog({
-          level: "error",
-          message: `Plugin validation failed: ${pluginValidation.errors.join(
-            "; "
-          )}`,
-          context: "plugin-validation",
-        });
-        throw new ManimValidationError(
-          `Plugin validation failed:\n${pluginValidation.errors.join("\n")}`,
-          "plugin-validation",
-          { logs: [...renderLogs] }
-        );
-      }
-
-      if (pluginValidation.warnings.length > 0) {
-        for (const warning of pluginValidation.warnings) {
-          pushLog({
-            level: "warn",
-            message: warning,
-            context: "plugin-validation",
-          });
-          warnings.push({ stage: "plugin-validation", message: warning });
-        }
-      }
-
-      // Install plugins
-      const sandboxId = sandbox.sandboxId;
-      let installedPlugins = installedPluginsCache.get(sandboxId);
-      if (!installedPlugins) {
-        installedPlugins = new Set<string>();
-        installedPluginsCache.set(sandboxId, installedPlugins);
-      }
-
-      for (const pluginId of usedPlugins) {
-        if (!installedPlugins.has(pluginId)) {
-          const plugin = MANIM_PLUGINS[pluginId];
-          if (!plugin) {
-            console.warn(`Unknown plugin ID: ${pluginId}`);
-            continue;
-          }
-
-          pushLog({
-            level: "info",
-            message: `Installing plugin: ${plugin.name}`,
-            context: "plugin-installation",
-          });
-
-          const installCommands = getPluginInstallCommands(normalizedScript);
-          for (const installCmd of installCommands) {
-            if (installCmd) {
-              try {
-                await runCommandOrThrow(installCmd, {
-                  description: `Install ${plugin.name}`,
-                  stage: "plugin-installation",
-                  timeoutMs: 300_000, // 5 minutes for plugin installation
-                  hint: `Failed to install ${plugin.name}. The plugin may not be compatible with this manim version.`,
-                  streamOutput: true,
-                });
-                installedPlugins.add(pluginId);
-              } catch (installError) {
-                console.error(
-                  `Failed to install plugin ${plugin.name}:`,
-                  installError
-                );
-                pushLog({
-                  level: "error",
-                  message: `Failed to install ${plugin.name}: ${String(
-                    installError
-                  )}`,
-                  context: "plugin-installation",
-                });
-                // Continue without this plugin - the script may still work
-                warnings.push({
-                  stage: "plugin-installation",
-                  message: `Plugin ${plugin.name} could not be installed but continuing`,
-                });
-              }
-            }
-          }
-        } else {
-          pushLog({
-            level: "info",
-            message: `Plugin ${
-              MANIM_PLUGINS[pluginId]?.name || pluginId
-            } already installed in this sandbox`,
-            context: "plugin-installation",
-          });
-        }
-      }
-    }
-
     // Inject layout helpers based on render options
     let enhancedScript = normalizedScript;
     const contentType = detectContentType(normalizedScript);
@@ -744,9 +624,7 @@ export async function renderManimVideo({
     enhancedScript = injectEduvidsCallout(enhancedScript);
 
     await sandbox.files.write(scriptPath, enhancedScript);
-    console.log(
-      "Manim script (with plugins and layout helpers) written to sandbox"
-    );
+    console.log("Manim script written to sandbox");
     pushLog({
       level: "info",
       message: "Script written to sandbox with enhancements",
