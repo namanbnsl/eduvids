@@ -18,8 +18,7 @@ let latexEnvironmentVerified = false;
 // Track which plugins have been installed per sandbox session
 const installedPluginsCache = new Map<string, Set<string>>();
 
-const EDUVIDS_CALLOUT_TEXT =
-  "Generate your own educational videos for free at";
+const EDUVIDS_CALLOUT_TEXT = "Generate your own educational videos for free at";
 
 function injectEduvidsCallout(script: string): string {
   if (script.includes(EDUVIDS_CALLOUT_TEXT)) {
@@ -71,13 +70,25 @@ function injectEduvidsCallout(script: string): string {
   }
 
   const snippet = [
-    `${bodyIndent}cta_message = Text("Generate your own educational videos for free at\\nhttps://eduvids.vercel.app", font_size=FONT_CAPTION, color=YELLOW)`,
-    `${bodyIndent}ensure_fits_screen(cta_message)`,
-    `${bodyIndent}cta_message.to_edge(DOWN, buff=1.0)`,
-    `${bodyIndent}cta_message.set_z_index(10)`,
-    `${bodyIndent}validate_position(cta_message, "eduvids message")`,
-    `${bodyIndent}self.play(FadeIn(cta_message, shift=UP), run_time=1.0)`,
-    `${bodyIndent}self.wait(1.0)`,
+    `${bodyIndent}with self.voiceover(text="Generate your own educational videos for free at eduvids dot vercel dot app"):`,
+    `${bodyIndent}    cta_title = Text("Generate your own educational videos for free!", font_size=FONT_CAPTION + 4, color=YELLOW, weight=BOLD)`,
+    `${bodyIndent}    cta_link = Text("https://eduvids.vercel.app", font_size=FONT_CAPTION, color="#00FFFF").next_to(cta_title, DOWN, buff=0.3)`,
+    `${bodyIndent}    cta_group = VGroup(cta_title, cta_link)`,
+    `${bodyIndent}    ensure_fits_screen(cta_group)`,
+    `${bodyIndent}    cta_group.to_edge(DOWN, buff=1.0)`,
+    `${bodyIndent}    cta_group.set_z_index(10)`,
+    `${bodyIndent}    validate_position(cta_group, "eduvids message")`,
+    ``,
+    `${bodyIndent}    # Add background rectangle for subtle contrast (optional)`,
+    `${bodyIndent}    bg = Rectangle(width=cta_group.width + 0.6, height=cta_group.height + 0.4, fill_opacity=0.25, fill_color=BLACK, stroke_width=0).move_to(cta_group)`,
+    `${bodyIndent}    self.add(bg)`,
+    `${bodyIndent}    self.play(FadeIn(cta_title, shift=UP), FadeIn(cta_link, shift=UP), run_time=1.2)`,
+    `${bodyIndent}    self.wait(0.5)`,
+    ``,
+    `${bodyIndent}    # Subtle pulse animation on the link`,
+    `${bodyIndent}    self.play(cta_link.animate.scale(1.05), run_time=0.4)`,
+    `${bodyIndent}    self.play(cta_link.animate.scale(1.0), run_time=0.4)`,
+    `${bodyIndent}    self.wait(0.6)`,
   ];
 
   const insertionNeedsBlankLine =
@@ -602,7 +613,9 @@ export async function renderManimVideo({
       if (!pluginValidation.valid) {
         pushLog({
           level: "error",
-          message: `Plugin validation failed: ${pluginValidation.errors.join("; ")}`,
+          message: `Plugin validation failed: ${pluginValidation.errors.join(
+            "; "
+          )}`,
           context: "plugin-validation",
         });
         throw new ManimValidationError(
@@ -658,10 +671,15 @@ export async function renderManimVideo({
                 });
                 installedPlugins.add(pluginId);
               } catch (installError) {
-                console.error(`Failed to install plugin ${plugin.name}:`, installError);
+                console.error(
+                  `Failed to install plugin ${plugin.name}:`,
+                  installError
+                );
                 pushLog({
                   level: "error",
-                  message: `Failed to install ${plugin.name}: ${String(installError)}`,
+                  message: `Failed to install ${plugin.name}: ${String(
+                    installError
+                  )}`,
                   context: "plugin-installation",
                 });
                 // Continue without this plugin - the script may still work
@@ -675,7 +693,9 @@ export async function renderManimVideo({
         } else {
           pushLog({
             level: "info",
-            message: `Plugin ${MANIM_PLUGINS[pluginId]?.name || pluginId} already installed in this sandbox`,
+            message: `Plugin ${
+              MANIM_PLUGINS[pluginId]?.name || pluginId
+            } already installed in this sandbox`,
             context: "plugin-installation",
           });
         }
@@ -704,13 +724,16 @@ export async function renderManimVideo({
     if (classMatch) {
       const beforeClass = classMatch[1];
       const fromClass = classMatch[2];
-      const afterClass = enhancedScript.slice(classMatch.index! + classMatch[0].length);
+      const afterClass = enhancedScript.slice(
+        classMatch.index! + classMatch[0].length
+      );
       enhancedScript = `${beforeClass}\n${layoutCode}\n\n${fromClass}${afterClass}`;
     } else {
       // Fallback: append at the beginning after imports
       const lines = enhancedScript.split("\n");
-      const lastImportIdx = lines.findLastIndex((line) =>
-        line.trim().startsWith("import ") || line.trim().startsWith("from ")
+      const lastImportIdx = lines.findLastIndex(
+        (line) =>
+          line.trim().startsWith("import ") || line.trim().startsWith("from ")
       );
       if (lastImportIdx >= 0) {
         lines.splice(lastImportIdx + 1, 0, "", layoutCode, "");
@@ -721,7 +744,9 @@ export async function renderManimVideo({
     enhancedScript = injectEduvidsCallout(enhancedScript);
 
     await sandbox.files.write(scriptPath, enhancedScript);
-    console.log("Manim script (with plugins and layout helpers) written to sandbox");
+    console.log(
+      "Manim script (with plugins and layout helpers) written to sandbox"
+    );
     pushLog({
       level: "info",
       message: "Script written to sandbox with enhancements",
@@ -1166,7 +1191,10 @@ export async function renderManimThumbnail({
         await sandbox.kill();
         console.log("Thumbnail E2B sandbox cleaned up successfully");
       } catch (cleanupError) {
-        console.warn("Thumbnail sandbox cleanup error (non-fatal):", cleanupError);
+        console.warn(
+          "Thumbnail sandbox cleanup error (non-fatal):",
+          cleanupError
+        );
       }
     }
   };
@@ -1192,12 +1220,16 @@ export async function renderManimThumbnail({
     });
 
     const layoutCode = getCompleteLayoutCode(layoutConfig);
-    const classMatch = normalizedScript.match(/^((?:.*\n)*?)(class\s+MyScene)/m);
+    const classMatch = normalizedScript.match(
+      /^((?:.*\n)*?)(class\s+MyScene)/m
+    );
     let enhancedScript = normalizedScript;
     if (classMatch) {
       const beforeClass = classMatch[1];
       const fromClass = classMatch[2];
-      const afterClass = normalizedScript.slice(classMatch.index! + classMatch[0].length);
+      const afterClass = normalizedScript.slice(
+        classMatch.index! + classMatch[0].length
+      );
       enhancedScript = `${beforeClass}\n${layoutCode}\n\n${fromClass}${afterClass}`;
     }
 
@@ -1205,13 +1237,18 @@ export async function renderManimThumbnail({
     console.log("Thumbnail script written to sandbox");
 
     // Syntax check
-    const syntaxCheck = await sandbox.commands.run(`python -m py_compile ${scriptPath}`);
+    const syntaxCheck = await sandbox.commands.run(
+      `python -m py_compile ${scriptPath}`
+    );
     if (syntaxCheck.exitCode !== 0) {
       throw new Error(`Thumbnail script syntax error: ${syntaxCheck.stderr}`);
     }
 
     // Render as single frame (PNG)
-    const resolution = renderOptions?.resolution || { width: 1280, height: 720 };
+    const resolution = renderOptions?.resolution || {
+      width: 1280,
+      height: 720,
+    };
     const safeWidth = Math.max(1, Math.round(resolution.width));
     const safeHeight = Math.max(1, Math.round(resolution.height));
 
@@ -1221,8 +1258,9 @@ export async function renderManimThumbnail({
       "--media_dir",
       mediaDir,
       "--disable_caching",
-      "-s",  // Single frame
-      "-r", `${safeWidth},${safeHeight}`,
+      "-s", // Single frame
+      "-r",
+      `${safeWidth},${safeHeight}`,
       "--format=png",
     ];
 
@@ -1234,7 +1272,9 @@ export async function renderManimThumbnail({
     });
 
     if (renderResult.exitCode !== 0) {
-      throw new Error(`Thumbnail render failed: ${renderResult.stderr || renderResult.stdout}`);
+      throw new Error(
+        `Thumbnail render failed: ${renderResult.stderr || renderResult.stdout}`
+      );
     }
 
     // Find the generated PNG
@@ -1291,7 +1331,9 @@ export async function renderManimThumbnail({
     }
 
     if (!imagePath) {
-      throw new Error(`Unable to locate thumbnail PNG under ${baseImagesDir}/${moduleName}`);
+      throw new Error(
+        `Unable to locate thumbnail PNG under ${baseImagesDir}/${moduleName}`
+      );
     }
 
     console.log("Thumbnail file located:", imagePath);
@@ -1307,7 +1349,9 @@ export async function renderManimThumbnail({
     const imageBytes = Buffer.from(imageBytesArray);
     const base64 = imageBytes.toString("base64");
     const dataUrl = `data:image/png;base64,${base64}`;
-    console.log(`Prepared base64 data URL for thumbnail (length: ${base64.length} chars)`);
+    console.log(
+      `Prepared base64 data URL for thumbnail (length: ${base64.length} chars)`
+    );
 
     await ensureCleanup();
     return {
@@ -1334,7 +1378,7 @@ export async function generateSimpleThumbnail({
   orientation = "landscape",
 }: SimpleThumbnailRequest): Promise<ThumbnailResult> {
   void videoDataUrl; // Not using video frame anymore
-  
+
   let sandbox: Sandbox | null = null;
   let cleanupAttempted = false;
 
@@ -1345,7 +1389,10 @@ export async function generateSimpleThumbnail({
         await sandbox.kill();
         console.log("Simple thumbnail sandbox cleaned up successfully");
       } catch (cleanupError) {
-        console.warn("Simple thumbnail cleanup error (non-fatal):", cleanupError);
+        console.warn(
+          "Simple thumbnail cleanup error (non-fatal):",
+          cleanupError
+        );
       }
     }
   };
@@ -1366,8 +1413,11 @@ export async function generateSimpleThumbnail({
     const fontSize = orientation === "portrait" ? 48 : 64;
 
     // Escape single quotes in title for Python
-    const escapedTitle = title.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '\\"');
-    
+    const escapedTitle = title
+      .replace(/\\/g, "\\\\")
+      .replace(/'/g, "\\'")
+      .replace(/"/g, '\\"');
+
     // Generate thumbnail with Python and PIL
     const generateScript = `
 import random
@@ -1481,13 +1531,17 @@ print('Thumbnail generated successfully')
     // Write and execute the Python script
     const scriptPath = "/home/user/generate_thumbnail.py";
     await sandbox.files.write(scriptPath, generateScript);
-    
+
     const generateResult = await sandbox.commands.run(`python3 ${scriptPath}`, {
       timeoutMs: 60_000,
     });
 
     if (generateResult.exitCode !== 0) {
-      throw new Error(`Thumbnail generation failed: ${generateResult.stderr || generateResult.stdout}`);
+      throw new Error(
+        `Thumbnail generation failed: ${
+          generateResult.stderr || generateResult.stdout
+        }`
+      );
     }
 
     console.log("Thumbnail generated successfully");
@@ -1496,7 +1550,7 @@ print('Thumbnail generated successfully')
     const thumbnailBytesArray = (await sandbox.files.read(thumbnailPath, {
       format: "bytes",
     })) as Uint8Array;
-    
+
     if (!thumbnailBytesArray || !thumbnailBytesArray.length) {
       throw new Error("Generated thumbnail is empty");
     }
