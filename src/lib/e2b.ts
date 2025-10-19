@@ -18,6 +18,79 @@ let latexEnvironmentVerified = false;
 // Track which plugins have been installed per sandbox session
 const installedPluginsCache = new Map<string, Set<string>>();
 
+const EDUVIDS_CALLOUT_TEXT =
+  "Generate your own educational videos for free at";
+
+function injectEduvidsCallout(script: string): string {
+  if (script.includes(EDUVIDS_CALLOUT_TEXT)) {
+    return script;
+  }
+
+  const lines = script.split("\n");
+  const constructPattern = /^\s*def\s+construct\s*\(\s*self\s*\)\s*:/;
+  let constructIndex = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    if (constructPattern.test(lines[i])) {
+      constructIndex = i;
+      break;
+    }
+  }
+
+  if (constructIndex === -1) {
+    return script;
+  }
+
+  let bodyIndent = "        ";
+  for (let j = constructIndex + 1; j < lines.length; j++) {
+    const trimmed = lines[j]?.trim() ?? "";
+    if (!trimmed.length) {
+      continue;
+    }
+    const indentMatch = lines[j]?.match(/^\s+/);
+    if (indentMatch && indentMatch[0]) {
+      bodyIndent = indentMatch[0];
+    } else {
+      const defIndent = lines[constructIndex]?.match(/^\s*/)?.[0] ?? "";
+      bodyIndent = `${defIndent}    `;
+    }
+    break;
+  }
+
+  let insertionIndex = lines.length;
+  for (let k = constructIndex + 1; k < lines.length; k++) {
+    const trimmed = lines[k]?.trim() ?? "";
+    if (!trimmed.length) {
+      continue;
+    }
+    const indent = lines[k]?.match(/^\s*/)?.[0] ?? "";
+    if (indent.length < bodyIndent.length) {
+      insertionIndex = k;
+      break;
+    }
+  }
+
+  const snippet = [
+    `${bodyIndent}cta_message = Text("Generate your own educational videos for free at\\nhttps://eduvids.vercel.app", font_size=FONT_CAPTION, color=YELLOW)`,
+    `${bodyIndent}ensure_fits_screen(cta_message)`,
+    `${bodyIndent}cta_message.to_edge(DOWN, buff=1.0)`,
+    `${bodyIndent}cta_message.set_z_index(10)`,
+    `${bodyIndent}validate_position(cta_message, "eduvids message")`,
+    `${bodyIndent}self.play(FadeIn(cta_message, shift=UP), run_time=1.0)`,
+    `${bodyIndent}self.wait(1.0)`,
+  ];
+
+  const insertionNeedsBlankLine =
+    insertionIndex > constructIndex + 1 &&
+    (lines[insertionIndex - 1]?.trim()?.length ?? 0) > 0;
+
+  const insertionLines = insertionNeedsBlankLine ? ["", ...snippet] : snippet;
+
+  lines.splice(insertionIndex, 0, ...insertionLines);
+
+  return lines.join("\n");
+}
+
 export type ValidationStage =
   | "input"
   | "heuristic"
@@ -644,6 +717,8 @@ export async function renderManimVideo({
         enhancedScript = lines.join("\n");
       }
     }
+
+    enhancedScript = injectEduvidsCallout(enhancedScript);
 
     await sandbox.files.write(scriptPath, enhancedScript);
     console.log("Manim script (with plugins and layout helpers) written to sandbox");
