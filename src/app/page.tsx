@@ -3,6 +3,7 @@
 import type React from "react";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { generateTopics } from "@/lib/actions/generate-topics";
 import Link from "next/link";
 import { Message, MessageAvatar, MessageContent } from "@/components/message";
 import {
@@ -75,6 +76,8 @@ export default function ChatPage() {
   >(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isDark, setIsDark] = useState(false);
+  const [topics, setTopics] = useState<string[]>([]);
+  const [isLoadingTopics, setIsLoadingTopics] = useState(true);
 
   const conversationSpotlightRef = useRef<HTMLDivElement | null>(null);
   const newChatSpotlightRef = useRef<HTMLDivElement | null>(null);
@@ -114,19 +117,14 @@ export default function ChatPage() {
       return;
     }
 
-    const stored = window.localStorage.getItem("theme");
-    const prefersDark = window.matchMedia(
-      "(prefers-color-scheme: dark)"
-    ).matches;
+    // Sync theme state with the class already applied by the inline script
+    const isDarkMode = document.documentElement.classList.contains("dark");
+    setIsDark(isDarkMode);
 
-    // Use stored theme if it exists, otherwise use system preference
-    const shouldBeDark = stored ? stored === "dark" : prefersDark;
-
-    setIsDark(shouldBeDark);
-    if (shouldBeDark) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
+    // Hide loading screen
+    const loadingScreen = document.getElementById("loading-screen");
+    if (loadingScreen) {
+      loadingScreen.style.display = "none";
     }
 
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "1");
@@ -134,6 +132,10 @@ export default function ChatPage() {
     if (!seen) {
       setShowOnboarding(true);
     }
+
+    generateTopics()
+      .then(setTopics)
+      .finally(() => setIsLoadingTopics(false));
   }, []);
 
   useEffect(() => {
@@ -482,7 +484,11 @@ export default function ChatPage() {
 
               {/* Quick action cards */}
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-700 delay-200">
-                <QuickActionCards onCardClick={(text) => setInput(text)} />
+                <QuickActionCards 
+                  onCardClick={(text) => setInput(text)} 
+                  topics={topics} 
+                  isLoading={isLoadingTopics}
+                />
               </div>
             </div>
           </div>
