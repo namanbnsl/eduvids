@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { VideoJob, VideoVariant, YoutubeStatus } from "@/lib/job-store";
 import { VideoProgressCard } from "@/components/ui/video-progress-card";
+import { Monitor, Smartphone } from "lucide-react";
 
 export type JobStatus = "generating" | "ready" | "error";
 
@@ -512,12 +513,27 @@ export function VideoPlayer({
 
   if (jobStatus !== "ready" || !videoUrl) {
     return (
-      <VideoProgressCard
-        title={`Generating...`}
-        subtitle={stageTitle}
-        progress={normalizedProgress}
-        eta={`ETA: ${etaDisplay ?? "Calculating…"}`}
-      />
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          {currentVariant === "short" ? (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-secondary-foreground text-xs font-medium">
+              <Smartphone className="size-3.5" />
+              Short
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-secondary-foreground text-xs font-medium">
+              <Monitor className="size-3.5" />
+              Video
+            </div>
+          )}
+        </div>
+        <VideoProgressCard
+          title={`Generating...`}
+          subtitle={stageTitle}
+          progress={normalizedProgress}
+          eta={`ETA: ${etaDisplay ?? "Calculating…"}`}
+        />
+      </div>
       // <div
       //   className={
       //     "w-full rounded-lg border border-border bg-card text-card-foreground p-6 flex items-center justify-center"
@@ -574,38 +590,53 @@ export function VideoPlayer({
   }
 
   return (
-    <div
-      className="w-full rounded-lg border border-border bg-card text-card-foreground p-2"
-      style={{ aspectRatio: currentVariant === "short" ? "9 / 16" : "16 / 9" }}
-    >
-      <video
-        ref={videoRef}
-        src={videoUrl}
-        controls
-        className="w-full h-full rounded-md"
-      />
-      {youtubeStatus === "uploaded" && youtubeUrl ? (
-        <div className="mt-3 px-2">
-          <a
-            href={youtubeUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-md bg-secondary px-3 py-1.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
-          >
-            Watch on YouTube
-          </a>
-        </div>
-      ) : youtubeStatus === "pending" ? (
-        <p className="mt-3 px-2 text-sm text-muted-foreground">
-          Uploading to YouTube… the link will appear here once ready.
-        </p>
-      ) : youtubeStatus === "failed" ? (
-        <p className="mt-3 px-2 text-sm text-red-500">
-          {youtubeError
-            ? `YouTube upload failed: ${youtubeError}`
-            : "YouTube upload failed. Please try again later."}
-        </p>
-      ) : null}
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        {currentVariant === "short" ? (
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-secondary-foreground text-xs font-medium">
+            <Smartphone className="size-3.5" />
+            Short
+          </div>
+        ) : (
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-secondary-foreground text-xs font-medium">
+            <Monitor className="size-3.5" />
+            Video
+          </div>
+        )}
+      </div>
+      <div
+        className="w-full rounded-lg border border-border bg-card text-card-foreground p-2"
+        style={{ aspectRatio: currentVariant === "short" ? "9 / 16" : "16 / 9" }}
+      >
+        <video
+          ref={videoRef}
+          src={videoUrl}
+          controls
+          className="w-full h-full rounded-md"
+        />
+        {youtubeStatus === "uploaded" && youtubeUrl ? (
+          <div className="mt-3 px-2">
+            <a
+              href={youtubeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-md bg-secondary px-3 py-1.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
+            >
+              Watch on YouTube
+            </a>
+          </div>
+        ) : youtubeStatus === "pending" ? (
+          <p className="mt-3 px-2 text-sm text-muted-foreground">
+            Uploading to YouTube… the link will appear here once ready.
+          </p>
+        ) : youtubeStatus === "failed" ? (
+          <p className="mt-3 px-2 text-sm text-red-500">
+            {youtubeError
+              ? `YouTube upload failed: ${youtubeError}`
+              : "YouTube upload failed. Please try again later."}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }

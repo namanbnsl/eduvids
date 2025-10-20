@@ -10,42 +10,42 @@ export async function generateTopics(): Promise<string[]> {
 
     const { text } = await generateText({
       model,
-      prompt: `Generate 8 engaging and diverse video/short topic ideas for an educational content platform. 
+      prompt: `Generate 4 fun and interesting video/short topic ideas for an educational content platform focused on math, physics, and chemistry.
 
 Topics should:
-- Cover various subjects (science, math, history, technology, nature, space, physics, chemistry, biology, etc.)
+- Focus ONLY on math, physics, and chemistry
+- Be fascinating and visually engaging 
 - Be concise and clear (under 60 characters each)
-- Be interesting and visually engaging for animated videos
-- Mix fundamental concepts with fascinating phenomena
-- Be actionable prompts like "Explain X" or "How does Y work?"
+- Focus on cool phenomena, tough concepts, or surprising facts.
+- Be actionable prompts like "How do X work?" or "Why does Y happen?"
+- Mix spectacular phenomena with fundamental concepts
 
-Return ONLY a JSON array of 8 strings, like this:
-["topic 1", "topic 2", "topic 3", ...]
+Return ONLY a JSON array of 4 strings, like this:
+["topic 1", "topic 2", "topic 3", "topic 4"]
 
 No explanation, no markdown, just the JSON array.`,
       temperature: 0.9,
     });
 
-    const cleanText = text.trim().replace(/```json\n?/g, "").replace(/```/g, "");
+    const cleanText = text
+      .trim()
+      .replace(/```json\n?/g, "")
+      .replace(/```/g, "");
     const topics = JSON.parse(cleanText);
 
     if (!Array.isArray(topics)) {
       throw new Error("Invalid response format");
     }
 
-    return topics.slice(0, 8);
+    return topics.slice(0, 4);
   } catch (error) {
     console.error("Failed to generate topics:", error);
-    
+
     return [
-      "How does photosynthesis work?",
-      "Explain the Pythagorean theorem",
-      "What causes earthquakes?",
-      "How do black holes form?",
-      "The water cycle explained",
-      "Newton's laws of motion",
-      "How does DNA replication work?",
-      "The periodic table basics",
+      "How do nuclear reactions work?",
+      "Why do rainbows form?",
+      "What happens in a supernova?",
+      "How does quantum tunneling work?",
     ];
   }
 }

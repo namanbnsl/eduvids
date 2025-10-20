@@ -8,7 +8,7 @@ interface QuickActionCardsProps {
 }
 
 export function QuickActionCards({ onCardClick, topics, isLoading = false }: QuickActionCardsProps) {
-  const placeholderCount = 8;
+  const placeholderCount = 4;
 
   if (isLoading || !topics || topics.length === 0) {
     return (

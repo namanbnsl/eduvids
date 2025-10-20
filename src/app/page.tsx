@@ -22,7 +22,15 @@ import {
   OnboardingTour,
   type OnboardingStep,
 } from "@/components/onboarding-tour";
-import { Github, Youtube, Moon, Sun } from "lucide-react";
+import {
+  Github,
+  Youtube,
+  Moon,
+  Sun,
+  Monitor,
+  Smartphone,
+  Video,
+} from "lucide-react";
 import type { ToolUIPart, UIDataTypes, UIMessage } from "ai";
 import type { JobStatus } from "@/components/video-player";
 import { QuickActionCards } from "@/components/quick-action-cards";
@@ -86,24 +94,52 @@ export default function ChatPage() {
 
   const { messages, status, sendMessage } = useChat<ChatMessage>();
 
+  const handleGenerationModeToggle = (mode: "video" | "short") => {
+    const currentMode = generationMode;
+    const videoPrefix = "Generate a video of ";
+    const shortPrefix = "Generate a short vertical video of ";
+
+    if (currentMode === mode) {
+      // Toggling off - remove prefix
+      setGenerationMode(null);
+      if (input.startsWith(videoPrefix)) {
+        setInput(input.slice(videoPrefix.length));
+      } else if (input.startsWith(shortPrefix)) {
+        setInput(input.slice(shortPrefix.length));
+      }
+    } else {
+      // Toggling on or switching modes
+      setGenerationMode(mode);
+      let newInput = input;
+
+      // Remove old prefix if exists
+      if (newInput.startsWith(videoPrefix)) {
+        newInput = newInput.slice(videoPrefix.length);
+      } else if (newInput.startsWith(shortPrefix)) {
+        newInput = newInput.slice(shortPrefix.length);
+      }
+
+      // Add new prefix
+      if (mode === "video") {
+        setInput(videoPrefix + newInput);
+      } else {
+        setInput(shortPrefix + newInput);
+      }
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const trimmed = input.trim();
-    const mode = generationMode;
-    const text =
-      mode === "video" && trimmed.length > 0
-        ? `Generate a video of ${trimmed}`
-        : mode === "short" && trimmed.length > 0
-        ? `Generate a short vertical video of ${trimmed}`
-        : input;
+    if (!trimmed) return;
 
     sendMessage(
-      { text },
+      { text: trimmed },
       {
         body: {
           model: "gemini-2.5-flash",
-          forceVariant: mode,
+          forceVariant: generationMode,
         },
       }
     );
@@ -145,21 +181,10 @@ export default function ChatPage() {
       }
     };
 
-    const handleClickOutside = (e: MouseEvent) => {
-      if (generationMode && videoToggleSpotlightRef.current) {
-        const target = e.target as Node;
-        if (!videoToggleSpotlightRef.current.contains(target)) {
-          setGenerationMode(null);
-        }
-      }
-    };
-
     document.addEventListener("keydown", handleEscape);
-    document.addEventListener("mousedown", handleClickOutside);
 
     return () => {
       document.removeEventListener("keydown", handleEscape);
-      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [generationMode]);
 
@@ -373,40 +398,28 @@ export default function ChatPage() {
                 <PromptInputTextarea
                   onChange={(e) => setInput(e.target.value)}
                   value={input}
-                  placeholder={
-                    generationMode === "video"
-                      ? "Describe the topic or animation you want to turn into a video"
-                      : generationMode === "short"
-                      ? "Describe the topic for your vertical short"
-                      : "Choose a mode and describe the video you want to generate"
-                  }
+                  placeholder="Choose a mode and describe the video you want to generate"
                 />
                 <PromptInputToolbar>
                   <PromptInputTools>
                     <div ref={videoToggleSpotlightRef} className="inline-flex">
                       <div className="inline-flex gap-1">
                         <PromptInputButton
-                          onClick={() =>
-                            setGenerationMode((mode) =>
-                              mode === "video" ? null : "video"
-                            )
-                          }
+                          onClick={() => handleGenerationModeToggle("video")}
                           variant={
                             generationMode === "video" ? "default" : "outline"
                           }
                         >
+                          <Monitor className="size-4" />
                           Video
                         </PromptInputButton>
                         <PromptInputButton
-                          onClick={() =>
-                            setGenerationMode((mode) =>
-                              mode === "short" ? null : "short"
-                            )
-                          }
+                          onClick={() => handleGenerationModeToggle("short")}
                           variant={
                             generationMode === "short" ? "default" : "outline"
                           }
                         >
+                          <Smartphone className="size-4" />
                           Short
                         </PromptInputButton>
                       </div>
@@ -424,11 +437,12 @@ export default function ChatPage() {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center px-4 animate-in fade-in duration-700">
             <div className="w-full max-w-5xl animate-in slide-in-from-bottom-4 duration-700">
-              {/* Greeting */}
               <div className="text-center mb-8 animate-in fade-in slide-in-from-top-2 duration-700">
                 <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-2 leading-tight">
-                  <span className="text-orange-500">📺</span> Generate Your Own
-                  Video.
+                  <span className="text-cyan-400">
+                    <Video className="inline-block size-12 mb-1" />
+                  </span>{" "}
+                  Generate Your Own Video.
                 </h1>
               </div>
 
@@ -441,7 +455,7 @@ export default function ChatPage() {
                   <PromptInputTextarea
                     onChange={(e) => setInput(e.target.value)}
                     value={input}
-                    placeholder="Choose a mode and describe the video you want to generate."
+                    placeholder="Choose a mode (Video or Short) and describe your topic"
                   />
                   <PromptInputToolbar>
                     <PromptInputTools>
@@ -460,6 +474,8 @@ export default function ChatPage() {
                               generationMode === "video" ? "default" : "outline"
                             }
                           >
+                            {" "}
+                            <Monitor className="size-4" />
                             Video
                           </PromptInputButton>
                           <PromptInputButton
@@ -472,6 +488,7 @@ export default function ChatPage() {
                               generationMode === "short" ? "default" : "outline"
                             }
                           >
+                            <Smartphone className="size-4" />
                             Short
                           </PromptInputButton>
                         </div>
@@ -484,9 +501,20 @@ export default function ChatPage() {
 
               {/* Quick action cards */}
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-700 delay-200">
-                <QuickActionCards 
-                  onCardClick={(text) => setInput(text)} 
-                  topics={topics} 
+                <QuickActionCards
+                  onCardClick={(text) => {
+                    const videoPrefix = "Generate a video of ";
+                    const shortPrefix = "Generate a short vertical video of ";
+
+                    if (generationMode === "video") {
+                      setInput(videoPrefix + text);
+                    } else if (generationMode === "short") {
+                      setInput(shortPrefix + text);
+                    } else {
+                      setInput(text);
+                    }
+                  }}
+                  topics={topics}
                   isLoading={isLoadingTopics}
                 />
               </div>
