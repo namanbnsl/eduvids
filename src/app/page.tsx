@@ -1,8 +1,9 @@
 "use client";
 
+import type React from "react";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Separator } from "@/components/ui/separator";
 import { Message, MessageAvatar, MessageContent } from "@/components/message";
 import {
   PromptInput,
@@ -20,9 +21,10 @@ import {
   OnboardingTour,
   type OnboardingStep,
 } from "@/components/onboarding-tour";
-import { Github, Youtube } from "lucide-react";
+import { Github, Youtube, Moon, Sun } from "lucide-react";
 import type { ToolUIPart, UIDataTypes, UIMessage } from "ai";
 import type { JobStatus } from "@/components/video-player";
+import { QuickActionCards } from "@/components/quick-action-cards";
 
 const ONBOARDING_STORAGE_KEY = "eduvids:onboarding:v1";
 
@@ -72,6 +74,7 @@ export default function ChatPage() {
     "video" | "short" | null
   >(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isDark, setIsDark] = useState(false);
 
   const conversationSpotlightRef = useRef<HTMLDivElement | null>(null);
   const newChatSpotlightRef = useRef<HTMLDivElement | null>(null);
@@ -111,12 +114,64 @@ export default function ChatPage() {
       return;
     }
 
+    const stored = window.localStorage.getItem("theme");
+    const prefersDark = window.matchMedia(
+      "(prefers-color-scheme: dark)"
+    ).matches;
+
+    // Use stored theme if it exists, otherwise use system preference
+    const shouldBeDark = stored ? stored === "dark" : prefersDark;
+    
+    setIsDark(shouldBeDark);
+    if (shouldBeDark) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "1");
     const seen = window.localStorage.getItem(ONBOARDING_STORAGE_KEY);
     if (!seen) {
       setShowOnboarding(true);
     }
   }, []);
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && generationMode) {
+        setGenerationMode(null);
+      }
+    };
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (generationMode && videoToggleSpotlightRef.current) {
+        const target = e.target as Node;
+        if (!videoToggleSpotlightRef.current.contains(target)) {
+          setGenerationMode(null);
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [generationMode]);
+
+  const toggleTheme = () => {
+    const newIsDark = !isDark;
+    setIsDark(newIsDark);
+    if (newIsDark) {
+      document.documentElement.classList.add("dark");
+      window.localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      window.localStorage.setItem("theme", "light");
+    }
+  };
 
   const onboardingSteps = useMemo<OnboardingStep[]>(
     () => [
@@ -170,60 +225,75 @@ export default function ChatPage() {
     setShowOnboarding(false);
   };
 
+  const hasMessages = messages.length > 0;
+
   return (
-    <div className="relative flex flex-col h-svh">
+    <div className="relative flex flex-col h-svh bg-background">
       {/* Background wash */}
       <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(120,120,255,0.05),transparent_50%)]" />
+
       {/* Top bar */}
-      <header className="flex items-center justify-between gap-3 px-4 md:px-6 py-4 border-b border-zinc-200/70 dark:border-zinc-800/70">
+      <header className="flex items-center justify-between gap-3 px-4 md:px-6 py-4 border-b border-border">
         <div className="flex items-center gap-2">
           <Link
             href="/"
-            className="font-mono text-xs text-zinc-500 hover:text-foreground transition-colors"
+            className="font-mono text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             eduvids
           </Link>
-          <span className="hidden md:inline text-zinc-400">/</span>
-          <span className="hidden md:inline text-xs text-zinc-500">Chat</span>
+          <span className="hidden md:inline text-muted-foreground">/</span>
+          <span className="hidden md:inline text-sm text-muted-foreground">
+            Chat
+          </span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={toggleTheme}
+            aria-label="Toggle dark mode"
+            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            {isDark ? <Sun className="size-5" /> : <Moon className="size-5" />}
+          </button>
           <Link
             target="_blank"
             href="https://www.youtube.com/@eduvids-ai"
             aria-label="YouTube"
-            className="rounded-full p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
+            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           >
-            <Youtube className="size-4" />
+            <Youtube className="size-5" />
           </Link>
           <Link
             target="_blank"
             href="https://github.com/namanbnsl/eduvids"
             aria-label="GitHub"
-            className="rounded-full p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
+            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           >
-            <Github className="size-4" />
+            <Github className="size-5" />
           </Link>
         </div>
       </header>
-      {/* Chat area */}
-      <div
-        className={`mx-auto w-full max-w-7xl flex-1 px-4 md:px-6 flex flex-col`}
-      >
-        <div
-          ref={conversationSpotlightRef}
-          className="relative flex flex-1 flex-col"
-        >
-          <Conversation>
-            <ConversationContent>
-              {messages.map((message) => (
-                <Message from={message.role} key={message.id}>
-                  <MessageContent>
-                    {message.parts?.map((part, i) => {
-                      if (part.type === "text") {
-                        return (
-                          <Response
-                            key={`${message.id}-${i}`}
-                            className={`
+
+      {/* Main content area */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {hasMessages ? (
+          <>
+            {/* Messages area */}
+            <div
+              ref={conversationSpotlightRef}
+              className="flex-1 overflow-y-auto animate-in fade-in duration-500"
+            >
+              <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4">
+                <Conversation>
+                  <ConversationContent>
+                    {messages.map((message) => (
+                      <Message from={message.role} key={message.id}>
+                        <MessageContent>
+                          {message.parts?.map((part, i) => {
+                            if (part.type === "text") {
+                              return (
+                                <Response
+                                  key={`${message.id}-${i}`}
+                                  className={`
         max-w-none text-base leading-relaxed break-words ${
           message.role == "assistant" ? "p-4" : ""
         } rounded-lg
@@ -241,109 +311,179 @@ export default function ChatPage() {
         [&_li]:leading-relaxed
 
         [&>pre]:my-4 [&>pre]:p-4 [&>pre]:rounded-lg [&>pre]:overflow-x-auto
-        [&>pre]:bg-zinc-800 [&>pre]:text-zinc-100
+        [&>pre]:bg-muted [&>pre]:text-foreground
 
         [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-sm
-        [&_code]:bg-zinc-200 dark:[&_code]:bg-zinc-700
+        [&_code]:bg-muted [&_code]:text-foreground
 
         [&>blockquote]:my-4 [&>blockquote]:pl-4 [&>blockquote]:border-l-4
-        [&>blockquote]:border-zinc-300 dark:[&>blockquote]:border-zinc-600
-        [&>blockquote]:italic [&>blockquote]:text-zinc-600 dark:[&>blockquote]:text-zinc-400
+        [&>blockquote]:border-border
+        [&>blockquote]:italic [&>blockquote]:text-muted-foreground
 
         [&_.math-display]:my-4 [&_.math-display]:text-center
         [&_.math-inline]:mx-1
       `}
-                          >
-                            {part.text}
-                          </Response>
-                        );
-                      }
+                                >
+                                  {part.text}
+                                </Response>
+                              );
+                            }
 
-                      if (isGenerateVideoToolPart(part)) {
-                        switch (part.state) {
-                          case "input-available":
-                            return <div key={i}>Loading video...</div>;
-                          case "output-available":
-                            return (
-                              <div key={i}>
-                                <VideoPlayer {...part.output} />
-                              </div>
-                            );
-                          case "output-error":
-                            return <div key={i}>Error: {part.errorText}</div>;
-                          default:
+                            if (isGenerateVideoToolPart(part)) {
+                              switch (part.state) {
+                                case "input-available":
+                                  return <div key={i}>Loading video...</div>;
+                                case "output-available":
+                                  return (
+                                    <div key={i}>
+                                      <VideoPlayer {...part.output} />
+                                    </div>
+                                  );
+                                case "output-error":
+                                  return (
+                                    <div key={i}>Error: {part.errorText}</div>
+                                  );
+                                default:
+                                  return null;
+                              }
+                            }
+
                             return null;
-                        }
-                      }
+                          })}
+                        </MessageContent>
+                        <MessageAvatar
+                          src=""
+                          name={message.role == "assistant" ? "AI" : "ME"}
+                        />
+                      </Message>
+                    ))}
+                  </ConversationContent>
+                </Conversation>
+              </div>
+            </div>
 
-                      return null;
-                    })}
-                  </MessageContent>
-                  <MessageAvatar
-                    src=""
-                    name={message.role == "assistant" ? "AI" : "ME"}
+            {/* Input at bottom with smooth transition */}
+            <div
+              className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4 animate-in slide-in-from-bottom-4 fade-in duration-500"
+              ref={composerSpotlightRef}
+            >
+              <PromptInput onSubmit={handleSubmit}>
+                <PromptInputTextarea
+                  onChange={(e) => setInput(e.target.value)}
+                  value={input}
+                  placeholder={
+                    generationMode === "video"
+                      ? "Describe the topic or animation you want to turn into a video"
+                      : generationMode === "short"
+                      ? "Describe the topic for your vertical short"
+                      : "How can I help you today?"
+                  }
+                />
+                <PromptInputToolbar>
+                  <PromptInputTools>
+                    <div ref={videoToggleSpotlightRef} className="inline-flex">
+                      <div className="inline-flex gap-1">
+                        <PromptInputButton
+                          onClick={() =>
+                            setGenerationMode((mode) =>
+                              mode === "video" ? null : "video"
+                            )
+                          }
+                          variant={
+                            generationMode === "video" ? "default" : "outline"
+                          }
+                        >
+                          Video
+                        </PromptInputButton>
+                        <PromptInputButton
+                          onClick={() =>
+                            setGenerationMode((mode) =>
+                              mode === "short" ? null : "short"
+                            )
+                          }
+                          variant={
+                            generationMode === "short" ? "default" : "outline"
+                          }
+                        >
+                          Short
+                        </PromptInputButton>
+                      </div>
+                    </div>
+                  </PromptInputTools>
+                  <PromptInputSubmit disabled={!input} status={status} />
+                </PromptInputToolbar>
+              </PromptInput>
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                Please avoid sharing personal data—everything submitted here
+                will be uploaded to the community YouTube channel.
+              </p>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center px-4 animate-in fade-in duration-700">
+            <div className="w-full max-w-5xl animate-in slide-in-from-bottom-4 duration-700">
+              {/* Greeting */}
+              <div className="text-center mb-8 animate-in fade-in slide-in-from-top-2 duration-700">
+                <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-2 leading-tight">
+                  <span className="text-orange-500">📺</span> What video do you
+                  want to create?
+                </h1>
+              </div>
+
+              {/* Centered input */}
+              <div ref={composerSpotlightRef} className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-700 delay-100">
+                <PromptInput onSubmit={handleSubmit}>
+                  <PromptInputTextarea
+                    onChange={(e) => setInput(e.target.value)}
+                    value={input}
+                    placeholder="How can I help you today?"
                   />
-                </Message>
-              ))}
-            </ConversationContent>
-          </Conversation>
-        </div>
+                  <PromptInputToolbar>
+                    <PromptInputTools>
+                      <div
+                        ref={videoToggleSpotlightRef}
+                        className="inline-flex"
+                      >
+                        <div className="inline-flex gap-1">
+                          <PromptInputButton
+                            onClick={() =>
+                              setGenerationMode((mode) =>
+                                mode === "video" ? null : "video"
+                              )
+                            }
+                            variant={
+                              generationMode === "video" ? "default" : "outline"
+                            }
+                          >
+                            Video
+                          </PromptInputButton>
+                          <PromptInputButton
+                            onClick={() =>
+                              setGenerationMode((mode) =>
+                                mode === "short" ? null : "short"
+                              )
+                            }
+                            variant={
+                              generationMode === "short" ? "default" : "outline"
+                            }
+                          >
+                            Short
+                          </PromptInputButton>
+                        </div>
+                      </div>
+                    </PromptInputTools>
+                    <PromptInputSubmit disabled={!input} status={status} />
+                  </PromptInputToolbar>
+                </PromptInput>
+              </div>
 
-        <Separator />
-
-        {/* Composer */}
-        <div className="w-full py-4" ref={composerSpotlightRef}>
-          <PromptInput onSubmit={handleSubmit} className="mt-4">
-            <PromptInputTextarea
-              onChange={(e) => setInput(e.target.value)}
-              value={input}
-              placeholder={
-                generationMode === "video"
-                  ? "Describe the topic or animation you want to turn into a video"
-                  : generationMode === "short"
-                  ? "Describe the topic for your vertical short"
-                  : undefined
-              }
-            />
-            <PromptInputToolbar>
-              <PromptInputTools>
-                <div ref={videoToggleSpotlightRef} className="inline-flex">
-                  <div className="inline-flex gap-1">
-                    <PromptInputButton
-                      onClick={() =>
-                        setGenerationMode((mode) =>
-                          mode === "video" ? null : "video"
-                        )
-                      }
-                      variant={
-                        generationMode === "video" ? "default" : "outline"
-                      }
-                    >
-                      Video
-                    </PromptInputButton>
-                    <PromptInputButton
-                      onClick={() =>
-                        setGenerationMode((mode) =>
-                          mode === "short" ? null : "short"
-                        )
-                      }
-                      variant={
-                        generationMode === "short" ? "default" : "outline"
-                      }
-                    >
-                      Short
-                    </PromptInputButton>
-                  </div>
-                </div>
-              </PromptInputTools>
-              <PromptInputSubmit disabled={!input} status={status} />
-            </PromptInputToolbar>
-          </PromptInput>
-          <p className="mt-2 text-center text-xs text-muted-foreground">
-            Please avoid sharing personal data—everything submitted here will be
-            uploaded to the community YouTube channel.
-          </p>
-        </div>
+              {/* Quick action cards */}
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-700 delay-200">
+                <QuickActionCards onCardClick={(text) => setInput(text)} />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {showOnboarding ? (
