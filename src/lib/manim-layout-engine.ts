@@ -260,9 +260,7 @@ export function generateLayoutSetup(
   // Add safe zone constants
   parts.push(generateSafeZoneConstants(config));
   parts.push('config.background_color = "#252830"');
-  parts.push(
-    'Text.set_default(font="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")'
-  );
+  parts.push('Text.set_default(font="Open Sans")');
   parts.push("");
 
   // Add font size recommendations
