@@ -302,7 +302,8 @@ export function generateLayoutSetup(
   parts.push("COLOR_PALETTE = {");
   const paletteEntries = Object.entries(colorPalette);
   paletteEntries.forEach(([name, hex], index) => {
-    parts.push(`"${name}": "${hex}"\n`);
+    const suffix = index === paletteEntries.length - 1 ? "" : ",";
+    parts.push(`"${name}": "${hex}"${suffix}`);
   });
   parts.push("}\n");
 
