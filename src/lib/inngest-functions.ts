@@ -13,7 +13,7 @@ import type {
   ManimGenerationErrorDetails,
   VerifyManimScriptResult,
 } from "./gemini";
-import { renderManimVideo, generateSimpleThumbnail, ValidationStage } from "./e2b";
+import { renderManimVideo, ValidationStage } from "./e2b";
 import type { RenderLogEntry } from "./e2b";
 import { VOICEOVER_SERVICE_IMPORT, VOICEOVER_SERVICE_SETTER } from "@/prompt";
 import { uploadVideo } from "./uploadthing";
@@ -228,8 +228,6 @@ function validateRequiredElements(script: string): {
   return { ok: true };
 }
 
-
-
 function runHeuristicChecks(
   script: string,
   options: HeuristicOptions = {}
@@ -425,7 +423,9 @@ function runHeuristicChecks(
   const scanConstructorsForFontSize = () => {
     TEXT_CONSTRUCTOR_PATTERN.lastIndex = 0;
     let constructorMatch: RegExpExecArray | null;
-    while ((constructorMatch = TEXT_CONSTRUCTOR_PATTERN.exec(normalized)) !== null) {
+    while (
+      (constructorMatch = TEXT_CONSTRUCTOR_PATTERN.exec(normalized)) !== null
+    ) {
       const constructorName = constructorMatch[1] ?? "Text";
       let cursor = TEXT_CONSTRUCTOR_PATTERN.lastIndex;
       let depth = 1;
@@ -536,9 +536,12 @@ function runHeuristicChecks(
     }
   }
 
-  const SCALE_TO_FIT_WIDTH_PATTERN = /\.scale_to_fit_width\(\s*([0-9]+(?:\.[0-9]+)?)\s*(?:[,)]|$)/g;
+  const SCALE_TO_FIT_WIDTH_PATTERN =
+    /\.scale_to_fit_width\(\s*([0-9]+(?:\.[0-9]+)?)\s*(?:[,)]|$)/g;
   let scaleToFitMatch: RegExpExecArray | null;
-  while ((scaleToFitMatch = SCALE_TO_FIT_WIDTH_PATTERN.exec(normalized)) !== null) {
+  while (
+    (scaleToFitMatch = SCALE_TO_FIT_WIDTH_PATTERN.exec(normalized)) !== null
+  ) {
     const rawValue = scaleToFitMatch[1];
     const numericValue = Number.parseFloat(rawValue);
     if (!Number.isFinite(numericValue)) {
@@ -1253,43 +1256,45 @@ export const generateVideo = inngest.createFunction(
         },
       ];
 
-      const { title: generatedYoutubeTitle, description: generatedYoutubeDescription } =
-        await step.run(buildStepId("youtube", "metadata"), async () => {
-          const metadataPrompt = prompt ?? "";
-          const narration = voiceoverScript ?? "";
+      const {
+        title: generatedYoutubeTitle,
+        description: generatedYoutubeDescription,
+      } = await step.run(buildStepId("youtube", "metadata"), async () => {
+        const metadataPrompt = prompt ?? "";
+        const narration = voiceoverScript ?? "";
 
-          let aiTitle: string | undefined;
-          let aiDescription: string | undefined;
+        let aiTitle: string | undefined;
+        let aiDescription: string | undefined;
 
-          try {
-            const titleText = await generateYoutubeTitle({
-              prompt: metadataPrompt,
-              voiceoverScript: narration,
-            });
-            const trimmedTitle = titleText.trim();
-            aiTitle = trimmedTitle.length ? trimmedTitle : undefined;
-          } catch (error) {
-            console.warn("Failed to generate AI YouTube title:", error);
-          }
+        try {
+          const titleText = await generateYoutubeTitle({
+            prompt: metadataPrompt,
+            voiceoverScript: narration,
+          });
+          const trimmedTitle = titleText.trim();
+          aiTitle = trimmedTitle.length ? trimmedTitle : undefined;
+        } catch (error) {
+          console.warn("Failed to generate AI YouTube title:", error);
+        }
 
-          try {
-            const descriptionText = await generateYoutubeDescription({
-              prompt: metadataPrompt,
-              voiceoverScript: narration,
-            });
-            const trimmedDescription = descriptionText.trim();
-            aiDescription = trimmedDescription.length
-              ? trimmedDescription
-              : undefined;
-          } catch (error) {
-            console.warn("Failed to generate AI YouTube description:", error);
-          }
+        try {
+          const descriptionText = await generateYoutubeDescription({
+            prompt: metadataPrompt,
+            voiceoverScript: narration,
+          });
+          const trimmedDescription = descriptionText.trim();
+          aiDescription = trimmedDescription.length
+            ? trimmedDescription
+            : undefined;
+        } catch (error) {
+          console.warn("Failed to generate AI YouTube description:", error);
+        }
 
-          return {
-            title: aiTitle,
-            description: aiDescription,
-          };
-        });
+        return {
+          title: aiTitle,
+          description: aiDescription,
+        };
+      });
 
       const ytTitle =
         generatedYoutubeTitle ?? buildYouTubeTitle({ prompt, voiceoverScript });
@@ -1349,16 +1354,23 @@ export const uploadVideoToYouTube = inngest.createFunction(
   { id: "upload-video-to-youtube", timeouts: { start: "20m", finish: "45m" } },
   { event: "video/youtube.upload.request" },
   async ({ event, step }) => {
-    const { videoUrl, title, prompt, description, jobId, voiceoverScript, variant } =
-      event.data as {
-        videoUrl: string;
-        title: string;
-        prompt: string;
-        description?: string;
-        jobId?: string;
-        voiceoverScript?: string;
-        variant?: VideoVariant;
-      };
+    const {
+      videoUrl,
+      title,
+      prompt,
+      description,
+      jobId,
+      voiceoverScript,
+      variant,
+    } = event.data as {
+      videoUrl: string;
+      title: string;
+      prompt: string;
+      description?: string;
+      jobId?: string;
+      voiceoverScript?: string;
+      variant?: VideoVariant;
+    };
 
     const isShort = variant === "short";
     const tags = [
@@ -1370,53 +1382,8 @@ export const uploadVideoToYouTube = inngest.createFunction(
     ];
 
     try {
-      // Generate simple thumbnail with retry logic (skip for shorts as YouTube doesn't support custom thumbnails for shorts)
       const MAX_THUMBNAIL_RETRIES = 2;
       let thumbnailDataUrl: string | undefined;
-
-      if (!isShort) {
-        for (let attempt = 1; attempt <= MAX_THUMBNAIL_RETRIES; attempt++) {
-          try {
-            thumbnailDataUrl = await step.run(
-              buildStepId("thumbnail", "generate", "attempt", attempt),
-              async () => {
-                console.log(`Generating simple thumbnail (attempt ${attempt}/${MAX_THUMBNAIL_RETRIES})...`);
-                
-                const thumbnailResult = await generateSimpleThumbnail({
-                  videoDataUrl: videoUrl,
-                  title,
-                  orientation: isShort ? "portrait" : "landscape",
-                });
-
-                return thumbnailResult.imagePath;
-              }
-            );
-
-            console.log(`✓ Simple thumbnail generated successfully on attempt ${attempt}`);
-            break;
-          } catch (thumbnailError: unknown) {
-            const errorMessage = thumbnailError instanceof Error 
-              ? thumbnailError.message 
-              : String(thumbnailError);
-            
-            console.error(
-              `✗ Thumbnail generation attempt ${attempt}/${MAX_THUMBNAIL_RETRIES} failed:`,
-              errorMessage
-            );
-
-            if (attempt === MAX_THUMBNAIL_RETRIES) {
-              console.warn(
-                "⚠️  Thumbnail generation failed after all retries. Proceeding with video upload without thumbnail."
-              );
-              thumbnailDataUrl = undefined;
-            } else {
-              console.log(`Retrying thumbnail generation (attempt ${attempt + 1}/${MAX_THUMBNAIL_RETRIES})...`);
-            }
-          }
-        }
-      } else {
-        console.log("Skipping thumbnail generation for short (YouTube doesn't support custom thumbnails for shorts)");
-      }
 
       const yt = await step.run("upload-to-youtube", async () => {
         return await uploadToYouTube({

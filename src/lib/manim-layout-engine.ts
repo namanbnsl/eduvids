@@ -1,6 +1,6 @@
 /**
  * Manim Layout Engine
- * 
+ *
  * Advanced layout algorithms and viewport management to prevent content cutoff
  * and ensure all animations stay within safe boundaries.
  */
@@ -39,7 +39,8 @@ export interface SafeZoneConfig {
  * Calculate optimal safe zones based on layout configuration
  */
 export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
-  const { frameWidth, frameHeight, safeMargin, orientation, contentType } = config;
+  const { frameWidth, frameHeight, safeMargin, orientation, contentType } =
+    config;
 
   // Base margins
   let topMargin = safeMargin;
@@ -155,7 +156,7 @@ export function getRecommendedFontSizes(
       title: 46,
       heading: 36,
       body: 32,
-      math: 38,  // Larger font for mathematical formulae
+      math: 38, // Larger font for mathematical formulae
       caption: 28,
       label: 26,
     };
@@ -165,7 +166,7 @@ export function getRecommendedFontSizes(
       title: contentType === "text-heavy" ? 36 : 40,
       heading: 32,
       body: 28,
-      math: 34,  // Larger font for mathematical formulae
+      math: 34, // Larger font for mathematical formulae
       caption: 24,
       label: 20,
     };
@@ -228,8 +229,9 @@ export function detectContentType(script: string): LayoutConfig["contentType"] {
   // Count indicators
   const textIndicators = (lowerScript.match(/text\(/gi) || []).length;
   const mathIndicators = (lowerScript.match(/mathtex|tex\(/gi) || []).length;
-  const diagramIndicators =
-    (lowerScript.match(/circle|square|rectangle|arrow|line|dot/gi) || []).length;
+  const diagramIndicators = (
+    lowerScript.match(/circle|square|rectangle|arrow|line|dot/gi) || []
+  ).length;
 
   // Determine dominant type
   const total = textIndicators + mathIndicators + diagramIndicators;
@@ -258,6 +260,9 @@ export function generateLayoutSetup(
   // Add safe zone constants
   parts.push(generateSafeZoneConstants(config));
   parts.push('config.background_color = "#252830"');
+  parts.push(
+    'Text.set_default(font="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")'
+  );
   parts.push("");
 
   // Add font size recommendations
@@ -266,7 +271,9 @@ export function generateLayoutSetup(
   parts.push(`FONT_TITLE = ${fonts.title}`);
   parts.push(`FONT_HEADING = ${fonts.heading}`);
   parts.push(`FONT_BODY = ${fonts.body}`);
-  parts.push(`FONT_MATH = ${fonts.math}  # Use for mathematical formulae (MathTex, Tex)`);
+  parts.push(
+    `FONT_MATH = ${fonts.math}  # Use for mathematical formulae (MathTex, Tex)`
+  );
   parts.push(`FONT_CAPTION = ${fonts.caption}`);
   parts.push(`FONT_LABEL = ${fonts.label}`);
 
@@ -288,9 +295,15 @@ export function getTextWrappingGuidelines(config: LayoutConfig): string {
 
   return `# Text Wrapping Guidelines
 # Maximum recommended characters per line (approximate):
-# - Title (${fonts.title}pt): ~${Math.floor(zones.maxContentWidth / (fonts.title * 0.6))} chars
-# - Body (${fonts.body}pt): ~${Math.floor(zones.maxContentWidth / (fonts.body * 0.6))} chars
-# - Caption (${fonts.caption}pt): ~${Math.floor(zones.maxContentWidth / (fonts.caption * 0.6))} chars
+# - Title (${fonts.title}pt): ~${Math.floor(
+    zones.maxContentWidth / (fonts.title * 0.6)
+  )} chars
+# - Body (${fonts.body}pt): ~${Math.floor(
+    zones.maxContentWidth / (fonts.body * 0.6)
+  )} chars
+# - Caption (${fonts.caption}pt): ~${Math.floor(
+    zones.maxContentWidth / (fonts.caption * 0.6)
+  )} chars
 
 def wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH):
     """Automatically wrap text to fit within max_width"""
