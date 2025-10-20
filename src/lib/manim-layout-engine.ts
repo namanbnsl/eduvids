@@ -261,7 +261,51 @@ export function generateLayoutSetup(
   parts.push(generateSafeZoneConstants(config));
   parts.push('config.background_color = "#252830"');
   parts.push('Text.set_default(font="Open Sans")');
-  parts.push("");
+  const colorPalette: Record<string, string> = {
+    WHITE: "#FFFFFF",
+    BLACK: "#000000",
+    GRAY: "#94A3B8",
+    DARK_GRAY: "#475569",
+    LIGHT_GRAY: "#E2E8F0",
+    YELLOW: "#FFD166",
+    GOLD: "#EAB308",
+    ORANGE: "#F97316",
+    CORAL: "#FB7185",
+    RED: "#EF4444",
+    CRIMSON: "#DC2626",
+    PINK: "#F472B6",
+    MAGENTA: "#EC4899",
+    BLUE: "#2563EB",
+    INDIGO: "#4338CA",
+    CYAN: "#0EA5E9",
+    TEAL: "#14B8A6",
+    PURE_GREEN: "#22C55E",
+    EMERALD: "#10B981",
+    LIME: "#84CC16",
+    PURPLE: "#A855F7",
+    VIOLET: "#7C3AED",
+    LAVENDER: "#C084FC",
+    NORD: "#5E81AC",
+    NORD_FROST: "#8FBCBB",
+    NORD_NIGHT: "#2E3440",
+    SLATE: "#64748B",
+    STEEL: "#475569",
+    SAND: "#F5E0B7",
+    BROWN: "#92400E",
+    SKY: "#38BDF8",
+    FUCHSIA: "#D946EF",
+    MINT: "#99F6E4",
+    NAVY: "#1D4ED8",
+  };
+
+  parts.push("\n# Script color palette");
+  parts.push("COLOR_PALETTE = {");
+  const paletteEntries = Object.entries(colorPalette);
+  paletteEntries.forEach(([name, hex], index) => {
+    const suffix = index === paletteEntries.length - 1 ? "" : ",";
+    parts.push(`    "${name}": "${hex}"${suffix}`);
+  });
+  parts.push("}\n");
 
   // Add font size recommendations
   const fonts = getRecommendedFontSizes(config);

@@ -185,6 +185,10 @@
     "PI": "pi",
     "TAU": "2*pi",
     "DEGREES": "pi/180",
+    "COLOR_PALETTE": {
+      "allowed_names": ["WHITE", "BLACK", "GRAY", "DARK_GRAY", "LIGHT_GRAY", "YELLOW", "GOLD", "ORANGE", "CORAL", "RED", "CRIMSON", "PINK", "MAGENTA", "BLUE", "INDIGO", "CYAN", "TEAL", "PURE_GREEN", "EMERALD", "LIME", "PURPLE", "VIOLET", "LAVENDER", "NORD", "NORD_FROST", "NORD_NIGHT", "SLATE", "STEEL", "SAND", "BROWN", "SKY", "FUCHSIA", "MINT", "NAVY"],
+      "fallback": "If a desired color is not listed, supply its HEX literal string directly (e.g. color=\"#1ABC9C\"). Never invent new named colors."
+    },
     "ORIGIN_NAME": "The center of the coordinate system:contentReference[oaicite:43]{index=43}",
     "AXES": {
       "UP": "One unit up (positive Y):contentReference[oaicite:44]{index=44}",

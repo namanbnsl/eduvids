@@ -134,8 +134,9 @@ Video Structure Requirements:
   * Code/system content: ORANGE
   * Arrows/lines: WHITE
   * Background shapes: GRAY (low opacity)
-- USE ONLY THESE COLORS: WHITE, YELLOW, BLUE, PURE_GREEN, ORANGE, GRAY, RED, PURPLE
-- NEVER use arbitrary colors or hex codes
+- AVAILABLE NAMED COLORS (ONLY THESE): WHITE, BLACK, GRAY, DARK_GRAY, LIGHT_GRAY, YELLOW, GOLD, ORANGE, CORAL, RED, CRIMSON, PINK, MAGENTA, BLUE, INDIGO, CYAN, TEAL, PURE_GREEN, EMERALD, LIME, PURPLE, VIOLET, LAVENDER, NORD, NORD_FROST, NORD_NIGHT, SLATE, STEEL, SAND, BROWN, SKY, FUCHSIA, MINT, NAVY
+- If a different color is required, **use its HEX string literal instead of inventing a new named color** (example: 'color="#1ABC9C"').
+- NEVER reference color names outside this list.
 - USE ONLY BASIC SHAPES: Circle, Square, Rectangle, Text, MathTex, Arrow, Line, Dot
 - Scene must be named "MyScene" and inherit from VoiceoverScene
 - REQUIRED IMPORTS (always include these):

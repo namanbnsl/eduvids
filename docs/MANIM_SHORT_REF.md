@@ -129,7 +129,9 @@ Common constants (via `from manim import *`):
 
 - **Unit vectors:** `ORIGIN`, `UP`, `DOWN`, `LEFT`, `RIGHT`, `IN`, `OUT`, `UL`, `UR`, `DL`, `DR`.
 - **Angles:** `PI`, `TAU`, `DEGREES` (for converting radians/degrees).
-- **Colors:** Named colors: `WHITE`, `BLACK`, `RED`, `GREEN`, `BLUE`, `YELLOW`, `PINK`, `PURPLE`, etc. Also many CSS-style color names and hex codes are supported (via `color=...` in methods).
+- **Colors:** Use ONLY the standardized palette injected by the layout engine:
+  - Named colors: `WHITE`, `BLACK`, `GRAY`, `DARK_GRAY`, `LIGHT_GRAY`, `YELLOW`, `GOLD`, `ORANGE`, `CORAL`, `RED`, `CRIMSON`, `PINK`, `MAGENTA`, `BLUE`, `INDIGO`, `CYAN`, `TEAL`, `PURE_GREEN`, `EMERALD`, `LIME`, `PURPLE`, `VIOLET`, `LAVENDER`, `NORD`, `NORD_FROST`, `NORD_NIGHT`, `SLATE`, `STEEL`, `SAND`, `BROWN`, `SKY`, `FUCHSIA`, `MINT`, `NAVY`.
+  - If a needed color is missing from this list, specify its HEX literal string directly (e.g. `color="#1ABC9C"`). Never invent new named colors.
 
 ## 📝 Minimal Scene (from documented API)
 
