@@ -10,7 +10,7 @@ export async function generateTopics(): Promise<string[]> {
 
     const { text } = await generateText({
       model,
-      prompt: `Generate 4 fun and interesting video/short topic ideas for an educational content platform focused on math, physics, and chemistry.
+      prompt: `Generate 2 fun and interesting video/short topic ideas for an educational content platform focused on math, physics, and chemistry.
 
 Topics should:
 - Focus ONLY on math, physics, and chemistry
@@ -37,15 +37,10 @@ No explanation, no markdown, just the JSON array.`,
       throw new Error("Invalid response format");
     }
 
-    return topics.slice(0, 4);
+    return topics.slice(0, 2);
   } catch (error) {
     console.error("Failed to generate topics:", error);
 
-    return [
-      "How do nuclear reactions work?",
-      "Why do rainbows form?",
-      "What happens in a supernova?",
-      "How does quantum tunneling work?",
-    ];
+    return ["How do nuclear reactions work?", "Why do rainbows form?"];
   }
 }
