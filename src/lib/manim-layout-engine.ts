@@ -260,7 +260,7 @@ export function generateLayoutSetup(
   // Add safe zone constants
   parts.push(generateSafeZoneConstants(config));
   parts.push('config.background_color = "#252830"');
-  parts.push('Text.set_default(font="Open Sans")');
+  parts.push('Text.set_default(font="Lato")');
   const colorPalette: Record<string, string> = {
     WHITE: "#FFFFFF",
     BLACK: "#000000",
