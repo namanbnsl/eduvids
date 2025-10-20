@@ -121,7 +121,7 @@ export default function ChatPage() {
 
     // Use stored theme if it exists, otherwise use system preference
     const shouldBeDark = stored ? stored === "dark" : prefersDark;
-    
+
     setIsDark(shouldBeDark);
     if (shouldBeDark) {
       document.documentElement.classList.add("dark");
@@ -376,7 +376,7 @@ export default function ChatPage() {
                       ? "Describe the topic or animation you want to turn into a video"
                       : generationMode === "short"
                       ? "Describe the topic for your vertical short"
-                      : "How can I help you today?"
+                      : "Choose a mode and describe the video you want to generate"
                   }
                 />
                 <PromptInputToolbar>
@@ -425,18 +425,21 @@ export default function ChatPage() {
               {/* Greeting */}
               <div className="text-center mb-8 animate-in fade-in slide-in-from-top-2 duration-700">
                 <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-2 leading-tight">
-                  <span className="text-orange-500">📺</span> What video do you
-                  want to create?
+                  <span className="text-orange-500">📺</span> Generate Your Own
+                  Video.
                 </h1>
               </div>
 
               {/* Centered input */}
-              <div ref={composerSpotlightRef} className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-700 delay-100">
+              <div
+                ref={composerSpotlightRef}
+                className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-700 delay-100"
+              >
                 <PromptInput onSubmit={handleSubmit}>
                   <PromptInputTextarea
                     onChange={(e) => setInput(e.target.value)}
                     value={input}
-                    placeholder="How can I help you today?"
+                    placeholder="Choose a mode and describe the video you want to generate."
                   />
                   <PromptInputToolbar>
                     <PromptInputTools>
