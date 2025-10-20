@@ -20,8 +20,8 @@ Topics should:
 - Be actionable prompts like "How do X work?" or "Why does Y happen?"
 - Mix spectacular phenomena with fundamental concepts
 
-Return ONLY a JSON array of 4 strings, like this:
-["topic 1", "topic 2", "topic 3", "topic 4"]
+Return ONLY a JSON array of 2 strings, like this:
+["topic 1", "topic 2"]
 
 No explanation, no markdown, just the JSON array.`,
       temperature: 0.9,

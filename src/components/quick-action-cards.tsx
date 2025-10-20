@@ -7,8 +7,12 @@ interface QuickActionCardsProps {
   isLoading?: boolean;
 }
 
-export function QuickActionCards({ onCardClick, topics, isLoading = false }: QuickActionCardsProps) {
-  const placeholderCount = 4;
+export function QuickActionCards({
+  onCardClick,
+  topics,
+  isLoading = false,
+}: QuickActionCardsProps) {
+  const placeholderCount = 2;
 
   if (isLoading || !topics || topics.length === 0) {
     return (

@@ -499,7 +499,6 @@ export default function ChatPage() {
                 </PromptInput>
               </div>
 
-              {/* Quick action cards */}
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-700 delay-200">
                 <QuickActionCards
                   onCardClick={(text) => {
