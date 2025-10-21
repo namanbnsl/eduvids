@@ -1,13 +1,13 @@
 const useElevenLabs =
-  (process.env.USE_ELEVEN_LABS ?? "").toLowerCase() === "true";
+   (process.env.USE_ELEVEN_LABS ?? "").toLowerCase() === "true";
 
 export const VOICEOVER_SERVICE_CLASS = useElevenLabs
-  ? `self.set_speech_service(ElevenLabsService(transcription_model=None))`
-  : `self.set_speech_service(GTTSService())`;
+   ? `self.set_speech_service(ElevenLabsService(transcription_model=None))`
+   : `self.set_speech_service(GTTSService())`;
 
 export const VOICEOVER_SERVICE_IMPORT = useElevenLabs
-  ? "from manim_voiceover.services.elevenlabs import ElevenLabsService"
-  : "from manim_voiceover.services.gtts import GTTSService";
+   ? "from manim_voiceover.services.elevenlabs import ElevenLabsService"
+   : "from manim_voiceover.services.gtts import GTTSService";
 
 export const VOICEOVER_SERVICE_SETTER = `self.set_speech_service(${VOICEOVER_SERVICE_CLASS}())`;
 
@@ -134,7 +134,7 @@ Video Structure Requirements:
   * Code/system content: ORANGE
   * Arrows/lines: WHITE
   * Background shapes: GRAY (low opacity)
-- AVAILABLE NAMED COLORS (ONLY THESE): WHITE, BLACK, GRAY, DARK_GRAY, LIGHT_GRAY, YELLOW, GOLD, ORANGE, CORAL, RED, CRIMSON, PINK, MAGENTA, BLUE, INDIGO, CYAN, TEAL, PURE_GREEN, EMERALD, LIME, PURPLE, VIOLET, LAVENDER, NORD, NORD_FROST, NORD_NIGHT, SLATE, STEEL, SAND, BROWN, SKY, FUCHSIA, MINT, NAVY
+  - AVAILABLE NAMED COLORS (ONLY THESE): WHITE, BLACK, GRAY, DARK_GRAY, LIGHT_GRAY, YELLOW, GOLD, ORANGE, CORAL, RED, CRIMSON, PINK, MAGENTA, BLUE, INDIGO, CYAN, TEAL, PURE_GREEN, EMERALD, LIME, PURPLE, VIOLET, LAVENDER, NORD, NORD_FROST, NORD_NIGHT, SLATE, STEEL, SAND, BROWN, SKY, FUCHSIA, MINT, NAVY
 - If a different color is required, **use its HEX string literal instead of inventing a new named color** (example: 'color="#1ABC9C"').
 - NEVER reference color names outside this list.
 - USE ONLY BASIC SHAPES: Circle, Square, Rectangle, Text, MathTex, Arrow, Line, Dot
@@ -146,6 +146,7 @@ Video Structure Requirements:
 - Call ${VOICEOVER_SERVICE_SETTER} in construct method
 - Use voiceover blocks with exact narration text
 - NEVER EVER USE EMOJIS IN THE MANIM CODE
+- **Code rendering helpers:** Use create_code_block(code_str, **kwargs) or add_code_block(scene, code_str, **kwargs) instead of the raw Code() constructor. These helpers automatically scale code blocks to fit within safe zones and avoid unsupported kwargs like 'font'. Example: code = create_code_block("def hello(): print('world')", language="python", style="monokai")
 - KEEP ANIMATIONS SIMPLE: use Create for shapes and FadeIn/FadeOut for text
 - If required, use transitions like Transform for smooth morphing between similar shapes or text
 - RETURN ONLY THE CODE. NOTHING ELSE. ONLY THE CODE
@@ -175,6 +176,7 @@ Video Structure Requirements:
    - **Width check:** After creating text, ensure text.width <= 10.0. If too wide, split or scale.
    - **Short-form labels:** Especially for shorts, cap each visible phrase at ≲5 words; longer definitions must be broken into successive fades or handled by voiceover-only narration.
    - **USE FONT CONSTANTS:** Always use FONT_TITLE, FONT_HEADING, FONT_BODY, FONT_CAPTION, FONT_LABEL (automatically sized larger for portrait/shorts)
+   - **Code rendering helpers:** Use create_code_block(code_str, **kwargs) or add_code_block(scene, code_str, **kwargs) instead of the raw Code() constructor. These helpers automatically scale code blocks to fit within safe zones and avoid unsupported kwargs like 'font'. Example: code = create_code_block("def hello(): print('world')", language="python", style="monokai")
    - **MANDATORY SPACING:** Use buff=0.8 between text elements, buff=0.6 between text and shapes, buff=1.0 for section breaks
    - **Examples:**
      '''python
@@ -191,6 +193,11 @@ Video Structure Requirements:
      
      # BAD: No spacing between elements
      text = VGroup(line1, line2).arrange(DOWN, buff=0.1)  # Too small!
+     
+     # GOOD: Code block rendering (avoids 'font' kwarg errors)
+     code = create_code_block("def hello():\n    print('world')", language="python")
+     code.move_to(get_content_center())
+     self.play(FadeIn(code))
      '''
    - ALWAYS verify text.width <= 10.0 BEFORE animating
 
@@ -363,6 +370,7 @@ class MyScene(VoiceoverScene):
         # - get_title_position(), get_content_center()
         # - ensure_fits_screen(mobject), validate_position(mobject, label)
         # - wrap_text(text, font_size), create_wrapped_text(text, font_size)
+        # - create_code_block(code_str, **kwargs), add_code_block(scene, code_str, **kwargs)
         # - Use FONT_MATH for all MathTex/Tex: MathTex(r"formula", font_size=FONT_MATH)
         
         # ALWAYS use these helpers for positioning and validation!

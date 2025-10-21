@@ -331,6 +331,25 @@ Call `fit_and_keep_on_screen(group)` for any complex group before displaying it.
 
 8. **Timing hygiene:** Use short waits (`self.wait(0.5)`) between layout steps so viewers can perceive structure.
 
+### Code block rendering helpers
+
+The layout engine injects two wrappers for the Manim `Code` mobject to avoid unsupported keyword arguments like `font` and to keep code panels inside the safe zone.
+
+```python
+code_block = create_code_block(
+    """def bubble_sort(arr):\n    ...""",
+    language="python",
+    style="monokai",
+)
+code_block.move_to(get_content_center())
+self.play(FadeIn(code_block))
+
+# Shortcut that also adds the mobject to the scene
+add_code_block(self, "print('Hello world')")
+```
+
+Both helpers internally call `ensure_fits_width()`, `ensure_fits_height()`, and `validate_position()` so the rendered snippet respects the safe margins.
+
 These rules prevent overlapping titles/labels, off-screen shapes, and unreadable diagrams.
 
 ## ImageMobject

@@ -378,6 +378,52 @@ def create_wrapped_text(text, font_size=FONT_BODY, **kwargs):
 }
 
 /**
+ * Generate helpers for rendering code blocks safely
+ */
+export function getCodeRenderingHelpers(): string {
+  return `# Code Rendering Helpers
+def create_code_block(
+    code_str,
+    *,
+    language="python",
+    tab_width=4,
+    max_width=MAX_CONTENT_WIDTH,
+    max_height=MAX_CONTENT_HEIGHT,
+):
+    """Create a Manim Code mobject that already fits within the safe zone.
+
+    This wrapper intentionally exposes only the Code parameters that are
+    compatible with the sandbox runtime. Avoid passing unsupported keyword
+    arguments like 'font', which will raise TypeError in this environment.
+    """
+
+    from manim import Code
+
+    safe_kwargs = {
+        "code_string": code_str,
+        "language": language,
+        "tab_width": tab_width,
+    }
+
+    code_mobject = Code(**safe_kwargs, background="window")
+
+    ensure_fits_width(code_mobject, max_width)
+    ensure_fits_height(code_mobject, max_height)
+    validate_position(code_mobject, label="code block")
+
+    return code_mobject
+
+
+def add_code_block(scene, code_str, **kwargs):
+    """Create a code block via create_code_block and add it to the scene."""
+
+    code_block = create_code_block(code_str, **kwargs)
+    scene.add(code_block)
+    return code_block
+`;
+}
+
+/**
  * Get all layout code for a configuration
  */
 export function getCompleteLayoutCode(config: LayoutConfig): string {
@@ -391,6 +437,8 @@ export function getCompleteLayoutCode(config: LayoutConfig): string {
   parts.push(generateLayoutSetup(config, true));
   parts.push("\n");
   parts.push(getTextWrappingGuidelines(config));
+  parts.push("\n");
+  parts.push(getCodeRenderingHelpers());
 
   parts.push("\n# ========================================");
   parts.push("# Usage:");
