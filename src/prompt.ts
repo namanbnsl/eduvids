@@ -336,6 +336,7 @@ Code Implementation (KEEP ROBUST):
 - ALWAYS check if imports are valid before using features
 - Use try-except NEVER - write correct code from the start
 - Test positioning with SAFE_MARGIN before animating
+- There is no such thing as TextAlign or CENTER constants in Manim; position elements with '.move_to', '.to_edge', '.align_to', or '.next_to'. CENTER is ORIGIN.
 
 Visibility Requirements (CRITICAL):
 - ALWAYS use WHITE for main text to ensure maximum contrast
