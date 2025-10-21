@@ -507,6 +507,8 @@ Keep total narration suitable for about two minutes of speech.
 
 Maintain factual accuracy and logical progression at all times.
 
+DO NOT USE SPECIAL CHARACTERS like +, -, ×, ÷, =, ^, ²; spell them out instead. ALSO DO NOT USE MARKDOWN FORMATTING AND backquotes, /, *, -, etc.
+
 === GOAL ===
 Create a cohesive mini-story that guides the learner through understanding, builds intuition, and leaves them feeling motivated to explore more. The narration should sound like a friendly, confident teacher guiding a discovery.
 `;
