@@ -339,7 +339,6 @@ The layout engine injects two wrappers for the Manim `Code` mobject to avoid uns
 code_block = create_code_block(
     """def bubble_sort(arr):\n    ...""",
     language="python",
-    style="monokai",
 )
 code_block.move_to(get_content_center())
 self.play(FadeIn(code_block))

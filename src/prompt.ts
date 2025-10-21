@@ -1,13 +1,13 @@
 const useElevenLabs =
-   (process.env.USE_ELEVEN_LABS ?? "").toLowerCase() === "true";
+  (process.env.USE_ELEVEN_LABS ?? "").toLowerCase() === "true";
 
 export const VOICEOVER_SERVICE_CLASS = useElevenLabs
-   ? `self.set_speech_service(ElevenLabsService(transcription_model=None))`
-   : `self.set_speech_service(GTTSService())`;
+  ? `self.set_speech_service(ElevenLabsService(transcription_model=None))`
+  : `self.set_speech_service(GTTSService())`;
 
 export const VOICEOVER_SERVICE_IMPORT = useElevenLabs
-   ? "from manim_voiceover.services.elevenlabs import ElevenLabsService"
-   : "from manim_voiceover.services.gtts import GTTSService";
+  ? "from manim_voiceover.services.elevenlabs import ElevenLabsService"
+  : "from manim_voiceover.services.gtts import GTTSService";
 
 export const VOICEOVER_SERVICE_SETTER = `self.set_speech_service(${VOICEOVER_SERVICE_CLASS}())`;
 
@@ -146,7 +146,7 @@ Video Structure Requirements:
 - Call ${VOICEOVER_SERVICE_SETTER} in construct method
 - Use voiceover blocks with exact narration text
 - NEVER EVER USE EMOJIS IN THE MANIM CODE
-- **Code rendering helpers:** Use create_code_block(code_str, **kwargs) or add_code_block(scene, code_str, **kwargs) instead of the raw Code() constructor. These helpers automatically scale code blocks to fit within safe zones and avoid unsupported kwargs like 'font'. Example: code = create_code_block("def hello(): print('world')", language="python", style="monokai")
+- **Code rendering helpers:** Use create_code_block(code_str, **kwargs) or add_code_block(scene, code_str, **kwargs) instead of the raw Code() constructor. These helpers automatically scale code blocks to fit within safe zones and avoid unsupported kwargs like 'font'. Example: code = create_code_block("def hello(): print('world')", language="python")
 - KEEP ANIMATIONS SIMPLE: use Create for shapes and FadeIn/FadeOut for text
 - If required, use transitions like Transform for smooth morphing between similar shapes or text
 - RETURN ONLY THE CODE. NOTHING ELSE. ONLY THE CODE

@@ -697,8 +697,6 @@ export async function regenerateManimScriptWithError({
   return code;
 }
 
-// Uses Gemini 2.5 Pro with local docs to statically validate the Manim script
-// and optionally provide a corrected version when issues are detected.
 export async function verifyManimScript({
   prompt,
   voiceoverScript,
