@@ -146,7 +146,8 @@ Video Structure Requirements:
 - Call ${VOICEOVER_SERVICE_SETTER} in construct method
 - Use voiceover blocks with exact narration text
 - NEVER EVER USE EMOJIS IN THE MANIM CODE
-- KEEP ANIMATIONS SIMPLE: use Create for shapes and FadeIn/FadeOut for text; avoid complex transforms
+- KEEP ANIMATIONS SIMPLE: use Create for shapes and FadeIn/FadeOut for text
+- If required, use transitions like Transform for smooth morphing between similar shapes or text
 - RETURN ONLY THE CODE. NOTHING ELSE. ONLY THE CODE
 
 🎬 Animation Guidelines:
