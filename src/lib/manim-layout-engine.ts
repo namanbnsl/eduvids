@@ -301,7 +301,7 @@ export function generateLayoutSetup(
   parts.push("\n# Script color palette");
   const paletteEntries = Object.entries(colorPalette);
   paletteEntries.forEach(([name, hex], index) => {
-    parts.push(`"${name}" = "${hex}" \n`);
+    parts.push(`${name} = "${hex}" \n`);
   });
 
   // Add font size recommendations
