@@ -175,6 +175,9 @@ const PROHIBITED_BUILTINS = ["open", "exec", "eval", "compile", "__import__"];
 const hasExpectedSceneClass = (source: string) =>
   /\bclass\s+MyScene\b/.test(source);
 
+const is3DScene = (source: string) =>
+  /class\s+MyScene\s*\(\s*ThreeDScene\s*\)/.test(source);
+
 const movingCameraSceneDeclared = (source: string) =>
   /class\s+MyScene\s*\(\s*MovingCameraScene/.test(source);
 
@@ -589,6 +592,7 @@ export async function renderManimVideo({
       orientation: renderOptions?.orientation,
       resolution: renderOptions?.resolution,
       contentType,
+      is3D: is3DScene(normalizedScript),
     });
 
     pushLog({

@@ -18,6 +18,13 @@ export interface LayoutConfig {
   contentType?: "text-heavy" | "diagram" | "math" | "mixed";
 }
 
+export interface LayoutConfig3D extends LayoutConfig {
+  /** Camera distance from the content */
+  cameraDistance: number;
+  /** Field of view for the 3D camera */
+  cameraFov: number;
+}
+
 export interface SafeZoneConfig {
   /** Top margin */
   top: number;
@@ -260,7 +267,7 @@ export function generateLayoutSetup(
   // Add safe zone constants
   parts.push(generateSafeZoneConstants(config));
   parts.push('config.background_color = "#020712"');
-  parts.push('Text.set_default(font="Noto Sans")');
+  parts.push('Text.set_default(font="Lato")');
   const colorPalette: Record<string, string> = {
     WHITE: "#FFFFFF",
     BLACK: "#000000",
@@ -439,6 +446,8 @@ export function getCompleteLayoutCode(config: LayoutConfig): string {
   parts.push(getTextWrappingGuidelines(config));
   parts.push("\n");
   parts.push(getCodeRenderingHelpers());
+  parts.push("\n");
+  parts.push(generate3DLayoutCode());
 
   parts.push("\n# ========================================");
   parts.push("# Usage:");
@@ -446,9 +455,66 @@ export function getCompleteLayoutCode(config: LayoutConfig): string {
   parts.push("# 2. Use get_content_center() for content");
   parts.push("# 3. Use ensure_fits_screen() before adding");
   parts.push("# 4. Use validate_position() to check bounds");
+  parts.push(
+    "# 5. For 3D scenes, use set_camera_for_3d_scene() to frame content"
+  );
   parts.push("# ========================================\n");
 
   return parts.join("\n");
+}
+
+/**
+ * Generate helpers for 3D scene layout
+ */
+export function generate3DLayoutCode(): string {
+  return `# 3D Scene Layout Helpers
+def get_3d_mobjects_bounding_box(mobjects):
+    """Calculate the bounding box containing all 3D mobjects"""
+    if not mobjects:
+        return (ORIGIN, ORIGIN)
+    
+    all_points = np.vstack([m.get_all_points() for m in mobjects])
+    min_coords = np.min(all_points, axis=0)
+    max_coords = np.max(all_points, axis=0)
+    
+    return (min_coords, max_coords)
+
+def set_camera_for_3d_scene(scene, mobjects, distance_factor=1.5, fov=None):
+    """
+    Automatically adjust the camera to frame all 3D mobjects.
+    
+    :param scene: The ThreeDScene instance.
+    :param mobjects: A list of 3D mobjects to be framed.
+    :param distance_factor: Multiplier for camera distance to provide padding.
+    :param fov: Field of view in degrees. If None, uses scene's default.
+    """
+    if not mobjects:
+        return
+
+    min_coords, max_coords = get_3d_mobjects_bounding_box(mobjects)
+    center = (min_coords + max_coords) / 2
+    dimensions = max_coords - min_coords
+    
+    # Determine the largest dimension to frame
+    max_dim = max(dimensions)
+    
+    # Calculate camera distance
+    if fov is None:
+        fov = scene.camera.fov
+    
+    # tan(fov/2) = (max_dim/2) / distance
+    distance = (max_dim / 2) / np.tan(np.deg2rad(fov / 2))
+    
+    # Set camera position
+    scene.move_camera(
+        phi=75 * DEGREES,
+        theta=30 * DEGREES,
+        focal_distance=distance * distance_factor,
+        frame_center=center,
+        zoom=0.8,  # Apply a slight zoom out for safety
+    )
+    print(f"Set 3D camera focus to center: {center}, distance: {distance * distance_factor}")
+`;
 }
 
 /**
@@ -470,6 +536,12 @@ export const DEFAULT_PORTRAIT_CONFIG: LayoutConfig = {
   contentType: "mixed",
 };
 
+export const DEFAULT_3D_CONFIG: LayoutConfig3D = {
+  ...DEFAULT_LANDSCAPE_CONFIG,
+  cameraDistance: 50,
+  cameraFov: 50,
+};
+
 /**
  * Get layout config based on render options
  */
@@ -477,7 +549,11 @@ export function getLayoutConfig(options: {
   orientation?: "landscape" | "portrait";
   resolution?: { width: number; height: number };
   contentType?: LayoutConfig["contentType"];
+  is3D?: boolean;
 }): LayoutConfig {
+  if (options.is3D) {
+    return { ...DEFAULT_3D_CONFIG };
+  }
   const base =
     options.orientation === "portrait"
       ? { ...DEFAULT_PORTRAIT_CONFIG }
