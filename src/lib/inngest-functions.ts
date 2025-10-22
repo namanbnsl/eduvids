@@ -939,6 +939,7 @@ export const generateVideo = inngest.createFunction(
             buildStepId("video", "render", "attempt", attempt),
             async () => {
               try {
+                const usesManimML = currentScript.includes("manim_ml");
                 const result = await renderManimVideo({
                   script: currentScript,
                   prompt,
@@ -950,6 +951,7 @@ export const generateVideo = inngest.createFunction(
                           resolution: { width: 720, height: 1280 },
                         }
                       : undefined,
+                  plugins: usesManimML ? ["manim-ml"] : [],
                 });
 
                 if (

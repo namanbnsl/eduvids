@@ -303,6 +303,7 @@ export interface RenderRequest {
   prompt: string;
   applyWatermark?: boolean;
   renderOptions?: RenderOptions;
+  plugins?: string[];
 }
 
 export interface ThumbnailResult {
@@ -320,6 +321,7 @@ export async function renderManimVideo({
   prompt: _prompt,
   applyWatermark = true,
   renderOptions,
+  plugins = [],
 }: RenderRequest): Promise<RenderResult> {
   void _prompt;
   const normalizedScript = script.trim();
@@ -649,6 +651,15 @@ export async function renderManimVideo({
       timeoutMs: 120_000,
       hint: "Ensure MyScene imports correctly, inherits from manim.Scene, and defines construct(self).",
     });
+
+    if (plugins.includes("manim-ml")) {
+      await runCommandOrThrow("pip install manim-ml", {
+        description: "Plugin installation (manim-ml)",
+        stage: "plugin-installation",
+        timeoutMs: 240_000,
+        hint: "The manim-ml plugin failed to install. The script may fail if it depends on this plugin.",
+      });
+    }
 
     if (!latexEnvironmentVerified) {
       await runCommandOrThrow(`latex --version`, {

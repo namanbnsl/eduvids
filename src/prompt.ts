@@ -253,6 +253,37 @@ Video Structure Requirements:
    - NEVER use buff<0.8 between bullet points
    - Max 5-6 bullets visible at once
 
+🤖 Manim-ML for Neural Networks
+- To create neural network animations, you can use the \`manim-ml\` library.
+- The necessary packages will be installed automatically if you import from \`manim_ml\`.
+- **REQUIRED IMPORTS:**
+  - \`from manim_ml.neural_network import NeuralNetwork, FeedForwardLayer, Convolutional2DLayer\`
+- **USAGE:**
+  - Create a \`NeuralNetwork\` object and pass a list of layers.
+  - Use \`FeedForwardLayer\` for fully connected layers and \`Convolutional2DLayer\` for convolutional layers.
+  - You can animate the forward pass using \`nn.make_forward_pass_animation()\`.
+- **3D SCENES:**
+  - Neural network animations often look better in 3D.
+  - To use a 3D scene, inherit from \`ThreeDScene\` instead of \`VoiceoverScene\`. Note that \`ThreeDScene\` does not support voiceover.
+- **EXAMPLE:**
+  '''python
+  from manim import *
+  from manim_ml.neural_network import NeuralNetwork, FeedForwardLayer, Convolutional2DLayer
+
+  class MyScene(ThreeDScene):
+      def construct(self):
+          nn = NeuralNetwork([
+              Convolutional2DLayer(1, 7, 3),
+              FeedForwardLayer(3),
+              FeedForwardLayer(3),
+          ])
+          
+          self.add(nn)
+          
+          forward_pass = nn.make_forward_pass_animation()
+          self.play(forward_pass)
+  '''
+
 Hard Layout Contract (strict, do not violate):
 - DO NOT manually define SAFE_MARGIN - it is automatically injected by the layout system with optimal values for the video orientation (larger for portrait/shorts).
 - ABSOLUTE NO-OVERLAP RULE: Before any animation, ensure bounding boxes of text, shapes, labels, and connectors never intersect; reposition with arrange/next_to (buff>=0.8) or scale down until every element has clear separation.
