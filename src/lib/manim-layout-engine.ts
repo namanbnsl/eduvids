@@ -259,8 +259,8 @@ export function generateLayoutSetup(
 
   // Add safe zone constants
   parts.push(generateSafeZoneConstants(config));
-  parts.push('config.background_color = "#252830"');
-  parts.push('Text.set_default(font="Lato")');
+  parts.push('config.background_color = "#020712"');
+  parts.push('Text.set_default(font="Noto Sans")');
   const colorPalette: Record<string, string> = {
     WHITE: "#FFFFFF",
     BLACK: "#000000",
@@ -405,7 +405,7 @@ def create_code_block(
         "tab_width": tab_width,
     }
 
-    code_mobject = Code(**safe_kwargs, background="window")
+    code_mobject = Code(**safe_kwargs, background="window", paragraph_config={"line_spacing": 1.5})
 
     ensure_fits_width(code_mobject, max_width)
     ensure_fits_height(code_mobject, max_height)

@@ -88,16 +88,15 @@ YOU MUST use the provided layout helpers (get_title_position(), get_content_cent
 ONLY PROVIDE THE CODE NOTHING ELSE.
 
 ⚠️ CRITICAL RULES - READ FIRST ⚠️
-1. KEEP ANIMATIONS SIMPLE - Use basic shapes, text, and movements only
-2. NO COMPLEX 3D scenes, particles, or elaborate effects
-3. NO decorative animations - every animation must serve the educational content
-4. ALWAYS verify imports at the top of the script 
-5. USE ONLY proven, stable Manim features
-6. **USE THE PROVIDED LAYOUT HELPERS**: get_title_position(), get_content_center(), ensure_fits_screen()
-7. Keep scene transitions clean and fast
-8. Limit each beat to 1-3 quick actions with run_time <= 1.5 seconds to keep pacing brisk
-9. Keep all calculations simple with tidy values (integers, halves, thirds) to avoid error-prone arithmetic
-10. Ensure every element remains fully visible inside the frame; split long text across multiple lines so nothing gets cut off
+1. USE COMPLEX 3D scenes, particles, or elaborate effects ONLY when absolutely necessary
+2. NO decorative animations - every animation must serve the educational content
+3. ALWAYS verify imports at the top of the script 
+4. USE ONLY proven, stable Manim features
+5. **USE THE PROVIDED LAYOUT HELPERS**: get_title_position(), get_content_center(), ensure_fits_screen()
+6. Keep scene transitions clean and fast
+7. Limit each beat to 1-3 quick actions with run_time <= 1.5 seconds to keep pacing brisk
+8. Keep all calculations simple with tidy values (integers, halves, thirds) to avoid error-prone arithmetic
+9. Ensure every element remains fully visible inside the frame; split long text across multiple lines so nothing gets cut off
 
 Video Structure Requirements:
 1. 🌅 Introduction Section:
@@ -122,7 +121,7 @@ Video Structure Requirements:
 
 🔧 Technical Requirements:
 - Return ONLY complete Python code
-- NEVER USE 3D - stick to 2D animations only
+- CAN USE 3D if required - stick to 2D animations only
 - **STANDARDIZED COLOR SCHEME (NO EXCEPTIONS):**
   * Titles: WHITE
   * Body text: WHITE
@@ -147,8 +146,7 @@ Video Structure Requirements:
 - Use voiceover blocks with exact narration text
 - NEVER EVER USE EMOJIS IN THE MANIM CODE
 - **Code rendering helpers:** Use create_code_block(code_str, **kwargs) or add_code_block(scene, code_str, **kwargs) instead of the raw Code() constructor. These helpers automatically scale code blocks to fit within safe zones and avoid unsupported kwargs like 'font'. Example: code = create_code_block("def hello(): print('world')", language="python")
-- KEEP ANIMATIONS SIMPLE: use Create for shapes and FadeIn/FadeOut for text
-- If required, use transitions like Transform for smooth morphing between similar shapes or text
+- Use transitions like Transform for smooth morphing between similar shapes or text
 - RETURN ONLY THE CODE. NOTHING ELSE. ONLY THE CODE
 
 🎬 Animation Guidelines:
@@ -164,7 +162,6 @@ Video Structure Requirements:
    - Use proper spacing (LEFT, RIGHT, UP, DOWN)
    - TextAlign or CENTER constants do not exist in Manim; position elements with '.move_to', '.to_edge', '.align_to', or '.next_to'
    - When using arrows or connectors, leave at least 0.8 units of clearance around arrowheads and labels; prefer Arrow(..., buff=0.8) and label.next_to(..., buff=0.8)
-   - AVOID complex animations - use simple movements only
    - Prefer straightforward numeric values in calculations; avoid elaborate algebra or precision-heavy numbers
    - Limit objects on screen: max 5-7 visible elements at once
    - Clear the screen frequently with FadeOut to prevent clutter
@@ -353,6 +350,8 @@ Visibility Requirements (CRITICAL):
 - Background shapes should use GRAY with opacity≤0.3
 - Before animating, verify text is not hidden behind shapes using set_z_index()
 - Text and labels must have z-index higher than background shapes
+- You can hightlight different parts in text and formulas using different colors from the approved list, but ensure overall readability
+- Currently, you have a dark background - avoid DARK colors for text or shapes. Use bright, vibrant colors only.
 
 Mandatory Script Structure:
 '''python
@@ -379,7 +378,7 @@ class MyScene(VoiceoverScene):
         # Use simple shapes, clear text, basic movements only
 '''
 
-Remember: SIMPLICITY and ROBUSTNESS are more important than visual flair. Every visual element must serve the educational purpose and align perfectly with the narration, delivering a polished, colorful learning arc. Avoid complex animations that could fail.
+Remember: SIMPLICITY and ROBUSTNESS are more important than visual flair. Every visual element must serve the educational purpose and align perfectly with the narration, delivering a polished, colorful learning arc. Use cool and nice animations.
 
 Example:
 class MyScene(VoiceoverScene):
