@@ -9,6 +9,7 @@ import fs from "fs";
 import path from "path";
 import type { RenderLogEntry, ValidationStage } from "./e2b";
 import { createGoogleProvider } from "./google-provider";
+import { selectGroqModel, GROQ_MODEL_IDS } from "./groq-provider";
 
 const google = (modelId: string) => createGoogleProvider()(modelId);
 
@@ -78,21 +79,6 @@ export interface ManimScript {
   code: string;
 }
 
-export interface PlannedManimSegment {
-  id: string;
-  title: string;
-  narration: string;
-  cues?: string[];
-}
-
-export interface PlanManimSegmentsRequest {
-  prompt: string;
-  voiceoverScript: string;
-}
-
-export interface ManimSegmentScriptRequest extends ManimScriptRequest {
-  segment: PlannedManimSegment;
-}
 
 export interface ManimGenerationErrorDetails {
   message?: string;
@@ -126,7 +112,7 @@ export interface VerifyManimScriptResult {
 export async function generateVoiceoverScript({
   prompt,
 }: VoiceoverScriptRequest): Promise<string> {
-  const model = google("gemini-2.5-flash");
+  const model = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
 
   const systemPrompt = VOICEOVER_SYSTEM_PROMPT;
 
@@ -162,288 +148,12 @@ export async function generateManimScript({
   return code;
 }
 
-export async function planManimSegments({
-  prompt,
-  voiceoverScript,
-}: PlanManimSegmentsRequest): Promise<PlannedManimSegment[]> {
-  const model = google("gemini-2.5-pro");
-  const systemPrompt = [
-    "You are an experienced video editor who divides narration scripts into clean Manim segments.",
-    "Identify natural cut points at pauses or topic shifts so voiceovers stay coherent when concatenated.",
-    "Return JSON describing 4-7 ordered segments covering the entire narration with no gaps or overlaps.",
-    "Keep each segment crisp: aim for roughly 1-3 short sentences or <= 45 words per segment.",
-    "Each segment must include an id (slug), short title, narration text, and optional cues array.",
-    "Respond with JSON only.",
-  ].join(" ");
-
-  const { text } = await generateText({
-    model,
-    system: systemPrompt,
-    prompt: [
-      `Video prompt: ${prompt}`,
-      "Full narration (voiceover):",
-      voiceoverScript,
-      "Plan the segment timeline.",
-      "JSON schema: { segments: [{ id: string, title: string, narration: string, cues?: string[] }] }",
-    ].join("\n\n"),
-    temperature: 0,
-  });
-
-  const raw = text.trim();
-  const extractJsonString = (input: string): string | null => {
-    const fenced = input.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    if (fenced?.[1]) return fenced[1].trim();
-    const firstBrace = input.indexOf("{");
-    const lastBrace = input.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      return input.slice(firstBrace, lastBrace + 1).trim();
-    }
-    return null;
-  };
-
-  const jsonCandidate = extractJsonString(raw) ?? raw;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonCandidate);
-  } catch (error) {
-    throw new Error(
-      `Failed to parse segment planning response as JSON: ${
-        (error as Error).message
-      }. Raw response: ${raw}`
-    );
-  }
-
-  const segments =
-    (parsed && typeof parsed === "object" && "segments" in parsed
-      ? (parsed as { segments?: PlannedManimSegment[] }).segments
-      : Array.isArray(parsed)
-      ? (parsed as PlannedManimSegment[])
-      : undefined) ?? [];
-
-  const normalized = segments
-    .map((segment, index) => {
-      const id = segment?.id?.trim() || `segment-${index + 1}`;
-      const title = segment?.title?.trim() || `Segment ${index + 1}`;
-      const narration = segment?.narration?.trim() ?? "";
-      const cues = Array.isArray(segment?.cues)
-        ? segment.cues.filter(
-            (cue): cue is string =>
-              typeof cue === "string" && cue.trim().length > 0
-          )
-        : undefined;
-      return {
-        id,
-        title,
-        narration,
-        cues,
-      } satisfies PlannedManimSegment;
-    })
-    .filter((segment) => segment.narration.length > 0);
-
-  const refined = splitSegmentsIntoShortChunks(normalized);
-
-  if (!refined.length) {
-    throw new Error(
-      `Segment planner returned no usable segments. Parsed value: ${JSON.stringify(
-        parsed
-      ).slice(0, 4000)}`
-    );
-  }
-
-  return refined;
-}
-
-export async function generateSegmentManimScript({
-  prompt,
-  voiceoverScript,
-  segment,
-}: ManimSegmentScriptRequest): Promise<string> {
-  const model = google("gemini-2.5-pro");
-  const augmentedSystemPrompt = buildAugmentedSystemPrompt(MANIM_SYSTEM_PROMPT);
-  const { id, title, narration } = segment;
-
-  const { text } = await generateText({
-    model,
-    system: augmentedSystemPrompt,
-    prompt: [
-      `Video prompt: ${prompt}`,
-      `Segment id: ${id}`,
-      `Segment title: ${title}`,
-      "Full narration for the whole video:",
-      voiceoverScript,
-      "Narration allocated for this segment:",
-      narration,
-      "Generate only the Python Manim code for this segment, matching the narration timing.",
-      "The script must be a self-contained Manim scene named MyScene using manim_voiceover.",
-      "Ensure the scene covers only this segment's narration and assumes preceding content has already played.",
-      "Keep the visuals tight: reuse existing mobjects when possible and remove anything no longer needed immediately.",
-      "Avoid complex camera motion, trackers, path animations, or updaters.",
-      "Limit each segment to a small number of quick animations so the pacing remains crisp.",
-      "Do not include markdown fences or commentary.",
-    ].join("\n\n"),
-    temperature: 0.1,
-  });
-
-  const code = text
-    .replace(/```python?\n?/g, "")
-    .replace(/```\n?/g, "")
-    .trim();
-
-  if (!code.length) {
-    throw new Error(`Generated empty script for segment ${segment.id}`);
-  }
-
-  return code;
-}
-
-const MAX_WORDS_PER_SEGMENT = 45;
-const MIN_WORDS_PER_SEGMENT = 8;
-
-const splitSegmentsIntoShortChunks = (
-  segments: PlannedManimSegment[]
-): PlannedManimSegment[] => {
-  const seenIds = new Set<string>();
-
-  const ensureUniqueId = (baseId: string): string => {
-    let candidate = baseId;
-    let counter = 2;
-    while (seenIds.has(candidate)) {
-      candidate = `${baseId}-${counter}`;
-      counter += 1;
-    }
-    seenIds.add(candidate);
-    return candidate;
-  };
-
-  const chunkTokenizedNarration = (input: string): string[] => {
-    const tokens = input
-      .split(/\s+/)
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0);
-
-    if (!tokens.length) {
-      return [];
-    }
-
-    const chunks: string[] = [];
-    let current: string[] = [];
-
-    const flushCurrent = () => {
-      if (!current.length) {
-        return;
-      }
-      const text = current.join(" ").trim();
-      current = [];
-      if (text.length) {
-        chunks.push(text);
-      }
-    };
-
-    for (const token of tokens) {
-      current.push(token);
-      const wordCount = current.length;
-      const sentenceEnds = /[.!?]["')]*$/.test(token);
-      const exceedsMax = wordCount >= MAX_WORDS_PER_SEGMENT;
-      const goodSentenceBreak =
-        wordCount >= MIN_WORDS_PER_SEGMENT && sentenceEnds;
-
-      if (exceedsMax || goodSentenceBreak) {
-        flushCurrent();
-      }
-    }
-
-    if (current.length) {
-      const trailing = current.join(" ").trim();
-      if (
-        chunks.length &&
-        trailing.split(/\s+/).length < MIN_WORDS_PER_SEGMENT
-      ) {
-        const last = chunks.pop() ?? "";
-        const merged = `${last} ${trailing}`.trim();
-        if (merged.length) {
-          chunks.push(merged);
-        }
-      } else if (trailing.length) {
-        chunks.push(trailing);
-      }
-    }
-
-    return chunks;
-  };
-
-  const buildTitle = (
-    baseTitle: string,
-    fallbackIndex: number,
-    partIndex: number,
-    totalParts: number,
-    narration: string
-  ): string => {
-    const trimmedTitle = baseTitle.trim();
-    const base = trimmedTitle.length
-      ? trimmedTitle
-      : `Segment ${fallbackIndex + 1}`;
-    if (totalParts <= 1) {
-      return base;
-    }
-
-    const shortNarration = narration.split(/\s+/).slice(0, 6).join(" ");
-
-    const annotated = `${base} (Part ${partIndex + 1})`;
-    if (annotated.length <= 60) {
-      return annotated;
-    }
-    const fallback = `${shortNarration}`.trim();
-    return fallback.length ? `${fallback} (Part ${partIndex + 1})` : annotated;
-  };
-
-  return segments.flatMap((segment, segmentIndex) => {
-    const narration = segment.narration.trim();
-    if (!narration) {
-      return [] as PlannedManimSegment[];
-    }
-
-    const chunks = chunkTokenizedNarration(narration);
-    if (!chunks.length) {
-      return [
-        {
-          id: ensureUniqueId(segment.id),
-          title: segment.title,
-          narration,
-          cues: segment.cues,
-        },
-      ];
-    }
-
-    const totalParts = chunks.length;
-
-    return chunks.map((chunk, chunkIndex) => {
-      const baseId =
-        totalParts > 1
-          ? `${segment.id}-p${String(chunkIndex + 1).padStart(2, "0")}`
-          : segment.id;
-      const id = ensureUniqueId(baseId);
-      const title = buildTitle(
-        segment.title,
-        segmentIndex,
-        chunkIndex,
-        totalParts,
-        chunk
-      );
-      return {
-        id,
-        title,
-        narration: chunk,
-        cues: segment.cues,
-      } satisfies PlannedManimSegment;
-    });
-  });
-};
 
 export async function generateYoutubeTitle({
   prompt,
   voiceoverScript,
 }: ManimScriptRequest) {
-  const model = google("gemini-2.5-flash");
+  const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
 
   const systemPrompt =
     "You are a creative writer crafting clear, informative YouTube titles for educational videos. Keep it under 80 characters, avoid clickbait phrasing, and respond with only the final title—no quotes or extra text.";
@@ -461,7 +171,7 @@ export async function generateYoutubeDescription({
   prompt,
   voiceoverScript,
 }: ManimScriptRequest) {
-  const model = google("gemini-2.5-flash");
+  const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
 
   const systemPrompt =
     "You are a content strategist who writes concise, informative YouTube descriptions for educational videos. Summaries should explain what the video covers, avoid emojis, hashtags, and marketing language, and respond only with plain text.";
@@ -660,10 +370,9 @@ export async function regenerateManimScriptWithError({
   })();
 
   const rewriteDirective = forceRewrite
-    ? `\nThis is a forced rewrite because the last regeneration did not resolve the issue. ${
-        forcedReason ??
-        "Produce a substantially different script that fixes the problem."
-      }`
+    ? `\nThis is a forced rewrite because the last regeneration did not resolve the issue. ${forcedReason ??
+    "Produce a substantially different script that fixes the problem."
+    }`
     : "";
 
   const repetitionDirective =

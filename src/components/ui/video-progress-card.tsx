@@ -13,7 +13,6 @@ type VideoProgressCardProps = {
   subtitle?: string;
   stepLabel?: string;
   progress?: number; // 0-100
-  eta?: string;
   className?: string;
 };
 
@@ -22,7 +21,6 @@ export function VideoProgressCard({
   subtitle,
   stepLabel,
   progress = 0,
-  eta,
   className,
 }: VideoProgressCardProps) {
   const clamped = Math.max(0, Math.min(100, progress));
@@ -59,17 +57,6 @@ export function VideoProgressCard({
           <span className="truncate">{stepLabel}</span>
           <span className="tabular-nums font-medium text-foreground">
             {clamped}%
-          </span>
-        </div>
-
-        {/* ETA chip below for breathing room */}
-        <div className="pt-1 text-center">
-          <span className="inline-flex items-center gap-2 rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-            <span
-              className="h-1.5 w-1.5 rounded-full bg-primary"
-              aria-hidden="true"
-            />
-            <span className="tabular-nums">{eta}</span>
           </span>
         </div>
       </CardContent>

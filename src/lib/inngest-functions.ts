@@ -7,12 +7,12 @@ import {
   verifyManimScript,
   generateYoutubeDescription,
   generateYoutubeTitle,
-} from "./gemini";
+} from "./llm";
 import type {
   ManimGenerationAttempt,
   ManimGenerationErrorDetails,
   VerifyManimScriptResult,
-} from "./gemini";
+} from "./llm";
 import { renderManimVideo, ValidationStage } from "./e2b";
 import type { RenderLogEntry } from "./e2b";
 import { VOICEOVER_SERVICE_IMPORT, VOICEOVER_SERVICE_SETTER } from "@/prompt";
@@ -144,8 +144,8 @@ const formatJobError = (
     error instanceof Error
       ? error.message
       : typeof error === "string"
-      ? error
-      : "Unknown error";
+        ? error
+        : "Unknown error";
 
   if (!error || typeof error !== "object") {
     return { message: baseMessage };
@@ -320,9 +320,8 @@ function runHeuristicChecks(
 
       if (wordCount >= 4 && !hasCodeSymbols) {
         issues.push({
-          message: `❌ Non-code narrative detected before the first code line (line ${
-            index + 1
-          }): "${line.slice(0, 80)}"`,
+          message: `❌ Non-code narrative detected before the first code line (line ${index + 1
+            }): "${line.slice(0, 80)}"`,
           severity: "noncode",
         });
         break;
@@ -675,8 +674,7 @@ export const generateVideo = inngest.createFunction(
         : prompt;
 
     console.log(
-      ` Starting ${
-        variant === "short" ? "vertical short" : "full video"
+      ` Starting ${variant === "short" ? "vertical short" : "full video"
       } generation for prompt: "${prompt}"`
     );
 
@@ -705,8 +703,7 @@ export const generateVideo = inngest.createFunction(
       for (let pass = 1; pass <= MAX_VERIFY_PASSES; pass++) {
         if (seenScripts.has(current)) {
           throw new Error(
-            `Auto-fix loop detected during ${context}; the verifier repeated a script it previously evaluated. Last error: ${
-              lastError ?? "unknown"
+            `Auto-fix loop detected during ${context}; the verifier repeated a script it previously evaluated. Last error: ${lastError ?? "unknown"
             }`
           );
         }
@@ -822,8 +819,7 @@ export const generateVideo = inngest.createFunction(
 
         if (!nextScript || nextScript.trim().length === 0) {
           throw new Error(
-            `Verifier reported issues during ${context} but produced an empty fix: ${
-              lastError ?? "unknown"
+            `Verifier reported issues during ${context} but produced an empty fix: ${lastError ?? "unknown"
             }`
           );
         }
@@ -832,8 +828,7 @@ export const generateVideo = inngest.createFunction(
       }
 
       console.warn(
-        `Verifier could not approve the script during ${context} after ${MAX_VERIFY_PASSES} passes. Last error: ${
-          lastError ?? "unknown"
+        `Verifier could not approve the script during ${context} after ${MAX_VERIFY_PASSES} passes. Last error: ${lastError ?? "unknown"
         } — proceeding with the best-effort script.`
       );
       return current;
@@ -947,9 +942,9 @@ export const generateVideo = inngest.createFunction(
                   renderOptions:
                     variant === "short"
                       ? {
-                          orientation: "portrait",
-                          resolution: { width: 720, height: 1280 },
-                        }
+                        orientation: "portrait",
+                        resolution: { width: 720, height: 1280 },
+                      }
                       : undefined,
                   plugins: usesManimML ? ["manim-ml"] : [],
                 });
@@ -1095,8 +1090,7 @@ export const generateVideo = inngest.createFunction(
 
           // Skip retry with same script - go directly to regenerating a new script
           console.log(
-            ` Skipping render retry, regenerating script for attempt ${
-              attempt + 1
+            ` Skipping render retry, regenerating script for attempt ${attempt + 1
             }`
           );
 
@@ -1127,8 +1121,7 @@ export const generateVideo = inngest.createFunction(
             ];
 
             console.log(
-              ` Regeneration pass ${regenPass} (${
-                isForcedRewrite ? "forced" : "standard"
+              ` Regeneration pass ${regenPass} (${isForcedRewrite ? "forced" : "standard"
               }) after render attempt ${attempt}`
             );
 
@@ -1153,8 +1146,7 @@ export const generateVideo = inngest.createFunction(
                 const trimmed = nextScript.trim();
                 if (!trimmed) {
                   throw new Error(
-                    `Regeneration returned an empty script for render attempt ${
-                      attempt + 1
+                    `Regeneration returned an empty script for render attempt ${attempt + 1
                     } (pass ${regenPass})`
                   );
                 }
@@ -1185,8 +1177,7 @@ export const generateVideo = inngest.createFunction(
               blockedScripts.set(fingerprint, verifiedScript.trim());
               currentScript = verifiedScript;
               console.log(
-                ` Accepted regenerated script on pass ${regenPass} for render attempt ${
-                  attempt + 1
+                ` Accepted regenerated script on pass ${regenPass} for render attempt ${attempt + 1
                 }`
               );
               acceptedNewScript = true;

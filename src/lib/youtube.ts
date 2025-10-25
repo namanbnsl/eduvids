@@ -1,7 +1,7 @@
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import { Readable } from "node:stream";
-import { generateYoutubeDescription, generateYoutubeTitle } from "@/lib/gemini";
+import { generateYoutubeDescription, generateYoutubeTitle } from "@/lib/llm";
 import type { VideoVariant } from "./job-store";
 
 export type YouTubePrivacyStatus = "public" | "unlisted" | "private";

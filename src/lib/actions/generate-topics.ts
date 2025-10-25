@@ -13,7 +13,7 @@ export async function generateTopics(): Promise<string[]> {
       prompt: `Generate 2 fun and interesting video/short topic ideas for an educational content platform focused on math, physics, and chemistry.
 
 Topics should:
-- Focus ONLY on math, physics, computer science/technology and chemistry
+- Focus on math, technology and science.
 - Be fascinating and visually engaging 
 - Be concise and clear (under 60 characters each)
 - Focus on cool phenomena, tough concepts, or surprising facts.

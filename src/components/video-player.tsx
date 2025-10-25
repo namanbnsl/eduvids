@@ -134,18 +134,18 @@ export function VideoPlayer({
       job: unknown
     ):
       | (Pick<
-          VideoJob,
-          | "progress"
-          | "step"
-          | "videoUrl"
-          | "error"
-          | "details"
-          | "status"
-          | "youtubeStatus"
-          | "youtubeUrl"
-          | "youtubeError"
-          | "variant"
-        > & { jobId?: string })
+        VideoJob,
+        | "progress"
+        | "step"
+        | "videoUrl"
+        | "error"
+        | "details"
+        | "status"
+        | "youtubeStatus"
+        | "youtubeUrl"
+        | "youtubeError"
+        | "variant"
+      > & { jobId?: string })
       | null => {
       if (!job || typeof job !== "object") return null;
       const value = job as Record<string, unknown>;
@@ -157,9 +157,9 @@ export function VideoPlayer({
       const rawYoutubeStatus = value.youtubeStatus;
       const youtubeStatus: YoutubeStatus | undefined =
         typeof rawYoutubeStatus === "string" &&
-        (rawYoutubeStatus === "pending" ||
-          rawYoutubeStatus === "uploaded" ||
-          rawYoutubeStatus === "failed")
+          (rawYoutubeStatus === "pending" ||
+            rawYoutubeStatus === "uploaded" ||
+            rawYoutubeStatus === "failed")
           ? (rawYoutubeStatus as YoutubeStatus)
           : undefined;
 
@@ -201,8 +201,8 @@ export function VideoPlayer({
           typeof value.jobId === "string"
             ? value.jobId
             : typeof value.id === "string"
-            ? value.id
-            : undefined,
+              ? value.id
+              : undefined,
       };
 
       return normalized;
@@ -262,7 +262,7 @@ export function VideoPlayer({
           if (!res.ok) return;
           const data = await res.json();
           handleJob(data);
-        } catch {}
+        } catch { }
       };
       poll();
       pollInterval = setInterval(poll, 5000);
@@ -274,7 +274,7 @@ export function VideoPlayer({
         try {
           const job = JSON.parse((evt as MessageEvent).data) as unknown;
           handleJob(job);
-        } catch {}
+        } catch { }
       });
       es.addEventListener("error", () => {
         // Fallback to polling on error
@@ -343,7 +343,7 @@ export function VideoPlayer({
           cancelled = true;
           return;
         }
-      } catch {}
+      } catch { }
 
       if (attempts >= maxAttempts && intervalId) {
         clearInterval(intervalId);
@@ -383,8 +383,8 @@ export function VideoPlayer({
     // Don't prompt repeatedly; only if default
     if (Notification.permission === "default") {
       try {
-        Notification.requestPermission().catch(() => {});
-      } catch {}
+        Notification.requestPermission().catch(() => { });
+      } catch { }
     }
   }, []);
 
@@ -410,7 +410,7 @@ export function VideoPlayer({
           // Replace with a real icon path if available
           // icon: "/icons/video-ready.png",
         });
-      } catch {}
+      } catch { }
     };
 
     // If already ready to play, notify immediately
@@ -498,15 +498,6 @@ export function VideoPlayer({
             {errorDetails}
           </p>
         ) : null}
-        <button
-          onClick={() => {
-            setError(null);
-            setErrorDetails(undefined);
-          }}
-          className="mt-2 px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
-        >
-          Retry
-        </button>
       </div>
     );
   }
@@ -531,61 +522,8 @@ export function VideoPlayer({
           title={`Generating...`}
           subtitle={stageTitle}
           progress={normalizedProgress}
-          eta={`ETA: ${etaDisplay ?? "Calculating…"}`}
         />
       </div>
-      // <div
-      //   className={
-      //     "w-full rounded-lg border border-border bg-card text-card-foreground p-6 flex items-center justify-center"
-      //   }
-      //   style={{ aspectRatio: "16 / 9" }}
-      //   aria-busy="true"
-      //   aria-label="Video container generating"
-      // >
-      //   <div className="mx-auto max-w-md text-center space-y-4">
-      //     <h2 className="text-balance text-lg font-medium">
-      //       Video generating. Please wait
-      //     </h2>
-      //     <p className="text-sm text-muted-foreground">
-      //       {stageTitle ?? "This may take a moment."}
-      //     </p>
-
-      //     {/* Determinate progress bar with subtle animation */}
-      //     <div className="mt-4">
-      //       <div
-      //         className="h-2 w-full overflow-hidden rounded bg-muted"
-      //         role="progressbar"
-      //         aria-label="Generating video"
-      //         aria-valuemin={0}
-      //         aria-valuemax={100}
-      //         aria-valuenow={normalizedProgress}
-      //       >
-      //         <div
-      //           className="h-full rounded bg-primary transition-all duration-700 ease-out"
-      //           style={{
-      //             width: `${normalizedProgress}%`,
-      //           }}
-      //         />
-      //       </div>
-      //       <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-      //         <span>{stageTitle ?? "Processing"}</span>
-      //         <span>{roundedProgress}%</span>
-      //       </div>
-      //       {etaDisplay ? (
-      //         <div className="text-xs text-muted-foreground">
-      //           ETA: {etaDisplay} · Rendering times may vary.
-      //         </div>
-      //       ) : null}
-      //     </div>
-
-      //     {/* Screen reader live status */}
-      //     <p className="sr-only" aria-live="polite" role="status">
-      //       {`Video generating. ${
-      //         stageTitle ?? "Please wait"
-      //       }. ${roundedProgress}%${etaDisplay ? `. ETA approximately ${etaDisplay}` : ""}`}
-      //     </p>
-      //   </div>
-      // </div>
     );
   }
 
