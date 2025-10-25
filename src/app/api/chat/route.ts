@@ -8,18 +8,18 @@ import { createGoogleProvider } from "@/lib/google-provider";
 export const maxDuration = 30;
 
 export async function POST(req: Request) {
-  const { 
-    model: modelId, 
+  const {
+    model: modelId,
     messages,
     forceVariant
-  }: { 
-    messages: UIMessage[]; 
+  }: {
+    messages: UIMessage[];
     model: string;
     forceVariant?: "video" | "short" | null;
   } = await req.json();
 
   // Video generation is now handled by the generate_video tool
-  
+
   // Build system prompt with variant instruction if forced
   let systemPrompt = SYSTEM_PROMPT;
   if (forceVariant === "video") {
@@ -30,6 +30,7 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: createGoogleProvider()(modelId),
+    toolChoice: "required",
     system: systemPrompt,
     messages: convertToModelMessages(messages),
     tools: {
@@ -52,16 +53,16 @@ export async function POST(req: Request) {
 
           const normalized = description.trim();
           const normalizedLower = normalized.toLowerCase();
-          
+
           // Use forced variant first, then tool parameter, then infer from description
           const inferredVariant = forceVariant && forceVariant !== null
             ? forceVariant
             : variant
-            ? variant
-            : normalizedLower.includes("short") ||
-              normalizedLower.includes("vertical short")
-            ? "short"
-            : "video";
+              ? variant
+              : normalizedLower.includes("short") ||
+                normalizedLower.includes("vertical short")
+                ? "short"
+                : "video";
 
           console.log("Variant determination:", { forceVariant, toolVariant: variant, inferredVariant });
 
