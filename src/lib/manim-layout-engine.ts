@@ -158,22 +158,20 @@ export function getRecommendedFontSizes(
   const { orientation, contentType } = config;
 
   if (orientation === "portrait") {
-    // Portrait/vertical videos use larger fonts for better readability
     return {
       title: 46,
       heading: 36,
       body: 32,
-      math: 38, // Larger font for mathematical formulae
+      math: 42,
       caption: 28,
       label: 26,
     };
   } else {
-    // Landscape can use slightly larger fonts
     return {
       title: contentType === "text-heavy" ? 36 : 40,
       heading: 32,
       body: 28,
-      math: 34, // Larger font for mathematical formulae
+      math: 42,
       caption: 24,
       label: 20,
     };
@@ -307,7 +305,7 @@ export function generateLayoutSetup(
 
   parts.push("\n# Script color palette");
   const paletteEntries = Object.entries(colorPalette);
-  paletteEntries.forEach(([name, hex], index) => {
+  paletteEntries.forEach(([name, hex]) => {
     parts.push(`${name} = "${hex}" \n`);
   });
 

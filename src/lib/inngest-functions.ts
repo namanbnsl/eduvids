@@ -1375,7 +1375,6 @@ export const uploadVideoToYouTube = inngest.createFunction(
     ];
 
     try {
-      const MAX_THUMBNAIL_RETRIES = 2;
       let thumbnailDataUrl: string | undefined;
 
       const yt = await step.run("upload-to-youtube", async () => {

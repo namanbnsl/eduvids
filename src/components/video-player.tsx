@@ -466,28 +466,28 @@ export function VideoPlayer({
     return "Queued";
   }, [normalizedProgress, step]);
 
-  const etaDisplay = useMemo(() => {
-    if (jobStatus === "ready") return null;
-    if (normalizedProgress <= 0 || normalizedProgress >= 100) return null;
-    if (etaTargetMs === null) {
-      return "Calculating…";
-    }
+  // const etaDisplay = useMemo(() => {
+  //   if (jobStatus === "ready") return null;
+  //   if (normalizedProgress <= 0 || normalizedProgress >= 100) return null;
+  //   if (etaTargetMs === null) {
+  //     return "Calculating…";
+  //   }
 
-    const targetDate = new Date(etaTargetMs);
-    if (Number.isNaN(targetDate.getTime())) {
-      return "Calculating…";
-    }
+  //   const targetDate = new Date(etaTargetMs);
+  //   if (Number.isNaN(targetDate.getTime())) {
+  //     return "Calculating…";
+  //   }
 
-    const formatter = new Intl.DateTimeFormat(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-      ...(Math.abs(etaTargetMs - Date.now()) > 24 * 3600 * 1000
-        ? { month: "short", day: "numeric" }
-        : {}),
-    });
+  //   const formatter = new Intl.DateTimeFormat(undefined, {
+  //     hour: "numeric",
+  //     minute: "2-digit",
+  //     ...(Math.abs(etaTargetMs - Date.now()) > 24 * 3600 * 1000
+  //       ? { month: "short", day: "numeric" }
+  //       : {}),
+  //   });
 
-    return `~${formatter.format(targetDate)}`;
-  }, [etaTargetMs, jobStatus, normalizedProgress]);
+  //   return `~${formatter.format(targetDate)}`;
+  // }, [etaTargetMs, jobStatus, normalizedProgress]);
 
   if (error) {
     return (
