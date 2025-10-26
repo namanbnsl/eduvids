@@ -28,7 +28,7 @@ export function VideoProgressCard({
   return (
     <Card
       className={cn(
-        "w-full max-w-xl rounded-xl border bg-card text-card-foreground shadow-sm",
+        "w-full max-w-xl min-w-[min(18rem,100%)] rounded-xl border bg-card text-card-foreground shadow-sm",
         className
       )}
       aria-live="polite"
