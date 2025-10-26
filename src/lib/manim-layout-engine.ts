@@ -266,41 +266,78 @@ export function generateLayoutSetup(
   parts.push(generateSafeZoneConstants(config));
   parts.push('config.background_color = "#020712"');
   parts.push('Text.set_default(font="Lato")');
+  // const colorPalette: Record<string, string> = {
+  //   WHITE: "#FFFFFF",
+  //   BLACK: "#000000",
+  //   GRAY: "#94A3B8",
+  //   DARK_GRAY: "#475569",
+  //   LIGHT_GRAY: "#E2E8F0",
+  //   YELLOW: "#FFD166",
+  //   GOLD: "#EAB308",
+  //   ORANGE: "#F97316",
+  //   CORAL: "#FB7185",
+  //   RED: "#EF4444",
+  //   CRIMSON: "#DC2626",
+  //   PINK: "#F472B6",
+  //   MAGENTA: "#EC4899",
+  //   BLUE: "#2563EB",
+  //   INDIGO: "#4338CA",
+  //   CYAN: "#0EA5E9",
+  //   TEAL: "#14B8A6",
+  //   PURE_GREEN: "#22C55E",
+  //   EMERALD: "#10B981",
+  //   LIME: "#84CC16",
+  //   PURPLE: "#A855F7",
+  //   VIOLET: "#7C3AED",
+  //   LAVENDER: "#C084FC",
+  //   NORD: "#5E81AC",
+  //   NORD_FROST: "#8FBCBB",
+  //   NORD_NIGHT: "#2E3440",
+  //   SLATE: "#64748B",
+  //   STEEL: "#475569",
+  //   SAND: "#F5E0B7",
+  //   BROWN: "#92400E",
+  //   SKY: "#38BDF8",
+  //   FUCHSIA: "#D946EF",
+  //   MINT: "#99F6E4",
+  //   NAVY: "#1D4ED8",
+  // };
+
   const colorPalette: Record<string, string> = {
     WHITE: "#FFFFFF",
-    BLACK: "#000000",
-    GRAY: "#94A3B8",
-    DARK_GRAY: "#475569",
-    LIGHT_GRAY: "#E2E8F0",
-    YELLOW: "#FFD166",
-    GOLD: "#EAB308",
-    ORANGE: "#F97316",
-    CORAL: "#FB7185",
-    RED: "#EF4444",
-    CRIMSON: "#DC2626",
-    PINK: "#F472B6",
-    MAGENTA: "#EC4899",
-    BLUE: "#2563EB",
-    INDIGO: "#4338CA",
-    CYAN: "#0EA5E9",
-    TEAL: "#14B8A6",
-    PURE_GREEN: "#22C55E",
-    EMERALD: "#10B981",
-    LIME: "#84CC16",
-    PURPLE: "#A855F7",
-    VIOLET: "#7C3AED",
-    LAVENDER: "#C084FC",
-    NORD: "#5E81AC",
-    NORD_FROST: "#8FBCBB",
-    NORD_NIGHT: "#2E3440",
-    SLATE: "#64748B",
-    STEEL: "#475569",
-    SAND: "#F5E0B7",
-    BROWN: "#92400E",
-    SKY: "#38BDF8",
-    FUCHSIA: "#D946EF",
-    MINT: "#99F6E4",
-    NAVY: "#1D4ED8",
+    BLACK: "#E0E0E0", // Lightened for visibility
+    GRAY: "#B8C5D6", // Brighter gray
+    DARK_GRAY: "#8B9DB5", // Lighter dark gray
+    LIGHT_GRAY: "#F0F4F8", // Very light gray
+    YELLOW: "#FFE066", // Brighter yellow
+    GOLD: "#FCD34D", // Lighter gold
+    ORANGE: "#FFA566", // Lighter orange
+    CORAL: "#FFA0B4", // Lighter coral
+    RED: "#FF6B6B", // Softer, lighter red
+    CRIMSON: "#FF5A5A", // Lighter crimson
+    PINK: "#FFB3D9", // Lighter pink
+    MAGENTA: "#FF7AC6", // Brighter magenta
+    BLUE: "#5B9EFF", // Lighter blue
+    INDIGO: "#7B70F0", // Lighter indigo
+    CYAN: "#4DD4FF", // Brighter cyan
+    TEAL: "#5FFBF1", // Much lighter teal
+    PURE_GREEN: "#5EE07B", // Lighter green
+    EMERALD: "#5FFFC9", // Brighter emerald
+    LIME: "#BBFF4D", // Brighter lime
+    PURPLE: "#C77DFF", // Lighter purple
+    VIOLET: "#A78BFA", // Lighter violet
+    LAVENDER: "#DDB3FF", // Lighter lavender
+    NORD: "#81A1C1", // Lighter nord blue
+    NORD_FROST: "#A8DCDB", // Lighter frost
+    NORD_NIGHT: "#6B7A8F", // Much lighter than night
+    SLATE: "#94A9C9", // Lighter slate
+    STEEL: "#8B9DB5", // Lighter steel
+    SAND: "#FFE8B0", // Lighter sand
+    BROWN: "#C9874A", // Much lighter brown
+    SKY: "#87CEEB", // Lighter sky
+    FUCHSIA: "#F066FF", // Lighter fuchsia
+    MINT: "#B8FFE8", // Lighter mint
+    NAVY: "#4F7BFF", // Much lighter navy
   };
 
   parts.push("\n# Script color palette");
