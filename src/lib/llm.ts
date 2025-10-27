@@ -133,10 +133,18 @@ export async function generateVoiceoverScript({
 
   const systemPrompt = VOICEOVER_SYSTEM_PROMPT;
 
+  const composedPrompt = [
+    `User request: ${prompt}`,
+    "Directive: Cover every essential idea from the request in sequence, adding extra BODY lines when needed so no core step is skipped.",
+    "Directive: Keep the narration purely educational—no jokes, sound effects, or entertainment filler.",
+    "Directive: Maintain smooth flow by referencing prior steps and previewing what comes next.",
+    "Draft the narration segments:",
+  ].join("\n\n");
+
   const { text } = await generateText({
     model,
     system: systemPrompt,
-    prompt: `User request: ${prompt}\n\nDraft the narration segments:`,
+    prompt: composedPrompt,
   });
 
   return text.trim();
@@ -343,21 +351,6 @@ export async function generateThumbnailManimScript({
     .replace(/```\n?/g, "")
     .trim();
   return code;
-}
-"```",
-  "",
-  "Return ONLY the complete Python code with no commentary or markdown fences. Ensure class MyScene and def construct are included:",
-      ].join("\n"),
-  temperature: 0.1,
-    });
-const code = text
-  .replace(/```python?\n?/g, "")
-  .replace(/```\n?/g, "")
-  .trim();
-return code;
-  } catch (kimiErr) {
-  throw kimiErr instanceof Error ? kimiErr : new Error(String(kimiErr));
-}
 }
 
 export interface RegenerateManimScriptRequest {
