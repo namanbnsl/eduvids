@@ -176,7 +176,24 @@ export async function generateManimScript({
       await sleep(delayMs);
     }
   }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  // Fallback to Kimi-k2 (no heavy docs) if Gemini fails after retries
+  try {
+    const kimi = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
+    const baseSystemPrompt = MANIM_SYSTEM_PROMPT; // no augmented docs for Kimi
+    const { text } = await generateText({
+      model: kimi,
+      system: baseSystemPrompt,
+      prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration:`,
+      temperature: 0.1,
+    });
+    const code = text
+      .replace(/```python?\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+    return code;
+  } catch (kimiErr) {
+    throw kimiErr instanceof Error ? kimiErr : new Error(String(kimiErr));
+  }
 }
 
 
@@ -306,7 +323,57 @@ export async function generateThumbnailManimScript({
       await sleep(delayMs);
     }
   }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  // Fallback to Kimi-k2 (no heavy docs) if Gemini fails after retries
+  try {
+    const kimi = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
+    const baseSystemPrompt =
+      "You are a Manim Community v0.18.0 expert creating eye-catching YouTube thumbnail frames. Generate a single static frame that captures the video's essence. The scene should be visually striking, clear, and professional. Use bold text, vibrant colors, and simple shapes. DO NOT use voiceover or animations. The construct method should create all objects and add them to the scene without any animations. Use self.add() instead of self.play() for all objects.";
+    const { text } = await generateText({
+      model: kimi,
+      system: baseSystemPrompt,
+      prompt: [
+        `Video prompt: ${prompt}`,
+        `Video title: ${title}`,
+        `Voiceover narration (for context):\n${voiceoverScript}`,
+        "",
+        "Generate a Manim script for a YouTube thumbnail that:",
+        "1. MUST declare: from manim import *",
+        "2. MUST declare: class MyScene(Scene):",
+        "3. MUST declare: def construct(self):",
+        "4. Creates a single static frame (no animations)",
+        "5. Features the video title prominently in the upper third with large, bold text",
+        "6. Adds a headline phrase (6-8 words) on a high-contrast rounded rectangle banner that states the main action or promise of the video",
+        "7. Adds a supporting subtext line (8-12 words) beneath the headline describing what viewers will learn or see",
+        "8. Uses WHITE for main text, YELLOW for emphasized words, and DARK_BLUE for the headline banner background",
+        "9. Applies subtle drop shadows and stroke outlines so all text remains readable",
+        "10. Includes 1-2 key visual elements that represent the video topic (icons, diagrams, or symbolic shapes)",
+        "11. Uses a dynamic background (gradient or geometric pattern) that contrasts with the text",
+        "12. Ensures the layout has clear visual hierarchy and balanced spacing",
+        "13. Uses self.add() to add all objects (NO self.play() calls)",
+        "14. Keeps text readable and ensures no elements run past safe margins",
+        "15. Uses simple shapes and consistent alignment for a polished look",
+        "",
+        "REQUIRED structure (do not omit these lines):",
+        "```python",
+        "from manim import *",
+        "",
+        "class MyScene(Scene):",
+        "    def construct(self):",
+        "        # Your code here using self.add()",
+        "```",
+        "",
+        "Return ONLY the complete Python code with no commentary or markdown fences. Ensure class MyScene and def construct are included:",
+      ].join("\n"),
+      temperature: 0.1,
+    });
+    const code = text
+      .replace(/```python?\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+    return code;
+  } catch (kimiErr) {
+    throw kimiErr instanceof Error ? kimiErr : new Error(String(kimiErr));
+  }
 }
 
 export interface RegenerateManimScriptRequest {
@@ -463,7 +530,24 @@ export async function regenerateManimScriptWithError({
       await sleep(delayMs);
     }
   }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  // Fallback to Kimi-k2 (no heavy docs) if Gemini fails after retries
+  try {
+    const kimi = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
+    const baseSystemPrompt = MANIM_SYSTEM_PROMPT; // no augmented docs for Kimi
+    const { text } = await generateText({
+      model: kimi,
+      system: baseSystemPrompt,
+      prompt: promptSections.join("\n\n"),
+      temperature: 0.1,
+    });
+    const code = text
+      .replace(/```python?\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+    return code;
+  } catch (kimiErr) {
+    throw kimiErr instanceof Error ? kimiErr : new Error(String(kimiErr));
+  }
 }
 
 export async function verifyManimScript({
@@ -494,6 +578,7 @@ export async function verifyManimScript({
 
   let text: string = "";
   let lastErr: unknown;
+  let success = false;
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
     try {
       const model = google("gemini-2.5-pro");
@@ -514,17 +599,46 @@ export async function verifyManimScript({
         maxRetries: 0,
       });
       text = result.text;
+      success = true;
       break;
     } catch (err) {
       lastErr = err;
       if (attempt === GEMINI_MAX_RETRIES) {
         logRetry("verifyManimScript", attempt, err);
-        throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+        break;
       }
       const delayMs = randomDelayMs();
       logRetry("verifyManimScript", attempt, err, delayMs);
       await sleep(delayMs);
     }
+  }
+
+  // Fallback to Kimi-k2 (no heavy docs) if Gemini fails after retries
+  if (!success) {
+    const kimi = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
+    const verifierSystemPromptPlain = [
+      "You are a meticulous static verifier for Manim Community v0.18.0 scripts using manim_voiceover.",
+      "Focus on issues that would break rendering or clearly violate critical constraints.",
+      "Approve scripts unchanged when they are safe; keep fixes minimal.",
+      "Respond ONLY with a minimal JSON object.",
+    ].join("\n");
+    const result = await generateText({
+      model: kimi,
+      system: verifierSystemPromptPlain,
+      prompt: [
+        "Validate the following Manim script prior to rendering.",
+        "Ensure syntax, imports, class hierarchy, voiceover usage, and layout contract compliance.",
+        "When problems exist, supply an updated script in fixedScript that you have re-validated.",
+        "Output JSON with fields: ok (boolean), error (string optional), fixedScript (string optional). No extra text.",
+        `User request: ${prompt}`,
+        `Voiceover narration:\n${voiceoverScript}`,
+        `Script to validate (python):\n\u0060\u0060\u0060python\n${script}\n\u0060\u0060\u0060`,
+      ].join("\n\n"),
+      temperature: 0,
+      maxOutputTokens: 700,
+      maxRetries: 0,
+    });
+    text = result.text;
   }
 
   const raw = text.trim();
