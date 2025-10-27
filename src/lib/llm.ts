@@ -13,6 +13,15 @@ import { selectGroqModel, GROQ_MODEL_IDS } from "./groq-provider";
 
 const google = (modelId: string) => createGoogleProvider()(modelId);
 
+// Retry helpers for Gemini calls used by the Inngest job
+const SLEEP_MIN_MS = 30_000;
+const SLEEP_MAX_MS = 40_000;
+const GEMINI_MAX_RETRIES = 3; // number of retries AFTER the initial attempt
+
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+const randomDelayMs = () =>
+  SLEEP_MIN_MS + Math.floor(Math.random() * (SLEEP_MAX_MS - SLEEP_MIN_MS + 1));
+
 interface ManimReferenceDocs {
   markdown: string;
   json: unknown;
@@ -129,23 +138,32 @@ export async function generateManimScript({
   prompt,
   voiceoverScript,
 }: ManimScriptRequest): Promise<string> {
-  const model = google("gemini-2.5-pro");
   const augmentedSystemPrompt = buildAugmentedSystemPrompt(MANIM_SYSTEM_PROMPT);
 
-  const firstAttempt = await generateText({
-    model,
-    system: augmentedSystemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration:`,
-    temperature: 0.1,
-  });
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
+    try {
+      const model = google("gemini-2.5-pro");
+      const { text } = await generateText({
+        model,
+        system: augmentedSystemPrompt,
+        prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration:`,
+        temperature: 0.1,
+      });
 
-  // Extract code from potential markdown formatting
-  const code = firstAttempt.text
-    .replace(/```python?\n?/g, "")
-    .replace(/```\n?/g, "")
-    .trim();
+      const code = text
+        .replace(/```python?\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
 
-  return code;
+      return code;
+    } catch (err) {
+      lastErr = err;
+      if (attempt === GEMINI_MAX_RETRIES) break;
+      await sleep(randomDelayMs());
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 
@@ -196,71 +214,81 @@ export async function generateThumbnailManimScript({
   title,
   voiceoverScript,
 }: ThumbnailScriptRequest): Promise<string> {
-  const model = google("gemini-2.5-pro");
   const augmentedSystemPrompt = buildAugmentedSystemPrompt(
     "You are a Manim Community v0.18.0 expert creating eye-catching YouTube thumbnail frames. Generate a single static frame that captures the video's essence. The scene should be visually striking, clear, and professional. Use bold text, vibrant colors, and simple shapes. DO NOT use voiceover or animations. The construct method should create all objects and add them to the scene without any animations. Use self.add() instead of self.play() for all objects."
   );
 
-  const { text } = await generateText({
-    model,
-    system: augmentedSystemPrompt,
-    prompt: [
-      `Video prompt: ${prompt}`,
-      `Video title: ${title}`,
-      `Voiceover narration (for context):\n${voiceoverScript}`,
-      "",
-      "Generate a Manim script for a YouTube thumbnail that:",
-      "1. MUST declare: from manim import *",
-      "2. MUST declare: class MyScene(Scene):",
-      "3. MUST declare: def construct(self):",
-      "4. Creates a single static frame (no animations)",
-      "5. Features the video title prominently in the upper third with large, bold text",
-      "6. Adds a headline phrase (6-8 words) on a high-contrast rounded rectangle banner that states the main action or promise of the video",
-      "7. Adds a supporting subtext line (8-12 words) beneath the headline describing what viewers will learn or see",
-      "8. Uses WHITE for main text, YELLOW for emphasized words, and DARK_BLUE for the headline banner background",
-      "9. Applies subtle drop shadows and stroke outlines so all text remains readable",
-      "10. Includes 1-2 key visual elements that represent the video topic (icons, diagrams, or symbolic shapes)",
-      "11. Uses a dynamic background (gradient or geometric pattern) that contrasts with the text",
-      "12. Ensures the layout has clear visual hierarchy and balanced spacing",
-      "13. Uses self.add() to add all objects (NO self.play() calls)",
-      "14. Keeps text readable and ensures no elements run past safe margins",
-      "15. Uses simple shapes and consistent alignment for a polished look",
-      "",
-      "REQUIRED structure (do not omit these lines):",
-      "```python",
-      "from manim import *",
-      "",
-      "class MyScene(Scene):",
-      "    def construct(self):",
-      "        # Your code here using self.add()",
-      "```",
-      "",
-      "Use Rectangles with rounded corners for banners/backgrounds and add glow effects via apply_depth_test=False and stroke settings when needed.",
-      "Arrange elements so the title sits near the top, the headline overlay sits center-left, and the subtext sits below the headline with consistent alignment.",
-      "Example:",
-      "```python",
-      "from manim import *",
-      "",
-      "class MyScene(Scene):",
-      "    def construct(self):",
-      "        title = Text('Video Title', font_size=72, color=WHITE)",
-      "        title.to_edge(UP, buff=1.0)",
-      "        visual = Circle(radius=2, color=YELLOW)",
-      "        visual.move_to(ORIGIN)",
-      "        self.add(title, visual)",
-      "```",
-      "",
-      "Return ONLY the complete Python code with no commentary or markdown fences. Ensure class MyScene and def construct are included:",
-    ].join("\n"),
-    temperature: 0.1,
-  });
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
+    try {
+      const model = google("gemini-2.5-pro");
+      const { text } = await generateText({
+        model,
+        system: augmentedSystemPrompt,
+        prompt: [
+          `Video prompt: ${prompt}`,
+          `Video title: ${title}`,
+          `Voiceover narration (for context):\n${voiceoverScript}`,
+          "",
+          "Generate a Manim script for a YouTube thumbnail that:",
+          "1. MUST declare: from manim import *",
+          "2. MUST declare: class MyScene(Scene):",
+          "3. MUST declare: def construct(self):",
+          "4. Creates a single static frame (no animations)",
+          "5. Features the video title prominently in the upper third with large, bold text",
+          "6. Adds a headline phrase (6-8 words) on a high-contrast rounded rectangle banner that states the main action or promise of the video",
+          "7. Adds a supporting subtext line (8-12 words) beneath the headline describing what viewers will learn or see",
+          "8. Uses WHITE for main text, YELLOW for emphasized words, and DARK_BLUE for the headline banner background",
+          "9. Applies subtle drop shadows and stroke outlines so all text remains readable",
+          "10. Includes 1-2 key visual elements that represent the video topic (icons, diagrams, or symbolic shapes)",
+          "11. Uses a dynamic background (gradient or geometric pattern) that contrasts with the text",
+          "12. Ensures the layout has clear visual hierarchy and balanced spacing",
+          "13. Uses self.add() to add all objects (NO self.play() calls)",
+          "14. Keeps text readable and ensures no elements run past safe margins",
+          "15. Uses simple shapes and consistent alignment for a polished look",
+          "",
+          "REQUIRED structure (do not omit these lines):",
+          "```python",
+          "from manim import *",
+          "",
+          "class MyScene(Scene):",
+          "    def construct(self):",
+          "        # Your code here using self.add()",
+          "```",
+          "",
+          "Use Rectangles with rounded corners for banners/backgrounds and add glow effects via apply_depth_test=False and stroke settings when needed.",
+          "Arrange elements so the title sits near the top, the headline overlay sits center-left, and the subtext sits below the headline with consistent alignment.",
+          "Example:",
+          "```python",
+          "from manim import *",
+          "",
+          "class MyScene(Scene):",
+          "    def construct(self):",
+          "        title = Text('Video Title', font_size=72, color=WHITE)",
+          "        title.to_edge(UP, buff=1.0)",
+          "        visual = Circle(radius=2, color=YELLOW)",
+          "        visual.move_to(ORIGIN)",
+          "        self.add(title, visual)",
+          "```",
+          "",
+          "Return ONLY the complete Python code with no commentary or markdown fences. Ensure class MyScene and def construct are included:",
+        ].join("\n"),
+        temperature: 0.1,
+      });
 
-  const code = text
-    .replace(/```python?\n?/g, "")
-    .replace(/```\n?/g, "")
-    .trim();
+      const code = text
+        .replace(/```python?\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
 
-  return code;
+      return code;
+    } catch (err) {
+      lastErr = err;
+      if (attempt === GEMINI_MAX_RETRIES) break;
+      await sleep(randomDelayMs());
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 export interface RegenerateManimScriptRequest {
@@ -290,7 +318,6 @@ export async function regenerateManimScriptWithError({
   forcedReason,
   repeatedErrorCount = 0,
 }: RegenerateManimScriptRequest): Promise<string> {
-  const model = google("gemini-2.5-pro");
   const augmentedSystemPrompt = buildAugmentedSystemPrompt(MANIM_SYSTEM_PROMPT);
 
   const previousAttemptsSummary = (() => {
@@ -390,20 +417,30 @@ export async function regenerateManimScriptWithError({
     "You must analyze the failure, apply all necessary fixes, and generate a corrected Manim script that:\n1. Resolves the specific error\n2. Follows the narration timeline\n3. Uses proper Manim syntax and best practices\n4. Avoids repeating any previous mistakes or failing scripts\n5. Differs meaningfully from the broken script when required\n\nReturn ONLY the fully corrected Python code with no commentary, no analysis, and no Markdown fences. Provide just the executable script:",
   ].filter((section) => section && section.trim().length > 0);
 
-  const { text } = await generateText({
-    model,
-    system: augmentedSystemPrompt,
-    prompt: promptSections.join("\n\n"),
-    temperature: 0.1,
-  });
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
+    try {
+      const model = google("gemini-2.5-pro");
+      const { text } = await generateText({
+        model,
+        system: augmentedSystemPrompt,
+        prompt: promptSections.join("\n\n"),
+        temperature: 0.1,
+      });
 
-  // Extract code from potential markdown formatting
-  const code = text
-    .replace(/```python?\n?/g, "")
-    .replace(/```\n?/g, "")
-    .trim();
+      const code = text
+        .replace(/```python?\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
 
-  return code;
+      return code;
+    } catch (err) {
+      lastErr = err;
+      if (attempt === GEMINI_MAX_RETRIES) break;
+      await sleep(randomDelayMs());
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 export async function verifyManimScript({
@@ -433,22 +470,37 @@ export async function verifyManimScript({
     ].join("\n")
   );
 
-  const { text } = await generateText({
-    model,
-    system: verifierSystemPrompt,
-    prompt: [
-      "Validate the following Manim script prior to rendering.",
-      "Ensure syntax, imports, class hierarchy, voiceover usage, and layout contract compliance.",
-      "When problems exist, supply an updated script in fixedScript that you have re-validated against the docs.",
-      "Output JSON with fields: ok (boolean), error (string optional), fixedScript (string optional). No extra text.",
-      `User request: ${prompt}`,
-      `Voiceover narration:\n${voiceoverScript}`,
-      `Script to validate (python):\n\u0060\u0060\u0060python\n${script}\n\u0060\u0060\u0060`,
-    ].join("\n\n"),
-    temperature: 0,
-    maxOutputTokens: 900,
-    maxRetries: 1,
-  });
+  let text: string = "";
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
+    try {
+      const model = google("gemini-2.5-pro");
+      const result = await generateText({
+        model,
+        system: verifierSystemPrompt,
+        prompt: [
+          "Validate the following Manim script prior to rendering.",
+          "Ensure syntax, imports, class hierarchy, voiceover usage, and layout contract compliance.",
+          "When problems exist, supply an updated script in fixedScript that you have re-validated against the docs.",
+          "Output JSON with fields: ok (boolean), error (string optional), fixedScript (string optional). No extra text.",
+          `User request: ${prompt}`,
+          `Voiceover narration:\n${voiceoverScript}`,
+          `Script to validate (python):\n\u0060\u0060\u0060python\n${script}\n\u0060\u0060\u0060`,
+        ].join("\n\n"),
+        temperature: 0,
+        maxOutputTokens: 900,
+        maxRetries: 0,
+      });
+      text = result.text;
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (attempt === GEMINI_MAX_RETRIES) {
+        throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+      }
+      await sleep(randomDelayMs());
+    }
+  }
 
   const raw = text.trim();
 
