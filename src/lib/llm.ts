@@ -13,14 +13,22 @@ import { selectGroqModel, GROQ_MODEL_IDS } from "./groq-provider";
 
 const google = (modelId: string) => createGoogleProvider()(modelId);
 
-// Retry helpers for Gemini calls used by the Inngest job
+// Retry helpers for Gemini calls
 const SLEEP_MIN_MS = 30_000;
 const SLEEP_MAX_MS = 40_000;
-const GEMINI_MAX_RETRIES = 3; // number of retries AFTER the initial attempt
+const GEMINI_MAX_RETRIES = 3; // number of retries after the initial attempt
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 const randomDelayMs = () =>
   SLEEP_MIN_MS + Math.floor(Math.random() * (SLEEP_MAX_MS - SLEEP_MIN_MS + 1));
+
+const logRetry = (fnName: string, attempt: number, error: unknown, delayMs?: number) => {
+  const errorMsg = error instanceof Error ? error.message : String(error);
+  console.warn(
+    `[${fnName}] Attempt ${attempt + 1}/${GEMINI_MAX_RETRIES + 1} failed: ${errorMsg}${delayMs ? ` - retrying in ${Math.round(delayMs / 1000)}s` : " - no more retries"
+    }`
+  );
+};
 
 interface ManimReferenceDocs {
   markdown: string;
@@ -159,8 +167,13 @@ export async function generateManimScript({
       return code;
     } catch (err) {
       lastErr = err;
-      if (attempt === GEMINI_MAX_RETRIES) break;
-      await sleep(randomDelayMs());
+      if (attempt === GEMINI_MAX_RETRIES) {
+        logRetry("generateManimScript", attempt, err);
+        break;
+      }
+      const delayMs = randomDelayMs();
+      logRetry("generateManimScript", attempt, err, delayMs);
+      await sleep(delayMs);
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
@@ -284,8 +297,13 @@ export async function generateThumbnailManimScript({
       return code;
     } catch (err) {
       lastErr = err;
-      if (attempt === GEMINI_MAX_RETRIES) break;
-      await sleep(randomDelayMs());
+      if (attempt === GEMINI_MAX_RETRIES) {
+        logRetry("generateThumbnailManimScript", attempt, err);
+        break;
+      }
+      const delayMs = randomDelayMs();
+      logRetry("generateThumbnailManimScript", attempt, err, delayMs);
+      await sleep(delayMs);
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
@@ -436,8 +454,13 @@ export async function regenerateManimScriptWithError({
       return code;
     } catch (err) {
       lastErr = err;
-      if (attempt === GEMINI_MAX_RETRIES) break;
-      await sleep(randomDelayMs());
+      if (attempt === GEMINI_MAX_RETRIES) {
+        logRetry("regenerateManimScriptWithError", attempt, err);
+        break;
+      }
+      const delayMs = randomDelayMs();
+      logRetry("regenerateManimScriptWithError", attempt, err, delayMs);
+      await sleep(delayMs);
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
@@ -448,7 +471,6 @@ export async function verifyManimScript({
   voiceoverScript,
   script,
 }: VerifyManimScriptRequest): Promise<VerifyManimScriptResult> {
-  const model = google("gemini-2.5-pro");
   const verifierSystemPrompt = buildAugmentedSystemPrompt(
     [
       "You are a meticulous static verifier for Manim Community v0.18.0 scripts using manim_voiceover.",
@@ -496,9 +518,12 @@ export async function verifyManimScript({
     } catch (err) {
       lastErr = err;
       if (attempt === GEMINI_MAX_RETRIES) {
+        logRetry("verifyManimScript", attempt, err);
         throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
       }
-      await sleep(randomDelayMs());
+      const delayMs = randomDelayMs();
+      logRetry("verifyManimScript", attempt, err, delayMs);
+      await sleep(delayMs);
     }
   }
 
