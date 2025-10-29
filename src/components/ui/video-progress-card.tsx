@@ -24,6 +24,20 @@ export function VideoProgressCard({
   className,
 }: VideoProgressCardProps) {
   const clamped = Math.max(0, Math.min(100, progress));
+  const formattedPercent = Number.isFinite(clamped)
+    ? Math.round(clamped)
+    : 0;
+
+  const formattedStep = stepLabel
+    ? stepLabel
+        .split(/\s+/)
+        .map((word) =>
+          word.length > 0
+            ? `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`
+            : ""
+        )
+        .join(" ")
+    : undefined;
 
   return (
     <Card
@@ -54,9 +68,9 @@ export function VideoProgressCard({
 
         {/* Meta row: step label on left, percent on right */}
         <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span className="truncate">{stepLabel}</span>
+          <span className="truncate">{formattedStep ?? stepLabel}</span>
           <span className="tabular-nums font-medium text-foreground">
-            {clamped}%
+            {formattedPercent}%
           </span>
         </div>
       </CardContent>

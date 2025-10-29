@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { VideoJob, VideoVariant, YoutubeStatus } from "@/lib/job-store";
 import { VideoProgressCard } from "@/components/ui/video-progress-card";
-import { Monitor, Smartphone } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Monitor, Smartphone, Youtube } from "lucide-react";
 
 export type JobStatus = "generating" | "ready" | "error";
 
@@ -21,8 +22,42 @@ const STEP_TITLES: Record<string, string> = {
   error: "Error",
 };
 
+const STEP_SEQUENCE: Array<{ id: string; label: string }> = [
+  { id: "queued", label: STEP_TITLES["queued"] },
+  { id: "generating voiceover", label: STEP_TITLES["generating voiceover"] },
+  { id: "generating script", label: STEP_TITLES["generating script"] },
+  { id: "validated script", label: STEP_TITLES["validated script"] },
+  { id: "rendering video", label: STEP_TITLES["rendering video"] },
+  { id: "rendered video", label: STEP_TITLES["rendered video"] },
+  { id: "uploading video", label: STEP_TITLES["uploading video"] },
+  { id: "uploaded video", label: STEP_TITLES["uploaded video"] },
+  { id: "finalizing", label: STEP_TITLES["finalizing"] },
+  { id: "completed", label: STEP_TITLES["completed"] },
+];
+
 const PROGRESS_HISTORY_WINDOW_MS = 5 * 60 * 1000;
 const SAFE_ETA_BUFFER_MS = 6 * 60 * 1000;
+const SUBSCRIBE_URL = "https://www.youtube.com/@eduvids-ai?sub_confirmation=1";
+
+function SubscribePrompt() {
+  return (
+    <div className="rounded-lg border border-border/70 bg-background/70 px-4 py-3 shadow-sm">
+      <p className="text-sm text-muted-foreground">
+        Subscribe to our YouTube channel to get the video <br />
+        as soon as it’s automatically uploaded.
+      </p>
+      <a
+        href={SUBSCRIBE_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-3 inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+      >
+        <Youtube className="size-4" />
+        Subscribe on YouTube
+      </a>
+    </div>
+  );
+}
 
 interface VideoPlayerProps {
   // Returned from the generate_video tool
@@ -61,9 +96,15 @@ export function VideoPlayer({
   const [currentVariant, setCurrentVariant] = useState<VideoVariant>(
     initialVariant ?? "video"
   );
+  const [jobDetails, setJobDetails] = useState<string | undefined>(undefined);
   const progressHistoryRef = useRef<
     Array<{ progress: number; timestamp: number }>
   >([]);
+  const etaSnapshotRef = useRef<{
+    progress: number;
+    timestamp: number;
+  } | null>(null);
+  const [displayProgress, setDisplayProgress] = useState<number>(0);
   // Track when we should fire a browser notification after the UI has updated
   const [notifyWhenPlayable, setNotifyWhenPlayable] = useState<boolean>(false);
 
@@ -84,6 +125,7 @@ export function VideoPlayer({
     if (clamped <= 0 || clamped >= 100) {
       progressHistoryRef.current = [{ progress: clamped, timestamp: now }];
       setEtaTargetMs(null);
+      etaSnapshotRef.current = null;
       return;
     }
 
@@ -115,6 +157,7 @@ export function VideoPlayer({
     const percentPerMs = progressDelta / timeDelta;
     if (percentPerMs <= 0) {
       setEtaTargetMs(null);
+      etaSnapshotRef.current = null;
       return;
     }
 
@@ -123,10 +166,12 @@ export function VideoPlayer({
 
     if (!Number.isFinite(estimateMs) || estimateMs <= 0) {
       setEtaTargetMs(null);
+      etaSnapshotRef.current = null;
       return;
     }
 
     setEtaTargetMs(now + estimateMs);
+    etaSnapshotRef.current = { progress: clamped, timestamp: now };
   }, []);
 
   const normalizeJob = useCallback(
@@ -239,6 +284,7 @@ export function VideoPlayer({
       setYoutubeStatus(parsed.youtubeStatus);
       setYoutubeUrl(parsed.youtubeUrl);
       setYoutubeError(parsed.youtubeError);
+      setJobDetails(parsed.details);
       if (parsed.status === "ready" && parsed.videoUrl) {
         setVideoUrl(parsed.videoUrl);
         setJobStatus("ready");
@@ -295,16 +341,20 @@ export function VideoPlayer({
   useEffect(() => {
     progressHistoryRef.current = [];
     setEtaTargetMs(null);
+    etaSnapshotRef.current = null;
     setYoutubeStatus(undefined);
     setYoutubeUrl(undefined);
     setYoutubeError(undefined);
     setCurrentVariant(initialVariant ?? "video");
+    setJobDetails(undefined);
+    setDisplayProgress(0);
   }, [jobId, initialVariant]);
 
   useEffect(() => {
     if (jobStatus === "ready" || jobStatus === "error") {
       progressHistoryRef.current = [];
       setEtaTargetMs(null);
+      etaSnapshotRef.current = null;
     }
   }, [jobStatus]);
 
@@ -437,13 +487,26 @@ export function VideoPlayer({
   const normalizedProgress = useMemo(() => {
     return Number.isFinite(progress) ? Math.min(100, Math.max(0, progress)) : 0;
   }, [progress]);
+  const normalizedProgressRef = useRef(normalizedProgress);
+  useEffect(() => {
+    normalizedProgressRef.current = normalizedProgress;
+  }, [normalizedProgress]);
+
+  const etaTargetRef = useRef<number | null>(etaTargetMs);
+  useEffect(() => {
+    etaTargetRef.current = etaTargetMs;
+    if (etaTargetMs === null) {
+      etaSnapshotRef.current = null;
+    }
+  }, [etaTargetMs]);
 
   const stageTitle = useMemo(() => {
-    const rawStep = (step ?? "").trim();
+    const rawStep = (step ?? (jobStatus === "ready" ? "completed" : ""))
+      .trim();
     if (rawStep.length) {
-      const normalizedStep = rawStep.toLowerCase();
-      if (STEP_TITLES[normalizedStep]) {
-        return STEP_TITLES[normalizedStep];
+      const normalized = rawStep.toLowerCase();
+      if (STEP_TITLES[normalized]) {
+        return STEP_TITLES[normalized];
       }
       return rawStep
         .split(/\s+/)
@@ -454,17 +517,113 @@ export function VideoPlayer({
         )
         .join(" ");
     }
+    if (jobStatus === "ready") {
+      return STEP_TITLES["completed"];
+    }
+    return STEP_TITLES["queued"];
+  }, [step, jobStatus]);
 
-    if (normalizedProgress >= 95) return "Finalizing";
-    if (normalizedProgress >= 82) return "Video Uploaded";
-    if (normalizedProgress >= 80) return "Uploading Video";
-    if (normalizedProgress >= 72) return "Render Complete";
-    if (normalizedProgress >= 50) return "Rendering Video";
-    if (normalizedProgress >= 35) return "Validating Script";
-    if (normalizedProgress >= 20) return "Generating Script";
-    if (normalizedProgress >= 5) return "Generating Voiceover";
-    return "Queued";
-  }, [normalizedProgress, step]);
+  type StepProgressStatus = "complete" | "current" | "pending";
+  const currentStepId = useMemo(() => {
+    if (jobStatus === "error") return "error";
+    if (jobStatus === "ready") return "completed";
+    const raw = (step ?? "").trim().toLowerCase();
+    return raw.length ? raw : "queued";
+  }, [jobStatus, step]);
+
+  const stepProgressItems = useMemo(() => {
+    const activeIndex = STEP_SEQUENCE.findIndex((entry) => entry.id === currentStepId);
+    return STEP_SEQUENCE.map((entry, index) => {
+      let status: StepProgressStatus = "pending";
+      if (activeIndex === -1) {
+        status = index === 0 ? "current" : "pending";
+      } else if (index < activeIndex) {
+        status = "complete";
+      } else if (index === activeIndex) {
+        status = "current";
+      }
+
+      return { ...entry, status };
+    });
+  }, [currentStepId]);
+
+  useEffect(() => {
+    if (jobStatus !== "generating") {
+      setDisplayProgress(normalizedProgress);
+      return;
+    }
+
+    let frame: number;
+    let lastTimestamp = Date.now();
+
+    const animate = () => {
+      const now = Date.now();
+      const deltaSeconds = Math.max(0, (now - lastTimestamp) / 1000);
+      lastTimestamp = now;
+
+      setDisplayProgress((prev) => {
+        const actual = normalizedProgressRef.current;
+        let next = prev;
+
+        if (actual > prev) {
+          const catchUpRate = Math.max(12, (actual - prev) * 0.6);
+          next = Math.min(actual, prev + catchUpRate * deltaSeconds);
+        } else {
+          const etaTarget = etaTargetRef.current;
+          const etaSnapshot = etaSnapshotRef.current;
+          let projected = prev;
+
+          if (etaTarget && etaSnapshot && etaTarget > etaSnapshot.timestamp) {
+            const totalWindow = etaTarget - etaSnapshot.timestamp;
+            const elapsed = now - etaSnapshot.timestamp;
+            const ratio = Math.min(1, Math.max(0, elapsed / totalWindow));
+            projected =
+              etaSnapshot.progress + ratio * (100 - etaSnapshot.progress);
+          }
+
+          const safetyCeil = Math.min(99, actual + 8);
+          projected = Math.min(projected, safetyCeil);
+
+          if (projected > next) {
+            const growthRate = Math.max(1, (projected - next) * 0.08);
+            next = Math.min(projected, next + growthRate * deltaSeconds);
+          } else if (actual + 0.2 < next) {
+            next = Math.max(actual, next - 20 * deltaSeconds);
+          }
+
+          if ((!etaTarget || !etaSnapshot) && actual < 99) {
+            const fallbackTarget = Math.min(safetyCeil, actual + 4);
+            if (fallbackTarget > next) {
+              next = Math.min(fallbackTarget, next + 0.8 * deltaSeconds);
+            }
+          }
+        }
+
+        if (!Number.isFinite(next)) {
+          return prev;
+        }
+
+        return Math.max(0, Math.min(100, next));
+      });
+
+      frame = requestAnimationFrame(animate);
+    };
+
+    frame = requestAnimationFrame(animate);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [jobStatus, normalizedProgress]);
+
+  useEffect(() => {
+    if (jobStatus === "ready") {
+      setDisplayProgress(100);
+      return;
+    }
+    if (jobStatus === "error") {
+      setDisplayProgress(normalizedProgress);
+    }
+  }, [jobStatus, normalizedProgress]);
 
   // const etaDisplay = useMemo(() => {
   //   if (jobStatus === "ready") return null;
@@ -504,7 +663,7 @@ export function VideoPlayer({
 
   if (jobStatus !== "ready" || !videoUrl) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-4">
         <div className="flex items-center gap-2">
           {currentVariant === "short" ? (
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-secondary-foreground text-xs font-medium">
@@ -519,62 +678,16 @@ export function VideoPlayer({
           )}
         </div>
         <VideoProgressCard
-          title={`Generating...`}
+          title="Generating..."
           subtitle={stageTitle}
-          progress={normalizedProgress}
+          stepLabel={stageTitle}
+          progress={displayProgress}
         />
+        {jobDetails ? (
+          <p className="text-sm text-muted-foreground">{jobDetails}</p>
+        ) : null}
+        <SubscribePrompt />
       </div>
     );
   }
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        {currentVariant === "short" ? (
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-secondary-foreground text-xs font-medium">
-            <Smartphone className="size-3.5" />
-            Short
-          </div>
-        ) : (
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-secondary-foreground text-xs font-medium">
-            <Monitor className="size-3.5" />
-            Video
-          </div>
-        )}
-      </div>
-      <div
-        className="w-full rounded-lg border border-border bg-card text-card-foreground p-2"
-        style={{ aspectRatio: currentVariant === "short" ? "9 / 16" : "16 / 9" }}
-      >
-        <video
-          ref={videoRef}
-          src={videoUrl}
-          controls
-          className="w-full h-full rounded-md"
-        />
-        {youtubeStatus === "uploaded" && youtubeUrl ? (
-          <div className="mt-3 px-2">
-            <a
-              href={youtubeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-md bg-secondary px-3 py-1.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
-            >
-              Watch on YouTube
-            </a>
-          </div>
-        ) : youtubeStatus === "pending" ? (
-          <p className="mt-3 px-2 text-sm text-muted-foreground">
-            Uploading to YouTube… the link will appear here once ready.
-          </p>
-        ) : youtubeStatus === "failed" ? (
-          <p className="mt-3 px-2 text-sm text-red-500">
-            {youtubeError
-              ? `YouTube upload failed: ${youtubeError}`
-              : "YouTube upload failed. Please try again later."}
-          </p>
-        ) : null}
-      </div>
-    </div>
-  );
 }
