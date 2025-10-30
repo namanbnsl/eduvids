@@ -617,9 +617,6 @@ export function VideoPlayer({
           stepLabel={stageTitle}
           progress={displayProgress}
         />
-        {jobDetails ? (
-          <p className="text-sm text-muted-foreground">{jobDetails}</p>
-        ) : null}
         <SubscribePrompt />
       </div>
     );
