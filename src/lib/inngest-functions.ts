@@ -152,13 +152,18 @@ const formatJobError = (
     ) {
       message = error.message;
     } else if (
-      typeof (error as any).message === "string" &&
-      (error as any).message.length < 160
+      "message" in error &&
+      typeof (error as { message?: unknown }).message === "string" &&
+      (error as { message: string }).message.length < 160
     ) {
-      message = (error as any).message;
+      message = (error as { message: string }).message;
     }
-    const hint = (error as any).hint;
-    const exitCode = (error as any).exitCode;
+    const hint =
+      "hint" in error ? (error as { hint?: unknown }).hint : undefined;
+    const exitCode =
+      "exitCode" in error
+        ? (error as { exitCode?: unknown }).exitCode
+        : undefined;
     if (hint && typeof hint === "string" && hint.length < 160) {
       detail = hint;
     } else if (typeof exitCode === "number") {

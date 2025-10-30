@@ -3,18 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { VideoJob, VideoVariant, YoutubeStatus } from "@/lib/job-store";
 import { VideoProgressCard } from "@/components/ui/video-progress-card";
-import { cn } from "@/lib/utils";
 import { Monitor, Smartphone, Youtube } from "lucide-react";
-// Animation: Loader
-function AnimatedDots() {
-  return (
-    <span className="inline-flex gap-1 items-center justify-center">
-      <span className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.24s]"></span>
-      <span className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.12s]"></span>
-      <span className="w-2 h-2 bg-primary rounded-full animate-bounce"></span>
-    </span>
-  );
-}
+
 export type JobStatus = "generating" | "ready" | "error";
 
 const STEP_TITLES: Record<string, string> = {
@@ -30,19 +20,6 @@ const STEP_TITLES: Record<string, string> = {
   completed: "Completed",
   error: "Error",
 };
-
-const STEP_SEQUENCE: Array<{ id: string; label: string }> = [
-  { id: "queued", label: STEP_TITLES["queued"] },
-  { id: "generating voiceover", label: STEP_TITLES["generating voiceover"] },
-  { id: "generating script", label: STEP_TITLES["generating script"] },
-  { id: "validated script", label: STEP_TITLES["validated script"] },
-  { id: "rendering video", label: STEP_TITLES["rendering video"] },
-  { id: "rendered video", label: STEP_TITLES["rendered video"] },
-  { id: "uploading video", label: STEP_TITLES["uploading video"] },
-  { id: "uploaded video", label: STEP_TITLES["uploaded video"] },
-  { id: "finalizing", label: STEP_TITLES["finalizing"] },
-  { id: "completed", label: STEP_TITLES["completed"] },
-];
 
 const PROGRESS_HISTORY_WINDOW_MS = 5 * 60 * 1000;
 const SAFE_ETA_BUFFER_MS = 6 * 60 * 1000;
@@ -99,6 +76,7 @@ export function VideoPlayer({
     undefined
   );
   const [youtubeUrl, setYoutubeUrl] = useState<string | undefined>(undefined);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [youtubeError, setYoutubeError] = useState<string | undefined>(
     undefined
   );
@@ -525,32 +503,6 @@ export function VideoPlayer({
     }
     return STEP_TITLES["queued"];
   }, [step, jobStatus]);
-
-  type StepProgressStatus = "complete" | "current" | "pending";
-  const currentStepId = useMemo(() => {
-    if (jobStatus === "error") return "error";
-    if (jobStatus === "ready") return "completed";
-    const raw = (step ?? "").trim().toLowerCase();
-    return raw.length ? raw : "queued";
-  }, [jobStatus, step]);
-
-  const stepProgressItems = useMemo(() => {
-    const activeIndex = STEP_SEQUENCE.findIndex(
-      (entry) => entry.id === currentStepId
-    );
-    return STEP_SEQUENCE.map((entry, index) => {
-      let status: StepProgressStatus = "pending";
-      if (activeIndex === -1) {
-        status = index === 0 ? "current" : "pending";
-      } else if (index < activeIndex) {
-        status = "complete";
-      } else if (index === activeIndex) {
-        status = "current";
-      }
-
-      return { ...entry, status };
-    });
-  }, [currentStepId]);
 
   useEffect(() => {
     if (jobStatus !== "generating") {
