@@ -242,7 +242,6 @@ export function VideoPlayer({
     []
   );
 
-  // Subscribe to job updates via SSE, fallback to polling
   useEffect(() => {
     if (!jobId || jobStatus === "ready" || jobStatus === "error") return;
 
@@ -330,8 +329,6 @@ export function VideoPlayer({
     setEtaTargetMs(null);
     etaSnapshotRef.current = null;
     setYoutubeStatus(undefined);
-    setYoutubeUrl(undefined);
-    setYoutubeError(undefined);
     setCurrentVariant(initialVariant ?? "video");
     setJobDetails(undefined);
     setDisplayProgress(0);
