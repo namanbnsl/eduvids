@@ -690,4 +690,32 @@ export function VideoPlayer({
       </div>
     );
   }
+
+  // CONCRETE PLAYER: If ready, show the video
+  return (
+    <div className="space-y-4">
+      <video
+        ref={videoRef}
+        src={videoUrl}
+        className="w-full max-w-3xl rounded-lg border shadow"
+        controls
+        playsInline
+        poster=""
+        style={{ background: '#000' }}
+      >
+        Sorry, your browser does not support embedded videos.
+      </video>
+      {youtubeUrl && (
+        <a
+          href={youtubeUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 mt-2 text-primary-foreground font-semibold text-base shadow transition hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/75"
+        >
+          <Youtube className="size-5" />
+          Watch on YouTube
+        </a>
+      )}
+    </div>
+  );
 }

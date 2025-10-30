@@ -140,50 +140,29 @@ const formatJobError = (
   message: string;
   detail?: string;
 } => {
-  const baseMessage =
-    error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : "Unknown error";
-
-  if (!error || typeof error !== "object") {
-    return { message: baseMessage };
-  }
-
-  const stage = (error as Partial<RenderProcessError>).stage;
-  const hint = (error as Partial<RenderProcessError>).hint;
-  const exitCode = (error as Partial<RenderProcessError>).exitCode;
-  const stderr = clampDetail((error as Partial<RenderProcessError>).stderr);
-  const stdout = clampDetail((error as Partial<RenderProcessError>).stdout);
-  const logs = (error as Partial<RenderProcessError>).logs;
-
-  const messageExtras: string[] = [];
-  if (stage) messageExtras.push(`stage: ${stage}`);
-  if (typeof exitCode === "number") messageExtras.push(`exit: ${exitCode}`);
-  if (hint) messageExtras.push(`hint: ${hint}`);
-
-  const message = messageExtras.length
-    ? `${baseMessage} (${messageExtras.join(", ")})`
-    : baseMessage;
-
-  const detailParts: string[] = [];
-  if (stderr) detailParts.push(`stderr: ${stderr}`);
-  else if (stdout) detailParts.push(`stdout: ${stdout}`);
-  if (logs && logs.length) {
-    const clipped = logs
-      .slice(-10)
-      .map((entry) => `[${entry.level}] ${entry.message}`)
-      .join(" | ");
-    if (clipped) {
-      detailParts.push(`logs: ${clipped}`);
+  // Always map to safe, concise messages
+  const fallbackMessage = "Something went wrong while generating your video. Please try again or contact support.";
+  let message = fallbackMessage;
+  let detail: string | undefined = undefined;
+  if (error && typeof error === "object") {
+    if (error instanceof Error && typeof error.message === "string" && error.message.length < 160) {
+      // Use error message only if not a big stack dump
+      message = error.message;
+    } else if (typeof (error as any).message === "string" && (error as any).message.length < 160) {
+      message = (error as any).message;
     }
+    // Optionally show a hint or exit code if present & safe, never logs, never stack
+    const hint = (error as any).hint;
+    const exitCode = (error as any).exitCode;
+    if (hint && typeof hint === "string" && hint.length < 160) {
+      detail = hint;
+    } else if (typeof exitCode === "number") {
+      detail = `Exited with code ${exitCode}`;
+    }
+  } else if (typeof error === "string" && error.length < 160) {
+    message = error;
   }
-
-  return {
-    message,
-    detail: detailParts.length ? detailParts.join(" | ") : undefined,
-  };
+  return { message, detail };
 };
 
 // Quick pre-check for absolutely required elements (fast fail)
@@ -1326,7 +1305,7 @@ export const generateVideo = inngest.createFunction(
       };
     } catch (err: unknown) {
       const { message: jobErrorMessage, detail } = formatJobError(err);
-      console.error("Error in generateVideo function:", jobErrorMessage, err);
+      console.error("Error in generateVideo function (internal details hidden from UI):", err);
       if (jobId) {
         try {
           await jobStore.setProgress(jobId, {

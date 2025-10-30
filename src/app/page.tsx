@@ -187,6 +187,46 @@ export default function ChatPage() {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [generationMode]);
+  const hasMessages = messages.length > 0;
+
+  useEffect(() => {
+    if (!hasMessages || typeof window === 'undefined') return;
+    // Recent jobIds localStorage key
+    const RECENT_JOBS_KEY = 'eduvids:recentJobIds';
+    let recentIds: string[] = [];
+    try {
+      recentIds = JSON.parse(window.localStorage.getItem(RECENT_JOBS_KEY) || '[]');
+      if (!Array.isArray(recentIds)) recentIds = [];
+    } catch { recentIds = []; }
+
+    // Find all existing jobIds in chat (avoid duplicates)
+    const chatJobIds = new Set<string>();
+    for (const msg of messages) {
+      for (const part of msg.parts || []) {
+        if (isGenerateVideoToolPart(part) && part.output?.jobId) {
+          chatJobIds.add(part.output.jobId);
+        }
+      }
+    }
+    // For each recent job ID not already displayed, check status & synthesize message
+    recentIds.filter((id: string) => id && !chatJobIds.has(id)).forEach(async (jobId) => {
+      try {
+        const res = await fetch(`/api/jobs/${jobId}`);
+        if (!res.ok) throw new Error('not found');
+        const job = await res.json();
+        if (job.status === 'ready' && job.videoUrl) {
+          // Synthesize and add to chat. This may require a 'patch' on messages state if useChat supports it, otherwise user sees it on next reload.
+          // For now: emit a window event as a signal (alternatively, docs may show how to append message with lab app's chat state).
+          window.dispatchEvent(new CustomEvent('EDUVIDS_NEW_VIDEO', { detail: { jobId, description: job.description, videoUrl: job.videoUrl, variant: job.variant, status: 'ready', src: job.videoUrl } }));
+        } else if (job.status === 'error') {
+          // Optionally remove errored jobs from recent
+          window.localStorage.setItem(RECENT_JOBS_KEY, JSON.stringify(recentIds.filter((j) => j !== jobId)));
+        }
+      } catch {
+        // Ignore failed job fetches
+      }
+    });
+  }, [hasMessages, messages]);
 
   const toggleTheme = () => {
     const newIsDark = !isDark;
@@ -252,7 +292,6 @@ export default function ChatPage() {
     setShowOnboarding(false);
   };
 
-  const hasMessages = messages.length > 0;
 
   return (
     <div className="relative flex flex-col h-svh bg-background">
