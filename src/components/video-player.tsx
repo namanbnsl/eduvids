@@ -5,6 +5,28 @@ import type { VideoJob, VideoVariant, YoutubeStatus } from "@/lib/job-store";
 import { VideoProgressCard } from "@/components/ui/video-progress-card";
 import { cn } from "@/lib/utils";
 import { Monitor, Smartphone, Youtube } from "lucide-react";
+// Animation: Loader
+function AnimatedDots() {
+  return (
+    <span className="inline-flex gap-1 items-center justify-center">
+      <span className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.24s]"></span>
+      <span className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.12s]"></span>
+      <span className="w-2 h-2 bg-primary rounded-full animate-bounce"></span>
+    </span>
+  );
+}
+// Fun loading phrases
+const FRIENDLY_LOADING_MESSAGES = [
+  "Cooking up your video magic!",
+  "Adding fun animations...",
+  "Composing awesome scenes...",
+  "Mixing colors & stories...",
+  "Tuning up the sound...",
+  "Putting on the finishing touches!",
+  "Making it just for you...",
+  "Rolling the cameras...",
+  "Almost there—get ready!",
+];
 
 export type JobStatus = "generating" | "ready" | "error";
 
@@ -107,12 +129,25 @@ export function VideoPlayer({
   const [displayProgress, setDisplayProgress] = useState<number>(0);
   // Track when we should fire a browser notification after the UI has updated
   const [notifyWhenPlayable, setNotifyWhenPlayable] = useState<boolean>(false);
+  // Start friendly animated text index
+  const [messageIdx, setMessageIdx] = useState(() =>
+    Math.floor(Math.random() * FRIENDLY_LOADING_MESSAGES.length)
+  );
 
   useEffect(() => {
     if (initialVariant) {
       setCurrentVariant(initialVariant);
     }
   }, [initialVariant]);
+
+  useEffect(() => {
+    if (jobStatus !== "ready") {
+      const interval = setInterval(() => {
+        setMessageIdx((prev) => (prev + 1) % FRIENDLY_LOADING_MESSAGES.length);
+      }, 1900);
+      return () => clearInterval(interval);
+    }
+  }, [jobStatus]);
 
   const updateProgressMetrics = useCallback((nextProgress: number) => {
     const now = Date.now();
@@ -179,18 +214,18 @@ export function VideoPlayer({
       job: unknown
     ):
       | (Pick<
-        VideoJob,
-        | "progress"
-        | "step"
-        | "videoUrl"
-        | "error"
-        | "details"
-        | "status"
-        | "youtubeStatus"
-        | "youtubeUrl"
-        | "youtubeError"
-        | "variant"
-      > & { jobId?: string })
+          VideoJob,
+          | "progress"
+          | "step"
+          | "videoUrl"
+          | "error"
+          | "details"
+          | "status"
+          | "youtubeStatus"
+          | "youtubeUrl"
+          | "youtubeError"
+          | "variant"
+        > & { jobId?: string })
       | null => {
       if (!job || typeof job !== "object") return null;
       const value = job as Record<string, unknown>;
@@ -202,9 +237,9 @@ export function VideoPlayer({
       const rawYoutubeStatus = value.youtubeStatus;
       const youtubeStatus: YoutubeStatus | undefined =
         typeof rawYoutubeStatus === "string" &&
-          (rawYoutubeStatus === "pending" ||
-            rawYoutubeStatus === "uploaded" ||
-            rawYoutubeStatus === "failed")
+        (rawYoutubeStatus === "pending" ||
+          rawYoutubeStatus === "uploaded" ||
+          rawYoutubeStatus === "failed")
           ? (rawYoutubeStatus as YoutubeStatus)
           : undefined;
 
@@ -246,8 +281,8 @@ export function VideoPlayer({
           typeof value.jobId === "string"
             ? value.jobId
             : typeof value.id === "string"
-              ? value.id
-              : undefined,
+            ? value.id
+            : undefined,
       };
 
       return normalized;
@@ -308,7 +343,7 @@ export function VideoPlayer({
           if (!res.ok) return;
           const data = await res.json();
           handleJob(data);
-        } catch { }
+        } catch {}
       };
       poll();
       pollInterval = setInterval(poll, 5000);
@@ -320,7 +355,7 @@ export function VideoPlayer({
         try {
           const job = JSON.parse((evt as MessageEvent).data) as unknown;
           handleJob(job);
-        } catch { }
+        } catch {}
       });
       es.addEventListener("error", () => {
         // Fallback to polling on error
@@ -393,7 +428,7 @@ export function VideoPlayer({
           cancelled = true;
           return;
         }
-      } catch { }
+      } catch {}
 
       if (attempts >= maxAttempts && intervalId) {
         clearInterval(intervalId);
@@ -433,8 +468,8 @@ export function VideoPlayer({
     // Don't prompt repeatedly; only if default
     if (Notification.permission === "default") {
       try {
-        Notification.requestPermission().catch(() => { });
-      } catch { }
+        Notification.requestPermission().catch(() => {});
+      } catch {}
     }
   }, []);
 
@@ -460,7 +495,7 @@ export function VideoPlayer({
           // Replace with a real icon path if available
           // icon: "/icons/video-ready.png",
         });
-      } catch { }
+      } catch {}
     };
 
     // If already ready to play, notify immediately
@@ -501,8 +536,7 @@ export function VideoPlayer({
   }, [etaTargetMs]);
 
   const stageTitle = useMemo(() => {
-    const rawStep = (step ?? (jobStatus === "ready" ? "completed" : ""))
-      .trim();
+    const rawStep = (step ?? (jobStatus === "ready" ? "completed" : "")).trim();
     if (rawStep.length) {
       const normalized = rawStep.toLowerCase();
       if (STEP_TITLES[normalized]) {
@@ -532,7 +566,9 @@ export function VideoPlayer({
   }, [jobStatus, step]);
 
   const stepProgressItems = useMemo(() => {
-    const activeIndex = STEP_SEQUENCE.findIndex((entry) => entry.id === currentStepId);
+    const activeIndex = STEP_SEQUENCE.findIndex(
+      (entry) => entry.id === currentStepId
+    );
     return STEP_SEQUENCE.map((entry, index) => {
       let status: StepProgressStatus = "pending";
       if (activeIndex === -1) {
@@ -677,10 +713,17 @@ export function VideoPlayer({
             </div>
           )}
         </div>
+        {/* Animated loader + rotating friendly message */}
+        <div className="flex flex-col items-center justify-center">
+          <AnimatedDots />
+          <span className="mt-2 text-base font-medium text-foreground/80 animate-pulse">
+            {FRIENDLY_LOADING_MESSAGES[messageIdx]}
+          </span>
+        </div>
         <VideoProgressCard
           title="Generating..."
-          subtitle={stageTitle}
-          stepLabel={stageTitle}
+          subtitle={FRIENDLY_LOADING_MESSAGES[messageIdx]}
+          stepLabel=" "
           progress={displayProgress}
         />
         {jobDetails ? (
@@ -701,7 +744,7 @@ export function VideoPlayer({
         controls
         playsInline
         poster=""
-        style={{ background: '#000' }}
+        style={{ background: "#000" }}
       >
         Sorry, your browser does not support embedded videos.
       </video>
