@@ -15,19 +15,6 @@ function AnimatedDots() {
     </span>
   );
 }
-// Fun loading phrases
-const FRIENDLY_LOADING_MESSAGES = [
-  "Cooking up your video magic!",
-  "Adding fun animations...",
-  "Composing awesome scenes...",
-  "Mixing colors & stories...",
-  "Tuning up the sound...",
-  "Putting on the finishing touches!",
-  "Making it just for you...",
-  "Rolling the cameras...",
-  "Almost there—get ready!",
-];
-
 export type JobStatus = "generating" | "ready" | "error";
 
 const STEP_TITLES: Record<string, string> = {
@@ -129,25 +116,12 @@ export function VideoPlayer({
   const [displayProgress, setDisplayProgress] = useState<number>(0);
   // Track when we should fire a browser notification after the UI has updated
   const [notifyWhenPlayable, setNotifyWhenPlayable] = useState<boolean>(false);
-  // Start friendly animated text index
-  const [messageIdx, setMessageIdx] = useState(() =>
-    Math.floor(Math.random() * FRIENDLY_LOADING_MESSAGES.length)
-  );
 
   useEffect(() => {
     if (initialVariant) {
       setCurrentVariant(initialVariant);
     }
   }, [initialVariant]);
-
-  useEffect(() => {
-    if (jobStatus !== "ready") {
-      const interval = setInterval(() => {
-        setMessageIdx((prev) => (prev + 1) % FRIENDLY_LOADING_MESSAGES.length);
-      }, 1900);
-      return () => clearInterval(interval);
-    }
-  }, [jobStatus]);
 
   const updateProgressMetrics = useCallback((nextProgress: number) => {
     const now = Date.now();
@@ -461,7 +435,6 @@ export function VideoPlayer({
     return () => clearInterval(interval);
   }, [etaTargetMs, jobStatus]);
 
-  // Request Notification permission early when component mounts (best-effort)
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!("Notification" in window)) return;
@@ -473,7 +446,6 @@ export function VideoPlayer({
     }
   }, []);
 
-  // When job is ready and the video is playable, fire a browser notification
   useEffect(() => {
     if (!notifyWhenPlayable) return;
 
@@ -488,12 +460,9 @@ export function VideoPlayer({
 
         const title = "Your video is ready to watch! 😀";
         const body = "Your requested video has finished rendering. 📽️";
-        // Prefer showing notification when tab is hidden, but also show if visible
+
         new Notification(title, {
           body,
-          // Using an emoji as icon fallback; projects may add a proper icon asset
-          // Replace with a real icon path if available
-          // icon: "/icons/video-ready.png",
         });
       } catch {}
     };
@@ -661,29 +630,6 @@ export function VideoPlayer({
     }
   }, [jobStatus, normalizedProgress]);
 
-  // const etaDisplay = useMemo(() => {
-  //   if (jobStatus === "ready") return null;
-  //   if (normalizedProgress <= 0 || normalizedProgress >= 100) return null;
-  //   if (etaTargetMs === null) {
-  //     return "Calculating…";
-  //   }
-
-  //   const targetDate = new Date(etaTargetMs);
-  //   if (Number.isNaN(targetDate.getTime())) {
-  //     return "Calculating…";
-  //   }
-
-  //   const formatter = new Intl.DateTimeFormat(undefined, {
-  //     hour: "numeric",
-  //     minute: "2-digit",
-  //     ...(Math.abs(etaTargetMs - Date.now()) > 24 * 3600 * 1000
-  //       ? { month: "short", day: "numeric" }
-  //       : {}),
-  //   });
-
-  //   return `~${formatter.format(targetDate)}`;
-  // }, [etaTargetMs, jobStatus, normalizedProgress]);
-
   if (error) {
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -713,17 +659,10 @@ export function VideoPlayer({
             </div>
           )}
         </div>
-        {/* Animated loader + rotating friendly message */}
-        <div className="flex flex-col items-center justify-center">
-          <AnimatedDots />
-          <span className="mt-2 text-base font-medium text-foreground/80 animate-pulse">
-            {FRIENDLY_LOADING_MESSAGES[messageIdx]}
-          </span>
-        </div>
         <VideoProgressCard
           title="Generating..."
-          subtitle={FRIENDLY_LOADING_MESSAGES[messageIdx]}
-          stepLabel=" "
+          subtitle={stageTitle}
+          stepLabel={stageTitle}
           progress={displayProgress}
         />
         {jobDetails ? (

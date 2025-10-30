@@ -140,18 +140,23 @@ const formatJobError = (
   message: string;
   detail?: string;
 } => {
-  // Always map to safe, concise messages
-  const fallbackMessage = "Something went wrong while generating your video. Please try again or contact support.";
+  const fallbackMessage =
+    "Something went wrong while generating your video. Please try again or contact support.";
   let message = fallbackMessage;
   let detail: string | undefined = undefined;
   if (error && typeof error === "object") {
-    if (error instanceof Error && typeof error.message === "string" && error.message.length < 160) {
-      // Use error message only if not a big stack dump
+    if (
+      error instanceof Error &&
+      typeof error.message === "string" &&
+      error.message.length < 160
+    ) {
       message = error.message;
-    } else if (typeof (error as any).message === "string" && (error as any).message.length < 160) {
+    } else if (
+      typeof (error as any).message === "string" &&
+      (error as any).message.length < 160
+    ) {
       message = (error as any).message;
     }
-    // Optionally show a hint or exit code if present & safe, never logs, never stack
     const hint = (error as any).hint;
     const exitCode = (error as any).exitCode;
     if (hint && typeof hint === "string" && hint.length < 160) {
@@ -165,7 +170,6 @@ const formatJobError = (
   return { message, detail };
 };
 
-// Quick pre-check for absolutely required elements (fast fail)
 function validateRequiredElements(script: string): {
   ok: boolean;
   error?: string;
@@ -299,8 +303,9 @@ function runHeuristicChecks(
 
       if (wordCount >= 4 && !hasCodeSymbols) {
         issues.push({
-          message: `❌ Non-code narrative detected before the first code line (line ${index + 1
-            }): "${line.slice(0, 80)}"`,
+          message: `❌ Non-code narrative detected before the first code line (line ${
+            index + 1
+          }): "${line.slice(0, 80)}"`,
           severity: "noncode",
         });
         break;
@@ -653,7 +658,8 @@ export const generateVideo = inngest.createFunction(
         : prompt;
 
     console.log(
-      ` Starting ${variant === "short" ? "vertical short" : "full video"
+      ` Starting ${
+        variant === "short" ? "vertical short" : "full video"
       } generation for prompt: "${prompt}"`
     );
 
@@ -682,7 +688,8 @@ export const generateVideo = inngest.createFunction(
       for (let pass = 1; pass <= MAX_VERIFY_PASSES; pass++) {
         if (seenScripts.has(current)) {
           throw new Error(
-            `Auto-fix loop detected during ${context}; the verifier repeated a script it previously evaluated. Last error: ${lastError ?? "unknown"
+            `Auto-fix loop detected during ${context}; the verifier repeated a script it previously evaluated. Last error: ${
+              lastError ?? "unknown"
             }`
           );
         }
@@ -798,7 +805,8 @@ export const generateVideo = inngest.createFunction(
 
         if (!nextScript || nextScript.trim().length === 0) {
           throw new Error(
-            `Verifier reported issues during ${context} but produced an empty fix: ${lastError ?? "unknown"
+            `Verifier reported issues during ${context} but produced an empty fix: ${
+              lastError ?? "unknown"
             }`
           );
         }
@@ -807,7 +815,8 @@ export const generateVideo = inngest.createFunction(
       }
 
       console.warn(
-        `Verifier could not approve the script during ${context} after ${MAX_VERIFY_PASSES} passes. Last error: ${lastError ?? "unknown"
+        `Verifier could not approve the script during ${context} after ${MAX_VERIFY_PASSES} passes. Last error: ${
+          lastError ?? "unknown"
         } — proceeding with the best-effort script.`
       );
       return current;
@@ -921,9 +930,9 @@ export const generateVideo = inngest.createFunction(
                   renderOptions:
                     variant === "short"
                       ? {
-                        orientation: "portrait",
-                        resolution: { width: 720, height: 1280 },
-                      }
+                          orientation: "portrait",
+                          resolution: { width: 720, height: 1280 },
+                        }
                       : undefined,
                   plugins: usesManimML ? ["manim-ml"] : [],
                 });
@@ -1069,7 +1078,8 @@ export const generateVideo = inngest.createFunction(
 
           // Skip retry with same script - go directly to regenerating a new script
           console.log(
-            ` Skipping render retry, regenerating script for attempt ${attempt + 1
+            ` Skipping render retry, regenerating script for attempt ${
+              attempt + 1
             }`
           );
 
@@ -1100,7 +1110,8 @@ export const generateVideo = inngest.createFunction(
             ];
 
             console.log(
-              ` Regeneration pass ${regenPass} (${isForcedRewrite ? "forced" : "standard"
+              ` Regeneration pass ${regenPass} (${
+                isForcedRewrite ? "forced" : "standard"
               }) after render attempt ${attempt}`
             );
 
@@ -1125,7 +1136,8 @@ export const generateVideo = inngest.createFunction(
                 const trimmed = nextScript.trim();
                 if (!trimmed) {
                   throw new Error(
-                    `Regeneration returned an empty script for render attempt ${attempt + 1
+                    `Regeneration returned an empty script for render attempt ${
+                      attempt + 1
                     } (pass ${regenPass})`
                   );
                 }
@@ -1156,7 +1168,8 @@ export const generateVideo = inngest.createFunction(
               blockedScripts.set(fingerprint, verifiedScript.trim());
               currentScript = verifiedScript;
               console.log(
-                ` Accepted regenerated script on pass ${regenPass} for render attempt ${attempt + 1
+                ` Accepted regenerated script on pass ${regenPass} for render attempt ${
+                  attempt + 1
                 }`
               );
               acceptedNewScript = true;
@@ -1305,7 +1318,10 @@ export const generateVideo = inngest.createFunction(
       };
     } catch (err: unknown) {
       const { message: jobErrorMessage, detail } = formatJobError(err);
-      console.error("Error in generateVideo function (internal details hidden from UI):", err);
+      console.error(
+        "Error in generateVideo function (internal details hidden from UI):",
+        err
+      );
       if (jobId) {
         try {
           await jobStore.setProgress(jobId, {

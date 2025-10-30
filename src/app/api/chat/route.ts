@@ -5,13 +5,13 @@ import { inngest } from "@/lib/inngest";
 import { jobStore } from "@/lib/job-store";
 import { createGoogleProvider } from "@/lib/google-provider";
 
-export const maxDuration = 30;
+export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const {
     model: modelId,
     messages,
-    forceVariant
+    forceVariant,
   }: {
     messages: UIMessage[];
     model: string;
@@ -23,9 +23,11 @@ export async function POST(req: Request) {
   // Build system prompt with variant instruction if forced
   let systemPrompt = SYSTEM_PROMPT;
   if (forceVariant === "video") {
-    systemPrompt += "\n\nIMPORTANT: The user has requested a HORIZONTAL VIDEO (not a short). When calling generate_video tool, you MUST pass variant=\"video\" to create a standard landscape/horizontal video format.";
+    systemPrompt +=
+      '\n\nIMPORTANT: The user has requested a HORIZONTAL VIDEO (not a short). When calling generate_video tool, you MUST pass variant="video" to create a standard landscape/horizontal video format.';
   } else if (forceVariant === "short") {
-    systemPrompt += "\n\nIMPORTANT: The user has requested a VERTICAL SHORT. When calling generate_video tool, you MUST pass variant=\"short\" to create a vertical/portrait video format.";
+    systemPrompt +=
+      '\n\nIMPORTANT: The user has requested a VERTICAL SHORT. When calling generate_video tool, you MUST pass variant="short" to create a vertical/portrait video format.';
   }
 
   const result = streamText({
@@ -46,7 +48,9 @@ export async function POST(req: Request) {
           variant: z
             .enum(["video", "short"])
             .optional()
-            .describe("Specify 'short' to generate a vertical short, or 'video' for horizontal video."),
+            .describe(
+              "Specify 'short' to generate a vertical short, or 'video' for horizontal video."
+            ),
         }),
         execute: async ({ description, variant }) => {
           console.log("Starting video generation for:", description);
@@ -55,16 +59,21 @@ export async function POST(req: Request) {
           const normalizedLower = normalized.toLowerCase();
 
           // Use forced variant first, then tool parameter, then infer from description
-          const inferredVariant = forceVariant && forceVariant !== null
-            ? forceVariant
-            : variant
+          const inferredVariant =
+            forceVariant && forceVariant !== null
+              ? forceVariant
+              : variant
               ? variant
               : normalizedLower.includes("short") ||
                 normalizedLower.includes("vertical short")
-                ? "short"
-                : "video";
+              ? "short"
+              : "video";
 
-          console.log("Variant determination:", { forceVariant, toolVariant: variant, inferredVariant });
+          console.log("Variant determination:", {
+            forceVariant,
+            toolVariant: variant,
+            inferredVariant,
+          });
 
           // Create a job in the job store (KV in prod, memory in dev)
           const job = await jobStore.create(description, {
