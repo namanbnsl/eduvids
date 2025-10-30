@@ -83,7 +83,6 @@ export function VideoPlayer({
   const [currentVariant, setCurrentVariant] = useState<VideoVariant>(
     initialVariant ?? "video"
   );
-  const [jobDetails, setJobDetails] = useState<string | undefined>(undefined);
   const progressHistoryRef = useRef<
     Array<{ progress: number; timestamp: number }>
   >([]);
@@ -270,7 +269,6 @@ export function VideoPlayer({
       setYoutubeStatus(parsed.youtubeStatus);
       setYoutubeUrl(parsed.youtubeUrl);
       setYoutubeError(parsed.youtubeError);
-      setJobDetails(parsed.details);
       if (parsed.status === "ready" && parsed.videoUrl) {
         setVideoUrl(parsed.videoUrl);
         setJobStatus("ready");
@@ -330,7 +328,6 @@ export function VideoPlayer({
     etaSnapshotRef.current = null;
     setYoutubeStatus(undefined);
     setCurrentVariant(initialVariant ?? "video");
-    setJobDetails(undefined);
     setDisplayProgress(0);
   }, [jobId, initialVariant]);
 
