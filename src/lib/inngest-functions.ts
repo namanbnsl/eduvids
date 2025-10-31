@@ -867,6 +867,11 @@ export const generateVideo = inngest.createFunction(
         length: script.length,
       });
 
+      await jobStore.setProgress(jobId!, {
+        progress: 27,
+        step: "verifying script",
+      });
+
       const preValidation = validateRequiredElements(script);
       if (!preValidation.ok) {
         throw new Error(
@@ -881,7 +886,7 @@ export const generateVideo = inngest.createFunction(
         stepBaseParts: ["video", "verify", "initial"],
       });
 
-      console.log(" Manim script verified", {
+      console.log("Manim script verified", {
         length: script.length,
       });
 

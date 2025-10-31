@@ -23,6 +23,7 @@ const STEP_TITLES: Record<string, string> = {
   queued: "Queued",
   "generating voiceover": "Generating Voiceover",
   "generating script": "Generating Script",
+  "verifying script": "Verifying Script",
   "validated script": "Validating Script",
   "rendering video": "Rendering Video",
   "rendered video": "Render Complete",
