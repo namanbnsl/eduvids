@@ -1,12 +1,24 @@
 "use client";
 
+// Hooks
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { VideoJob, VideoVariant, YoutubeStatus } from "@/lib/job-store";
+
+// Types
+import type {
+  JobStatus,
+  VideoJob,
+  VideoVariant,
+  YoutubeStatus,
+} from "@/lib/types";
+
+// Components
 import { VideoProgressCard } from "@/components/ui/video-progress-card";
+import { SubscribePrompt } from "@/components/subscribe-prompt";
+
+// Icons
 import { Monitor, Smartphone, Youtube } from "lucide-react";
 
-export type JobStatus = "generating" | "ready" | "error";
-
+// Step Lookup Table
 const STEP_TITLES: Record<string, string> = {
   queued: "Queued",
   "generating voiceover": "Generating Voiceover",
@@ -22,34 +34,13 @@ const STEP_TITLES: Record<string, string> = {
 };
 
 const PROGRESS_HISTORY_WINDOW_MS = 5 * 60 * 1000;
-const SAFE_ETA_BUFFER_MS = 6 * 60 * 1000;
-const SUBSCRIBE_URL = "https://www.youtube.com/@eduvids-ai?sub_confirmation=1";
-
-function SubscribePrompt() {
-  return (
-    <div className="rounded-lg border border-border/70 bg-background/70 px-4 py-3 shadow-sm">
-      <p className="text-sm text-muted-foreground">
-        Subscribe to our YouTube channel to get the video <br />
-        as soon as it’s automatically uploaded.
-      </p>
-      <a
-        href={SUBSCRIBE_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-3 inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-      >
-        <Youtube className="size-4" />
-        Subscribe on YouTube
-      </a>
-    </div>
-  );
-}
 
 interface VideoPlayerProps {
   // Returned from the generate_video tool
   jobId: string;
   description: string;
   status?: JobStatus;
+
   // Optional direct src (if already available)
   src?: string;
   variant?: VideoVariant;
@@ -71,7 +62,6 @@ export function VideoPlayer({
   const [errorDetails, setErrorDetails] = useState<string | undefined>();
   const [progress, setProgress] = useState<number>(0);
   const [step, setStep] = useState<string | undefined>(undefined);
-  const [etaTargetMs, setEtaTargetMs] = useState<number | null>(null);
   const [youtubeStatus, setYoutubeStatus] = useState<YoutubeStatus | undefined>(
     undefined
   );
@@ -86,10 +76,6 @@ export function VideoPlayer({
   const progressHistoryRef = useRef<
     Array<{ progress: number; timestamp: number }>
   >([]);
-  const etaSnapshotRef = useRef<{
-    progress: number;
-    timestamp: number;
-  } | null>(null);
   const [displayProgress, setDisplayProgress] = useState<number>(0);
   // Track when we should fire a browser notification after the UI has updated
   const [notifyWhenPlayable, setNotifyWhenPlayable] = useState<boolean>(false);
@@ -110,8 +96,6 @@ export function VideoPlayer({
 
     if (clamped <= 0 || clamped >= 100) {
       progressHistoryRef.current = [{ progress: clamped, timestamp: now }];
-      setEtaTargetMs(null);
-      etaSnapshotRef.current = null;
       return;
     }
 
@@ -124,40 +108,6 @@ export function VideoPlayer({
     if (recentHistory.length < 2) {
       return;
     }
-
-    const first = recentHistory.find((entry) => entry.progress < clamped);
-    const last = recentHistory[recentHistory.length - 1];
-
-    if (!first || !last || last.timestamp <= first.timestamp) {
-      return;
-    }
-
-    const progressDelta = last.progress - first.progress;
-    const timeDelta = last.timestamp - first.timestamp;
-
-    if (progressDelta <= 0 || timeDelta <= 0) {
-      setEtaTargetMs(null);
-      return;
-    }
-
-    const percentPerMs = progressDelta / timeDelta;
-    if (percentPerMs <= 0) {
-      setEtaTargetMs(null);
-      etaSnapshotRef.current = null;
-      return;
-    }
-
-    const remaining = Math.max(0, 100 - clamped);
-    const estimateMs = remaining / percentPerMs;
-
-    if (!Number.isFinite(estimateMs) || estimateMs <= 0) {
-      setEtaTargetMs(null);
-      etaSnapshotRef.current = null;
-      return;
-    }
-
-    setEtaTargetMs(now + estimateMs);
-    etaSnapshotRef.current = { progress: clamped, timestamp: now };
   }, []);
 
   const normalizeJob = useCallback(
@@ -324,8 +274,6 @@ export function VideoPlayer({
 
   useEffect(() => {
     progressHistoryRef.current = [];
-    setEtaTargetMs(null);
-    etaSnapshotRef.current = null;
     setYoutubeStatus(undefined);
     setCurrentVariant(initialVariant ?? "video");
     setDisplayProgress(0);
@@ -334,8 +282,6 @@ export function VideoPlayer({
   useEffect(() => {
     if (jobStatus === "ready" || jobStatus === "error") {
       progressHistoryRef.current = [];
-      setEtaTargetMs(null);
-      etaSnapshotRef.current = null;
     }
   }, [jobStatus]);
 
@@ -390,22 +336,6 @@ export function VideoPlayer({
       if (intervalId) clearInterval(intervalId);
     };
   }, [jobId, jobStatus, youtubeStatus, normalizeJob]);
-
-  useEffect(() => {
-    if (jobStatus !== "generating") return;
-    if (etaTargetMs === null) return;
-
-    const ensureFutureEta = () => {
-      const now = Date.now();
-      if (etaTargetMs <= now) {
-        setEtaTargetMs(now + SAFE_ETA_BUFFER_MS);
-      }
-    };
-
-    ensureFutureEta();
-    const interval = setInterval(ensureFutureEta, 15000);
-    return () => clearInterval(interval);
-  }, [etaTargetMs, jobStatus]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -468,14 +398,6 @@ export function VideoPlayer({
     normalizedProgressRef.current = normalizedProgress;
   }, [normalizedProgress]);
 
-  const etaTargetRef = useRef<number | null>(etaTargetMs);
-  useEffect(() => {
-    etaTargetRef.current = etaTargetMs;
-    if (etaTargetMs === null) {
-      etaSnapshotRef.current = null;
-    }
-  }, [etaTargetMs]);
-
   const stageTitle = useMemo(() => {
     const rawStep = (step ?? (jobStatus === "ready" ? "completed" : "")).trim();
     if (rawStep.length) {
@@ -520,17 +442,7 @@ export function VideoPlayer({
           const catchUpRate = Math.max(12, (actual - prev) * 0.6);
           next = Math.min(actual, prev + catchUpRate * deltaSeconds);
         } else {
-          const etaTarget = etaTargetRef.current;
-          const etaSnapshot = etaSnapshotRef.current;
           let projected = prev;
-
-          if (etaTarget && etaSnapshot && etaTarget > etaSnapshot.timestamp) {
-            const totalWindow = etaTarget - etaSnapshot.timestamp;
-            const elapsed = now - etaSnapshot.timestamp;
-            const ratio = Math.min(1, Math.max(0, elapsed / totalWindow));
-            projected =
-              etaSnapshot.progress + ratio * (100 - etaSnapshot.progress);
-          }
 
           const safetyCeil = Math.min(99, actual + 8);
           projected = Math.min(projected, safetyCeil);
@@ -540,13 +452,6 @@ export function VideoPlayer({
             next = Math.min(projected, next + growthRate * deltaSeconds);
           } else if (actual + 0.2 < next) {
             next = Math.max(actual, next - 20 * deltaSeconds);
-          }
-
-          if ((!etaTarget || !etaSnapshot) && actual < 99) {
-            const fallbackTarget = Math.min(safetyCeil, actual + 4);
-            if (fallbackTarget > next) {
-              next = Math.min(fallbackTarget, next + 0.8 * deltaSeconds);
-            }
           }
         }
 

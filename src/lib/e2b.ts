@@ -5,6 +5,7 @@ import {
   getCompleteLayoutCode,
   detectContentType,
 } from "./manim-layout-engine";
+import { RenderLogEntry, ValidationStage } from "@/lib/types";
 
 const MAX_COMMAND_OUTPUT_CHARS = 4000;
 let latexEnvironmentVerified = false;
@@ -89,30 +90,6 @@ function injectEduvidsCallout(script: string): string {
   lines.splice(insertionIndex, 0, ...insertionLines);
 
   return lines.join("\n");
-}
-
-export type ValidationStage =
-  | "input"
-  | "heuristic"
-  | "syntax"
-  | "ast-guard"
-  | "scene-validation"
-  | "plugin-detection"
-  | "plugin-installation"
-  | "plugin-validation"
-  | "layout-injection"
-  | "latex"
-  | "render"
-  | "video-validation"
-  | "watermark"
-  | "watermark-validation"
-  | "download";
-
-export interface RenderLogEntry {
-  timestamp: string;
-  level: "info" | "warn" | "error" | "stdout" | "stderr";
-  message: string;
-  context?: string;
 }
 
 class ManimValidationError extends Error {

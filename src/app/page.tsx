@@ -1,9 +1,13 @@
 "use client";
 
-import type React from "react";
-
-import { useEffect, useMemo, useRef, useState } from "react";
+// Server Actions
 import { generateTopics } from "@/lib/actions/generate-topics";
+
+// Hooks
+import { useEffect, useState } from "react";
+import { useChat } from "@ai-sdk/react";
+
+// Components
 import Link from "next/link";
 import { Message, MessageAvatar, MessageContent } from "@/components/message";
 import {
@@ -14,14 +18,12 @@ import {
   PromptInputTools,
   PromptInputButton,
 } from "@/components/prompt-input";
-import { useChat } from "@ai-sdk/react";
-import { Response } from "@/components/response";
 import { Conversation, ConversationContent } from "@/components/conversation";
 import { VideoPlayer } from "@/components/video-player";
-import {
-  OnboardingTour,
-  type OnboardingStep,
-} from "@/components/onboarding-tour";
+import { QuickActionCards } from "@/components/quick-action-cards";
+import { StyledResponse } from "@/components/ui/styled-response";
+
+// Icons
 import {
   Github,
   Youtube,
@@ -31,100 +33,52 @@ import {
   Smartphone,
   Video,
 } from "lucide-react";
-import type { ToolUIPart, UIDataTypes, UIMessage } from "ai";
-import type { JobStatus } from "@/components/video-player";
-import { QuickActionCards } from "@/components/quick-action-cards";
 
-const ONBOARDING_STORAGE_KEY = "eduvids:onboarding:v1";
+// Types
+import type {
+  ChatMessage,
+  ChatMessagePart,
+  GenerateVideoToolUIPart,
+} from "@/lib/types";
 
-type ExecutePythonToolOutput = {
-  text?: string;
-  results?: unknown;
-  logs?: unknown;
-  error?: unknown;
-};
-
-type GenerateVideoToolOutput = {
-  jobId: string;
-  description: string;
-  status?: JobStatus;
-  src?: string;
-  videoUrl?: string;
-  error?: string;
-  details?: string;
-  progress?: number;
-  step?: string;
-  variant?: "video" | "short";
-};
-
-type AppTools = {
-  execute_python: {
-    input: { code: string };
-    output: ExecutePythonToolOutput;
-  };
-  generate_video: {
-    input: { description: string };
-    output: GenerateVideoToolOutput;
-  };
-};
-
-type ChatMessage = UIMessage<unknown, UIDataTypes, AppTools>;
-type ChatMessagePart = ChatMessage["parts"][number];
-type GenerateVideoToolUIPart = ToolUIPart<AppTools>;
-
+// Helpers
 const isGenerateVideoToolPart = (
   part: ChatMessagePart
 ): part is Extract<GenerateVideoToolUIPart, { type: "tool-generate_video" }> =>
   part.type === "tool-generate_video";
 
+// Page
 export default function ChatPage() {
   const [input, setInput] = useState("");
   const [generationMode, setGenerationMode] = useState<
     "video" | "short" | null
   >(null);
-  const [showOnboarding, setShowOnboarding] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const [topics, setTopics] = useState<string[]>([]);
   const [isLoadingTopics, setIsLoadingTopics] = useState(true);
 
-  const conversationSpotlightRef = useRef<HTMLDivElement | null>(null);
-  const newChatSpotlightRef = useRef<HTMLDivElement | null>(null);
-  const videoToggleSpotlightRef = useRef<HTMLDivElement | null>(null);
-  const composerSpotlightRef = useRef<HTMLDivElement | null>(null);
-
   const { messages, status, sendMessage } = useChat<ChatMessage>();
+  const hasMessages = messages.length > 0;
 
   const handleGenerationModeToggle = (mode: "video" | "short") => {
-    const currentMode = generationMode;
     const videoPrefix = "Generate a video of ";
     const shortPrefix = "Generate a short vertical video of ";
 
-    if (currentMode === mode) {
-      // Toggling off - remove prefix
-      setGenerationMode(null);
-      if (input.startsWith(videoPrefix)) {
-        setInput(input.slice(videoPrefix.length));
-      } else if (input.startsWith(shortPrefix)) {
-        setInput(input.slice(shortPrefix.length));
-      }
+    setGenerationMode(mode);
+    let newInput = input;
+
+    // Remove old prefix if exists
+    if (newInput.startsWith(videoPrefix)) {
+      newInput = newInput.slice(videoPrefix.length);
+    } else if (newInput.startsWith(shortPrefix)) {
+      newInput = newInput.slice(shortPrefix.length);
+    }
+
+    // Add new prefix
+    if (mode === "video") {
+      setInput(videoPrefix + newInput);
     } else {
-      // Toggling on or switching modes
-      setGenerationMode(mode);
-      let newInput = input;
-
-      // Remove old prefix if exists
-      if (newInput.startsWith(videoPrefix)) {
-        newInput = newInput.slice(videoPrefix.length);
-      } else if (newInput.startsWith(shortPrefix)) {
-        newInput = newInput.slice(shortPrefix.length);
-      }
-
-      // Add new prefix
-      if (mode === "video") {
-        setInput(videoPrefix + newInput);
-      } else {
-        setInput(shortPrefix + newInput);
-      }
+      setInput(shortPrefix + newInput);
     }
   };
 
@@ -153,45 +107,19 @@ export default function ChatPage() {
       return;
     }
 
-    // Sync theme state with the class already applied by the inline script
+    // Sync theme state
     const isDarkMode = document.documentElement.classList.contains("dark");
     setIsDark(isDarkMode);
-
-    // Hide loading screen
-    const loadingScreen = document.getElementById("loading-screen");
-    if (loadingScreen) {
-      loadingScreen.style.display = "none";
-    }
-
-    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "1");
-    const seen = window.localStorage.getItem(ONBOARDING_STORAGE_KEY);
-    if (!seen) {
-      setShowOnboarding(true);
-    }
 
     generateTopics()
       .then(setTopics)
       .finally(() => setIsLoadingTopics(false));
   }, []);
 
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && generationMode) {
-        setGenerationMode(null);
-      }
-    };
-
-    document.addEventListener("keydown", handleEscape);
-
-    return () => {
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [generationMode]);
-  const hasMessages = messages.length > 0;
-
   const toggleTheme = () => {
     const newIsDark = !isDark;
     setIsDark(newIsDark);
+
     if (newIsDark) {
       document.documentElement.classList.add("dark");
       window.localStorage.setItem("theme", "dark");
@@ -201,63 +129,8 @@ export default function ChatPage() {
     }
   };
 
-  const onboardingSteps = useMemo<OnboardingStep[]>(
-    () => [
-      {
-        id: "conversation",
-        title: "Follow the conversation",
-        description:
-          'This stream keeps every question and answer together so you can review context at a glance. Example: Revisit a response after asking "Summarize Galileo\'s experiments in two sentences."',
-        target: conversationSpotlightRef,
-        placement: "right",
-        spotlightPadding: 28,
-      },
-      {
-        id: "new-chat",
-        title: "Start fresh anytime",
-        description:
-          'Kick off a new idea without losing your current thread. Example: Launch a clean session to explore "Design a lab on projectile motion."',
-        target: newChatSpotlightRef,
-        placement: "bottom",
-      },
-      {
-        id: "video-mode",
-        title: "Turn prompts into videos",
-        description:
-          'Toggle video mode to have responses rendered as animations tailored to your topic. Example: Request "Animate the phases of mitosis with labeled steps."',
-        target: videoToggleSpotlightRef,
-        placement: "top",
-      },
-      {
-        id: "composer",
-        title: "Compose with guidance",
-        description:
-          'Draft questions here, submit with Enter, and lean on Shift+Enter for multi-line prompts. Example: Draft "Compare energy transfer in conduction, convection, and radiation with bullet points."',
-        target: composerSpotlightRef,
-        placement: "top",
-        spotlightPadding: 24,
-      },
-    ],
-    [
-      conversationSpotlightRef,
-      newChatSpotlightRef,
-      videoToggleSpotlightRef,
-      composerSpotlightRef,
-    ]
-  );
-
-  const handleOnboardingClose = () => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "1");
-    }
-    setShowOnboarding(false);
-  };
-
   return (
     <div className="relative flex flex-col h-svh bg-background">
-      {/* Background wash */}
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(120,120,255,0.05),transparent_50%)]" />
-
       {/* Top bar */}
       <header className="flex items-center justify-between gap-3 px-4 md:px-6 py-4 border-b border-border">
         <div className="flex items-center gap-2">
@@ -304,10 +177,7 @@ export default function ChatPage() {
         {hasMessages ? (
           <>
             {/* Messages area */}
-            <div
-              ref={conversationSpotlightRef}
-              className="flex-1 overflow-y-auto animate-in fade-in duration-500"
-            >
+            <div className="flex-1 overflow-y-auto animate-in fade-in duration-500">
               <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4">
                 <Conversation>
                   <ConversationContent>
@@ -317,41 +187,11 @@ export default function ChatPage() {
                           {message.parts?.map((part, i) => {
                             if (part.type === "text") {
                               return (
-                                <Response
-                                  key={`${message.id}-${i}`}
-                                  className={`
-        max-w-none text-base leading-relaxed break-words ${
-          message.role == "assistant" ? "p-4" : ""
-        } rounded-lg
-
-        /* Direct element styling */
-        [&>h1]:mt-6 [&>h1]:mb-4 [&>h1]:font-bold [&>h1]:text-xl
-        [&>h2]:mt-5 [&>h2]:mb-3 [&>h2]:font-bold [&>h2]:text-lg
-        [&>h3]:mt-4 [&>h3]:mb-2 [&>h3]:font-semibold [&>h3]:text-base
-        [&>h4]:mt-3 [&>h4]:mb-2 [&>h4]:font-medium
-
-        [&>p]:my-3 [&>p]:leading-relaxed
-
-        [&>ul]:my-3 [&>ul]:pl-6 [&>ul]:list-disc [&>ul]:space-y-1
-        [&>ol]:my-3 [&>ol]:pl-6 [&>ol]:list-decimal [&>ol]:space-y-1
-        [&_li]:leading-relaxed
-
-        [&>pre]:my-4 [&>pre]:p-4 [&>pre]:rounded-lg [&>pre]:overflow-x-auto
-        [&>pre]:bg-muted [&>pre]:text-foreground
-
-        [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-sm
-        [&_code]:bg-muted [&_code]:text-foreground
-
-        [&>blockquote]:my-4 [&>blockquote]:pl-4 [&>blockquote]:border-l-4
-        [&>blockquote]:border-border
-        [&>blockquote]:italic [&>blockquote]:text-muted-foreground
-
-        [&_.math-display]:my-4 [&_.math-display]:text-center
-        [&_.math-inline]:mx-1
-      `}
-                                >
-                                  {part.text}
-                                </Response>
+                                <StyledResponse
+                                  key={i}
+                                  text={part.text}
+                                  role={message.role}
+                                />
                               );
                             }
 
@@ -388,11 +228,8 @@ export default function ChatPage() {
               </div>
             </div>
 
-            {/* Input at bottom with smooth transition */}
-            <div
-              className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4 animate-in slide-in-from-bottom-4 fade-in duration-500"
-              ref={composerSpotlightRef}
-            >
+            {/* Input at bottom */}
+            <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4 animate-in slide-in-from-bottom-4 fade-in duration-500">
               <PromptInput onSubmit={handleSubmit}>
                 <PromptInputTextarea
                   onChange={(e) => setInput(e.target.value)}
@@ -401,7 +238,7 @@ export default function ChatPage() {
                 />
                 <PromptInputToolbar>
                   <PromptInputTools>
-                    <div ref={videoToggleSpotlightRef} className="inline-flex">
+                    <div className="inline-flex">
                       <div className="inline-flex gap-1">
                         <PromptInputButton
                           onClick={() => handleGenerationModeToggle("video")}
@@ -429,7 +266,8 @@ export default function ChatPage() {
               </PromptInput>
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 Please avoid sharing personal data—everything submitted here
-                will be uploaded to the community YouTube channel.
+                will be automatically uploaded publicly to the community YouTube
+                channel.
               </p>
             </div>
           </>
@@ -445,11 +283,7 @@ export default function ChatPage() {
                 </h1>
               </div>
 
-              {/* Centered input */}
-              <div
-                ref={composerSpotlightRef}
-                className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-700 delay-100"
-              >
+              <div className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-700 delay-100">
                 <PromptInput onSubmit={handleSubmit}>
                   <PromptInputTextarea
                     onChange={(e) => setInput(e.target.value)}
@@ -458,10 +292,7 @@ export default function ChatPage() {
                   />
                   <PromptInputToolbar>
                     <PromptInputTools>
-                      <div
-                        ref={videoToggleSpotlightRef}
-                        className="inline-flex"
-                      >
+                      <div className="inline-flex">
                         <div className="inline-flex gap-1">
                           <PromptInputButton
                             onClick={() =>
@@ -520,13 +351,6 @@ export default function ChatPage() {
           </div>
         )}
       </div>
-
-      {showOnboarding ? (
-        <OnboardingTour
-          steps={onboardingSteps}
-          onClose={handleOnboardingClose}
-        />
-      ) : null}
     </div>
   );
 }

@@ -4,13 +4,14 @@ import { generateText } from "ai";
 import { createGoogleProvider } from "@/lib/google-provider";
 
 export async function generateTopics(): Promise<string[]> {
-  try {
-    const google = createGoogleProvider();
-    const model = google("gemini-2.5-flash-lite");
+  if (process.env.NODE_ENV === "production") {
+    try {
+      const google = createGoogleProvider();
+      const model = google("gemini-2.5-flash-lite");
 
-    const { text } = await generateText({
-      model,
-      prompt: `Generate 2 fun and interesting video/short topic ideas for an educational content platform focused on math, physics, and chemistry.
+      const { text } = await generateText({
+        model,
+        prompt: `Generate 2 fun and interesting video/short topic ideas for an educational content platform focused on math, physics, and chemistry.
 
 Topics should:
 - Focus on math, technology and science.
@@ -24,23 +25,29 @@ Return ONLY a JSON array of 2 strings, like this:
 ["topic 1", "topic 2"]
 
 No explanation, no markdown, just the JSON array.`,
-      temperature: 0.9,
-    });
+        temperature: 0.9,
+      });
 
-    const cleanText = text
-      .trim()
-      .replace(/```json\n?/g, "")
-      .replace(/```/g, "");
-    const topics = JSON.parse(cleanText);
+      const cleanText = text
+        .trim()
+        .replace(/```json\n?/g, "")
+        .replace(/```/g, "");
+      const topics = JSON.parse(cleanText);
 
-    if (!Array.isArray(topics)) {
-      throw new Error("Invalid response format");
+      if (!Array.isArray(topics)) {
+        throw new Error("Invalid response format");
+      }
+
+      return topics.slice(0, 2);
+    } catch (error) {
+      console.error("Failed to generate topics:", error);
+
+      return ["How do nuclear reactions work?", "Why do rainbows form?"];
     }
-
-    return topics.slice(0, 2);
-  } catch (error) {
-    console.error("Failed to generate topics:", error);
-
+  } else {
+    console.log(
+      "[generateTopics] In development mode, returning hardcoded topics"
+    );
     return ["How do nuclear reactions work?", "Why do rainbows form?"];
   }
 }

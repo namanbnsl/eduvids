@@ -7,9 +7,9 @@ import {
 import { generateText } from "ai";
 import fs from "fs";
 import path from "path";
-import type { RenderLogEntry, ValidationStage } from "./e2b";
 import { createGoogleProvider } from "./google-provider";
 import { selectGroqModel, GROQ_MODEL_IDS } from "./groq-provider";
+import { RenderLogEntry, ValidationStage } from "@/lib/types";
 
 const google = (modelId: string) => createGoogleProvider()(modelId);
 
@@ -22,10 +22,20 @@ const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 const randomDelayMs = () =>
   SLEEP_MIN_MS + Math.floor(Math.random() * (SLEEP_MAX_MS - SLEEP_MIN_MS + 1));
 
-const logRetry = (fnName: string, attempt: number, error: unknown, delayMs?: number) => {
+const logRetry = (
+  fnName: string,
+  attempt: number,
+  error: unknown,
+  delayMs?: number
+) => {
   const errorMsg = error instanceof Error ? error.message : String(error);
   console.warn(
-    `[${fnName}] Attempt ${attempt + 1}/${GEMINI_MAX_RETRIES + 1} failed: ${errorMsg}${delayMs ? ` - retrying in ${Math.round(delayMs / 1000)}s` : " - no more retries"
+    `[${fnName}] Attempt ${attempt + 1}/${
+      GEMINI_MAX_RETRIES + 1
+    } failed: ${errorMsg}${
+      delayMs
+        ? ` - retrying in ${Math.round(delayMs / 1000)}s`
+        : " - no more retries"
     }`
   );
 };
@@ -95,7 +105,6 @@ export interface ManimScriptRequest {
 export interface ManimScript {
   code: string;
 }
-
 
 export interface ManimGenerationErrorDetails {
   message?: string;
@@ -195,7 +204,6 @@ export async function generateManimScript({
     .trim();
   return code;
 }
-
 
 export async function generateYoutubeTitle({
   prompt,
@@ -459,9 +467,10 @@ export async function regenerateManimScriptWithError({
   })();
 
   const rewriteDirective = forceRewrite
-    ? `\nThis is a forced rewrite because the last regeneration did not resolve the issue. ${forcedReason ??
-    "Produce a substantially different script that fixes the problem."
-    }`
+    ? `\nThis is a forced rewrite because the last regeneration did not resolve the issue. ${
+        forcedReason ??
+        "Produce a substantially different script that fixes the problem."
+      }`
     : "";
 
   const repetitionDirective =

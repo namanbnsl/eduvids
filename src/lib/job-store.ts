@@ -1,54 +1,7 @@
 import { randomUUID } from "crypto";
 import { kv } from "@vercel/kv";
+import { JobStore, VideoJob, VideoVariant, YoutubeStatus } from "@/lib/types";
 
-export type JobStatus = "generating" | "ready" | "error";
-export type YoutubeStatus = "pending" | "uploaded" | "failed";
-export type VideoVariant = "video" | "short";
-
-export interface VideoJob {
-  id: string;
-  description: string;
-  status: JobStatus;
-  variant: VideoVariant;
-  videoUrl?: string;
-  error?: string;
-  // Progress fields (0-100)
-  progress?: number;
-  step?: string;
-  details?: string;
-  youtubeStatus?: YoutubeStatus;
-  youtubeUrl?: string;
-  youtubeVideoId?: string;
-  youtubeError?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// Interface for our job store
-interface JobStore {
-  create(
-    description: string,
-    options?: { variant?: VideoVariant }
-  ): Promise<VideoJob>;
-  get(id: string): Promise<VideoJob | undefined>;
-  setProgress(
-    id: string,
-    update: { progress?: number; step?: string; details?: string }
-  ): Promise<VideoJob | undefined>;
-  setReady(id: string, videoUrl: string): Promise<VideoJob | undefined>;
-  setError(id: string, message: string): Promise<VideoJob | undefined>;
-  setYoutubeStatus(
-    id: string,
-    update: {
-      youtubeStatus?: YoutubeStatus;
-      youtubeUrl?: string;
-      youtubeVideoId?: string;
-      youtubeError?: string;
-    }
-  ): Promise<VideoJob | undefined>;
-}
-
-// Persistent KV-backed store for production
 class KVJobStore implements JobStore {
   private ttlSeconds = 60 * 60 * 24; // 24 hours
 

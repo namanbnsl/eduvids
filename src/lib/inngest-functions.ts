@@ -1,5 +1,8 @@
+// Inngest
 import { NonRetriableError } from "inngest";
 import { inngest } from "./inngest";
+
+// LLM
 import {
   generateManimScript,
   generateVoiceoverScript,
@@ -8,36 +11,34 @@ import {
   generateYoutubeDescription,
   generateYoutubeTitle,
 } from "./llm";
+
+// Rendering
+import { renderManimVideo } from "./e2b";
+
+// Youtube & Uploads
+import { uploadVideo } from "./uploadthing";
+import { uploadToYouTube } from "./youtube";
+
+// Jobs
+import { jobStore } from "./job-store";
+// Prompts
+import { VOICEOVER_SERVICE_IMPORT, VOICEOVER_SERVICE_SETTER } from "@/prompt";
+
+// Types
 import type {
   ManimGenerationAttempt,
   ManimGenerationErrorDetails,
   VerifyManimScriptResult,
 } from "./llm";
-import { renderManimVideo, ValidationStage } from "./e2b";
-import type { RenderLogEntry } from "./e2b";
-import { VOICEOVER_SERVICE_IMPORT, VOICEOVER_SERVICE_SETTER } from "@/prompt";
-import { uploadVideo } from "./uploadthing";
-import { jobStore, type VideoVariant } from "./job-store";
-import { uploadToYouTube } from "./youtube";
-
-type RenderProcessError = Error & {
-  stderr?: string;
-  stdout?: string;
-  exitCode?: number;
-  stage?: ValidationStage;
-  hint?: string;
-  logs?: RenderLogEntry[];
-};
-
-type RenderAttemptSuccess = {
-  uploadUrl: string;
-  warnings: Array<{ stage: ValidationStage; message: string }>;
-  logs: RenderLogEntry[];
-};
-
-type HeuristicSeverity = "noncode" | "fixable" | "critical";
-type HeuristicIssue = { message: string; severity: HeuristicSeverity };
-type HeuristicOptions = { allowVerificationFixes?: boolean };
+import type {
+  VideoVariant,
+  RenderLogEntry,
+  ValidationStage,
+  HeuristicIssue,
+  HeuristicOptions,
+  RenderAttemptSuccess,
+  RenderProcessError,
+} from "./types";
 
 const MAX_RENDER_LOG_ENTRIES = 200;
 

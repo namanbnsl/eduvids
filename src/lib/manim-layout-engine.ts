@@ -1,50 +1,26 @@
-/**
- * Manim Layout Engine
- *
- * Advanced layout algorithms and viewport management to prevent content cutoff
- * and ensure all animations stay within safe boundaries.
- */
-
 export interface LayoutConfig {
-  /** Frame width in manim units */
   frameWidth: number;
-  /** Frame height in manim units */
   frameHeight: number;
-  /** Safe margin from edges */
   safeMargin: number;
-  /** Orientation: landscape or portrait */
   orientation: "landscape" | "portrait";
-  /** Content type: affects layout strategy */
   contentType?: "text-heavy" | "diagram" | "math" | "mixed";
 }
 
 export interface LayoutConfig3D extends LayoutConfig {
-  /** Camera distance from the content */
   cameraDistance: number;
-  /** Field of view for the 3D camera */
   cameraFov: number;
 }
 
 export interface SafeZoneConfig {
-  /** Top margin */
   top: number;
-  /** Bottom margin */
   bottom: number;
-  /** Left margin */
   left: number;
-  /** Right margin */
   right: number;
-  /** Title zone height (reserved for titles) */
   titleHeight: number;
-  /** Maximum content width */
   maxContentWidth: number;
-  /** Maximum content height (excluding title) */
   maxContentHeight: number;
 }
 
-/**
- * Calculate optimal safe zones based on layout configuration
- */
 export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
   const { frameWidth, frameHeight, safeMargin, orientation, contentType } =
     config;
@@ -55,7 +31,6 @@ export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
   let leftMargin = safeMargin;
   let rightMargin = safeMargin;
 
-  // Adjust for orientation
   if (orientation === "portrait") {
     // Portrait needs more horizontal margins proportionally
     leftMargin *= 1.4;
@@ -266,43 +241,8 @@ export function generateLayoutSetup(
   parts.push(generateSafeZoneConstants(config));
   parts.push('config.background_color = "#020712"');
   parts.push('Text.set_default(font="Lato")');
-  // const colorPalette: Record<string, string> = {
-  //   WHITE: "#FFFFFF",
-  //   BLACK: "#000000",
-  //   GRAY: "#94A3B8",
-  //   DARK_GRAY: "#475569",
-  //   LIGHT_GRAY: "#E2E8F0",
-  //   YELLOW: "#FFD166",
-  //   GOLD: "#EAB308",
-  //   ORANGE: "#F97316",
-  //   CORAL: "#FB7185",
-  //   RED: "#EF4444",
-  //   CRIMSON: "#DC2626",
-  //   PINK: "#F472B6",
-  //   MAGENTA: "#EC4899",
-  //   BLUE: "#2563EB",
-  //   INDIGO: "#4338CA",
-  //   CYAN: "#0EA5E9",
-  //   TEAL: "#14B8A6",
-  //   PURE_GREEN: "#22C55E",
-  //   EMERALD: "#10B981",
-  //   LIME: "#84CC16",
-  //   PURPLE: "#A855F7",
-  //   VIOLET: "#7C3AED",
-  //   LAVENDER: "#C084FC",
-  //   NORD: "#5E81AC",
-  //   NORD_FROST: "#8FBCBB",
-  //   NORD_NIGHT: "#2E3440",
-  //   SLATE: "#64748B",
-  //   STEEL: "#475569",
-  //   SAND: "#F5E0B7",
-  //   BROWN: "#92400E",
-  //   SKY: "#38BDF8",
-  //   FUCHSIA: "#D946EF",
-  //   MINT: "#99F6E4",
-  //   NAVY: "#1D4ED8",
-  // };
 
+  // Colors
   const colorPalette: Record<string, string> = {
     WHITE: "#FFFFFF",
     BLACK: "#E0E0E0", // Lightened for visibility
@@ -577,9 +517,6 @@ export const DEFAULT_3D_CONFIG: LayoutConfig3D = {
   cameraFov: 50,
 };
 
-/**
- * Get layout config based on render options
- */
 export function getLayoutConfig(options: {
   orientation?: "landscape" | "portrait";
   resolution?: { width: number; height: number };
