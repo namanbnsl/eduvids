@@ -4,6 +4,7 @@ import { z } from "zod";
 import { inngest } from "@/lib/inngest";
 import { jobStore } from "@/lib/job-store";
 import { createGoogleProvider } from "@/lib/google-provider";
+import { GROQ_MODEL_IDS, selectGroqModel } from "@/lib/groq-provider";
 
 export const maxDuration = 120;
 
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
   }
 
   const result = streamText({
-    model: createGoogleProvider()(modelId),
+    model: selectGroqModel(GROQ_MODEL_IDS.kimiInstruct),
     toolChoice: "required",
     system: systemPrompt,
     messages: convertToModelMessages(messages),
