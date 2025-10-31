@@ -239,8 +239,131 @@ export function generateLayoutSetup(
 
   // Add safe zone constants
   parts.push(generateSafeZoneConstants(config));
-  parts.push('config.background_color = "#020712"');
-  parts.push('Text.set_default(font="Lato")');
+  parts.push(
+    [
+      'config.background_color = "#020712"',
+      'BRIGHT_TEXT_COLOR = "#FFFFFF"',
+      'DARK_TEXT_COLOR = "#0E172A"',
+      'CONTRAST_DARK_PANEL = "#142136"',
+      'CONTRAST_LIGHT_PANEL = "#F5F7FF"',
+      'MIN_CONTRAST_RATIO = 4.5',
+      'Text.set_default(font="Lato", color=BRIGHT_TEXT_COLOR)',
+      'Paragraph.set_default(color=BRIGHT_TEXT_COLOR)',
+      'MarkupText.set_default(color=BRIGHT_TEXT_COLOR)',
+      'MathTex.set_default(color=BRIGHT_TEXT_COLOR)',
+      'Tex.set_default(color=BRIGHT_TEXT_COLOR)',
+      'BulletedList.set_default(color=BRIGHT_TEXT_COLOR)',
+      'Rectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=0.85, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)',
+      'RoundedRectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=0.85, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)',
+    ].join("\n")
+  );
+  parts.push(`
+# Accessibility and readability helpers
+def _relative_luminance(color_value):
+    color = Color(color_value)
+    r, g, b = color.get_rgb()
+
+    def _channel(component):
+        return component / 12.92 if component <= 0.03928 else ((component + 0.055) / 1.055) ** 2.4
+
+    r_lin = _channel(r)
+    g_lin = _channel(g)
+    b_lin = _channel(b)
+    return 0.2126 * r_lin + 0.7152 * g_lin + 0.0722 * b_lin
+
+
+def _contrast_ratio(color_a, color_b):
+    lum_a = _relative_luminance(color_a)
+    lum_b = _relative_luminance(color_b)
+    lighter = max(lum_a, lum_b)
+    darker = min(lum_a, lum_b)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def pick_accessible_text_color(background_color, min_contrast=MIN_CONTRAST_RATIO):
+    background_hex = Color(background_color).to_hex()
+    candidates = [BRIGHT_TEXT_COLOR, DARK_TEXT_COLOR]
+    scored = [
+        (candidate, _contrast_ratio(candidate, background_hex))
+        for candidate in candidates
+    ]
+    for candidate, ratio in scored:
+        if ratio >= min_contrast:
+            return candidate
+    scored.sort(key=lambda item: item[1], reverse=True)
+    return scored[0][0]
+
+
+def ensure_text_readability(text_mobject, background_mobject=None, min_contrast=MIN_CONTRAST_RATIO):
+    background_color = config.background_color
+    if background_mobject and hasattr(background_mobject, "get_fill_color"):
+        try:
+            fill_color = background_mobject.get_fill_color()
+            if fill_color is not None:
+                background_color = Color(fill_color).to_hex()
+        except Exception:
+            pass
+
+    chosen_color = pick_accessible_text_color(background_color, min_contrast=min_contrast)
+    text_mobject.set_color(chosen_color)
+    return text_mobject
+
+
+def ensure_panel_readability(panel_mobject, text_color=BRIGHT_TEXT_COLOR, min_contrast=MIN_CONTRAST_RATIO):
+    try:
+        fill_color = Color(panel_mobject.get_fill_color()).to_hex()
+    except Exception:
+        fill_color = CONTRAST_DARK_PANEL
+
+    fill_opacity = getattr(panel_mobject, "fill_opacity", 0) or 0
+    desired_dark = _contrast_ratio(CONTRAST_DARK_PANEL, text_color) >= min_contrast
+
+    if fill_opacity <= 0:
+        target_color = CONTRAST_DARK_PANEL if desired_dark else CONTRAST_LIGHT_PANEL
+        panel_mobject.set_fill(
+            color=target_color,
+            opacity=0.85 if target_color == CONTRAST_DARK_PANEL else 0.95,
+        )
+        fill_color = target_color
+    else:
+        current_ratio = _contrast_ratio(fill_color, text_color)
+        if current_ratio < min_contrast:
+            if _relative_luminance(text_color) < 0.5:
+                panel_mobject.set_fill(
+                    color=CONTRAST_LIGHT_PANEL,
+                    opacity=max(fill_opacity, 0.95),
+                )
+                fill_color = CONTRAST_LIGHT_PANEL
+            else:
+                panel_mobject.set_fill(
+                    color=CONTRAST_DARK_PANEL,
+                    opacity=max(fill_opacity, 0.85),
+                )
+                fill_color = CONTRAST_DARK_PANEL
+
+    stroke_width = panel_mobject.get_stroke_width() or 0
+    if stroke_width < 2:
+        panel_mobject.set_stroke(
+            color=Color(text_color).to_hex(),
+            width=2,
+            opacity=0.8,
+        )
+
+    if _contrast_ratio(fill_color, text_color) < min_contrast:
+        alternative = CONTRAST_LIGHT_PANEL if _relative_luminance(fill_color) < 0.5 else CONTRAST_DARK_PANEL
+        panel_mobject.set_fill(
+            color=alternative,
+            opacity=max(panel_mobject.get_fill_opacity() or 0.85, 0.85),
+        )
+
+    return panel_mobject
+
+
+def apply_text_panel(text_mobject, panel_mobject, min_contrast=MIN_CONTRAST_RATIO):
+    ensure_text_readability(text_mobject, panel_mobject, min_contrast=min_contrast)
+    ensure_panel_readability(panel_mobject, text_mobject.get_color(), min_contrast=min_contrast)
+    return text_mobject, panel_mobject
+`);
 
   // Colors
   const colorPalette: Record<string, string> = {
