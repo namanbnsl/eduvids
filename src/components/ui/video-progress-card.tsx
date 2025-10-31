@@ -12,7 +12,7 @@ type VideoProgressCardProps = {
   title?: string;
   subtitle?: string;
   stepLabel?: string;
-  progress?: number; // 0-100
+  progress?: number;
   className?: string;
 };
 
@@ -57,11 +57,7 @@ export function VideoProgressCard({
       <CardContent className="space-y-5">
         {/* Progress bar */}
         <div className="rounded-md bg-secondary p-1">
-          <Progress
-            value={clamped}
-            className="h-2 rounded bg-secondary"
-            aria-label={subtitle}
-          />
+          <Progress value={clamped} className="h-2 rounded bg-secondary" />
         </div>
 
         <div className="flex items-center justify-between text-sm text-muted-foreground">

@@ -511,7 +511,9 @@ export function VideoPlayer({
           )}
         </div>
         <VideoProgressCard
-          title="Generating..."
+          title={`Generating your ${
+            currentVariant == "short" ? "Short" : "Video"
+          }`}
           subtitle={stageTitle}
           stepLabel={stageTitle}
           progress={displayProgress}
@@ -521,7 +523,6 @@ export function VideoPlayer({
     );
   }
 
-  // CONCRETE PLAYER: If ready, show the video
   return (
     <div className="space-y-4">
       <video
