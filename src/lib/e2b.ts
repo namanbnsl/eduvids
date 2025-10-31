@@ -855,42 +855,42 @@ export async function renderManimVideo({
 
     let processedVideoPath = videoPath;
 
-    // // Speed up video to 1.25x
-    // const speedUpPath = `${outputDir}/speedup.mp4`;
-    // const speedUpCmd = `ffmpeg -y -i ${processedVideoPath} -filter:v "setpts=PTS/1.25" -filter:a "atempo=1.25" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart ${speedUpPath}`;
-    // await runCommandOrThrow(speedUpCmd, {
-    //   description: "Speed up video to 1.25x",
-    //   stage: "render",
-    //   timeoutMs: 360_000,
-    //   hint: "ffmpeg failed while speeding up the video.",
-    //   streamOutput: { stdout: true, stderr: true },
-    // });
+    // Speed up video to 1.15x
+    const speedUpPath = `${outputDir}/speedup.mp4`;
+    const speedUpCmd = `ffmpeg -y -i ${processedVideoPath} -filter:v "setpts=PTS/1.15" -filter:a "atempo=1.15" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart ${speedUpPath}`;
+    await runCommandOrThrow(speedUpCmd, {
+      description: "Speed up video to 1.15x",
+      stage: "render",
+      timeoutMs: 360_000,
+      hint: "ffmpeg failed while speeding up the video.",
+      streamOutput: { stdout: true, stderr: true },
+    });
 
-    // const probeSpeedUp = await runCommandOrThrow(
-    //   `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${speedUpPath}`,
-    //   {
-    //     description: "Speed up video validation",
-    //     stage: "video-validation",
-    //     timeoutMs: 180_000,
-    //     hint: "The sped-up video appears to be corrupted.",
-    //   }
-    // );
-    // const speedUpDuration = parseFloat((probeSpeedUp.stdout || "").trim());
-    // if (!speedUpDuration || speedUpDuration <= 0) {
-    //   await ensureCleanup();
-    //   throw new ManimValidationError(
-    //     `Sped-up video has invalid duration: ${speedUpDuration}s — aborting upload`,
-    //     "video-validation",
-    //     { logs: [...renderLogs] }
-    //   );
-    // }
+    const probeSpeedUp = await runCommandOrThrow(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${speedUpPath}`,
+      {
+        description: "Speed up video validation",
+        stage: "video-validation",
+        timeoutMs: 180_000,
+        hint: "The sped-up video appears to be corrupted.",
+      }
+    );
+    const speedUpDuration = parseFloat((probeSpeedUp.stdout || "").trim());
+    if (!speedUpDuration || speedUpDuration <= 0) {
+      await ensureCleanup();
+      throw new ManimValidationError(
+        `Sped-up video has invalid duration: ${speedUpDuration}s — aborting upload`,
+        "video-validation",
+        { logs: [...renderLogs] }
+      );
+    }
 
-    // processedVideoPath = speedUpPath;
-    // pushLog({
-    //   level: "info",
-    //   message: `Video sped up to 1.25x (new duration: ${speedUpDuration}s)`,
-    //   context: "video-processing",
-    // });
+    processedVideoPath = speedUpPath;
+    pushLog({
+      level: "info",
+      message: `Video sped up to 1.15x (new duration: ${speedUpDuration}s)`,
+      context: "video-processing",
+    });
 
     if (applyWatermark) {
       const watermarkedPath = `${outputDir}/watermarked.mp4`;
