@@ -146,6 +146,10 @@ export async function generateVoiceoverScript({
     `User request: ${prompt}`,
     "Directive: Cover every essential idea from the request in sequence, adding extra BODY lines when needed so no core step is skipped.",
     "Directive: Keep the narration purely educational—no jokes, sound effects, or entertainment filler.",
+    "Directive: Focus on a single clearly defined topic drawn from the user request—do not introduce unrelated hooks, metaphors, or tangents.",
+    "Directive: Start with an engaging hook that immediately connects to the topic and states the learning objective; avoid vague rhetorical questions that are never answered.",
+    "Directive: Develop each BODY line with concrete explanations, definitions, or reasoning so the listener learns how and why—not just what.",
+    "Directive: Ensure the worked example and reflection lines explicitly reference the same core concept and build on prior steps.",
     "Directive: Maintain smooth flow by referencing prior steps and previewing what comes next.",
     "Draft the narration segments:",
   ].join("\n\n");
@@ -171,7 +175,7 @@ export async function generateManimScript({
       const { text } = await generateText({
         model,
         system: augmentedSystemPrompt,
-        prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration:`,
+        prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration with purposeful, step-by-step visuals that directly reinforce each narrated idea while staying on the same core topic:`,
         temperature: 0.1,
       });
 
@@ -195,7 +199,7 @@ export async function generateManimScript({
   const { text: flashText } = await generateText({
     model: flashModel,
     system: augmentedSystemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration:`,
+    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration with purposeful, step-by-step visuals that directly reinforce each narrated idea while staying on the same core topic:`,
     temperature: 0.1,
   });
   const code = flashText
