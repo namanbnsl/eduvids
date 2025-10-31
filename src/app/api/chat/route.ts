@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   }
 
   const result = streamText({
-    model: selectGroqModel(GROQ_MODEL_IDS.kimiInstruct),
+    model: createGoogleProvider()("gemini-2.5-flash-lite"),
     toolChoice: "required",
     system: systemPrompt,
     messages: convertToModelMessages(messages),
@@ -64,11 +64,11 @@ export async function POST(req: Request) {
             forceVariant && forceVariant !== null
               ? forceVariant
               : variant
-              ? variant
-              : normalizedLower.includes("short") ||
-                normalizedLower.includes("vertical short")
-              ? "short"
-              : "video";
+                ? variant
+                : normalizedLower.includes("short") ||
+                  normalizedLower.includes("vertical short")
+                  ? "short"
+                  : "video";
 
           console.log("Variant determination:", {
             forceVariant,
