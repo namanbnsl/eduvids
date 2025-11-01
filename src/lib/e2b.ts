@@ -196,9 +196,8 @@ const truncateOutput = (value: string | undefined | null) => {
   return `${normalized.slice(
     0,
     MAX_COMMAND_OUTPUT_CHARS
-  )}\n... output truncated (${
-    normalized.length - MAX_COMMAND_OUTPUT_CHARS
-  } more chars)`;
+  )}\n... output truncated (${normalized.length - MAX_COMMAND_OUTPUT_CHARS
+    } more chars)`;
 };
 
 const buildSceneValidationCommand = (scriptPath: string) =>
@@ -395,11 +394,11 @@ export async function renderManimVideo({
       onStdout?: (chunk: string) => void;
       onStderr?: (chunk: string) => void;
       streamOutput?:
-        | boolean
-        | {
-            stdout?: boolean;
-            stderr?: boolean;
-          };
+      | boolean
+      | {
+        stdout?: boolean;
+        stderr?: boolean;
+      };
     } = {}
   ) => {
     if (!sandbox) {
@@ -455,15 +454,15 @@ export async function renderManimVideo({
 
     const defaultStdout = streamStdout
       ? (chunk: string) => {
-          if (!chunk) return;
-          console.log(`[${contextLabel}][stdout] ${chunk}`);
-        }
+        if (!chunk) return;
+        console.log(`[${contextLabel}][stdout] ${chunk}`);
+      }
       : undefined;
     const defaultStderr = streamStderr
       ? (chunk: string) => {
-          if (!chunk) return;
-          console.error(`[${contextLabel}][stderr] ${chunk}`);
-        }
+        if (!chunk) return;
+        console.error(`[${contextLabel}][stderr] ${chunk}`);
+      }
       : undefined;
 
     const combinedStdout = (chunk: string) => {
@@ -965,9 +964,8 @@ export async function renderManimVideo({
     console.error("E2B render error:", err);
     pushLog({
       level: "error",
-      message: `Render pipeline error: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      message: `Render pipeline error: ${err instanceof Error ? err.message : String(err)
+        }`,
       context: "render",
     });
     await ensureCleanup();
@@ -990,7 +988,7 @@ export async function renderManimVideo({
       if (
         normalizedCommandError &&
         normalizedCommandError.toLowerCase() !==
-          `exit status ${(exitCode ?? "").toString()}`
+        `exit status ${(exitCode ?? "").toString()}`
       ) {
         messageParts.push(`Error: ${normalizedCommandError}`);
       }

@@ -151,6 +151,7 @@ export async function generateVoiceoverScript({
     "Directive: Develop each BODY line with concrete explanations, definitions, or reasoning so the listener learns how and why—not just what.",
     "Directive: Ensure the worked example and reflection lines explicitly reference the same core concept and build on prior steps.",
     "Directive: Maintain smooth flow by referencing prior steps and previewing what comes next.",
+    "Directive: Whenever you use an acronym, initialism, or uppercase mnemonic, append a lowercase phonetic pronunciation in parentheses immediately after it so text-to-speech voices it correctly.",
     "Draft the narration segments:",
   ].join("\n\n");
 

@@ -531,13 +531,15 @@ CONCLUSION (10–15%)
 • Avoid stock phrases like “ever wonder” or dramatic detours unless you immediately explain them and tie them to the topic.
 • Keep sentence rhythm short and lively; use active verbs.
 
-Speak directly to the viewer (“let’s see”, “you’ll notice”, “we can try”).
+• Speak directly to the viewer (“let’s see”, “you’ll notice”, “we can try”).
 
-Use plain language and spell out math operations (“x squared”, “divided by”).
+• Use plain language and spell out math operations (“x squared”, “divided by”).
 
-Avoid technical jargon unless immediately explained.
+• When you mention an acronym, initialism, or all-caps mnemonic, include the standard uppercase form immediately followed by a lowercase phonetic guidance in parentheses so TTS pronounces it (e.g., “SOH CAH TOA (soah caah toa)”, “DNA (dee en ay)”).
 
-Maintain consistent tone, tense, and perspective.
+• Avoid technical jargon unless immediately explained.
+
+• Maintain consistent tone, tense, and perspective.
 
 Never insert entertainment fluff, jokes, pop culture references, or sound effects (for example, “pop” or “boom”) unless explicitly required for understanding the concept.
 
