@@ -60,6 +60,14 @@ export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
     rightMargin *= 1.2;
   }
 
+  // Extra breathing room to avoid cramped layouts, especially on mobile portrait
+  const extraTopMargin = safeMargin * (orientation === "portrait" ? 0.4 : 0.2);
+  const extraBottomMargin =
+    safeMargin * (orientation === "portrait" ? 0.25 : 0.1);
+
+  topMargin += extraTopMargin;
+  bottomMargin += extraBottomMargin;
+
   // Title zone - reserve more space for titles with proper separation
   const titleHeight = orientation === "portrait" ? 2.0 : 1.5;
 

@@ -716,6 +716,13 @@ export const generateVideo = inngest.createFunction(
               } satisfies VerifyManimScriptResult;
             }
 
+            if (preCheck.ok && !preCheck.error) {
+              return {
+                ok: true,
+                fixedScript: trimmedCurrent,
+              } satisfies VerifyManimScriptResult;
+            }
+
             const verification = await verifyManimScript({
               prompt,
               voiceoverScript: narration,
