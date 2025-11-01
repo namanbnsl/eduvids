@@ -30,12 +30,10 @@ const logRetry = (
 ) => {
   const errorMsg = error instanceof Error ? error.message : String(error);
   console.warn(
-    `[${fnName}] Attempt ${attempt + 1}/${
-      GEMINI_MAX_RETRIES + 1
-    } failed: ${errorMsg}${
-      delayMs
-        ? ` - retrying in ${Math.round(delayMs / 1000)}s`
-        : " - no more retries"
+    `[${fnName}] Attempt ${attempt + 1}/${GEMINI_MAX_RETRIES + 1
+    } failed: ${errorMsg}${delayMs
+      ? ` - retrying in ${Math.round(delayMs / 1000)}s`
+      : " - no more retries"
     }`
   );
 };
@@ -217,7 +215,7 @@ export async function generateYoutubeTitle({
   const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
 
   const systemPrompt =
-    "You are a creative writer crafting clear, informative YouTube titles for educational videos. Keep it under 80 characters, avoid clickbait phrasing, and respond with only the final title—no quotes or extra text.";
+    "You are a creative writer crafting clear, informative YouTube titles for educational videos. Keep it under 80 characters, avoid clickbait phrasing, and respond with only the final title—no quotes or extra text. Angled brackets are not allowed. Don't use special characters either.";
   const { text } = await generateText({
     model,
     system: systemPrompt,
@@ -235,7 +233,7 @@ export async function generateYoutubeDescription({
   const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
 
   const systemPrompt =
-    "You are a content strategist who writes concise, informative YouTube descriptions for educational videos. Summaries should explain what the video covers, avoid emojis, hashtags, and marketing language, and respond only with plain text.";
+    "You are a content strategist who writes concise, informative YouTube descriptions for educational videos. Summaries should explain what the video covers, avoid emojis, hashtags, and marketing language, and respond only with plain text. Angled brackets are not allowed. Don't use special characters either.";
   const { text } = await generateText({
     model,
     system: systemPrompt,
@@ -472,10 +470,9 @@ export async function regenerateManimScriptWithError({
   })();
 
   const rewriteDirective = forceRewrite
-    ? `\nThis is a forced rewrite because the last regeneration did not resolve the issue. ${
-        forcedReason ??
-        "Produce a substantially different script that fixes the problem."
-      }`
+    ? `\nThis is a forced rewrite because the last regeneration did not resolve the issue. ${forcedReason ??
+    "Produce a substantially different script that fixes the problem."
+    }`
     : "";
 
   const repetitionDirective =
