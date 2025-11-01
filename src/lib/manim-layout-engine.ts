@@ -145,7 +145,7 @@ export function getRecommendedFontSizes(
       title: 46,
       heading: 36,
       body: 32,
-      math: 42,
+      math: 48,
       caption: 28,
       label: 26,
     };
@@ -255,14 +255,16 @@ export function generateLayoutSetup(
       'CONTRAST_DARK_PANEL = "#142136"',
       'CONTRAST_LIGHT_PANEL = "#F5F7FF"',
       'MIN_CONTRAST_RATIO = 4.5',
+      'MIN_PANEL_FILL_OPACITY = 0.9',
+      'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F5F7FF", "#E6F1FF"]',
       'Text.set_default(font="Lato", color=BRIGHT_TEXT_COLOR)',
       'Paragraph.set_default(color=BRIGHT_TEXT_COLOR)',
       'MarkupText.set_default(color=BRIGHT_TEXT_COLOR)',
       'MathTex.set_default(color=BRIGHT_TEXT_COLOR)',
       'Tex.set_default(color=BRIGHT_TEXT_COLOR)',
       'BulletedList.set_default(color=BRIGHT_TEXT_COLOR)',
-      'Rectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=0.85, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)',
-      'RoundedRectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=0.85, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)',
+      'Rectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)',
+      'RoundedRectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)',
     ].join("\n")
   );
   parts.push(`
@@ -290,7 +292,7 @@ def _contrast_ratio(color_a, color_b):
 
 def pick_accessible_text_color(background_color, min_contrast=MIN_CONTRAST_RATIO):
     background_hex = Color(background_color).to_hex()
-    candidates = [BRIGHT_TEXT_COLOR, DARK_TEXT_COLOR]
+    candidates = BRIGHT_TEXT_ALTERNATIVES
     scored = [
         (candidate, _contrast_ratio(candidate, background_hex))
         for candidate in candidates
@@ -298,8 +300,14 @@ def pick_accessible_text_color(background_color, min_contrast=MIN_CONTRAST_RATIO
     for candidate, ratio in scored:
         if ratio >= min_contrast:
             return candidate
-    scored.sort(key=lambda item: item[1], reverse=True)
-    return scored[0][0]
+    if scored:
+        scored.sort(key=lambda item: item[1], reverse=True)
+        print(
+            "[Layout Engine] Background contrast is low even with bright text. "
+            "Consider darkening the background or wrapping text with a panel for readability."
+        )
+        return scored[0][0]
+    return BRIGHT_TEXT_COLOR
 
 
 def ensure_text_readability(text_mobject, background_mobject=None, min_contrast=MIN_CONTRAST_RATIO):
@@ -314,6 +322,16 @@ def ensure_text_readability(text_mobject, background_mobject=None, min_contrast=
 
     chosen_color = pick_accessible_text_color(background_color, min_contrast=min_contrast)
     text_mobject.set_color(chosen_color)
+    contrast = _contrast_ratio(chosen_color, background_color)
+    if contrast < min_contrast:
+        print(
+            "[Layout Engine] Applying stroke to bright text to compensate for low contrast background. "
+            "Prefer using a darker panel behind text for clarity."
+        )
+        stroke_width = (
+            text_mobject.get_stroke_width() if hasattr(text_mobject, "get_stroke_width") else 0
+        ) or 0
+        text_mobject.set_stroke(color="#000000", width=max(stroke_width, 1.2), opacity=0.65)
     return text_mobject
 
 
@@ -324,15 +342,29 @@ def ensure_panel_readability(panel_mobject, text_color=BRIGHT_TEXT_COLOR, min_co
         fill_color = CONTRAST_DARK_PANEL
 
     fill_opacity = getattr(panel_mobject, "fill_opacity", 0) or 0
+    if 0 < fill_opacity < MIN_PANEL_FILL_OPACITY:
+        print(
+            f"[Layout Engine] {panel_mobject.__class__.__name__} has fill_opacity={fill_opacity:.2f}. "
+            f"Increasing to {MIN_PANEL_FILL_OPACITY:.2f} for readability. "
+            "Set fill_opacity=0 before calling ensure_panel_readability if you only need a border."
+        )
+        panel_mobject.set_fill(opacity=MIN_PANEL_FILL_OPACITY)
+        fill_opacity = MIN_PANEL_FILL_OPACITY
+        try:
+            fill_color = Color(panel_mobject.get_fill_color()).to_hex()
+        except Exception:
+            fill_color = CONTRAST_DARK_PANEL
+
     desired_dark = _contrast_ratio(CONTRAST_DARK_PANEL, text_color) >= min_contrast
 
     if fill_opacity <= 0:
         target_color = CONTRAST_DARK_PANEL if desired_dark else CONTRAST_LIGHT_PANEL
         panel_mobject.set_fill(
             color=target_color,
-            opacity=0.85 if target_color == CONTRAST_DARK_PANEL else 0.95,
+            opacity=MIN_PANEL_FILL_OPACITY if target_color == CONTRAST_DARK_PANEL else 0.95,
         )
         fill_color = target_color
+        fill_opacity = panel_mobject.get_fill_opacity() or MIN_PANEL_FILL_OPACITY
     else:
         current_ratio = _contrast_ratio(fill_color, text_color)
         if current_ratio < min_contrast:
@@ -345,9 +377,11 @@ def ensure_panel_readability(panel_mobject, text_color=BRIGHT_TEXT_COLOR, min_co
             else:
                 panel_mobject.set_fill(
                     color=CONTRAST_DARK_PANEL,
-                    opacity=max(fill_opacity, 0.85),
+                    opacity=max(fill_opacity, MIN_PANEL_FILL_OPACITY),
                 )
                 fill_color = CONTRAST_DARK_PANEL
+
+    fill_opacity = getattr(panel_mobject, "fill_opacity", 0) or MIN_PANEL_FILL_OPACITY
 
     stroke_width = panel_mobject.get_stroke_width() or 0
     if stroke_width < 2:
@@ -361,7 +395,7 @@ def ensure_panel_readability(panel_mobject, text_color=BRIGHT_TEXT_COLOR, min_co
         alternative = CONTRAST_LIGHT_PANEL if _relative_luminance(fill_color) < 0.5 else CONTRAST_DARK_PANEL
         panel_mobject.set_fill(
             color=alternative,
-            opacity=max(panel_mobject.get_fill_opacity() or 0.85, 0.85),
+            opacity=max(panel_mobject.get_fill_opacity() or MIN_PANEL_FILL_OPACITY, MIN_PANEL_FILL_OPACITY),
         )
 
     return panel_mobject
