@@ -420,15 +420,15 @@ def _normalize_text_lines(content):
     if isinstance(content, (list, tuple)):
         lines = [str(item).strip() for item in content if str(item).strip()]
         return lines if lines else [""]
-    text_value = str(content or "").replace("\r", "")
-    parts = [part.strip() for part in text_value.split("\n") if part.strip()]
+    text_value = str(content or "").replace("\\r", "")
+    parts = [part.strip() for part in text_value.split("\\n") if part.strip()]
     return parts if parts else [text_value.strip() or ""]
 
 
 def create_text_lines(
     content,
     *,
-    font_size=FONT_BODY,
+    font_size=None,
     direction=DOWN,
     buff=0.8,
     aligned_edge=LEFT,
@@ -437,6 +437,8 @@ def create_text_lines(
     """Create a VGroup of Text lines without relying on embedded newlines."""
 
     text_kwargs = dict(text_kwargs or {})
+    if font_size is None:
+        font_size = globals().get("FONT_BODY", 30)
     lines = _normalize_text_lines(content)
     text_mobjects = [Text(line, font_size=font_size, **text_kwargs) for line in lines]
     group = VGroup(*text_mobjects).arrange(direction, buff=buff, aligned_edge=aligned_edge)
@@ -448,7 +450,7 @@ def create_text_lines(
 def create_text_panel(
     text,
     *,
-    font_size=FONT_BODY,
+    font_size=None,
     panel_class=RoundedRectangle,
     panel_padding=DEFAULT_PANEL_PADDING,
     text_kwargs=None,
@@ -459,7 +461,7 @@ def create_text_panel(
 
     text_kwargs = dict(text_kwargs or {})
     panel_kwargs = dict(panel_kwargs or {})
-    requires_multiline = isinstance(text, (list, tuple)) or "\n" in str(text)
+    requires_multiline = isinstance(text, (list, tuple)) or "\\n" in str(text)
     if requires_multiline:
         label = create_text_lines(
             text,
@@ -581,6 +583,8 @@ export function getTextWrappingGuidelines(config: LayoutConfig): string {
 
 def wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH):
     """Automatically wrap text to fit within max_width, returning line list."""
+    if font_size is None:
+        font_size = globals().get("FONT_BODY", 30)
     # Approximate character width as font_size * 0.6
     char_width = font_size * 0.6
     max_chars_per_line = int(max_width / char_width)
@@ -605,10 +609,12 @@ def wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH):
 
     return lines
 
-def create_wrapped_text(text, font_size=FONT_BODY, **kwargs):
+def create_wrapped_text(text, font_size=None, **kwargs):
     """Create Text mobject with automatic wrapping, using safe line groups."""
     wrapped_lines = wrap_text(text, font_size)
     text_kwargs = dict(kwargs)
+    if font_size is None:
+        font_size = globals().get("FONT_BODY", 30)
     if len(wrapped_lines) <= 1:
         return Text(wrapped_lines[0] if wrapped_lines else '', font_size=font_size, **text_kwargs)
     return create_text_lines(
