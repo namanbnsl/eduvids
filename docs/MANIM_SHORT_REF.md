@@ -219,7 +219,7 @@ These hard rules are designed to prevent overlapping labels and off‑screen con
 4. **Text layout and wrapping (CRITICAL for readability).**
 
    - **Long sentences:** Split into multiple Text/MathTex objects, one per line. NEVER let text exceed ~12 units width.
-   - **Line breaks:** Use `\n` in Text strings or create separate Text objects arranged vertically.
+   - **Line breaks:** Prefer `create_text_lines([...])` or stacked Text objects; only embed `\n` for classes that explicitly support it.
    - **Multi-line text example:**
 
      ```python
@@ -228,15 +228,15 @@ These hard rules are designed to prevent overlapping labels and off‑screen con
      line2 = Text("and this is the continuation")
      lines = VGroup(line1, line2).arrange(DOWN, buff=0.2)
 
-     # GOOD: Use newlines
-     text = Text("First line\nSecond line\nThird line")
+     # GOOD: Use helper instead of raw newlines
+     text = create_text_lines(["First line", "Second line", "Third line"])
 
      # BAD: Long text that gets cut off
      text = Text("This is a very long sentence that will definitely get cut off at the edges")
      ```
 
    - **Font size:** Use `font_size=36` for body text, `font_size=48` for titles. Smaller if needed to fit.
-   - **Definition callouts:** Match body text sizes (or smaller) and scale down if the block feels dominant.
+   - **Definition callouts:** Wrap titles/labels with `create_text_panel()` (or apply `apply_text_panel(...)`) before placing them on dark shapes so the helper can enforce contrast and padding automatically. Keep their fonts at body scale or smaller so the block never overwhelms the layout.
    - **Width check:** After creating text, check `text.width <= 13.4`. If too wide, scale down or split into lines.
 
 5. **Positioning and spacing (prevent overlaps).**

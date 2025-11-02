@@ -255,7 +255,8 @@ export function generateLayoutSetup(
       'CONTRAST_DARK_PANEL = "#142136"',
       'CONTRAST_LIGHT_PANEL = "#F5F7FF"',
       'MIN_CONTRAST_RATIO = 4.5',
-      'MIN_PANEL_FILL_OPACITY = 0.9',
+      'MIN_PANEL_FILL_OPACITY = 0.7',
+      'DEFAULT_PANEL_PADDING = 0.35',
       'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F5F7FF", "#E6F1FF"]',
       'Text.set_default(font="Lato", color=BRIGHT_TEXT_COLOR)',
       'Paragraph.set_default(color=BRIGHT_TEXT_COLOR)',
@@ -265,6 +266,7 @@ export function generateLayoutSetup(
       'BulletedList.set_default(color=BRIGHT_TEXT_COLOR)',
       'Rectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)',
       'RoundedRectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)',
+      'SurroundingRectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)',
     ].join("\n")
   );
   parts.push(`
@@ -404,7 +406,93 @@ def ensure_panel_readability(panel_mobject, text_color=BRIGHT_TEXT_COLOR, min_co
 def apply_text_panel(text_mobject, panel_mobject, min_contrast=MIN_CONTRAST_RATIO):
     ensure_text_readability(text_mobject, panel_mobject, min_contrast=min_contrast)
     ensure_panel_readability(panel_mobject, text_mobject.get_color(), min_contrast=min_contrast)
+    if hasattr(panel_mobject, "set_z_index"):
+        base_z = getattr(panel_mobject, "z_index", 0) or 0
+        panel_mobject.set_z_index(base_z)
+        if hasattr(text_mobject, "set_z_index"):
+            text_mobject.set_z_index(panel_mobject.z_index + 1)
+    if hasattr(text_mobject, "move_to") and hasattr(panel_mobject, "get_center"):
+        text_mobject.move_to(panel_mobject.get_center())
     return text_mobject, panel_mobject
+
+
+def _normalize_text_lines(content):
+    if isinstance(content, (list, tuple)):
+        lines = [str(item).strip() for item in content if str(item).strip()]
+        return lines if lines else [""]
+    text_value = str(content or "").replace("\r", "")
+    parts = [part.strip() for part in text_value.split("\n") if part.strip()]
+    return parts if parts else [text_value.strip() or ""]
+
+
+def create_text_lines(
+    content,
+    *,
+    font_size=FONT_BODY,
+    direction=DOWN,
+    buff=0.8,
+    aligned_edge=LEFT,
+    text_kwargs=None,
+):
+    """Create a VGroup of Text lines without relying on embedded newlines."""
+
+    text_kwargs = dict(text_kwargs or {})
+    lines = _normalize_text_lines(content)
+    text_mobjects = [Text(line, font_size=font_size, **text_kwargs) for line in lines]
+    group = VGroup(*text_mobjects).arrange(direction, buff=buff, aligned_edge=aligned_edge)
+    ensure_fits_width(group)
+    ensure_fits_height(group)
+    return group
+
+
+def create_text_panel(
+    text,
+    *,
+    font_size=FONT_BODY,
+    panel_class=RoundedRectangle,
+    panel_padding=DEFAULT_PANEL_PADDING,
+    text_kwargs=None,
+    panel_kwargs=None,
+    min_contrast=MIN_CONTRAST_RATIO,
+):
+    """Create a text label with a readable panel behind it."""
+
+    text_kwargs = dict(text_kwargs or {})
+    panel_kwargs = dict(panel_kwargs or {})
+    requires_multiline = isinstance(text, (list, tuple)) or "\n" in str(text)
+    if requires_multiline:
+        label = create_text_lines(
+            text,
+            font_size=font_size,
+            direction=DOWN,
+            buff=0.6,
+            aligned_edge=LEFT,
+            text_kwargs=text_kwargs,
+        )
+    else:
+        label = Text(str(text), font_size=font_size, **text_kwargs)
+
+    if panel_padding is None:
+        panel_padding = DEFAULT_PANEL_PADDING
+
+    h_padding = panel_padding * 2
+    if "width" not in panel_kwargs:
+        panel_kwargs["width"] = label.width + h_padding
+    if "height" not in panel_kwargs:
+        panel_kwargs["height"] = label.height + h_padding
+
+    panel = panel_class(**panel_kwargs)
+
+    apply_text_panel(label, panel, min_contrast=min_contrast)
+
+    label.move_to(panel.get_center())
+    panel.set_z_index(1)
+    label.set_z_index(panel.z_index + 1)
+
+    group = VGroup(panel, label)
+    ensure_fits_width(group)
+    ensure_fits_height(group)
+    return group
 `);
 
   // Colors
@@ -492,16 +580,16 @@ export function getTextWrappingGuidelines(config: LayoutConfig): string {
   )} chars
 
 def wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH):
-    """Automatically wrap text to fit within max_width"""
+    """Automatically wrap text to fit within max_width, returning line list."""
     # Approximate character width as font_size * 0.6
     char_width = font_size * 0.6
     max_chars_per_line = int(max_width / char_width)
-    
+
     words = text.split()
     lines = []
     current_line = []
     current_length = 0
-    
+
     for word in words:
         word_length = len(word) + 1  # +1 for space
         if current_length + word_length > max_chars_per_line and current_line:
@@ -511,16 +599,26 @@ def wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH):
         else:
             current_line.append(word)
             current_length += word_length
-    
+
     if current_line:
         lines.append(' '.join(current_line))
-    
-    return '\\\\n'.join(lines)
+
+    return lines
 
 def create_wrapped_text(text, font_size=FONT_BODY, **kwargs):
-    """Create Text mobject with automatic wrapping"""
-    wrapped = wrap_text(text, font_size)
-    return Text(wrapped, font_size=font_size, **kwargs)
+    """Create Text mobject with automatic wrapping, using safe line groups."""
+    wrapped_lines = wrap_text(text, font_size)
+    text_kwargs = dict(kwargs)
+    if len(wrapped_lines) <= 1:
+        return Text(wrapped_lines[0] if wrapped_lines else '', font_size=font_size, **text_kwargs)
+    return create_text_lines(
+        wrapped_lines,
+        font_size=font_size,
+        direction=DOWN,
+        buff=0.6,
+        aligned_edge=LEFT,
+        text_kwargs=text_kwargs,
+    )
 `;
 }
 

@@ -97,6 +97,7 @@ ONLY PROVIDE THE CODE NOTHING ELSE.
 7. Limit each beat to 1-3 quick actions with run_time <= 1.5 seconds to keep pacing brisk
 8. Keep all calculations simple with tidy values (integers, halves, thirds) to avoid error-prone arithmetic
 9. Ensure every element remains fully visible inside the frame; split long text across multiple lines so nothing gets cut off
+10. You have no access to any SVG's, images, or any other assets. Please don't try to use them in the video.
 
 Video Structure Requirements:
 1. 🌅 Introduction Section:
@@ -169,7 +170,7 @@ Video Structure Requirements:
 
 2. 📝 Text Layout (CRITICAL - prevents cutoffs):
    - **Long sentences:** Split into multiple lines. NEVER create text wider than ~10 units.
-   - **Line breaks:** Use \n in Text() or create separate Text objects arranged with VGroup
+   - **Line breaks:** Prefer create_text_lines([...]) or stacked Text objects; only embed "\\n" inside strings if the specific Manim class supports it.
    - **Width check:** After creating text, ensure text.width <= 10.0. If too wide, split or scale.
    - **Short-form labels:** Especially for shorts, cap each visible phrase at ≲5 words; longer definitions must be broken into successive fades or handled by voiceover-only narration.
    - **USE FONT CONSTANTS:** Always use FONT_TITLE, FONT_HEADING, FONT_BODY, FONT_CAPTION, FONT_LABEL (automatically sized larger for portrait/shorts)
@@ -182,8 +183,8 @@ Video Structure Requirements:
      line2 = Text("split across two lines", font_size=FONT_BODY)
      text = VGroup(line1, line2).arrange(DOWN, buff=0.8)
      
-     # GOOD: Use newlines with proper font size
-     text = Text("Line 1\nLine 2\nLine 3", font_size=FONT_BODY)
+     # GOOD: Use helper instead of raw newlines
+     text = create_text_lines(["First line", "Second line", "Third line"])
      
      # BAD: Long single line (gets cut off!)
      text = Text("This extremely long sentence will get cut off at edges", font_size=FONT_BODY)
@@ -381,7 +382,7 @@ Visibility Requirements (CRITICAL):
 - Background shapes should use GRAY with opacity≤0.3
 - Before animating, verify text is not hidden behind shapes using set_z_index()
 - Text and labels must have z-index higher than background shapes
-- You can hightlight different parts in text and formulas using different colors from the approved list, but ensure overall readability
+- Short titles or labels that sit on dark shapes **must** wrap text using the injected panel helpers (call create_text_panel with a short label or use apply_text_panel) so lettering always has a bright foreground on a contrast-checked panel—never leave raw text directly on dark rectangles
 - Currently, you have a dark background - avoid DARK colors for text or shapes. Use bright, vibrant colors only.
 
 Mandatory Script Structure:
