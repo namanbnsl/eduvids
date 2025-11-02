@@ -170,7 +170,7 @@ Video Structure Requirements:
 
 2. 📝 Text Layout (CRITICAL - prevents cutoffs):
    - **Long sentences:** Split into multiple lines. NEVER create text wider than ~10 units.
-   - **Line breaks:** Prefer create_text_lines([...]) or stacked Text objects; only embed "\\n" inside strings if the specific Manim class supports it.
+   - **Line breaks:** Use \n in Text() or create separate Text objects arranged with VGroup
    - **Width check:** After creating text, ensure text.width <= 10.0. If too wide, split or scale.
    - **Short-form labels:** Especially for shorts, cap each visible phrase at ≲5 words; longer definitions must be broken into successive fades or handled by voiceover-only narration.
    - **USE FONT CONSTANTS:** Always use FONT_TITLE, FONT_HEADING, FONT_BODY, FONT_CAPTION, FONT_LABEL (automatically sized larger for portrait/shorts)
@@ -183,8 +183,8 @@ Video Structure Requirements:
      line2 = Text("split across two lines", font_size=FONT_BODY)
      text = VGroup(line1, line2).arrange(DOWN, buff=0.8)
      
-     # GOOD: Use helper instead of raw newlines
-     text = create_text_lines(["First line", "Second line", "Third line"])
+     # GOOD: Use newlines with proper font size
+     text = Text("Line 1\nLine 2\nLine 3", font_size=FONT_BODY)
      
      # BAD: Long single line (gets cut off!)
      text = Text("This extremely long sentence will get cut off at edges", font_size=FONT_BODY)

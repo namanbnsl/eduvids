@@ -219,7 +219,7 @@ These hard rules are designed to prevent overlapping labels and off‑screen con
 4. **Text layout and wrapping (CRITICAL for readability).**
 
    - **Long sentences:** Split into multiple Text/MathTex objects, one per line. NEVER let text exceed ~12 units width.
-   - **Line breaks:** Prefer `create_text_lines([...])` or stacked Text objects; only embed `\n` for classes that explicitly support it.
+   - **Line breaks:** Use `\n` in Text strings or create separate Text objects arranged vertically.
    - **Multi-line text example:**
 
      ```python
@@ -228,8 +228,8 @@ These hard rules are designed to prevent overlapping labels and off‑screen con
      line2 = Text("and this is the continuation")
      lines = VGroup(line1, line2).arrange(DOWN, buff=0.2)
 
-     # GOOD: Use helper instead of raw newlines
-     text = create_text_lines(["First line", "Second line", "Third line"])
+     # GOOD: Use newlines
+     text = Text("First line\nSecond line\nThird line")
 
      # BAD: Long text that gets cut off
      text = Text("This is a very long sentence that will definitely get cut off at the edges")
