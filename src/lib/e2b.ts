@@ -62,7 +62,9 @@ function injectEduvidsCallout(script: string): string {
   }
 
   const snippet = [
-    `${bodyIndent}self.play(*[FadeOut(mob)for mob in self.mobjects])`,
+    `${bodyIndent}existing_mobjects = list(self.mobjects)`,
+    `${bodyIndent}if existing_mobjects:`,
+    `${bodyIndent}    self.play(*[FadeOut(mob) for mob in existing_mobjects])`,
     `${bodyIndent}with self.voiceover(text="Generate your own educational videos for free at eduvids dot vercel dot app"):`,
     `${bodyIndent}    cta_title = Text("Generate your own educational videos for free!", font_size=FONT_CAPTION + 4, color=WHITE, weight=BOLD)`,
     `${bodyIndent}    cta_link = Text("https://eduvids.vercel.app", font_size=FONT_CAPTION, color=TEAL).next_to(cta_title, DOWN, buff=0.3)`,
