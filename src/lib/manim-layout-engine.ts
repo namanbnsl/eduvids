@@ -21,6 +21,15 @@ export interface SafeZoneConfig {
   maxContentHeight: number;
 }
 
+function clampFont(value: number, min: number, max: number): number {
+  let lower = min;
+  let upper = max;
+  if (lower > upper) {
+    [lower, upper] = [upper, lower];
+  }
+  return Math.max(lower, Math.min(upper, value));
+}
+
 export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
   const { frameWidth, frameHeight, safeMargin, orientation, contentType } =
     config;
@@ -72,8 +81,14 @@ export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
   const titleHeight = orientation === "portrait" ? 2.0 : 1.5;
 
   // Calculate usable content area
-  const maxContentWidth = frameWidth - leftMargin - rightMargin;
-  const maxContentHeight = frameHeight - topMargin - bottomMargin - titleHeight;
+  const maxContentWidth = Math.max(
+    frameWidth - leftMargin - rightMargin,
+    Number.EPSILON
+  );
+  const maxContentHeight = Math.max(
+    frameHeight - topMargin - bottomMargin - titleHeight,
+    Number.EPSILON
+  );
 
   return {
     top: topMargin,
@@ -139,26 +154,79 @@ export function getRecommendedFontSizes(
   config: LayoutConfig
 ): Record<string, number> {
   const { orientation, contentType } = config;
+  const zones = calculateSafeZones(config);
 
-  if (orientation === "portrait") {
-    return {
-      title: 46,
-      heading: 36,
-      body: 32,
-      math: 48,
-      caption: 28,
-      label: 26,
-    };
-  } else {
-    return {
-      title: contentType === "text-heavy" ? 36 : 40,
-      heading: 32,
-      body: 28,
-      math: 42,
-      caption: 24,
-      label: 20,
-    };
-  }
+  const contentArea = Math.sqrt(
+    Math.max(zones.maxContentWidth * zones.maxContentHeight, 1)
+  );
+  const orientationScale = orientation === "portrait" ? 1.08 : 1;
+  const contentScale =
+    contentType === "text-heavy"
+      ? 0.95
+      : contentType === "diagram"
+        ? 1.05
+        : contentType === "math"
+          ? 1.12
+          : 1;
+
+  const baseBody = clampFont(
+    Math.round(contentArea * orientationScale * contentScale * 1.85),
+    orientation === "portrait" ? 26 : 22,
+    orientation === "portrait" ? 38 : 32
+  );
+
+  const title = clampFont(
+    Math.round(baseBody * (orientation === "portrait" ? 1.5 : 1.4)),
+    baseBody + 4,
+    orientation === "portrait" ? 56 : 48
+  );
+
+  const heading = clampFont(
+    Math.round(baseBody * 1.18),
+    baseBody + 2,
+    title - 2
+  );
+
+  const mathMultiplier =
+    contentType === "math"
+      ? orientation === "portrait"
+        ? 1.08
+        : 1.02
+      : contentType === "diagram"
+        ? 0.9
+        : 0.95;
+  const mathMin = Math.max(orientation === "portrait" ? 22 : 20, baseBody - 6);
+  const mathMaxBase = Math.max(heading - 1, mathMin);
+  const mathMax =
+    contentType === "math"
+      ? mathMaxBase
+      : Math.max(Math.min(baseBody - 2, mathMaxBase), mathMin);
+  const math = clampFont(
+    Math.round(baseBody * mathMultiplier),
+    mathMin,
+    mathMax
+  );
+
+  const caption = clampFont(
+    Math.round(baseBody * 0.8),
+    orientation === "portrait" ? 20 : 18,
+    baseBody - 4
+  );
+
+  const label = clampFont(
+    Math.round(baseBody * 0.7),
+    orientation === "portrait" ? 18 : 16,
+    caption
+  );
+
+  return {
+    title,
+    heading,
+    body: baseBody,
+    math,
+    caption,
+    label,
+  };
 }
 
 /**
@@ -246,6 +314,8 @@ export function generateLayoutSetup(
   const parts: string[] = [];
   const fonts = getRecommendedFontSizes(config);
 
+  parts.push(["import math", "import numpy as np", ""].join("\n"));
+
   // Add safe zone constants
   parts.push(generateSafeZoneConstants(config));
   parts.push(
@@ -283,6 +353,133 @@ export function generateLayoutSetup(
       "",
     ].join("\n")
   );
+  parts.push(`
+
+# Additional layout utilities
+def get_safe_frame_dimensions():
+    return (
+        FRAME_WIDTH - SAFE_MARGIN_LEFT - SAFE_MARGIN_RIGHT,
+        FRAME_HEIGHT - SAFE_MARGIN_TOP - SAFE_MARGIN_BOTTOM,
+    )
+
+
+def normalize_math_mobject(math_mobject, max_width_ratio=0.65, max_height_ratio=0.5):
+    safe_width, safe_height = get_safe_frame_dimensions()
+    ensure_fits_width(math_mobject, max_width=safe_width * max_width_ratio)
+    ensure_fits_height(math_mobject, max_height=safe_height * max_height_ratio)
+    return math_mobject
+
+
+def enforce_min_gap(mobjects, min_gap=0.8):
+    items = [m for m in (mobjects or []) if m is not None]
+    if len(items) <= 1:
+        return VGroup(*items)
+
+    for _ in range(6):
+        adjusted = False
+        for i, a in enumerate(items):
+            for b in items[i + 1:]:
+                delta = b.get_center() - a.get_center()
+                overlap_x = (a.width + b.width) / 2 + min_gap - abs(delta[0])
+                overlap_y = (a.height + b.height) / 2 + min_gap - abs(delta[1])
+                if overlap_x > 0 and overlap_y > 0:
+                    if overlap_x >= overlap_y:
+                        shift = overlap_x / 2
+                        a.shift(-shift * RIGHT)
+                        b.shift(shift * RIGHT)
+                    else:
+                        shift = overlap_y / 2
+                        a.shift(-shift * UP)
+                        b.shift(shift * UP)
+                    adjusted = True
+        if not adjusted:
+            break
+
+    group = VGroup(*items)
+    ensure_fits_screen(group)
+    return group
+
+
+def layout_horizontal(mobjects, center=None, buff=1.0):
+    items = [m for m in (mobjects or []) if m is not None]
+    group = VGroup(*items)
+    if not items:
+        return group
+
+    group.arrange(RIGHT, buff=buff)
+    enforce_min_gap(group.submobjects, min_gap=buff)
+    ensure_fits_screen(group)
+    group.move_to(center or get_content_center())
+    validate_position(group, "horizontal layout")
+    return group
+
+
+def layout_vertical(mobjects, center=None, buff=1.0):
+    items = [m for m in (mobjects or []) if m is not None]
+    group = VGroup(*items)
+    if not items:
+        return group
+
+    group.arrange(DOWN, buff=buff)
+    enforce_min_gap(group.submobjects, min_gap=buff)
+    ensure_fits_screen(group)
+    group.move_to(center or get_content_center())
+    validate_position(group, "vertical layout")
+    return group
+
+
+def ensure_axes_visible(axes, padding=0.4):
+    """Scale axes to remain inside the safe frame with optional padding."""
+    ensure_fits_screen(axes)
+    safe_width, safe_height = get_safe_frame_dimensions()
+    max_width = safe_width - padding
+    max_height = safe_height - padding
+    ensure_fits_width(axes, max_width=max_width)
+    ensure_fits_height(axes, max_height=max_height)
+    validate_position(axes, "axes")
+    return axes
+
+
+def plot_function(ax, func, *, color=BLUE, x_range=None, samples=600):
+    """Create a graph on provided axes with adequate sampling."""
+    if x_range is None:
+        x_range = ax.x_range
+    graph = ax.plot(func, x_range=x_range, color=color, use_smoothing=False, samples=samples)
+    ensure_fits_screen(graph)
+    return graph
+
+
+def highlight_graph_intersections(scene, ax, graphs, *, tolerance=1e-3, samples=600, radius=0.05):
+    """Detect pairwise intersections and add markers to guarantee accurate visuals."""
+    if len(graphs) <= 1:
+        return []
+
+    intersections = []
+    all_graphs = list(graphs)
+    x_min, x_max = ax.x_range[0], ax.x_range[1]
+    xs = np.linspace(x_min, x_max, samples)
+
+    for i, g_a in enumerate(all_graphs):
+        for g_b in all_graphs[i + 1:]:
+            f_a = ax.p2c(g_a.point_from_proportion)
+            f_b = ax.p2c(g_b.point_from_proportion)
+            for x in xs:
+                y_a = g_a.underlying_function(x)
+                y_b = g_b.underlying_function(x)
+                if abs(y_a - y_b) <= tolerance:
+                    point = ax.c2p(x, (y_a + y_b) / 2)
+                    dot = Dot(point, radius=radius, color=YELLOW)
+                    intersections.append(dot)
+
+    if intersections:
+        markers = VGroup(*intersections)
+        ensure_fits_screen(markers)
+        validate_position(markers, "graph intersections")
+        scene.add(markers)
+        return markers
+
+    return []
+`);
   parts.push(`
 # Accessibility and readability helpers
 def _relative_luminance(color_value):
