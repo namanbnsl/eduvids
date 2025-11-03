@@ -11,6 +11,8 @@ const MAX_COMMAND_OUTPUT_CHARS = 4000;
 let latexEnvironmentVerified = false;
 
 const EDUVIDS_CALLOUT_TEXT = "Generate your own educational videos for free at";
+const LAYOUT_SENTINEL = "# ADVANCED LAYOUT SYSTEM";
+const FONT_BODY_PATTERN = /\bFONT_BODY\s*=/;
 
 function injectEduvidsCallout(script: string): string {
   if (script.includes(EDUVIDS_CALLOUT_TEXT)) {
@@ -581,26 +583,23 @@ export async function renderManimVideo({
 
     const layoutCode = getCompleteLayoutCode(layoutConfig);
 
-    // Insert layout code after imports but before class definition
-    const classMatch = enhancedScript.match(/^((?:.*\n)*?)(class\s+MyScene)/m);
-    if (classMatch) {
-      const beforeClass = classMatch[1];
-      const fromClass = classMatch[2];
-      const afterClass = enhancedScript.slice(
-        classMatch.index! + classMatch[0].length
-      );
-      enhancedScript = `${beforeClass}\n${layoutCode}\n\n${fromClass}${afterClass}`;
-    } else {
-      // Fallback: append at the beginning after imports
+    if (!enhancedScript.includes(LAYOUT_SENTINEL)) {
       const lines = enhancedScript.split("\n");
       const lastImportIdx = lines.findLastIndex(
         (line) =>
           line.trim().startsWith("import ") || line.trim().startsWith("from ")
       );
+
       if (lastImportIdx >= 0) {
         lines.splice(lastImportIdx + 1, 0, "", layoutCode, "");
         enhancedScript = lines.join("\n");
+      } else {
+        enhancedScript = `${layoutCode}\n\n${enhancedScript}`;
       }
+    }
+
+    if (!FONT_BODY_PATTERN.test(enhancedScript)) {
+      enhancedScript = `${layoutCode}\n\n${enhancedScript}`;
     }
 
     enhancedScript = injectEduvidsCallout(enhancedScript);

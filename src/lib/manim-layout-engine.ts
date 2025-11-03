@@ -244,6 +244,7 @@ export function generateLayoutSetup(
   includeHelpers: boolean = true
 ): string {
   const parts: string[] = [];
+  const fonts = getRecommendedFontSizes(config);
 
   // Add safe zone constants
   parts.push(generateSafeZoneConstants(config));
@@ -267,6 +268,19 @@ export function generateLayoutSetup(
       'Rectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)',
       'RoundedRectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)',
       'SurroundingRectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)',
+    ].join("\n")
+  );
+  parts.push(
+    [
+      "",
+      "# Recommended font sizes for this layout",
+      `FONT_TITLE = ${fonts.title}`,
+      `FONT_HEADING = ${fonts.heading}`,
+      `FONT_BODY = ${fonts.body}`,
+      `FONT_MATH = ${fonts.math}  # Use for mathematical formulae (MathTex, Tex)`,
+      `FONT_CAPTION = ${fonts.caption}`,
+      `FONT_LABEL = ${fonts.label}`,
+      "",
     ].join("\n")
   );
   parts.push(`
@@ -499,18 +513,6 @@ def create_text_panel(
   paletteEntries.forEach(([name, hex]) => {
     parts.push(`${name} = "${hex}" \n`);
   });
-
-  // Add font size recommendations
-  const fonts = getRecommendedFontSizes(config);
-  parts.push("\n# Recommended font sizes for this layout");
-  parts.push(`FONT_TITLE = ${fonts.title}`);
-  parts.push(`FONT_HEADING = ${fonts.heading}`);
-  parts.push(`FONT_BODY = ${fonts.body}`);
-  parts.push(
-    `FONT_MATH = ${fonts.math}  # Use for mathematical formulae (MathTex, Tex)`
-  );
-  parts.push(`FONT_CAPTION = ${fonts.caption}`);
-  parts.push(`FONT_LABEL = ${fonts.label}`);
 
   // Add helpers if requested
   if (includeHelpers) {
