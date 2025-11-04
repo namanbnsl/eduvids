@@ -855,11 +855,11 @@ export async function renderManimVideo({
 
     let processedVideoPath = videoPath;
 
-    // Speed up video to 1.15x
+    // Speed up video to 1.3x
     const speedUpPath = `${outputDir}/speedup.mp4`;
-    const speedUpCmd = `ffmpeg -y -i ${processedVideoPath} -filter:v "setpts=PTS/1.15" -filter:a "atempo=1.15" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart ${speedUpPath}`;
+    const speedUpCmd = `ffmpeg -y -i ${processedVideoPath} -filter:v "setpts=PTS/1.3" -filter:a "atempo=1.3" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart ${speedUpPath}`;
     await runCommandOrThrow(speedUpCmd, {
-      description: "Speed up video to 1.15x",
+      description: "Speed up video to 1.3x",
       stage: "render",
       timeoutMs: 360_000,
       hint: "ffmpeg failed while speeding up the video.",
