@@ -117,6 +117,7 @@ SAFE_MARGIN_RIGHT = ${zones.right.toFixed(2)}
 TITLE_ZONE_HEIGHT = ${zones.titleHeight.toFixed(2)}
 MAX_CONTENT_WIDTH = ${zones.maxContentWidth.toFixed(2)}
 MAX_CONTENT_HEIGHT = ${zones.maxContentHeight.toFixed(2)}
+CONTENT_SCALE_BUFFER = 0.94
 
 # Safe positioning helpers
 def get_title_position():
@@ -127,23 +128,48 @@ def get_content_center():
     """Get safe center position for main content (below title zone)"""
     return DOWN * (TITLE_ZONE_HEIGHT / 2)
 
-def ensure_fits_width(mobject, max_width=MAX_CONTENT_WIDTH):
-    """Scale mobject to fit within safe width"""
-    if mobject.width > max_width:
-        mobject.scale_to_fit_width(max_width)
+def ensure_fits_width(mobject, max_width=MAX_CONTENT_WIDTH, shrink=True):
+    """Scale mobject to fit within safe width with breathing room"""
+    target_width = max_width
+    if shrink:
+        target_width = max_width * CONTENT_SCALE_BUFFER
+    if target_width <= 0:
+        target_width = max_width
+    if mobject.width > target_width:
+        mobject.scale_to_fit_width(target_width)
     return mobject
 
-def ensure_fits_height(mobject, max_height=MAX_CONTENT_HEIGHT):
-    """Scale mobject to fit within safe height"""
-    if mobject.height > max_height:
-        mobject.scale_to_fit_height(max_height)
+def ensure_fits_height(mobject, max_height=MAX_CONTENT_HEIGHT, shrink=True):
+    """Scale mobject to fit within safe height with breathing room"""
+    target_height = max_height
+    if shrink:
+        target_height = max_height * CONTENT_SCALE_BUFFER
+    if target_height <= 0:
+        target_height = max_height
+    if mobject.height > target_height:
+        mobject.scale_to_fit_height(target_height)
     return mobject
 
-def ensure_fits_screen(mobject):
+def ensure_fits_screen(mobject, shrink=True):
     """Scale mobject to fit within safe content area"""
-    mobject = ensure_fits_width(mobject)
-    mobject = ensure_fits_height(mobject)
+    mobject = ensure_fits_width(mobject, shrink=shrink)
+    mobject = ensure_fits_height(mobject, shrink=shrink)
     return mobject
+
+
+def fade_out_scene(scene, *mobjects, run_time=0.6):
+    """Fade out provided mobjects or everything currently on screen."""
+    targets = list(mobjects)
+    if not targets:
+        targets = [m for m in scene.mobjects]
+    if not targets:
+        return
+    scene.play(*[FadeOut(mob) for mob in targets], run_time=run_time)
+
+
+def clear_scene(scene, run_time=0.6):
+    """Fade out every mobject currently in the scene safely."""
+    fade_out_scene(scene, run_time=run_time)
 `;
 }
 
@@ -162,45 +188,45 @@ export function getRecommendedFontSizes(
   const orientationScale = orientation === "portrait" ? 1.08 : 1;
   const contentScale =
     contentType === "text-heavy"
-      ? 0.95
+      ? 0.85
       : contentType === "diagram"
-        ? 1.05
+        ? 0.92
         : contentType === "math"
-          ? 1.12
-          : 1;
+          ? 0.98
+          : 0.9;
 
   const baseBody = clampFont(
-    Math.round(contentArea * orientationScale * contentScale * 1.85),
-    orientation === "portrait" ? 26 : 22,
-    orientation === "portrait" ? 38 : 32
+    Math.round(contentArea * orientationScale * contentScale * 1.6),
+    orientation === "portrait" ? 22 : 18,
+    orientation === "portrait" ? 34 : 28
   );
 
   const title = clampFont(
-    Math.round(baseBody * (orientation === "portrait" ? 1.5 : 1.4)),
-    baseBody + 4,
-    orientation === "portrait" ? 56 : 48
+    Math.round(baseBody * (orientation === "portrait" ? 1.32 : 1.25)),
+    baseBody + 3,
+    orientation === "portrait" ? 48 : 42
   );
 
   const heading = clampFont(
-    Math.round(baseBody * 1.18),
-    baseBody + 2,
+    Math.round(baseBody * 1.12),
+    baseBody + 1,
     title - 2
   );
 
   const mathMultiplier =
     contentType === "math"
       ? orientation === "portrait"
-        ? 1.08
-        : 1.02
+        ? 1.02
+        : 0.98
       : contentType === "diagram"
-        ? 0.9
-        : 0.95;
-  const mathMin = Math.max(orientation === "portrait" ? 22 : 20, baseBody - 6);
+        ? 0.85
+        : 0.9;
+  const mathMin = Math.max(orientation === "portrait" ? 20 : 18, baseBody - 8);
   const mathMaxBase = Math.max(heading - 1, mathMin);
   const mathMax =
     contentType === "math"
       ? mathMaxBase
-      : Math.max(Math.min(baseBody - 2, mathMaxBase), mathMin);
+      : Math.max(Math.min(baseBody - 3, mathMaxBase), mathMin);
   const math = clampFont(
     Math.round(baseBody * mathMultiplier),
     mathMin,
@@ -208,14 +234,14 @@ export function getRecommendedFontSizes(
   );
 
   const caption = clampFont(
-    Math.round(baseBody * 0.8),
-    orientation === "portrait" ? 20 : 18,
-    baseBody - 4
+    Math.round(baseBody * 0.75),
+    orientation === "portrait" ? 18 : 16,
+    Math.max(baseBody - 5, orientation === "portrait" ? 18 : 16)
   );
 
   const label = clampFont(
-    Math.round(baseBody * 0.7),
-    orientation === "portrait" ? 18 : 16,
+    Math.round(baseBody * 0.65),
+    orientation === "portrait" ? 16 : 14,
     caption
   );
 
@@ -329,7 +355,6 @@ export function generateLayoutSetup(
       'MIN_PANEL_FILL_OPACITY = 0.7',
       'DEFAULT_PANEL_PADDING = 0.35',
       'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F8F9FA", "#E8EAED"]',
-      'Text.set_default(font="Noto Serif", color=BRIGHT_TEXT_COLOR)',
       'Paragraph.set_default(color=BRIGHT_TEXT_COLOR)',
       'MarkupText.set_default(color=BRIGHT_TEXT_COLOR)',
       'MathTex.set_default(color=BRIGHT_TEXT_COLOR)',
@@ -392,7 +417,13 @@ def enforce_min_gap(mobjects, min_gap=0.8):
                         a.shift(-shift * UP)
                         b.shift(shift * UP)
                     adjusted = True
-        if not adjusted:
+                    if hasattr(a, "set_z_index"):
+                        a.set_z_index(2)
+                    if hasattr(b, "set_z_index"):
+                        b.set_z_index(2)
+        if adjusted:
+            VGroup(*items).scale(0.97)
+        else:
             break
 
     group = VGroup(*items)
@@ -407,7 +438,7 @@ def layout_horizontal(mobjects, center=None, buff=1.0):
         return group
 
     group.arrange(RIGHT, buff=buff)
-    enforce_min_gap(group.submobjects, min_gap=buff)
+    enforce_min_gap(group.submobjects, min_gap=max(buff, 0.95))
     ensure_fits_screen(group)
     group.move_to(center or get_content_center())
     validate_position(group, "horizontal layout")
@@ -421,7 +452,7 @@ def layout_vertical(mobjects, center=None, buff=1.0):
         return group
 
     group.arrange(DOWN, buff=buff)
-    enforce_min_gap(group.submobjects, min_gap=buff)
+    enforce_min_gap(group.submobjects, min_gap=max(buff, 0.95))
     ensure_fits_screen(group)
     group.move_to(center or get_content_center())
     validate_position(group, "vertical layout")
