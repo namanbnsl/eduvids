@@ -320,16 +320,16 @@ export function generateLayoutSetup(
   parts.push(generateSafeZoneConstants(config));
   parts.push(
     [
-      'config.background_color = "#020712"',
+      'config.background_color = "#2D2D2D"',
       'BRIGHT_TEXT_COLOR = "#FFFFFF"',
-      'DARK_TEXT_COLOR = "#0E172A"',
-      'CONTRAST_DARK_PANEL = "#142136"',
-      'CONTRAST_LIGHT_PANEL = "#F5F7FF"',
+      'DARK_TEXT_COLOR = "#1A1A1A"',
+      'CONTRAST_DARK_PANEL = "#1A1F2E"',
+      'CONTRAST_LIGHT_PANEL = "#F8F9FA"',
       'MIN_CONTRAST_RATIO = 4.5',
       'MIN_PANEL_FILL_OPACITY = 0.7',
       'DEFAULT_PANEL_PADDING = 0.35',
-      'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F5F7FF", "#E6F1FF"]',
-      'Text.set_default(font="Lato", color=BRIGHT_TEXT_COLOR)',
+      'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F8F9FA", "#E8EAED"]',
+      'Text.set_default(font="Noto Serif", color=BRIGHT_TEXT_COLOR)',
       'Paragraph.set_default(color=BRIGHT_TEXT_COLOR)',
       'MarkupText.set_default(color=BRIGHT_TEXT_COLOR)',
       'MathTex.set_default(color=BRIGHT_TEXT_COLOR)',
@@ -667,49 +667,70 @@ def create_text_panel(
     return group
 `);
 
-  // Colors
+  // Updated color palette - all colors optimized for #2D2D2D background
   const colorPalette: Record<string, string> = {
     WHITE: "#FFFFFF",
-    BLACK: "#E0E0E0", // Lightened for visibility
-    GRAY: "#B8C5D6", // Brighter gray
-    DARK_GRAY: "#8B9DB5", // Lighter dark gray
-    LIGHT_GRAY: "#F0F4F8", // Very light gray
-    YELLOW: "#FFE066", // Brighter yellow
-    GOLD: "#FCD34D", // Lighter gold
-    ORANGE: "#FFA566", // Lighter orange
-    CORAL: "#FFA0B4", // Lighter coral
-    RED: "#FF6B6B", // Softer, lighter red
-    CRIMSON: "#FF5A5A", // Lighter crimson
-    PINK: "#FFB3D9", // Lighter pink
-    MAGENTA: "#FF7AC6", // Brighter magenta
-    BLUE: "#5B9EFF", // Lighter blue
-    INDIGO: "#7B70F0", // Lighter indigo
-    CYAN: "#4DD4FF", // Brighter cyan
-    TEAL: "#5FFBF1", // Much lighter teal
-    PURE_GREEN: "#5EE07B", // Lighter green
-    EMERALD: "#5FFFC9", // Brighter emerald
-    LIME: "#BBFF4D", // Brighter lime
-    PURPLE: "#C77DFF", // Lighter purple
-    VIOLET: "#A78BFA", // Lighter violet
-    LAVENDER: "#DDB3FF", // Lighter lavender
-    NORD: "#81A1C1", // Lighter nord blue
-    NORD_FROST: "#A8DCDB", // Lighter frost
-    NORD_NIGHT: "#6B7A8F", // Much lighter than night
-    SLATE: "#94A9C9", // Lighter slate
-    STEEL: "#8B9DB5", // Lighter steel
-    SAND: "#FFE8B0", // Lighter sand
-    BROWN: "#C9874A", // Much lighter brown
-    SKY: "#87CEEB", // Lighter sky
-    FUCHSIA: "#F066FF", // Lighter fuchsia
-    MINT: "#B8FFE8", // Lighter mint
-    NAVY: "#4F7BFF", // Much lighter navy
+    LIGHT_GRAY: "#E8EAED",
+    GRAY: "#B0B8C4",
+    DARK_GRAY: "#6B7280",
+    BLACK: "#1A1A1A",
+
+    // Primary colors - bright and vibrant
+    BLUE: "#60A5FA",
+    CYAN: "#22D3EE",
+    TEAL: "#2DD4BF",
+    GREEN: "#4ADE80",
+    LIME: "#A3E635",
+    YELLOW: "#FDE047",
+    ORANGE: "#FB923C",
+    RED: "#F87171",
+    PINK: "#F472B6",
+    MAGENTA: "#E879F9",
+    PURPLE: "#C084FC",
+    INDIGO: "#818CF8",
+
+    // Extended palette
+    SKY: "#7DD3FC",
+    EMERALD: "#34D399",
+    AMBER: "#FCD34D",
+    ROSE: "#FB7185",
+    FUCHSIA: "#E879F9",
+    VIOLET: "#A78BFA",
+
+    // Specialty colors
+    GOLD: "#FBBF24",
+    CORAL: "#FCA5A5",
+    MINT: "#6EE7B7",
+    LAVENDER: "#C4B5FD",
+    PEACH: "#FDBA74",
+
+    // Muted variants (still visible)
+    SLATE: "#94A3B8",
+    STEEL: "#94A9C9",
+    SAND: "#E8D4A2",
+    NAVY: "#5B7FC7",
+    FOREST: "#6EE7B7",
+    CRIMSON: "#FCA5A5",
+
+    // Accent colors
+    NEON_BLUE: "#38BDF8",
+    NEON_GREEN: "#84CC16",
+    NEON_PINK: "#F472B6",
+    ELECTRIC_PURPLE: "#A855F7",
+
+    // Soft pastels (adjusted for dark bg)
+    SOFT_BLUE: "#93C5FD",
+    SOFT_GREEN: "#86EFAC",
+    SOFT_YELLOW: "#FDE68A",
+    SOFT_PINK: "#FBCFE8",
   };
 
-  parts.push("\n# Script color palette");
+  parts.push("\n# Script color palette - Optimized for #2D2D2D background");
   const paletteEntries = Object.entries(colorPalette);
   paletteEntries.forEach(([name, hex]) => {
-    parts.push(`${name} = "${hex}" \n`);
+    parts.push(`${name} = "${hex}"`);
   });
+  parts.push("");
 
   // Add helpers if requested
   if (includeHelpers) {
