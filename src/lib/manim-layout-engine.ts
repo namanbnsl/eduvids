@@ -117,7 +117,6 @@ SAFE_MARGIN_RIGHT = ${zones.right.toFixed(2)}
 TITLE_ZONE_HEIGHT = ${zones.titleHeight.toFixed(2)}
 MAX_CONTENT_WIDTH = ${zones.maxContentWidth.toFixed(2)}
 MAX_CONTENT_HEIGHT = ${zones.maxContentHeight.toFixed(2)}
-CONTENT_SCALE_BUFFER = 0.94
 
 # Safe positioning helpers
 def get_title_position():
@@ -132,7 +131,7 @@ def ensure_fits_width(mobject, max_width=MAX_CONTENT_WIDTH, shrink=True):
     """Scale mobject to fit within safe width with breathing room"""
     target_width = max_width
     if shrink:
-        target_width = max_width * CONTENT_SCALE_BUFFER
+        target_width = max_width
     if target_width <= 0:
         target_width = max_width
     if mobject.width > target_width:
@@ -143,7 +142,7 @@ def ensure_fits_height(mobject, max_height=MAX_CONTENT_HEIGHT, shrink=True):
     """Scale mobject to fit within safe height with breathing room"""
     target_height = max_height
     if shrink:
-        target_height = max_height * CONTENT_SCALE_BUFFER
+        target_height = max_height
     if target_height <= 0:
         target_height = max_height
     if mobject.height > target_height:
@@ -190,10 +189,10 @@ export function getRecommendedFontSizes(
     contentType === "text-heavy"
       ? 0.85
       : contentType === "diagram"
-        ? 0.92
-        : contentType === "math"
-          ? 0.98
-          : 0.9;
+      ? 0.92
+      : contentType === "math"
+      ? 0.98
+      : 0.9;
 
   const baseBody = clampFont(
     Math.round(contentArea * orientationScale * contentScale * 1.6),
@@ -219,8 +218,8 @@ export function getRecommendedFontSizes(
         ? 1.02
         : 0.98
       : contentType === "diagram"
-        ? 0.85
-        : 0.9;
+      ? 0.85
+      : 0.9;
   const mathMin = Math.max(orientation === "portrait" ? 20 : 18, baseBody - 8);
   const mathMaxBase = Math.max(heading - 1, mathMin);
   const mathMax =
@@ -351,18 +350,19 @@ export function generateLayoutSetup(
       'DARK_TEXT_COLOR = "#1A1A1A"',
       'CONTRAST_DARK_PANEL = "#1A1F2E"',
       'CONTRAST_LIGHT_PANEL = "#F8F9FA"',
-      'MIN_CONTRAST_RATIO = 4.5',
-      'MIN_PANEL_FILL_OPACITY = 0.7',
-      'DEFAULT_PANEL_PADDING = 0.35',
+      "MIN_CONTRAST_RATIO = 4.5",
+      "MIN_PANEL_FILL_OPACITY = 0.7",
+      "DEFAULT_PANEL_PADDING = 0.35",
       'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F8F9FA", "#E8EAED"]',
-      'Paragraph.set_default(color=BRIGHT_TEXT_COLOR)',
-      'MarkupText.set_default(color=BRIGHT_TEXT_COLOR)',
-      'MathTex.set_default(color=BRIGHT_TEXT_COLOR)',
-      'Tex.set_default(color=BRIGHT_TEXT_COLOR)',
-      'BulletedList.set_default(color=BRIGHT_TEXT_COLOR)',
-      'Rectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)',
-      'RoundedRectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)',
-      'SurroundingRectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)',
+      'Text.set_default(disable_ligatures=False, font="Inter")',
+      "Paragraph.set_default(color=BRIGHT_TEXT_COLOR)",
+      "MarkupText.set_default(color=BRIGHT_TEXT_COLOR)",
+      "MathTex.set_default(color=BRIGHT_TEXT_COLOR)",
+      "Tex.set_default(color=BRIGHT_TEXT_COLOR)",
+      "BulletedList.set_default(color=BRIGHT_TEXT_COLOR)",
+      "Rectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
+      "RoundedRectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
+      "SurroundingRectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
     ].join("\n")
   );
   parts.push(
