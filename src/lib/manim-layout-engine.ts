@@ -195,9 +195,9 @@ export function getRecommendedFontSizes(
       : 0.9;
 
   const baseBody = clampFont(
-    Math.round(contentArea * orientationScale * contentScale * 1.6),
-    orientation === "portrait" ? 22 : 18,
-    orientation === "portrait" ? 34 : 28
+    Math.round(contentArea * orientationScale * contentScale * 1.7),
+    orientation === "portrait" ? 24 : 20,
+    orientation === "portrait" ? 36 : 30
   );
 
   const title = clampFont(
@@ -339,7 +339,7 @@ export function generateLayoutSetup(
   const parts: string[] = [];
   const fonts = getRecommendedFontSizes(config);
 
-  parts.push(["import math", "import numpy as np", ""].join("\n"));
+  parts.push(["import math", "import re", "import numpy as np", ""].join("\n"));
 
   // Add safe zone constants
   parts.push(generateSafeZoneConstants(config));
@@ -654,8 +654,29 @@ LATEX_SPECIAL_CHARS = {
     "}": "\\}",
     "~": "\\textasciitilde{}",
     "^": "\\textasciicircum{}",
-    '\\\\': r'\\textbackslash{}',
+    '\\': r'\\textbackslash{}',
 }
+
+
+LATEX_COMMAND_PATTERN = re.compile(r"\\[A-Za-z]+")
+LATEX_ENV_PATTERN = re.compile(r"\\begin\{[A-Za-z*]+\}")
+
+
+def _looks_like_latex(text):
+    if not text:
+        return False
+    stripped = str(text).strip()
+    if stripped.startswith("\\"):
+        return True
+    if "$$" in stripped or "$" in stripped:
+        return True
+    if LATEX_COMMAND_PATTERN.search(stripped):
+        return True
+    if LATEX_ENV_PATTERN.search(stripped):
+        return True
+    if "\\bullet" in stripped:
+        return True
+    return False
 
 
 def _escape_latex_text(text):
@@ -671,10 +692,13 @@ def build_latex_text(
     italic=False,
     monospace=False,
     allow_latex=False,
+    auto_detect=True,
 ):
     raw_text = "" if text is None else str(text)
 
-    if allow_latex:
+    use_latex = allow_latex or (auto_detect and _looks_like_latex(raw_text))
+
+    if use_latex:
         latex = raw_text
     else:
         lines = raw_text.splitlines()
@@ -684,17 +708,12 @@ def build_latex_text(
         content = r" \\ ".join(escaped_lines)
         base_command = "texttt" if monospace else "text"
         latex = f"\\{base_command}{{{content}}}"
-        if bold:
-            latex = f"\\textbf{{{latex}}}"
-        if italic:
-            latex = f"\\textit{{{latex}}}"
-        return latex
 
     if bold:
         latex = f"\\textbf{{{latex}}}"
     if italic:
         latex = f"\\textit{{{latex}}}"
-    if monospace and not allow_latex:
+    if monospace and not use_latex:
         latex = f"\\texttt{{{latex}}}"
     return latex
 
@@ -707,6 +726,7 @@ def create_tex_label(
     italic=False,
     monospace=False,
     treat_as_latex=False,
+    auto_detect_latex=True,
     **tex_kwargs,
 ):
     """Convert plain text to a Tex mobject with safe escaping by default."""
@@ -717,6 +737,7 @@ def create_tex_label(
         italic=italic,
         monospace=monospace,
         allow_latex=treat_as_latex,
+        auto_detect=auto_detect_latex,
     )
 
     return Tex(latex_string, font_size=font_size, **tex_kwargs)
@@ -754,6 +775,7 @@ def create_text_panel(
     bold = bool(text_kwargs.pop("bold", False))
     italic = bool(text_kwargs.pop("italic", False))
     monospace = bool(text_kwargs.pop("monospace", False))
+    auto_detect_latex = bool(text_kwargs.pop("auto_detect_latex", True))
 
     label = create_tex_label(
         text,
@@ -762,6 +784,7 @@ def create_text_panel(
         italic=italic,
         monospace=monospace,
         treat_as_latex=treat_as_latex,
+        auto_detect_latex=auto_detect_latex,
         **text_kwargs,
     )
 
@@ -785,7 +808,85 @@ def create_text_panel(
     group = VGroup(panel, label)
     ensure_fits_width(group)
     ensure_fits_height(group)
+    group = ensure_fits_screen(group)
+    validate_position(group, "text panel")
     return group
+
+
+def create_bullet_item(
+    text,
+    *,
+    bullet_symbol="\\bullet",
+    bullet_gap="\\enspace",
+    font_size=FONT_BODY,
+    bold=False,
+    italic=False,
+    monospace=False,
+    treat_as_latex=False,
+    auto_detect_latex=True,
+    **tex_kwargs,
+):
+    """Create a single bullet item as a Tex mobject."""
+
+    body_fragment = build_latex_text(
+        text,
+        bold=bold,
+        italic=italic,
+        monospace=monospace,
+        allow_latex=treat_as_latex,
+        auto_detect=auto_detect_latex,
+    )
+    bullet_tex = f"{bullet_symbol}{bullet_gap}{body_fragment}"
+    return Tex(bullet_tex, font_size=font_size, **tex_kwargs)
+
+
+def create_bullet_list(
+    items,
+    *,
+    bullet_symbol="\\bullet",
+    bullet_gap="\\enspace",
+    font_size=FONT_BODY,
+    item_buff=0.8,
+    edge=LEFT,
+    edge_buff=1.2,
+    auto_fit=True,
+    validate=True,
+    item_kwargs=None,
+):
+    """Create a left-aligned bullet list with spacing and safe positioning."""
+
+    entries = []
+    item_kwargs = dict(item_kwargs or {})
+    auto_detect_latex = bool(item_kwargs.pop("auto_detect_latex", True))
+    treat_as_latex = bool(item_kwargs.pop("treat_as_latex", False))
+
+    for item in items or []:
+        if item is None:
+            continue
+        entry = create_bullet_item(
+            item,
+            bullet_symbol=bullet_symbol,
+            bullet_gap=bullet_gap,
+            font_size=font_size,
+            treat_as_latex=treat_as_latex,
+            auto_detect_latex=auto_detect_latex,
+            **item_kwargs,
+        )
+        entries.append(entry)
+
+    bullets = VGroup(*entries)
+    if not entries:
+        return bullets
+
+    bullets.arrange(DOWN, buff=item_buff, aligned_edge=LEFT)
+    bullets.to_edge(edge, buff=edge_buff)
+
+    if auto_fit:
+        bullets = ensure_fits_screen(bullets)
+    if validate:
+        validate_position(bullets, "bullet list")
+
+    return bullets
 `);
 
   // Updated color palette - all colors optimized for #2D2D2D background
