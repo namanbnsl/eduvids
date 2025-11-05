@@ -354,7 +354,6 @@ export function generateLayoutSetup(
       "MIN_PANEL_FILL_OPACITY = 0.7",
       "DEFAULT_PANEL_PADDING = 0.35",
       'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F8F9FA", "#E8EAED"]',
-      'Text.set_default(disable_ligatures=False, font="Inter")',
       "Paragraph.set_default(color=BRIGHT_TEXT_COLOR)",
       "MarkupText.set_default(color=BRIGHT_TEXT_COLOR)",
       "MathTex.set_default(color=BRIGHT_TEXT_COLOR)",
@@ -645,6 +644,84 @@ def ensure_panel_readability(panel_mobject, text_color=BRIGHT_TEXT_COLOR, min_co
     return panel_mobject
 
 
+LATEX_SPECIAL_CHARS = {
+    "&": "\\&",
+    "%": "\\%",
+    "$": "\\$",
+    "#": "\\#",
+    "_": "\\_",
+    "{": "\\{",
+    "}": "\\}",
+    "~": "\\textasciitilde{}",
+    "^": "\\textasciicircum{}",
+    '\\\\': r'\\textbackslash{}',
+}
+
+
+def _escape_latex_text(text):
+    if text is None:
+        return ""
+    return "".join(LATEX_SPECIAL_CHARS.get(char, char) for char in str(text))
+
+
+def build_latex_text(
+    text,
+    *,
+    bold=False,
+    italic=False,
+    monospace=False,
+    allow_latex=False,
+):
+    raw_text = "" if text is None else str(text)
+
+    if allow_latex:
+        latex = raw_text
+    else:
+        lines = raw_text.splitlines()
+        if not lines:
+            lines = [raw_text]
+        escaped_lines = [_escape_latex_text(line) for line in lines]
+        content = r" \\ ".join(escaped_lines)
+        base_command = "texttt" if monospace else "text"
+        latex = f"\\{base_command}{{{content}}}"
+        if bold:
+            latex = f"\\textbf{{{latex}}}"
+        if italic:
+            latex = f"\\textit{{{latex}}}"
+        return latex
+
+    if bold:
+        latex = f"\\textbf{{{latex}}}"
+    if italic:
+        latex = f"\\textit{{{latex}}}"
+    if monospace and not allow_latex:
+        latex = f"\\texttt{{{latex}}}"
+    return latex
+
+
+def create_tex_label(
+    text,
+    *,
+    font_size=FONT_BODY,
+    bold=False,
+    italic=False,
+    monospace=False,
+    treat_as_latex=False,
+    **tex_kwargs,
+):
+    """Convert plain text to a Tex mobject with safe escaping by default."""
+
+    latex_string = build_latex_text(
+        text,
+        bold=bold,
+        italic=italic,
+        monospace=monospace,
+        allow_latex=treat_as_latex,
+    )
+
+    return Tex(latex_string, font_size=font_size, **tex_kwargs)
+
+
 def apply_text_panel(text_mobject, panel_mobject, min_contrast=MIN_CONTRAST_RATIO):
     ensure_text_readability(text_mobject, panel_mobject, min_contrast=min_contrast)
     ensure_panel_readability(panel_mobject, text_mobject.get_color(), min_contrast=min_contrast)
@@ -673,7 +750,20 @@ def create_text_panel(
     text_kwargs = dict(text_kwargs or {})
     panel_kwargs = dict(panel_kwargs or {})
 
-    label = Text(text, font_size=font_size, **text_kwargs)
+    treat_as_latex = bool(text_kwargs.pop("treat_as_latex", False))
+    bold = bool(text_kwargs.pop("bold", False))
+    italic = bool(text_kwargs.pop("italic", False))
+    monospace = bool(text_kwargs.pop("monospace", False))
+
+    label = create_tex_label(
+        text,
+        font_size=font_size,
+        bold=bold,
+        italic=italic,
+        monospace=monospace,
+        treat_as_latex=treat_as_latex,
+        **text_kwargs,
+    )
 
     if panel_padding is None:
         panel_padding = DEFAULT_PANEL_PADDING
@@ -815,12 +905,12 @@ def wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH):
     if current_line:
         lines.append(' '.join(current_line))
     
-    return '\\\\n'.join(lines)
+    return "\\n".join(lines)
 
 def create_wrapped_text(text, font_size=FONT_BODY, **kwargs):
-    """Create Text mobject with automatic wrapping"""
+    """Create Tex mobject with automatic wrapping"""
     wrapped = wrap_text(text, font_size)
-    return Text(wrapped, font_size=font_size, **kwargs)
+    return create_tex_label(wrapped, font_size=font_size, **kwargs)
 `;
 }
 

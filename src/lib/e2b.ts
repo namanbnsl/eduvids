@@ -63,18 +63,6 @@ function injectEduvidsCallout(script: string): string {
     }
   }
 
-  // const snippet = [
-  //   `${bodyIndent}existing_mobjects = list(self.mobjects)`,
-  //   `${bodyIndent}if existing_mobjects:`,
-  //   `${bodyIndent}    self.play(*[FadeOut(mob) for mob in existing_mobjects])`,
-  //   `${bodyIndent}with self.voiceover(text="Generate your own educational videos for free at eduvids dot vercel dot app"):`,
-  //   `${bodyIndent}    cta_title = Text("Generate your own educational videos for free!", font_size=FONT_CAPTION + 4, color=WHITE, weight=BOLD)`,
-  //   `${bodyIndent}    cta_link = Text("https://eduvids.vercel.app", font_size=FONT_CAPTION, color=TEAL).next_to(cta_title, DOWN, buff=0.3)`,
-  //   `${bodyIndent}    cta_group = VGroup(cta_title, cta_link)`,
-  //   `${bodyIndent}    ensure_fits_screen(cta_group)`,
-  //   `${bodyIndent}    cta_group.to_edge(DOWN, buff=1.0)`,
-  //   `${bodyIndent}    cta_group.set_z_index(10)`,
-  //   `${bodyIndent}    validate_position(cta_group, "eduvids message")`,
   //   ``,
   //   `${bodyIndent}    self.play(FadeIn(cta_title, shift=UP), FadeIn(cta_link, shift=UP), run_time=1.2)`,
   //   `${bodyIndent}    self.wait(0.5)`,
@@ -89,8 +77,11 @@ function injectEduvidsCallout(script: string): string {
     `${bodyIndent}if existing_mobjects:`,
     `${bodyIndent}    self.play(*[FadeOut(mob) for mob in existing_mobjects])`,
     `${bodyIndent}with self.voiceover(text="Generate your own educational videos for free at eduvids dot vercel dot app"):`,
-    `${bodyIndent}    cta_title = Text("Generate your own educational videos for free!", font_size=FONT_CAPTION + 4, color=WHITE, weight=BOLD)`,
-    `${bodyIndent}    cta_link = Text("https://eduvids.vercel.app", font_size=FONT_CAPTION, color=TEAL).next_to(cta_title, DOWN, buff=0.3)`,
+    `${bodyIndent}    cta_title = create_tex_label("Generate your own educational videos for free!", font_size=FONT_CAPTION + 4, bold=True)`,
+    `${bodyIndent}    cta_title.set_color(WHITE)`,
+    `${bodyIndent}    cta_link = create_tex_label("https://eduvids.vercel.app", font_size=FONT_CAPTION)`,
+    `${bodyIndent}    cta_link.set_color(TEAL)`,
+    `${bodyIndent}    cta_link.next_to(cta_title, DOWN, buff=0.3)`,
     `${bodyIndent}    cta_group = VGroup(cta_title, cta_link)`,
     `${bodyIndent}    ensure_fits_screen(cta_group)`,
     `${bodyIndent}    cta_group.move_to(ORIGIN)`,

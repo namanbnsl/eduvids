@@ -135,19 +135,20 @@ Video Structure Requirements:
   * Arrows/lines: WHITE
   * Background shapes: GRAY (low opacity)
   - AVAILABLE NAMED COLORS (ONLY THESE): WHITE, BLACK, GRAY, DARK_GRAY, LIGHT_GRAY, YELLOW, GOLD, ORANGE, CORAL, RED, CRIMSON, PINK, MAGENTA, BLUE, INDIGO, CYAN, TEAL, PURE_GREEN, EMERALD, LIME, PURPLE, VIOLET, LAVENDER, NORD, NORD_FROST, NORD_NIGHT, SLATE, STEEL, SAND, BROWN, SKY, FUCHSIA, MINT, NAVY
-- If a different color is required, **use its HEX string literal instead of inventing a new named color** (example: 'color="#1ABC9C"').
-- NEVER reference color names outside this list.
-- USE ONLY BASIC SHAPES: Circle, Square, Rectangle, Text, MathTex, Arrow, Line, Dot
-- Scene must be named "MyScene" and inherit from VoiceoverScene
-- REQUIRED IMPORTS (always include these):
-  * from manim import *
-  * from manim_voiceover import VoiceoverScene
-  * ${VOICEOVER_SERVICE_IMPORT}
+  - If a different color is required, **use its HEX string literal instead of inventing a new named color** (example: 'color="#1ABC9C"').
+  - NEVER reference color names outside this list.
+  - USE ONLY BASIC SHAPES: Circle, Square, Rectangle, Tex, MathTex, Arrow, Line, Dot
+  - Scene must be named "MyScene" and inherit from VoiceoverScene
+  - REQUIRED IMPORTS (always include these):
+    * from manim import *
+    * from manim_voiceover import VoiceoverScene
+    * ${VOICEOVER_SERVICE_IMPORT}
 - Call ${VOICEOVER_SERVICE_SETTER} in construct method
 - Use voiceover blocks with exact narration text
 - NEVER EVER USE EMOJIS IN THE MANIM CODE
 - **Code rendering helpers:** Use create_code_block(code_str, **kwargs) or add_code_block(scene, code_str, **kwargs) instead of the raw Code() constructor. These helpers automatically scale code blocks to fit within safe zones and avoid unsupported kwargs like 'font'. Example: code = create_code_block("def hello(): print('world')", language="python")
-- Use transitions like Transform for smooth morphing between similar shapes or text
+  - Use transitions like Transform for smooth morphing between similar shapes or text
+  - **ALL ON-SCREEN TEXT MUST BE LATEX**: Use Tex/MathTex via the provided helpers (create_tex_label, create_text_panel). NEVER use Text, MarkupText, or Paragraph directly.
 - RETURN ONLY THE CODE. NOTHING ELSE. ONLY THE CODE
 
 🎬 Animation Guidelines:
@@ -155,7 +156,7 @@ Video Structure Requirements:
    - Keep ALL objects clearly visible on screen
    - Use consistent scale for similar elements
    - USE AUTO-INJECTED FONT SIZES: The layout system provides FONT_TITLE, FONT_HEADING, FONT_BODY, FONT_MATH, FONT_CAPTION, FONT_LABEL constants that are automatically sized for the video orientation (larger for portrait/shorts)
-   - ALWAYS use these constants instead of hardcoding font sizes: Text("Title", font_size=FONT_TITLE)
+   - ALWAYS use these constants instead of hardcoding font sizes: create_tex_label("Title", font_size=FONT_TITLE)
    - USE FONT_MATH for all mathematical formulae: MathTex(r"E = mc^2", font_size=FONT_MATH)
    - Definition callouts should use FONT_CAPTION and be smaller than main text
    - MANDATORY PADDING: minimum 0.8 units between all text elements, 0.6 units between text and shapes
@@ -170,7 +171,7 @@ Video Structure Requirements:
 
 2. 📝 Text Layout (CRITICAL - prevents cutoffs):
    - **Long sentences:** Split into multiple lines. NEVER create text wider than ~10 units.
-   - **Line breaks:** Use \n in Text() or create separate Text objects arranged with VGroup
+   - **Line breaks:** Use \n in create_tex_label() or create separate Tex objects arranged with VGroup
    - **Width check:** After creating text, ensure text.width <= 10.0. If too wide, split or scale.
    - **Short-form labels:** Especially for shorts, cap each visible phrase at ≲5 words; longer definitions must be broken into successive fades or handled by voiceover-only narration.
    - **USE FONT CONSTANTS:** Always use FONT_TITLE, FONT_HEADING, FONT_BODY, FONT_CAPTION, FONT_LABEL (automatically sized larger for portrait/shorts)
@@ -179,15 +180,15 @@ Video Structure Requirements:
    - **Examples:**
      '''python
      # GOOD: Split long text with proper spacing using auto-sized fonts
-     line1 = Text("This is a long sentence", font_size=FONT_BODY)
-     line2 = Text("split across two lines", font_size=FONT_BODY)
+     line1 = create_tex_label("This is a long sentence", font_size=FONT_BODY)
+     line2 = create_tex_label("split across two lines", font_size=FONT_BODY)
      text = VGroup(line1, line2).arrange(DOWN, buff=0.8)
      
      # GOOD: Use newlines with proper font size
-     text = Text("Line 1\nLine 2\nLine 3", font_size=FONT_BODY)
+     text = create_tex_label("Line 1\\nLine 2\\nLine 3", font_size=FONT_BODY)
      
      # BAD: Long single line (gets cut off!)
-     text = Text("This extremely long sentence will get cut off at edges", font_size=FONT_BODY)
+     text = create_tex_label("This extremely long sentence will get cut off at edges", font_size=FONT_BODY)
      
      # BAD: No spacing between elements
      text = VGroup(line1, line2).arrange(DOWN, buff=0.1)  # Too small!
@@ -211,7 +212,7 @@ Video Structure Requirements:
    - **MANDATORY TRANSITION PATTERN (USE LAYOUT HELPERS):**
      '''python
      # Step 1: Show title using helper
-     title = Text("New Topic", font_size=FONT_TITLE, color=WHITE)
+     title = create_tex_label("New Topic", font_size=FONT_TITLE, color=WHITE)
      title.move_to(get_title_position())
      self.play(FadeIn(title))
      
@@ -229,7 +230,7 @@ Video Structure Requirements:
    - **For sub-sections (keeping main title visible):**
      '''python
      # Keep main title at top, add subtitle below it
-     subtitle = Text("Sub-topic", font_size=FONT_HEADING, color=YELLOW)
+     subtitle = create_tex_label("Sub-topic", font_size=FONT_HEADING, color=YELLOW)
      subtitle.next_to(title, DOWN, buff=0.8)
      self.play(FadeIn(subtitle))
      
@@ -245,9 +246,9 @@ Video Structure Requirements:
    - **SETTINGS:** Use FONT_BODY for all bullets, buff=0.8 between bullets, left edge buff=1.2
    - Example:
      '''python
-     bullet1 = Text("• First point", font_size=FONT_BODY)
-     bullet2 = Text("• Second point", font_size=FONT_BODY)
-     bullet3 = Text("• Third point", font_size=FONT_BODY)
+     bullet1 = create_tex_label("\\bullet~First~point", font_size=FONT_BODY)
+     bullet2 = create_tex_label("\\bullet~Second~point", font_size=FONT_BODY)
+     bullet3 = create_tex_label("\\bullet~Third~point", font_size=FONT_BODY)
      bullets = VGroup(bullet1, bullet2, bullet3).arrange(DOWN, buff=0.8, aligned_edge=LEFT)
      bullets.to_edge(LEFT, buff=1.2)  # More left margin
      '''
