@@ -1,9 +1,4 @@
-import {
-  MANIM_SYSTEM_PROMPT,
-  VOICEOVER_SYSTEM_PROMPT,
-  VOICEOVER_SERVICE_CLASS,
-  VOICEOVER_SERVICE_SETTER,
-} from "@/prompt";
+import { MANIM_SYSTEM_PROMPT, VOICEOVER_SYSTEM_PROMPT } from "@/prompt";
 import { generateText } from "ai";
 import fs from "fs";
 import path from "path";
@@ -30,10 +25,12 @@ const logRetry = (
 ) => {
   const errorMsg = error instanceof Error ? error.message : String(error);
   console.warn(
-    `[${fnName}] Attempt ${attempt + 1}/${GEMINI_MAX_RETRIES + 1
-    } failed: ${errorMsg}${delayMs
-      ? ` - retrying in ${Math.round(delayMs / 1000)}s`
-      : " - no more retries"
+    `[${fnName}] Attempt ${attempt + 1}/${
+      GEMINI_MAX_RETRIES + 1
+    } failed: ${errorMsg}${
+      delayMs
+        ? ` - retrying in ${Math.round(delayMs / 1000)}s`
+        : " - no more retries"
     }`
   );
 };
@@ -119,18 +116,6 @@ export interface ManimGenerationAttempt {
   attemptNumber: number;
   script: string;
   error: ManimGenerationErrorDetails;
-}
-
-export interface VerifyManimScriptRequest {
-  prompt: string;
-  voiceoverScript: string;
-  script: string;
-}
-
-export interface VerifyManimScriptResult {
-  ok: boolean;
-  error?: string;
-  fixedScript?: string;
 }
 
 export async function generateVoiceoverScript({
@@ -470,9 +455,10 @@ export async function regenerateManimScriptWithError({
   })();
 
   const rewriteDirective = forceRewrite
-    ? `\nThis is a forced rewrite because the last regeneration did not resolve the issue. ${forcedReason ??
-    "Produce a substantially different script that fixes the problem."
-    }`
+    ? `\nThis is a forced rewrite because the last regeneration did not resolve the issue. ${
+        forcedReason ??
+        "Produce a substantially different script that fixes the problem."
+      }`
     : "";
 
   const repetitionDirective =
@@ -529,276 +515,4 @@ export async function regenerateManimScriptWithError({
     .replace(/```\n?/g, "")
     .trim();
   return code;
-}
-
-export async function verifyManimScript({
-  prompt,
-  voiceoverScript,
-  script,
-}: VerifyManimScriptRequest): Promise<VerifyManimScriptResult> {
-  const verifierSystemPrompt = buildAugmentedSystemPrompt(
-    [
-      "You are a meticulous static verifier for Manim Community v0.18.0 scripts using manim_voiceover.",
-      "Use the attached documentation to confirm API usage, but focus on issues that would break rendering or clearly violate critical constraints.",
-      "Approve scripts unchanged when they are safe, even if minor stylistic improvements are possible.",
-      "",
-      "Treat the following as blocking issues that must be fixed:",
-      `1. Missing required imports (VoiceoverScene, ${VOICEOVER_SERVICE_CLASS}, etc.) or missing ${VOICEOVER_SERVICE_SETTER}.`,
-      "2. Using self.camera.frame or assigning frame = self.camera.frame (or accessing frame.width/frame.height) inside VoiceoverScene without MovingCameraScene.",
-      "3. Shadowing Python built-ins (str=, list=, dict=, int=, float=, len=, max=, min=, sum=, all=, any=) or calling string literals like 'text'().",
-      "4. Text layouts that will obviously fail (e.g., a single Text wider than ~13 units) or titles overlapping content with no spacing.",
-      "5. Long on-screen paragraphs or definition blocks—shorts must only show brief labels (≈5 words) and push full explanations into narration or sequential reveals.",
-      "6. Any syntax errors or omissions that would prevent the scene from running.",
-      "7. Overly complex numerical calculations or precision-heavy values; prefer simple numbers that are unlikely to cause runtime issues.",
-      "",
-      "When you must fix something, keep the changes minimal and preserve the author's structure.",
-      "If no blocking issues are found, respond with ok=true and do not modify the script.",
-      "Respond ONLY with a minimal JSON object.",
-    ].join("\n")
-  );
-
-  let text: string = "";
-  let success = false;
-  for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-    try {
-      const model = google("gemini-2.5-pro");
-      const result = await generateText({
-        model,
-        system: verifierSystemPrompt,
-        prompt: [
-          "Validate the following Manim script prior to rendering.",
-          "Ensure syntax, imports, class hierarchy, voiceover usage, and layout contract compliance.",
-          "When problems exist, supply an updated script in fixedScript that you have re-validated against the docs.",
-          "Output JSON with fields: ok (boolean), error (string optional), fixedScript (string optional). No extra text.",
-          `User request: ${prompt}`,
-          `Voiceover narration:\n${voiceoverScript}`,
-          `Script to validate (python):\n\u0060\u0060\u0060python\n${script}\n\u0060\u0060\u0060`,
-        ].join("\n\n"),
-        temperature: 0,
-        maxOutputTokens: 900,
-        maxRetries: 0,
-      });
-      text = result.text;
-      success = true;
-      break;
-    } catch (err) {
-      if (attempt === GEMINI_MAX_RETRIES) {
-        logRetry("verifyManimScript", attempt, err);
-        break;
-      }
-      const delayMs = randomDelayMs();
-      logRetry("verifyManimScript", attempt, err, delayMs);
-      await sleep(delayMs);
-    }
-  }
-
-  // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
-  if (!success) {
-    const flashModel = google("gemini-2.5-flash");
-    const result = await generateText({
-      model: flashModel,
-      system: verifierSystemPrompt,
-      prompt: [
-        "Validate the following Manim script prior to rendering.",
-        "Ensure syntax, imports, class hierarchy, voiceover usage, and layout contract compliance.",
-        "When problems exist, supply an updated script in fixedScript that you have re-validated against the docs.",
-        "Output JSON with fields: ok (boolean), error (string optional), fixedScript (string optional). No extra text.",
-        `User request: ${prompt}`,
-        `Voiceover narration:\n${voiceoverScript}`,
-        `Script to validate (python):\n\u0060\u0060\u0060python\n${script}\n\u0060\u0060\u0060`,
-      ].join("\n\n"),
-      temperature: 0,
-      maxOutputTokens: 800,
-      maxRetries: 0,
-    });
-    text = result.text;
-  }
-
-  const raw = text.trim();
-
-  const extractJsonString = (input: string): string | null => {
-    const fenced = input.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    if (fenced?.[1]) {
-      return fenced[1].trim();
-    }
-    const firstBrace = input.indexOf("{");
-    const lastBrace = input.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      return input.slice(firstBrace, lastBrace + 1).trim();
-    }
-    return null;
-  };
-
-  const candidate = extractJsonString(raw) ?? raw;
-  const isWhitespace = (char: string | undefined) =>
-    char === " " || char === "\n" || char === "\r" || char === "\t";
-
-  type VerifierRawResponse = {
-    ok?: unknown;
-    error?: unknown;
-    fixedScript?: unknown;
-  };
-
-  const extractFixedScript = (value: unknown): string | undefined => {
-    if (typeof value === "string") {
-      return value;
-    }
-
-    if (Array.isArray(value)) {
-      const parts = (value as unknown[]).filter(
-        (item): item is string => typeof item === "string"
-      );
-      return parts.length ? parts.join("\n") : undefined;
-    }
-
-    if (value && typeof value === "object") {
-      const candidate = (value as Record<string, unknown>).code;
-      if (typeof candidate === "string") {
-        return candidate;
-      }
-    }
-
-    return undefined;
-  };
-
-  const normalizeResult = (
-    parsed: VerifierRawResponse
-  ): VerifyManimScriptResult => {
-    const ok = Boolean(parsed.ok);
-    const error =
-      typeof parsed.error === "string" ? (parsed.error as string) : undefined;
-    let fixedScript = extractFixedScript(parsed.fixedScript);
-
-    if (fixedScript) {
-      fixedScript = fixedScript
-        .replace(/```python?\n?/gi, "")
-        .replace(/```\n?/g, "")
-        .trim();
-
-      if (fixedScript.startsWith('"') && fixedScript.endsWith('"')) {
-        try {
-          fixedScript = JSON.parse(fixedScript);
-        } catch {
-          // ignore
-        }
-      }
-    }
-
-    return { ok, error, fixedScript };
-  };
-
-  const parseJsonObject = (input: string): VerifierRawResponse | null => {
-    try {
-      return JSON.parse(input) as VerifierRawResponse;
-    } catch {
-      return null;
-    }
-  };
-
-  const directRaw = parseJsonObject(candidate);
-  if (directRaw) {
-    return normalizeResult(directRaw);
-  }
-
-  const decodeScript = (value: string): string => {
-    const normalized = value.replace(/\r/g, "");
-    try {
-      const jsonReady = normalized
-        .replace(/\\/g, "\\\\")
-        .replace(/"/g, '\\"')
-        .replace(/\n/g, "\\n");
-      return JSON.parse(`"${jsonReady}"`);
-    } catch {
-      return normalized;
-    }
-  };
-
-  const malformedParse = (): VerifyManimScriptResult | null => {
-    const key = '"fixedScript"';
-    const keyIndex = candidate.indexOf(key);
-    if (keyIndex === -1) {
-      return null;
-    }
-
-    const colonIndex = candidate.indexOf(":", keyIndex + key.length);
-    if (colonIndex === -1) {
-      return null;
-    }
-
-    let valueIndex = colonIndex + 1;
-    while (isWhitespace(candidate[valueIndex])) {
-      valueIndex++;
-    }
-
-    if (candidate[valueIndex] !== '"') {
-      return null;
-    }
-
-    const openingQuoteIndex = valueIndex;
-    let searchIndex = openingQuoteIndex + 1;
-    let closingQuoteIndex = -1;
-
-    while (searchIndex < candidate.length) {
-      const nextQuote = candidate.indexOf('"', searchIndex);
-      if (nextQuote === -1) {
-        break;
-      }
-
-      let backslashCount = 0;
-      for (let i = nextQuote - 1; i > openingQuoteIndex; i -= 1) {
-        if (candidate[i] === "\\") {
-          backslashCount += 1;
-        } else {
-          break;
-        }
-      }
-      const isEscaped = backslashCount % 2 === 1;
-      if (isEscaped) {
-        searchIndex = nextQuote + 1;
-        continue;
-      }
-
-      let lookahead = nextQuote + 1;
-      while (isWhitespace(candidate[lookahead])) {
-        lookahead += 1;
-      }
-
-      const terminator = candidate[lookahead];
-      if (
-        terminator === "," ||
-        terminator === "}" ||
-        terminator === undefined
-      ) {
-        closingQuoteIndex = nextQuote;
-        break;
-      }
-
-      searchIndex = nextQuote + 1;
-    }
-
-    if (closingQuoteIndex === -1) {
-      return null;
-    }
-
-    const rawScript = candidate.slice(openingQuoteIndex + 1, closingQuoteIndex);
-    const sanitizedJson =
-      candidate.slice(0, openingQuoteIndex) +
-      '""' +
-      candidate.slice(closingQuoteIndex + 1);
-
-    const parsedRaw = parseJsonObject(sanitizedJson);
-    if (!parsedRaw) {
-      return null;
-    }
-
-    const decoded = decodeScript(rawScript).trim();
-    return normalizeResult({ ...parsedRaw, fixedScript: decoded });
-  };
-
-  const fallback = malformedParse();
-  if (fallback) {
-    return fallback;
-  }
-
-  return { ok: false, error: raw };
 }

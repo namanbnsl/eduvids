@@ -4,18 +4,15 @@ import { z } from "zod";
 import { inngest } from "@/lib/inngest";
 import { jobStore } from "@/lib/job-store";
 import { createGoogleProvider } from "@/lib/google-provider";
-import { GROQ_MODEL_IDS, selectGroqModel } from "@/lib/groq-provider";
 
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const {
-    model: modelId,
     messages,
     forceVariant,
   }: {
     messages: UIMessage[];
-    model: string;
     forceVariant?: "video" | "short" | null;
   } = await req.json();
 
@@ -64,11 +61,11 @@ export async function POST(req: Request) {
             forceVariant && forceVariant !== null
               ? forceVariant
               : variant
-                ? variant
-                : normalizedLower.includes("short") ||
-                  normalizedLower.includes("vertical short")
-                  ? "short"
-                  : "video";
+              ? variant
+              : normalizedLower.includes("short") ||
+                normalizedLower.includes("vertical short")
+              ? "short"
+              : "video";
 
           console.log("Variant determination:", {
             forceVariant,

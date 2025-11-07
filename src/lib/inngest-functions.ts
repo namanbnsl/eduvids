@@ -7,7 +7,6 @@ import {
   generateManimScript,
   generateVoiceoverScript,
   regenerateManimScriptWithError,
-  verifyManimScript,
   generateYoutubeDescription,
   generateYoutubeTitle,
 } from "./llm";
@@ -28,7 +27,6 @@ import { VOICEOVER_SERVICE_IMPORT, VOICEOVER_SERVICE_SETTER } from "@/prompt";
 import type {
   ManimGenerationAttempt,
   ManimGenerationErrorDetails,
-  VerifyManimScriptResult,
 } from "./llm";
 import type {
   VideoVariant,
@@ -309,8 +307,9 @@ function runHeuristicChecks(
 
       if (wordCount >= 4 && !hasCodeSymbols) {
         issues.push({
-          message: `❌ Non-code narrative detected before the first code line (line ${index + 1
-            }): "${line.slice(0, 80)}"`,
+          message: `❌ Non-code narrative detected before the first code line (line ${
+            index + 1
+          }): "${line.slice(0, 80)}"`,
           severity: "noncode",
         });
         break;
@@ -663,7 +662,8 @@ export const generateVideo = inngest.createFunction(
         : prompt;
 
     console.log(
-      ` Starting ${variant === "short" ? "vertical short" : "full video"
+      ` Starting ${
+        variant === "short" ? "vertical short" : "full video"
       } generation for prompt: "${prompt}"`
     );
 
@@ -692,7 +692,8 @@ export const generateVideo = inngest.createFunction(
       for (let pass = 1; pass <= MAX_VERIFY_PASSES; pass++) {
         if (seenScripts.has(current)) {
           throw new Error(
-            `Auto-fix loop detected during ${context}; the verifier repeated a script it previously evaluated. Last error: ${lastError ?? "unknown"
+            `Auto-fix loop detected during ${context}; the verifier repeated a script it previously evaluated. Last error: ${
+              lastError ?? "unknown"
             }`
           );
         }
@@ -702,44 +703,70 @@ export const generateVideo = inngest.createFunction(
           buildStepId(...baseStepParts, "pass", pass),
           async () => {
             const trimmedCurrent = current.trim();
-            const preCheck = runHeuristicChecks(trimmedCurrent, {
+            const baselineCheck = runHeuristicChecks(trimmedCurrent, {
               allowVerificationFixes: true,
             });
 
-            if (!preCheck.ok) {
+            if (!baselineCheck.ok) {
               return {
                 ok: false,
-                error: preCheck.error,
-              } satisfies VerifyManimScriptResult;
+                error: baselineCheck.error,
+                fixedScript: trimmedCurrent,
+              };
             }
 
-            const verification = await verifyManimScript({
-              prompt,
+            const postCheck = runHeuristicChecks(trimmedCurrent);
+
+            if (postCheck.ok) {
+              return {
+                ok: true,
+                fixedScript: trimmedCurrent,
+              };
+            }
+
+            if (!postCheck.error) {
+              return {
+                ok: false,
+                fixedScript: trimmedCurrent,
+              };
+            }
+
+            const attemptHistoryForRegeneration = (() => {
+              const history = [...attemptHistory];
+              history.push({
+                attemptNumber: pass,
+                script: trimmedCurrent,
+                error: { message: postCheck.error },
+              });
+              if (history.length > 3) {
+                history.splice(0, history.length - 3);
+              }
+              return history;
+            })();
+
+            const regenerated = await regenerateManimScriptWithError({
+              prompt: generationPrompt,
               voiceoverScript: narration,
-              script: trimmedCurrent,
+              previousScript: trimmedCurrent,
+              error: postCheck.error,
+              attemptNumber: pass,
+              attemptHistory: attemptHistoryForRegeneration,
+              blockedScripts: Array.from(seenScripts),
             });
 
-            if (!verification.ok) {
-              return verification;
-            }
+            const trimmedRegenerated = regenerated.trim();
 
-            const candidate = (
-              verification.fixedScript ?? trimmedCurrent
-            ).trim();
-            const postCheck = runHeuristicChecks(candidate);
-
-            if (!postCheck.ok) {
-              return {
-                ok: false,
-                error: postCheck.error,
-                fixedScript: candidate,
-              } satisfies VerifyManimScriptResult;
+            if (!trimmedRegenerated) {
+              throw new Error(
+                `Regeneration returned an empty script during ${context} pass ${pass}`
+              );
             }
 
             return {
-              ok: true,
-              fixedScript: candidate,
-            } satisfies VerifyManimScriptResult;
+              ok: false,
+              error: postCheck.error,
+              fixedScript: trimmedRegenerated,
+            };
           }
         );
 
@@ -762,7 +789,7 @@ export const generateVideo = inngest.createFunction(
           return approvedScript;
         }
 
-        lastError = result.error;
+        lastError = "error" in result ? result.error : undefined;
 
         if (lastError) {
           attemptHistory.push({
@@ -808,7 +835,8 @@ export const generateVideo = inngest.createFunction(
 
         if (!nextScript || nextScript.trim().length === 0) {
           throw new Error(
-            `Verifier reported issues during ${context} but produced an empty fix: ${lastError ?? "unknown"
+            `Verifier reported issues during ${context} but produced an empty fix: ${
+              lastError ?? "unknown"
             }`
           );
         }
@@ -817,7 +845,8 @@ export const generateVideo = inngest.createFunction(
       }
 
       console.warn(
-        `Verifier could not approve the script during ${context} after ${MAX_VERIFY_PASSES} passes. Last error: ${lastError ?? "unknown"
+        `Verifier could not approve the script during ${context} after ${MAX_VERIFY_PASSES} passes. Last error: ${
+          lastError ?? "unknown"
         } — proceeding with the best-effort script.`
       );
       return current;
@@ -936,9 +965,9 @@ export const generateVideo = inngest.createFunction(
                   renderOptions:
                     variant === "short"
                       ? {
-                        orientation: "portrait",
-                        resolution: { width: 720, height: 1280 },
-                      }
+                          orientation: "portrait",
+                          resolution: { width: 720, height: 1280 },
+                        }
                       : undefined,
                   plugins: usesManimML ? ["manim-ml"] : [],
                 });
@@ -1084,7 +1113,8 @@ export const generateVideo = inngest.createFunction(
 
           // Skip retry with same script - go directly to regenerating a new script
           console.log(
-            ` Skipping render retry, regenerating script for attempt ${attempt + 1
+            ` Skipping render retry, regenerating script for attempt ${
+              attempt + 1
             }`
           );
 
@@ -1115,7 +1145,8 @@ export const generateVideo = inngest.createFunction(
             ];
 
             console.log(
-              ` Regeneration pass ${regenPass} (${isForcedRewrite ? "forced" : "standard"
+              ` Regeneration pass ${regenPass} (${
+                isForcedRewrite ? "forced" : "standard"
               }) after render attempt ${attempt}`
             );
 
@@ -1140,7 +1171,8 @@ export const generateVideo = inngest.createFunction(
                 const trimmed = nextScript.trim();
                 if (!trimmed) {
                   throw new Error(
-                    `Regeneration returned an empty script for render attempt ${attempt + 1
+                    `Regeneration returned an empty script for render attempt ${
+                      attempt + 1
                     } (pass ${regenPass})`
                   );
                 }
@@ -1171,7 +1203,8 @@ export const generateVideo = inngest.createFunction(
               blockedScripts.set(fingerprint, verifiedScript.trim());
               currentScript = verifiedScript;
               console.log(
-                ` Accepted regenerated script on pass ${regenPass} for render attempt ${attempt + 1
+                ` Accepted regenerated script on pass ${regenPass} for render attempt ${
+                  attempt + 1
                 }`
               );
               acceptedNewScript = true;
