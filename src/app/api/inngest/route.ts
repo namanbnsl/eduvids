@@ -6,6 +6,7 @@ import { generateVideo, uploadVideoToYouTube } from "@/lib/inngest-functions";
 const handlers = serve({
   client: inngest,
   functions: [generateVideo, uploadVideoToYouTube],
+  streaming: "allow"
 });
 
 const createSafeRequestProxy = (request: NextRequest): NextRequest => {
