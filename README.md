@@ -19,7 +19,7 @@
 3. Wait while the servers render your video. (You can switch tabs, but don’t close it.)  
 4. Once ready, the video will appear on the page, and you’ll get a notification.  
 
-💡 **Tip:** If you accidentally close the tab or want to revisit your video, check the [eduvids YouTube Channel](https://www.youtube.com/channel/UCws8TdWGs-Fo4UsBay3GtFA)—your video will be uploaded there automatically.  
+💡 **Tip:** If you accidentally close the tab or want to revisit your video, check the [eduvids YouTube Channel](https://www.youtube.com/@eduvids-ai)—your video will be uploaded there automatically.  
 
 ---
 

@@ -25,12 +25,10 @@ const logRetry = (
 ) => {
   const errorMsg = error instanceof Error ? error.message : String(error);
   console.warn(
-    `[${fnName}] Attempt ${attempt + 1}/${
-      GEMINI_MAX_RETRIES + 1
-    } failed: ${errorMsg}${
-      delayMs
-        ? ` - retrying in ${Math.round(delayMs / 1000)}s`
-        : " - no more retries"
+    `[${fnName}] Attempt ${attempt + 1}/${GEMINI_MAX_RETRIES + 1
+    } failed: ${errorMsg}${delayMs
+      ? ` - retrying in ${Math.round(delayMs / 1000)}s`
+      : " - no more retries"
     }`
   );
 };
@@ -74,9 +72,103 @@ function loadManimReferenceDocs(): ManimReferenceDocs {
   return cachedManimDocs;
 }
 
-function buildAugmentedSystemPrompt(base: string): string {
+function detectLanguage(text: string): string {
+  const lowerText = text.toLowerCase();
+
+  // Check for distinctive scripts first (highest confidence)
+
+  // Russian (Cyrillic) - check before word patterns
+  if (/[а-яА-ЯёЁ]/.test(text)) {
+    return 'russian';
+  }
+
+  // Arabic - check before word patterns
+  if (/[\u0600-\u06ff]/.test(text)) {
+    return 'arabic';
+  }
+
+  // Hindi (Devanagari) - check before word patterns
+  if (/[\u0900-\u097f]/.test(text)) {
+    return 'hindi';
+  }
+
+  // Korean (Hangul) - check before word patterns
+  if (/[\uac00-\ud7af]/.test(text)) {
+    return 'korean';
+  }
+
+  // Japanese (Hiragana/Katakana) - check before CJK to avoid confusion with Chinese
+  if (/[\u3040-\u309f\u30a0-\u30ff]/.test(text)) {
+    return 'japanese';
+  }
+
+  // Chinese (CJK) - after Japanese check
+  if (/[\u4e00-\u9fff]/.test(text)) {
+    return 'chinese';
+  }
+
+  // Check for distinctive diacritics and patterns for European languages
+
+  // Portuguese - distinctive nasal vowels and specific patterns
+  if (/[ãõ]/.test(text) || /\b(não|são|também|está|muito|português)\b/.test(lowerText)) {
+    return 'portuguese';
+  }
+
+  // Spanish - check for distinctive patterns
+  if (/[ñ¿¡]/.test(text) || /\b(español|qué|cómo|dónde|cuándo)\b/.test(lowerText)) {
+    return 'spanish';
+  }
+
+  // French - check for distinctive accents and common words
+  if (/[àâæçéèêëïîôùûüÿœ]/.test(text) || /\b(français|où|être|avoir|très)\b/.test(lowerText)) {
+    return 'french';
+  }
+
+  // German - check for umlauts and distinctive words
+  if (/[äöüß]/.test(text) || /\b(der|die|das|und|nicht|ich|sie|werden|können)\b/.test(lowerText)) {
+    return 'german';
+  }
+
+  // Italian - check for distinctive patterns
+  if (/\b(italiano|perché|così|può|già|più)\b/.test(lowerText)) {
+    return 'italian';
+  }
+
+  // Count matches for ambiguous cases (when no distinctive features found)
+  const spanishWords = (lowerText.match(/\b(el|la|los|las|un|una|es|por|con|del|hola|mundo|esto)\b/g) || []).length;
+  const portugueseWords = (lowerText.match(/\b(o|a|os|as|um|uma|de|em|para|por|olá|este)\b/g) || []).length;
+  const frenchWords = (lowerText.match(/\b(le|la|les|un|une|de|du|des|et|est|pour|dans|bonjour|monde)\b/g) || []).length;
+  const italianWords = (lowerText.match(/\b(il|lo|la|i|gli|le|un|uno|una|di|da|in|e|che|ciao)\b/g) || []).length;
+
+  // Calculate word count to adjust threshold
+  const wordCount = lowerText.split(/\s+/).length;
+  const threshold = wordCount < 20 ? 2 : 3; // Lower threshold for shorter texts
+
+  // If we have multiple matches from the same language group, use that
+  const maxMatches = Math.max(spanishWords, portugueseWords, frenchWords, italianWords);
+  if (maxMatches >= threshold) {
+    if (spanishWords === maxMatches) return 'spanish';
+    if (portugueseWords === maxMatches) return 'portuguese';
+    if (frenchWords === maxMatches) return 'french';
+    if (italianWords === maxMatches) return 'italian';
+  }
+
+  return 'english';
+}
+
+function buildAugmentedSystemPrompt(base: string, language?: string): string {
   const { markdown, json } = loadManimReferenceDocs();
-  return `${base}\n\n---\nMANIM_SHORT_REF.md (local):\n${markdown}\n\nMANIM_SHORT_REF.json (local):\n${JSON.stringify(
+  let modifiedBase = base;
+
+  // If language is not English, modify the prompt to allow Text instead of requiring LaTeX
+  if (language && language !== 'english') {
+    modifiedBase = base.replace(
+      /- \*\*ALL ON-SCREEN TEXT MUST BE LATEX\*\*: Use Tex\/MathTex via the provided helpers \(create_tex_label, create_text_panel\)\. NEVER use Text, MarkupText, or Paragraph directly\./g,
+      `- **FOR NON-ENGLISH TEXT (${language.toUpperCase()}), USE Text() INSTEAD OF LATEX**: LaTeX does not properly support non-English characters. For all non-mathematical text in ${language}, use the Text() class directly: Text("your text", font_size=FONT_BODY). Only use Tex/MathTex for mathematical formulas and equations. For English text, you still use create_tex_label helpers, but for ${language} text, always use Text() to ensure proper rendering.`
+    );
+  }
+
+  return `${modifiedBase}\n\n---\nMANIM_SHORT_REF.md (local):\n${markdown}\n\nMANIM_SHORT_REF.json (local):\n${JSON.stringify(
     json
   )}\n---`;
 }
@@ -121,12 +213,14 @@ export interface ManimGenerationAttempt {
 export async function generateVoiceoverScript({
   prompt,
 }: VoiceoverScriptRequest): Promise<string> {
-  const model = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
+  // const model = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
+  const model = google("gemini-2.5-flash")
 
   const systemPrompt = VOICEOVER_SYSTEM_PROMPT;
 
   const composedPrompt = [
     `User request: ${prompt}`,
+    `Use the language that is asked for and output text in that script`,
     "Directive: Cover every essential idea from the request in sequence, adding extra BODY lines when needed so no core step is skipped.",
     "Directive: Keep the narration purely educational—no jokes, sound effects, or entertainment filler.",
     "Directive: Focus on a single clearly defined topic drawn from the user request—do not introduce unrelated hooks, metaphors, or tangents.",
@@ -151,7 +245,11 @@ export async function generateManimScript({
   prompt,
   voiceoverScript,
 }: ManimScriptRequest): Promise<string> {
-  const augmentedSystemPrompt = buildAugmentedSystemPrompt(MANIM_SYSTEM_PROMPT);
+  // Detect language from voiceover script
+  const detectedLanguage = detectLanguage(voiceoverScript);
+  console.log(`Detected language: ${detectedLanguage}`);
+
+  const augmentedSystemPrompt = buildAugmentedSystemPrompt(MANIM_SYSTEM_PROMPT, detectedLanguage);
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
     try {
@@ -229,125 +327,6 @@ export async function generateYoutubeDescription({
   return text.trim();
 }
 
-export interface ThumbnailScriptRequest {
-  prompt: string;
-  title: string;
-  voiceoverScript: string;
-}
-
-export async function generateThumbnailManimScript({
-  prompt,
-  title,
-  voiceoverScript,
-}: ThumbnailScriptRequest): Promise<string> {
-  const augmentedSystemPrompt = buildAugmentedSystemPrompt(
-    "You are a Manim Community v0.18.0 expert creating eye-catching YouTube thumbnail frames. Generate a single static frame that captures the video's essence. The scene should be visually striking, clear, and professional. Use bold text, vibrant colors, and simple shapes. DO NOT use voiceover or animations. The construct method should create all objects and add them to the scene without any animations. Use self.add() instead of self.play() for all objects."
-  );
-
-  for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-    try {
-      const model = google("gemini-2.5-pro");
-      const { text } = await generateText({
-        model,
-        system: augmentedSystemPrompt,
-        prompt: [
-          `Video prompt: ${prompt}`,
-          `Video title: ${title}`,
-          `Voiceover narration (for context):\n${voiceoverScript}`,
-          "",
-          "Generate a Manim script for a YouTube thumbnail that:",
-          "1. MUST declare: from manim import *",
-          "2. MUST declare: class MyScene(Scene):",
-          "3. MUST declare: def construct(self):",
-          "4. Creates a single static frame (no animations)",
-          "5. Features the video title prominently in the upper third with large, bold text",
-          "6. Adds a headline phrase (6-8 words) on a high-contrast rounded rectangle banner that states the main action or promise of the video",
-          "7. Adds a supporting subtext line (8-12 words) beneath the headline describing what viewers will learn or see",
-          "8. Uses WHITE for main text, YELLOW for emphasized words, and DARK_BLUE for the headline banner background",
-          "9. Applies subtle drop shadows and stroke outlines so all text remains readable",
-          "10. Includes 1-2 key visual elements that represent the video topic (icons, diagrams, or symbolic shapes)",
-          "11. Uses a dynamic background (gradient or geometric pattern) that contrasts with the text",
-          "12. Ensures the layout has clear visual hierarchy and balanced spacing",
-          "13. Uses self.add() to add all objects (NO self.play() calls)",
-          "14. Keeps text readable and ensures no elements run past safe margins",
-          "15. Uses simple shapes and consistent alignment for a polished look",
-          "",
-          "REQUIRED structure (do not omit these lines):",
-          "```python",
-          "from manim import *",
-          "",
-          "class MyScene(Scene):",
-          "    def construct(self):",
-          "        # Your code here using self.add()",
-          "```",
-          "",
-          "Return ONLY the complete Python code with no commentary or markdown fences. Ensure class MyScene and def construct are included:",
-        ].join("\n"),
-        temperature: 0.1,
-      });
-
-      const code = text
-        .replace(/```python?\n?/g, "")
-        .replace(/```\n?/g, "")
-        .trim();
-
-      return code;
-    } catch (err) {
-      if (attempt === GEMINI_MAX_RETRIES) {
-        logRetry("generateThumbnailManimScript", attempt, err);
-        break;
-      }
-      const delayMs = randomDelayMs();
-      logRetry("generateThumbnailManimScript", attempt, err, delayMs);
-      await sleep(delayMs);
-    }
-  }
-  // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
-  const flashModel = google("gemini-2.5-flash");
-  const { text: flashText } = await generateText({
-    model: flashModel,
-    system: augmentedSystemPrompt,
-    prompt: [
-      `Video prompt: ${prompt}`,
-      `Video title: ${title}`,
-      `Voiceover narration (for context):\n${voiceoverScript}`,
-      "",
-      "Generate a Manim script for a YouTube thumbnail that:",
-      "1. MUST declare: from manim import *",
-      "2. MUST declare: class MyScene(Scene):",
-      "3. MUST declare: def construct(self):",
-      "4. Creates a single static frame (no animations)",
-      "5. Features the video title prominently in the upper third with large, bold text",
-      "6. Adds a headline phrase (6-8 words) on a high-contrast rounded rectangle banner that states the main action or promise of the video",
-      "7. Adds a supporting subtext line (8-12 words) beneath the headline describing what viewers will learn or see",
-      "8. Uses WHITE for main text, YELLOW for emphasized words, and DARK_BLUE for the headline banner background",
-      "9. Applies subtle drop shadows and stroke outlines so all text remains readable",
-      "10. Includes 1-2 key visual elements that represent the video topic (icons, diagrams, or symbolic shapes)",
-      "11. Uses a dynamic background (gradient or geometric pattern) that contrasts with the text",
-      "12. Ensures the layout has clear visual hierarchy and balanced spacing",
-      "13. Uses self.add() to add all objects (NO self.play() calls)",
-      "14. Keeps text readable and ensures no elements run past safe margins",
-      "15. Uses simple shapes and consistent alignment for a polished look",
-      "",
-      "REQUIRED structure (do not omit these lines):",
-      "```python",
-      "from manim import *",
-      "",
-      "class MyScene(Scene):",
-      "    def construct(self):",
-      "        # Your code here using self.add()",
-      "```",
-      "",
-      "Return ONLY the complete Python code with no commentary or markdown fences. Ensure class MyScene and def construct are included:",
-    ].join("\n"),
-    temperature: 0.1,
-  });
-  const code = flashText
-    .replace(/```python?\n?/g, "")
-    .replace(/```\n?/g, "")
-    .trim();
-  return code;
-}
 
 export interface RegenerateManimScriptRequest {
   prompt: string;
@@ -376,7 +355,11 @@ export async function regenerateManimScriptWithError({
   forcedReason,
   repeatedErrorCount = 0,
 }: RegenerateManimScriptRequest): Promise<string> {
-  const augmentedSystemPrompt = buildAugmentedSystemPrompt(MANIM_SYSTEM_PROMPT);
+  // Detect language from voiceover script
+  const detectedLanguage = detectLanguage(voiceoverScript);
+  console.log(`Detected language for regeneration: ${detectedLanguage}`);
+
+  const augmentedSystemPrompt = buildAugmentedSystemPrompt(MANIM_SYSTEM_PROMPT, detectedLanguage);
 
   const previousAttemptsSummary = (() => {
     if (!attemptHistory.length) return "";
@@ -455,10 +438,9 @@ export async function regenerateManimScriptWithError({
   })();
 
   const rewriteDirective = forceRewrite
-    ? `\nThis is a forced rewrite because the last regeneration did not resolve the issue. ${
-        forcedReason ??
-        "Produce a substantially different script that fixes the problem."
-      }`
+    ? `\nThis is a forced rewrite because the last regeneration did not resolve the issue. ${forcedReason ??
+    "Produce a substantially different script that fixes the problem."
+    }`
     : "";
 
   const repetitionDirective =
