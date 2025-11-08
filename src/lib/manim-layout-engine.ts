@@ -37,81 +37,84 @@ export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
         config;
 
     const portrait = orientation === "portrait";
-    const marginBoost = portrait ? 1.3 : 1.18;
+    // Enhanced margin boost for better aesthetics and breathing room
+    const marginBoost = portrait ? 1.4 : 1.25;
 
-    // Base margins
+    // Base margins with improved spacing
     let topMargin = safeMargin * marginBoost;
     let bottomMargin = safeMargin * marginBoost;
     let leftMargin = safeMargin * marginBoost;
     let rightMargin = safeMargin * marginBoost;
 
     if (portrait) {
-        // Portrait needs more horizontal margins proportionally
+        // Portrait: more horizontal padding for cleaner look
+        leftMargin *= 1.45;
+        rightMargin *= 1.45;
+        // Increased vertical space for better title/content separation
+        topMargin *= 1.65;
+        bottomMargin *= 1.65;
+    } else {
+        // Landscape: balanced generous spacing
+        topMargin *= 1.3;
+        bottomMargin *= 1.35;
+    }
+
+    // Enhanced content-type adjustments for optimal layout
+    if (contentType === "text-heavy") {
+        // Text: maximum breathing room for readability
+        leftMargin *= 1.4;
+        rightMargin *= 1.4;
+        topMargin *= 1.25;
+    } else if (contentType === "diagram") {
+        // Diagrams: uniform generous space with golden ratio influence
+        const avgMargin = (leftMargin + rightMargin + topMargin + bottomMargin) / 4;
+        leftMargin = rightMargin = topMargin = bottomMargin = avgMargin * 1.5;
+    } else if (contentType === "math") {
+        // Math: extra horizontal space for complex formulas
         leftMargin *= 1.35;
         rightMargin *= 1.35;
-        // And more vertical space reserved for titles and bottom safety
-        topMargin *= 1.55;
-        bottomMargin *= 1.55;
-    } else {
-        // Landscape can be slightly more generous
-        topMargin *= 1.2;
-        bottomMargin *= 1.25;
     }
 
-    // Adjust for content type
-    if (contentType === "text-heavy") {
-        // Text needs more breathing room
-        leftMargin *= 1.3;
-        rightMargin *= 1.3;
-        topMargin *= 1.2;
-    } else if (contentType === "diagram") {
-        // Diagrams need more uniform space and extra safety margins
-        const avgMargin = (leftMargin + rightMargin + topMargin + bottomMargin) / 4;
-        leftMargin = rightMargin = topMargin = bottomMargin = avgMargin * 1.4;
-    } else if (contentType === "math") {
-        // Math formulas often wider, need horizontal space
-        leftMargin *= 1.28;
-        rightMargin *= 1.28;
-    }
-
-    // Extra breathing room to avoid cramped layouts, especially on mobile portrait
-    const extraTopMargin = safeMargin * (portrait ? 0.68 : 0.42);
-    const extraBottomMargin = safeMargin * (portrait ? 0.78 : 0.45);
+    // Premium breathing room - prevents cramped layouts
+    const extraTopMargin = safeMargin * (portrait ? 0.8 : 0.5);
+    const extraBottomMargin = safeMargin * (portrait ? 0.9 : 0.55);
 
     topMargin += extraTopMargin;
     bottomMargin += extraBottomMargin;
 
-    let minSpacing = safeMargin * (portrait ? 1.56 : 1.22);
+    // Enhanced minimum spacing for cleaner element separation
+    let minSpacing = safeMargin * (portrait ? 1.7 : 1.35);
     if (contentType === "text-heavy") {
-        minSpacing *= 1.15;
+        minSpacing *= 1.2;
     } else if (contentType === "diagram") {
-        minSpacing *= 1.3;
+        minSpacing *= 1.4;
     } else if (contentType === "math") {
-        minSpacing *= 1.12;
+        minSpacing *= 1.18;
     }
-    minSpacing = Math.max(minSpacing, safeMargin * 1.15);
+    minSpacing = Math.max(minSpacing, safeMargin * 1.25);
 
-    let bottomSafeZoneHeight = safeMargin * (portrait ? 2.6 : 2.0);
+    // Enhanced bottom safe zone for better footer clearance
+    let bottomSafeZoneHeight = safeMargin * (portrait ? 2.8 : 2.2);
     if (contentType === "diagram") {
-        bottomSafeZoneHeight *= 1.18;
+        bottomSafeZoneHeight *= 1.25;
     } else if (contentType === "text-heavy") {
-        bottomSafeZoneHeight *= 1.1;
+        bottomSafeZoneHeight *= 1.15;
     }
     bottomSafeZoneHeight = Math.max(
         bottomSafeZoneHeight,
-        frameHeight * (portrait ? 0.1 : 0.075)
+        frameHeight * (portrait ? 0.12 : 0.09)
     );
 
     bottomMargin = Math.max(
         bottomMargin,
-        bottomSafeZoneHeight + safeMargin * (portrait ? 0.72 : 0.5)
+        bottomSafeZoneHeight + safeMargin * (portrait ? 0.8 : 0.6)
     );
-    topMargin = Math.max(topMargin, safeMargin * (portrait ? 1.85 : 1.32));
+    topMargin = Math.max(topMargin, safeMargin * (portrait ? 2.0 : 1.45));
 
-    // Title zone - reserve more space for titles with proper separation
-    const titleHeight = orientation === "portrait" ? 2.4 : 1.8;
+    // Enhanced title zone - more space for elegant title presentation
+    const titleHeight = orientation === "portrait" ? 2.6 : 2.0;
 
-    // Calculate usable content area
+    // Calculate usable content area with improved spacing
     const maxContentWidth = Math.max(
         frameWidth - leftMargin - rightMargin,
         Number.EPSILON
@@ -249,7 +252,7 @@ def clear_scene(scene, run_time=0.6):
 }
 
 /**
- * Font size recommendations based on layout
+ * Enhanced font size recommendations with improved typography hierarchy
  */
 export function getRecommendedFontSizes(
     config: LayoutConfig
@@ -257,53 +260,64 @@ export function getRecommendedFontSizes(
     const { orientation, contentType } = config;
     const zones = calculateSafeZones(config);
 
+    // Calculate base size from content area with improved scaling
     const contentArea = Math.sqrt(
         Math.max(zones.maxContentWidth * zones.maxContentHeight, 1)
     );
-    const orientationScale = orientation === "portrait" ? 1.3 : 1.15;
+    
+    // Enhanced orientation scaling for better readability
+    const orientationScale = orientation === "portrait" ? 1.35 : 1.18;
+    
+    // Refined content-type scaling
     const contentScale =
         contentType === "text-heavy"
-            ? 1.05
+            ? 1.08  // Slightly larger for text-heavy content
             : contentType === "diagram"
-                ? 1
+                ? 1.02  // Standard for diagrams
                 : contentType === "math"
-                    ? 1.08
-                    : 1.02;
-    const readabilityBoost = orientation === "portrait" ? 1.22 : 1.14;
+                    ? 1.12  // Larger for math readability
+                    : 1.05; // Balanced default
+    
+    // Enhanced readability boost
+    const readabilityBoost = orientation === "portrait" ? 1.25 : 1.16;
 
+    // Calculate base body size with improved formula
     const baseBody = clampFont(
-        Math.round(contentArea * orientationScale * contentScale * 2.25 * readabilityBoost),
-        orientation === "portrait" ? 34 : 28,
-        orientation === "portrait" ? 64 : 54
+        Math.round(contentArea * orientationScale * contentScale * 2.3 * readabilityBoost),
+        orientation === "portrait" ? 36 : 30,
+        orientation === "portrait" ? 66 : 56
     );
 
+    // Title: Prominent but not overwhelming (golden ratio inspired)
     const title = clampFont(
-        Math.round(baseBody * (orientation === "portrait" ? 1.58 : 1.44)),
-        baseBody + 6,
-        orientation === "portrait" ? 76 : 66
+        Math.round(baseBody * (orientation === "portrait" ? 1.62 : 1.5)),
+        baseBody + 8,
+        orientation === "portrait" ? 80 : 70
     );
 
+    // Heading: Clear hierarchy between title and body
     const heading = clampFont(
-        Math.round(baseBody * 1.32),
-        baseBody + 4,
-        Math.max(title - 4, baseBody + 10)
+        Math.round(baseBody * 1.38),
+        baseBody + 5,
+        Math.max(title - 6, baseBody + 12)
     );
 
+    // Math: Optimized for formula readability
     const mathMultiplier =
         contentType === "math"
             ? orientation === "portrait"
-                ? 1.18
-                : 1.1
+                ? 1.22
+                : 1.14
             : contentType === "diagram"
-                ? 1
-                : 1.04;
+                ? 1.02
+                : 1.06;
     const mathMin = Math.max(
-        orientation === "portrait" ? 32 : 26,
-        Math.round(baseBody * 1)
+        orientation === "portrait" ? 34 : 28,
+        Math.round(baseBody * 1.02)
     );
     const mathMax = Math.min(
-        Math.max(title - 6, mathMin + 4),
-        orientation === "portrait" ? 68 : 58
+        Math.max(title - 8, mathMin + 6),
+        orientation === "portrait" ? 72 : 62
     );
     const math = clampFont(
         Math.round(baseBody * mathMultiplier),
@@ -311,16 +325,18 @@ export function getRecommendedFontSizes(
         mathMax
     );
 
+    // Caption: Clear but not too small
     const caption = clampFont(
-        Math.round(baseBody * 0.94),
-        orientation === "portrait" ? 28 : 24,
-        Math.max(baseBody - 6, orientation === "portrait" ? 40 : 34)
+        Math.round(baseBody * 0.88),
+        orientation === "portrait" ? 30 : 26,
+        Math.max(baseBody - 8, orientation === "portrait" ? 44 : 38)
     );
 
+    // Label: Small but readable
     const label = clampFont(
-        Math.round(baseBody * 0.82),
-        orientation === "portrait" ? 24 : 20,
-        caption
+        Math.round(baseBody * 0.78),
+        orientation === "portrait" ? 26 : 22,
+        caption - 2
     );
 
     return {
@@ -1015,60 +1031,79 @@ def create_bullet_list(
     return bullets
 `);
 
-    // Updated color palette - optimized for #1E1E1E background
+    // PREMIUM COLOR PALETTE - Meticulously designed for #1E1E1E background
+    // Optimized for maximum contrast, harmony, and visual appeal
     const colorPalette: Record<string, string> = {
-        WHITE: "#FFFFFF",
-        LIGHT_GRAY: "#E6ECF8",
-        GRAY: "#CBD6EE",
-        DARK_GRAY: "#334155",
-        BLACK: "#020617",
+        // === Neutrals (High contrast base colors) ===
+        WHITE: "#FAFCFF",           // Softer white for less eye strain
+        LIGHT_GRAY: "#E8EDF5",      // Bright neutral
+        GRAY: "#B4C5E4",            // Mid-tone neutral
+        DARK_GRAY: "#52637B",       // Subtle contrast
+        BLACK: "#0F1419",           // Rich black
 
-        BLUE: "#3ABEFF",
-        SKY: "#46D1FF",
-        INDIGO: "#7C83FF",
-        NAVY: "#2647FF",
-        CYAN: "#1FEDFF",
-        TEAL: "#2FEFDA",
-        MINT: "#63F9D2",
-        GREEN: "#3BEF94",
-        PURE_GREEN: "#2ED67A",
-        EMERALD: "#44F0B2",
-        LIME: "#C9FF6A",
-        YELLOW: "#FFE066",
-        GOLD: "#FFC857",
-        ORANGE: "#FF9548",
-        AMBER: "#FFD36B",
-        RED: "#FF5E6C",
-        CRIMSON: "#FF3F74",
-        ROSE: "#FF86A5",
-        CORAL: "#FF8A78",
-        PINK: "#FF9CDA",
-        MAGENTA: "#FF75F3",
-        FUCHSIA: "#EA5BFF",
-        PURPLE: "#B06BFF",
-        VIOLET: "#9D64FF",
-        LAVENDER: "#D0B6FF",
+        // === Blues (Professional, trustworthy) ===
+        BLUE: "#4FC3F7",            // Vibrant sky blue
+        SKY: "#56D4FF",             // Bright sky
+        INDIGO: "#7C8CFF",          // Deep indigo
+        NAVY: "#3D5AFE",            // Bold navy
+        CYAN: "#26E5FF",            // Electric cyan
+        AZURE: "#3DCBFF",           // Bright azure
 
-        BROWN: "#9C6B46",
-        SAND: "#F1D7A2",
-        SLATE: "#A8B7D4",
-        STEEL: "#8FA2C3",
-        FOREST: "#1FA175",
+        // === Greens (Growth, success, natural) ===
+        TEAL: "#26DAC5",            // Modern teal
+        MINT: "#6FFFD3",            // Fresh mint
+        GREEN: "#4AE290",           // Vibrant green
+        PURE_GREEN: "#3ED47F",      // Pure emerald
+        EMERALD: "#50E5AC",         // Rich emerald
+        LIME: "#B8FF6D",            // Bright lime
+        FOREST: "#2AAA7F",          // Deep forest
 
-        NORD: "#9AD7E4",
-        NORD_FROST: "#9FDFDC",
-        NORD_NIGHT: "#2F3D61",
+        // === Yellows & Oranges (Energy, warmth, attention) ===
+        YELLOW: "#FFE156",          // Warm yellow
+        GOLD: "#FFCD48",            // Rich gold
+        AMBER: "#FFD563",           // Bright amber
+        ORANGE: "#FF9D5C",          // Vibrant orange
+        PEACH: "#FFB38A",           // Soft peach
+        CORAL: "#FF9680",           // Warm coral
 
-        PEACH: "#FFC49C",
-        NEON_BLUE: "#53C7FF",
-        NEON_GREEN: "#8BFF9C",
-        NEON_PINK: "#FF7DE0",
-        ELECTRIC_PURPLE: "#B689FF",
+        // === Reds & Pinks (Emphasis, passion, important) ===
+        RED: "#FF6B7A",             // Vibrant red
+        CRIMSON: "#FF5273",         // Deep crimson
+        ROSE: "#FF8FAD",            // Soft rose
+        PINK: "#FFA3DB",            // Bright pink
+        HOT_PINK: "#FF7DE0",        // Neon pink
 
-        SOFT_BLUE: "#A7D3FF",
-        SOFT_GREEN: "#9CF7D1",
-        SOFT_YELLOW: "#FFEAA0",
-        SOFT_PINK: "#FFD2EB",
+        // === Purples (Creative, sophisticated) ===
+        MAGENTA: "#FF7DF7",         // Bright magenta
+        FUCHSIA: "#F066FF",         // Vibrant fuchsia
+        PURPLE: "#B57EFF",          // Rich purple
+        VIOLET: "#A26EFF",          // Deep violet
+        LAVENDER: "#D4BFFF",        // Soft lavender
+        ELECTRIC_PURPLE: "#BD8FFF", // Electric purple
+
+        // === Specialty Colors ===
+        NEON_BLUE: "#5DD5FF",       // Neon blue glow
+        NEON_GREEN: "#91FFB3",      // Neon green glow
+        NEON_PINK: "#FF7DE0",       // Neon pink glow
+        NEON_YELLOW: "#FFEB5C",     // Neon yellow glow
+
+        // === Soft Pastels (Subtle, gentle) ===
+        SOFT_BLUE: "#B0DCFF",       // Pastel blue
+        SOFT_GREEN: "#A8FFD6",      // Pastel green
+        SOFT_YELLOW: "#FFF2B8",     // Pastel yellow
+        SOFT_PINK: "#FFDDF0",       // Pastel pink
+        SOFT_PURPLE: "#E0CBFF",     // Pastel purple
+
+        // === Earth Tones ===
+        SAND: "#F4DDC4",            // Warm sand
+        BROWN: "#A57856",           // Earthy brown
+        SLATE: "#B0C4E2",           // Cool slate
+        STEEL: "#9DB3D6",           // Metallic steel
+
+        // === Nord-inspired (Modern, clean) ===
+        NORD: "#A6DCE8",            // Nord blue
+        NORD_FROST: "#A8E4E1",      // Nord frost
+        NORD_NIGHT: "#394D6B",      // Nord night
     };
 
     parts.push("\n# Script color palette - Optimized for #1E1E1E background");

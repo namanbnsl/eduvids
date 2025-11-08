@@ -123,18 +123,33 @@ Video Structure Requirements:
 🔧 Technical Requirements:
 - Return ONLY complete Python code
 - CAN USE 3D if required - stick to 2D animations only
-- **STANDARDIZED COLOR SCHEME (NO EXCEPTIONS):**
-  * Titles: WHITE
-  * Body text: WHITE
-  * Bullet points: WHITE  
-  * Math formulas: WHITE
-  * Emphasis/highlight: YELLOW
-  * Examples: BLUE
-  * Definitions: PURE_GREEN
-  * Code/system content: ORANGE
-  * Arrows/lines: WHITE
-  * Background shapes: GRAY (low opacity)
-  - AVAILABLE NAMED COLORS (ONLY THESE): WHITE, BLACK, GRAY, DARK_GRAY, LIGHT_GRAY, SLATE, STEEL, SAND, BROWN, BLUE, SKY, NAVY, INDIGO, CYAN, TEAL, MINT, GREEN, PURE_GREEN, EMERALD, LIME, YELLOW, GOLD, AMBER, ORANGE, PEACH, CORAL, ROSE, RED, CRIMSON, PINK, MAGENTA, FUCHSIA, PURPLE, VIOLET, LAVENDER, FOREST, NORD, NORD_FROST, NORD_NIGHT, NEON_BLUE, NEON_GREEN, NEON_PINK, ELECTRIC_PURPLE, SOFT_BLUE, SOFT_GREEN, SOFT_YELLOW, SOFT_PINK.
+- **PREMIUM COLOR SCHEME (Harmonious & Professional):**
+  
+  Core Text & Structure:
+  * Primary text (titles, body, bullets): WHITE or LIGHT_GRAY for maximum readability
+  * Math formulas: WHITE or SOFT_BLUE for clear professional look
+  * Section headers: CYAN, SKY, or AZURE for distinct hierarchy
+  * Background shapes: GRAY, SLATE, or DARK_GRAY with opacity 0.1-0.3 for subtle depth
+  
+  Emphasis & Attention (Use strategically!):
+  * Primary emphasis: YELLOW or GOLD - warm attention grabber
+  * Secondary emphasis: AMBER or ORANGE - secondary importance
+  * Critical/Warning: CORAL or RED - use sparingly
+  * Success/Correct: PURE_GREEN or EMERALD - positive reinforcement
+  
+  Color Coding by Purpose:
+  * Examples/Practice: BLUE, AZURE, or SKY - professional and calm
+  * Definitions/Terms: MINT, TEAL, or EMERALD - fresh and clear
+  * Code/Technical: ORANGE, PEACH, or CORAL - distinct technical feel
+  * Relationships/Connections: PURPLE, VIOLET, or LAVENDER - creative associations
+  * Questions/Prompts: FUCHSIA, MAGENTA, or HOT_PINK - engaging curiosity
+  
+  Special Effects:
+  * Neon accents: NEON_BLUE, NEON_GREEN, NEON_YELLOW, NEON_PINK - sparingly for pop
+  * Soft highlights: SOFT_BLUE, SOFT_GREEN, SOFT_YELLOW, SOFT_PINK, SOFT_PURPLE - gentle emphasis
+  * Earth tones: SAND, BROWN - for natural/historical content
+  
+  AVAILABLE COLORS: WHITE, LIGHT_GRAY, GRAY, DARK_GRAY, BLACK, BLUE, SKY, INDIGO, NAVY, CYAN, AZURE, TEAL, MINT, GREEN, PURE_GREEN, EMERALD, LIME, FOREST, YELLOW, GOLD, AMBER, ORANGE, PEACH, CORAL, RED, CRIMSON, ROSE, PINK, HOT_PINK, MAGENTA, FUCHSIA, PURPLE, VIOLET, LAVENDER, ELECTRIC_PURPLE, NEON_BLUE, NEON_GREEN, NEON_PINK, NEON_YELLOW, SOFT_BLUE, SOFT_GREEN, SOFT_YELLOW, SOFT_PINK, SOFT_PURPLE, SAND, BROWN, SLATE, STEEL, NORD, NORD_FROST, NORD_NIGHT
   - If a different color is required, **use its HEX string literal instead of inventing a new named color** (example: 'color="#1ABC9C"').
   - NEVER reference color names outside this list; fall back to HEX when needed.
   - Typography is locked to the Inter typeface via the injected Tex template—leave fonts alone and keep using create_tex_label / MathTex for all text.
