@@ -36,25 +36,26 @@ export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
     const { frameWidth, frameHeight, safeMargin, orientation, contentType } =
         config;
 
-    // Base margins
-    let topMargin = safeMargin;
-    let bottomMargin = safeMargin;
-    let leftMargin = safeMargin;
-    let rightMargin = safeMargin;
-
     const portrait = orientation === "portrait";
+    const marginBoost = portrait ? 1.3 : 1.18;
+
+    // Base margins
+    let topMargin = safeMargin * marginBoost;
+    let bottomMargin = safeMargin * marginBoost;
+    let leftMargin = safeMargin * marginBoost;
+    let rightMargin = safeMargin * marginBoost;
 
     if (portrait) {
         // Portrait needs more horizontal margins proportionally
-        leftMargin *= 1.4;
-        rightMargin *= 1.4;
+        leftMargin *= 1.35;
+        rightMargin *= 1.35;
         // And more vertical space reserved for titles and bottom safety
-        topMargin *= 1.5;
-        bottomMargin *= 1.3;
+        topMargin *= 1.55;
+        bottomMargin *= 1.55;
     } else {
         // Landscape can be slightly more generous
-        topMargin *= 1.1;
-        bottomMargin *= 1.1;
+        topMargin *= 1.2;
+        bottomMargin *= 1.25;
     }
 
     // Adjust for content type
@@ -66,49 +67,49 @@ export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
     } else if (contentType === "diagram") {
         // Diagrams need more uniform space and extra safety margins
         const avgMargin = (leftMargin + rightMargin + topMargin + bottomMargin) / 4;
-        leftMargin = rightMargin = topMargin = bottomMargin = avgMargin * 1.35;
+        leftMargin = rightMargin = topMargin = bottomMargin = avgMargin * 1.4;
     } else if (contentType === "math") {
         // Math formulas often wider, need horizontal space
-        leftMargin *= 1.2;
-        rightMargin *= 1.2;
+        leftMargin *= 1.28;
+        rightMargin *= 1.28;
     }
 
     // Extra breathing room to avoid cramped layouts, especially on mobile portrait
-    const extraTopMargin = safeMargin * (portrait ? 0.45 : 0.25);
-    const extraBottomMargin = safeMargin * (portrait ? 0.35 : 0.18);
+    const extraTopMargin = safeMargin * (portrait ? 0.68 : 0.42);
+    const extraBottomMargin = safeMargin * (portrait ? 0.78 : 0.45);
 
     topMargin += extraTopMargin;
     bottomMargin += extraBottomMargin;
 
-    let minSpacing = safeMargin * (portrait ? 1.12 : 0.92);
+    let minSpacing = safeMargin * (portrait ? 1.56 : 1.22);
     if (contentType === "text-heavy") {
-        minSpacing *= 1.1;
+        minSpacing *= 1.15;
     } else if (contentType === "diagram") {
-        minSpacing *= 1.25;
+        minSpacing *= 1.3;
     } else if (contentType === "math") {
-        minSpacing *= 1.05;
+        minSpacing *= 1.12;
     }
-    minSpacing = Math.max(minSpacing, safeMargin * 0.85);
+    minSpacing = Math.max(minSpacing, safeMargin * 1.15);
 
-    let bottomSafeZoneHeight = safeMargin * (portrait ? 1.8 : 1.35);
+    let bottomSafeZoneHeight = safeMargin * (portrait ? 2.6 : 2.0);
     if (contentType === "diagram") {
-        bottomSafeZoneHeight *= 1.12;
+        bottomSafeZoneHeight *= 1.18;
     } else if (contentType === "text-heavy") {
-        bottomSafeZoneHeight *= 1.05;
+        bottomSafeZoneHeight *= 1.1;
     }
     bottomSafeZoneHeight = Math.max(
         bottomSafeZoneHeight,
-        frameHeight * (portrait ? 0.075 : 0.055)
+        frameHeight * (portrait ? 0.1 : 0.075)
     );
 
     bottomMargin = Math.max(
         bottomMargin,
-        bottomSafeZoneHeight + safeMargin * (portrait ? 0.45 : 0.3)
+        bottomSafeZoneHeight + safeMargin * (portrait ? 0.72 : 0.5)
     );
-    topMargin = Math.max(topMargin, safeMargin * (portrait ? 1.4 : 1.05));
+    topMargin = Math.max(topMargin, safeMargin * (portrait ? 1.85 : 1.32));
 
     // Title zone - reserve more space for titles with proper separation
-    const titleHeight = orientation === "portrait" ? 2.0 : 1.5;
+    const titleHeight = orientation === "portrait" ? 2.4 : 1.8;
 
     // Calculate usable content area
     const maxContentWidth = Math.max(
@@ -159,7 +160,12 @@ def get_title_position():
 
 def get_content_center():
     """Get safe center position for main content (below title zone)"""
-    return DOWN * (TITLE_ZONE_HEIGHT / 2)
+    top_bound = FRAME_HEIGHT/2 - SAFE_MARGIN_TOP - TITLE_ZONE_HEIGHT - SAFE_SPACING_MIN / 2
+    bottom_bound = -FRAME_HEIGHT/2 + SAFE_MARGIN_BOTTOM + SAFE_BOTTOM_ZONE + SAFE_SPACING_MIN / 2
+    if top_bound <= bottom_bound:
+        return DOWN * (TITLE_ZONE_HEIGHT / 2)
+    center_y = (top_bound + bottom_bound) / 2
+    return center_y * UP
 
 def get_bottom_safe_line(offset=0.0):
     """Return a Y coordinate safely above the reserved bottom zone."""
@@ -254,48 +260,51 @@ export function getRecommendedFontSizes(
     const contentArea = Math.sqrt(
         Math.max(zones.maxContentWidth * zones.maxContentHeight, 1)
     );
-    const orientationScale = orientation === "portrait" ? 1.08 : 1;
+    const orientationScale = orientation === "portrait" ? 1.3 : 1.15;
     const contentScale =
         contentType === "text-heavy"
-            ? 0.85
+            ? 1.05
             : contentType === "diagram"
-                ? 0.92
+                ? 1
                 : contentType === "math"
-                    ? 0.98
-                    : 0.9;
+                    ? 1.08
+                    : 1.02;
+    const readabilityBoost = orientation === "portrait" ? 1.22 : 1.14;
 
     const baseBody = clampFont(
-        Math.round(contentArea * orientationScale * contentScale * 1.7),
-        orientation === "portrait" ? 24 : 20,
-        orientation === "portrait" ? 36 : 30
+        Math.round(contentArea * orientationScale * contentScale * 2.25 * readabilityBoost),
+        orientation === "portrait" ? 34 : 28,
+        orientation === "portrait" ? 64 : 54
     );
 
     const title = clampFont(
-        Math.round(baseBody * (orientation === "portrait" ? 1.32 : 1.25)),
-        baseBody + 3,
-        orientation === "portrait" ? 48 : 42
+        Math.round(baseBody * (orientation === "portrait" ? 1.58 : 1.44)),
+        baseBody + 6,
+        orientation === "portrait" ? 76 : 66
     );
 
     const heading = clampFont(
-        Math.round(baseBody * 1.12),
-        baseBody + 1,
-        title - 2
+        Math.round(baseBody * 1.32),
+        baseBody + 4,
+        Math.max(title - 4, baseBody + 10)
     );
 
     const mathMultiplier =
         contentType === "math"
             ? orientation === "portrait"
-                ? 1.02
-                : 0.98
+                ? 1.18
+                : 1.1
             : contentType === "diagram"
-                ? 0.85
-                : 0.9;
-    const mathMin = Math.max(orientation === "portrait" ? 20 : 18, baseBody - 8);
-    const mathMaxBase = Math.max(heading - 1, mathMin);
-    const mathMax =
-        contentType === "math"
-            ? mathMaxBase
-            : Math.max(Math.min(baseBody - 3, mathMaxBase), mathMin);
+                ? 1
+                : 1.04;
+    const mathMin = Math.max(
+        orientation === "portrait" ? 32 : 26,
+        Math.round(baseBody * 1)
+    );
+    const mathMax = Math.min(
+        Math.max(title - 6, mathMin + 4),
+        orientation === "portrait" ? 68 : 58
+    );
     const math = clampFont(
         Math.round(baseBody * mathMultiplier),
         mathMin,
@@ -303,14 +312,14 @@ export function getRecommendedFontSizes(
     );
 
     const caption = clampFont(
-        Math.round(baseBody * 0.75),
-        orientation === "portrait" ? 18 : 16,
-        Math.max(baseBody - 5, orientation === "portrait" ? 18 : 16)
+        Math.round(baseBody * 0.94),
+        orientation === "portrait" ? 28 : 24,
+        Math.max(baseBody - 6, orientation === "portrait" ? 40 : 34)
     );
 
     const label = clampFont(
-        Math.round(baseBody * 0.65),
-        orientation === "portrait" ? 16 : 14,
+        Math.round(baseBody * 0.82),
+        orientation === "portrait" ? 24 : 20,
         caption
     );
 
@@ -415,23 +424,24 @@ export function generateLayoutSetup(
     parts.push(generateSafeZoneConstants(config));
     parts.push(
         [
-            'config.background_color = "#2D2D2D"',
-            'BRIGHT_TEXT_COLOR = "#FFFFFF"',
-            'DARK_TEXT_COLOR = "#1A1A1A"',
-            'CONTRAST_DARK_PANEL = "#1A1F2E"',
-            'CONTRAST_LIGHT_PANEL = "#F8F9FA"',
-            "MIN_CONTRAST_RATIO = 4.5",
-            "MIN_PANEL_FILL_OPACITY = 0.7",
-            "DEFAULT_PANEL_PADDING = 0.35",
-            'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F8F9FA", "#E8EAED"]',
+            'config.background_color = "#1E1E1E"',
+            'BRIGHT_TEXT_COLOR = "#F9FBFF"',
+            'DARK_TEXT_COLOR = "#050B16"',
+            'CONTRAST_DARK_PANEL = "#1C2E4A"',
+            'CONTRAST_LIGHT_PANEL = "#F3F7FF"',
+            "MIN_CONTRAST_RATIO = 5.2",
+            "MIN_PANEL_FILL_OPACITY = 0.9",
+            "DEFAULT_PANEL_PADDING = 0.48",
+            'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F5FAFF", "#EEF2FF"]',
             "Paragraph.set_default(color=BRIGHT_TEXT_COLOR)",
             "MarkupText.set_default(color=BRIGHT_TEXT_COLOR)",
-            "MathTex.set_default(color=BRIGHT_TEXT_COLOR)",
-            "Tex.set_default(color=BRIGHT_TEXT_COLOR)",
             "BulletedList.set_default(color=BRIGHT_TEXT_COLOR)",
-            "Rectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
-            "RoundedRectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
-            "SurroundingRectangle.set_default(fill_color=CONTRAST_DARK_PANEL, fill_opacity=MIN_PANEL_FILL_OPACITY, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
+            "myTemplate = TexTemplate()",
+            'myTemplate.preamble += r"\\usepackage{lmodern}"',
+            'Tex.set_default(tex_template=myTemplate)',
+            "Rectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
+            "RoundedRectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
+            "SurroundingRectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
         ].join("\n")
     );
     parts.push(
@@ -464,7 +474,7 @@ def normalize_math_mobject(math_mobject, max_width_ratio=0.65, max_height_ratio=
     return math_mobject
 
 
-def enforce_min_gap(mobjects, min_gap=0.8):
+def enforce_min_gap(mobjects, min_gap=1.0):
     items = [m for m in (mobjects or []) if m is not None]
     if len(items) <= 1:
         return VGroup(*items)
@@ -507,7 +517,7 @@ def layout_horizontal(mobjects, center=None, buff=1.0):
         return group
 
     group.arrange(RIGHT, buff=buff)
-    enforce_min_gap(group.submobjects, min_gap=max(buff, 0.95))
+    enforce_min_gap(group.submobjects, min_gap=max(buff, 1.1))
     ensure_fits_screen(group)
     group.move_to(center or get_content_center())
     validate_position(group, "horizontal layout")
@@ -521,7 +531,7 @@ def layout_vertical(mobjects, center=None, buff=1.0):
         return group
 
     group.arrange(DOWN, buff=buff)
-    enforce_min_gap(group.submobjects, min_gap=max(buff, 0.95))
+    enforce_min_gap(group.submobjects, min_gap=max(buff, 1.1))
     ensure_fits_screen(group)
     group.move_to(center or get_content_center())
     validate_position(group, "vertical layout")
@@ -580,7 +590,7 @@ def highlight_graph_intersections(scene, ax, graphs, *, tolerance=1e-3, samples=
 
     return []
 `);
-    parts.push(`
+    parts.push(String.raw`
 # Accessibility and readability helpers
 def _relative_luminance(color_value):
     color = Color(color_value)
@@ -655,6 +665,22 @@ def ensure_panel_readability(panel_mobject, text_color=BRIGHT_TEXT_COLOR, min_co
         fill_color = CONTRAST_DARK_PANEL
 
     fill_opacity = getattr(panel_mobject, "fill_opacity", 0) or 0
+    border_only = fill_opacity <= 0
+
+    if border_only:
+        try:
+            panel_mobject.set_fill(opacity=0)
+        except Exception:
+            pass
+
+        stroke_width = panel_mobject.get_stroke_width() or 0
+        panel_mobject.set_stroke(
+            color=Color(text_color).to_hex(),
+            width=max(stroke_width, 2),
+            opacity=0.85,
+        )
+        return panel_mobject
+
     if 0 < fill_opacity < MIN_PANEL_FILL_OPACITY:
         print(
             f"[Layout Engine] {panel_mobject.__class__.__name__} has fill_opacity={fill_opacity:.2f}. "
@@ -752,7 +778,37 @@ def _looks_like_latex(text):
 def _escape_latex_text(text):
     if text is None:
         return ""
-    return "".join(LATEX_SPECIAL_CHARS.get(char, char) for char in str(text))
+    text_str = str(text)
+    length = len(text_str)
+    result = []
+    idx = 0
+
+    while idx < length:
+        char = text_str[idx]
+        if char == "\\":
+            next_idx = idx + 1
+            if next_idx < length and text_str[next_idx] == "\\":
+                result.append("\\\\")
+                idx += 2
+                continue
+
+            command_end = next_idx
+            while command_end < length and text_str[command_end].isalpha():
+                command_end += 1
+
+            if command_end > next_idx:
+                result.append(text_str[idx:command_end])
+                idx = command_end
+                continue
+
+            result.append(LATEX_SPECIAL_CHARS.get("\\\\", "\\textbackslash{}"))
+            idx += 1
+            continue
+
+        result.append(LATEX_SPECIAL_CHARS.get(char, char))
+        idx += 1
+
+    return "".join(result)
 
 
 def build_latex_text(
@@ -959,66 +1015,63 @@ def create_bullet_list(
     return bullets
 `);
 
-    // Updated color palette - all colors optimized for #2D2D2D background
+    // Updated color palette - optimized for #1E1E1E background
     const colorPalette: Record<string, string> = {
         WHITE: "#FFFFFF",
-        LIGHT_GRAY: "#E8EAED",
-        GRAY: "#B0B8C4",
-        DARK_GRAY: "#6B7280",
-        BLACK: "#1A1A1A",
+        LIGHT_GRAY: "#E6ECF8",
+        GRAY: "#CBD6EE",
+        DARK_GRAY: "#334155",
+        BLACK: "#020617",
 
-        // Primary colors - bright and vibrant
-        BLUE: "#60A5FA",
-        CYAN: "#22D3EE",
-        TEAL: "#2DD4BF",
-        GREEN: "#4ADE80",
-        LIME: "#A3E635",
-        YELLOW: "#FDE047",
-        ORANGE: "#FB923C",
-        RED: "#F87171",
-        PINK: "#F472B6",
-        MAGENTA: "#E879F9",
-        PURPLE: "#C084FC",
-        INDIGO: "#818CF8",
-        BROWN: "#964B00",
+        BLUE: "#3ABEFF",
+        SKY: "#46D1FF",
+        INDIGO: "#7C83FF",
+        NAVY: "#2647FF",
+        CYAN: "#1FEDFF",
+        TEAL: "#2FEFDA",
+        MINT: "#63F9D2",
+        GREEN: "#3BEF94",
+        PURE_GREEN: "#2ED67A",
+        EMERALD: "#44F0B2",
+        LIME: "#C9FF6A",
+        YELLOW: "#FFE066",
+        GOLD: "#FFC857",
+        ORANGE: "#FF9548",
+        AMBER: "#FFD36B",
+        RED: "#FF5E6C",
+        CRIMSON: "#FF3F74",
+        ROSE: "#FF86A5",
+        CORAL: "#FF8A78",
+        PINK: "#FF9CDA",
+        MAGENTA: "#FF75F3",
+        FUCHSIA: "#EA5BFF",
+        PURPLE: "#B06BFF",
+        VIOLET: "#9D64FF",
+        LAVENDER: "#D0B6FF",
 
-        // Extended palette
-        SKY: "#7DD3FC",
-        EMERALD: "#34D399",
-        AMBER: "#FCD34D",
-        ROSE: "#FB7185",
-        FUCHSIA: "#E879F9",
-        VIOLET: "#A78BFA",
+        BROWN: "#9C6B46",
+        SAND: "#F1D7A2",
+        SLATE: "#A8B7D4",
+        STEEL: "#8FA2C3",
+        FOREST: "#1FA175",
 
-        // Specialty colors
-        GOLD: "#FBBF24",
-        CORAL: "#FCA5A5",
-        MINT: "#6EE7B7",
-        LAVENDER: "#C4B5FD",
-        PEACH: "#FDBA74",
+        NORD: "#9AD7E4",
+        NORD_FROST: "#9FDFDC",
+        NORD_NIGHT: "#2F3D61",
 
-        // Muted variants (still visible)
-        SLATE: "#94A3B8",
-        STEEL: "#94A9C9",
-        SAND: "#E8D4A2",
-        NAVY: "#5B7FC7",
-        FOREST: "#6EE7B7",
-        CRIMSON: "#FCA5A5",
+        PEACH: "#FFC49C",
+        NEON_BLUE: "#53C7FF",
+        NEON_GREEN: "#8BFF9C",
+        NEON_PINK: "#FF7DE0",
+        ELECTRIC_PURPLE: "#B689FF",
 
-        // Accent colors
-        NEON_BLUE: "#38BDF8",
-        NEON_GREEN: "#84CC16",
-        NEON_PINK: "#F472B6",
-        ELECTRIC_PURPLE: "#A855F7",
-
-        // Soft pastels (adjusted for dark bg)
-        SOFT_BLUE: "#93C5FD",
-        SOFT_GREEN: "#86EFAC",
-        SOFT_YELLOW: "#FDE68A",
-        SOFT_PINK: "#FBCFE8",
+        SOFT_BLUE: "#A7D3FF",
+        SOFT_GREEN: "#9CF7D1",
+        SOFT_YELLOW: "#FFEAA0",
+        SOFT_PINK: "#FFD2EB",
     };
 
-    parts.push("\n# Script color palette - Optimized for #2D2D2D background");
+    parts.push("\n# Script color palette - Optimized for #1E1E1E background");
     const paletteEntries = Object.entries(colorPalette);
     paletteEntries.forEach(([name, hex]) => {
         parts.push(`${name} = "${hex}"`);
@@ -1225,7 +1278,7 @@ def set_camera_for_3d_scene(scene, mobjects, distance_factor=1.5, fov=None):
 export const DEFAULT_LANDSCAPE_CONFIG: LayoutConfig = {
     frameWidth: 14.2,
     frameHeight: 8.0,
-    safeMargin: 0.5,
+    safeMargin: 0.72,
     orientation: "landscape",
     contentType: "mixed",
 };
@@ -1233,7 +1286,7 @@ export const DEFAULT_LANDSCAPE_CONFIG: LayoutConfig = {
 export const DEFAULT_PORTRAIT_CONFIG: LayoutConfig = {
     frameWidth: 7.2,
     frameHeight: 12.8,
-    safeMargin: 0.6,
+    safeMargin: 0.85,
     orientation: "portrait",
     contentType: "mixed",
 };

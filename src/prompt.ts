@@ -134,9 +134,10 @@ Video Structure Requirements:
   * Code/system content: ORANGE
   * Arrows/lines: WHITE
   * Background shapes: GRAY (low opacity)
-  - AVAILABLE NAMED COLORS (ONLY THESE): WHITE, BLACK, GRAY, DARK_GRAY, LIGHT_GRAY, YELLOW, GOLD, ORANGE, CORAL, RED, CRIMSON, PINK, MAGENTA, BLUE, INDIGO, CYAN, TEAL, PURE_GREEN, EMERALD, LIME, PURPLE, VIOLET, LAVENDER, NORD, NORD_FROST, NORD_NIGHT, SLATE, STEEL, SAND, BROWN, SKY, FUCHSIA, MINT, NAVY
+  - AVAILABLE NAMED COLORS (ONLY THESE): WHITE, BLACK, GRAY, DARK_GRAY, LIGHT_GRAY, SLATE, STEEL, SAND, BROWN, BLUE, SKY, NAVY, INDIGO, CYAN, TEAL, MINT, GREEN, PURE_GREEN, EMERALD, LIME, YELLOW, GOLD, AMBER, ORANGE, PEACH, CORAL, ROSE, RED, CRIMSON, PINK, MAGENTA, FUCHSIA, PURPLE, VIOLET, LAVENDER, FOREST, NORD, NORD_FROST, NORD_NIGHT, NEON_BLUE, NEON_GREEN, NEON_PINK, ELECTRIC_PURPLE, SOFT_BLUE, SOFT_GREEN, SOFT_YELLOW, SOFT_PINK.
   - If a different color is required, **use its HEX string literal instead of inventing a new named color** (example: 'color="#1ABC9C"').
-  - NEVER reference color names outside this list.
+  - NEVER reference color names outside this list; fall back to HEX when needed.
+  - Typography is locked to the Inter typeface via the injected Tex template—leave fonts alone and keep using create_tex_label / MathTex for all text.
   - USE ONLY BASIC SHAPES: Circle, Square, Rectangle, Tex, MathTex, Arrow, Line, Dot
   - Scene must be named "MyScene" and inherit from VoiceoverScene
   - REQUIRED IMPORTS (always include these):
@@ -155,6 +156,7 @@ Video Structure Requirements:
 1. ✨ Visual Clarity & Simplicity:
    - Keep ALL objects clearly visible on screen
    - Use consistent scale for similar elements
+   - Introduce every new mobject with a reveal animation (Write, Create, FadeIn, LaggedStart, etc.) before leaving it on screen—never drop elements in with raw self.add.
    - USE AUTO-INJECTED FONT SIZES: The layout system provides FONT_TITLE, FONT_HEADING, FONT_BODY, FONT_MATH, FONT_CAPTION, FONT_LABEL constants that are automatically sized for the video orientation (larger for portrait/shorts)
    - ALWAYS use these constants instead of hardcoding font sizes: create_tex_label("Title", font_size=FONT_TITLE)
    - USE FONT_MATH for all mathematical formulae: MathTex(r"E = mc^2", font_size=FONT_MATH)
@@ -366,7 +368,7 @@ MOST IMPORTANTLY: Always leave a margin around the screen so that nothing goes o
 - This is especially important in loops and temporary variables!
 
 Code Implementation (KEEP ROBUST):
-- ONLY use: self.play(), FadeIn, FadeOut, Create (avoid Transform)
+- Every visual change must use an animation: prefer Write for new text, Create for shapes, FadeIn/FadeOut for transitions, and ReplacementTransform/Transform for evolving related objects; LaggedStart and Succession are welcome for staggered reveals.
 - Keep code structured and readable
 - Follow Python best practices
 - Use clear, descriptive variable names (never shadow built-ins!)
