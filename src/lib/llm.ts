@@ -25,19 +25,19 @@ async function generateTextWithTracking<T extends Parameters<typeof generateText
 ): Promise<Awaited<ReturnType<typeof generateText>>> {
   try {
     const result = await generateText(config);
-    
+
     // Report success if this was a Google model
     if (googleConfig) {
       reportSuccess(googleConfig.provider);
     }
-    
+
     return result;
   } catch (error) {
     // Report error if this was a Google model
     if (googleConfig) {
       reportError(googleConfig.provider, error);
     }
-    
+
     throw error;
   }
 }
@@ -113,10 +113,10 @@ function loadManimReferenceDocs(): ManimReferenceDocs {
 async function detectLanguageWithLLM(text: string): Promise<string> {
   try {
     const googleModel = createGoogleModel("gemini-2.5-flash-lite");
-    
+
     // Truncate text to avoid excessive token usage (first 500 chars should be enough)
     const sampleText = text.slice(0, 500);
-    
+
     const { text: response } = await generateTextWithTracking(
       {
         model: googleModel.provider(googleModel.modelId),
@@ -129,19 +129,19 @@ Do not provide any explanation, just the language name.`,
       },
       googleModel
     );
-    
+
     const detectedLang = response.trim().toLowerCase();
-    
+
     // Validate the response is a known language
     const validLanguages = [
       'english', 'spanish', 'french', 'german', 'italian', 'portuguese',
       'russian', 'chinese', 'japanese', 'korean', 'hindi', 'arabic'
     ];
-    
+
     if (validLanguages.includes(detectedLang)) {
       return detectedLang;
     }
-    
+
     console.warn(`LLM returned unexpected language: "${detectedLang}", defaulting to english`);
     return 'english';
   } catch (error) {
@@ -222,7 +222,7 @@ export async function generateVoiceoverScript({
     "Directive: Develop each BODY line with concrete explanations, definitions, or reasoning so the listener learns how and why—not just what.",
     "Directive: Ensure the worked example and reflection lines explicitly reference the same core concept and build on prior steps.",
     "Directive: Maintain smooth flow by referencing prior steps and previewing what comes next.",
-    "Directive: When you mention an acronym, initialism, or all-caps mnemonic, write ONLY the phonetic pronunciation in lowercase without showing the uppercase form or parentheses, so TTS reads it naturally once (e.g., write "soah caah toa" instead of "SOH CAH TOA", write "dee en ay" instead of "DNA"). For well-known acronyms that TTS handles correctly (like "NASA" or "FBI"), you may use the standard form.",
+    "Directive: When you mention an acronym, initialism, or all-caps mnemonic, write ONLY the phonetic pronunciation in lowercase without showing the uppercase form or parentheses, so TTS reads it naturally once (e.g., write 'soah caah toa' instead of 'SOH CAH TOA', write 'dee en ay' instead of 'DNA'). For well-known acronyms that TTS handles correctly (like 'NASA' or 'FBI'), you may use the standard form.",
     "Draft the narration segments:",
   ].join("\n\n");
 
@@ -278,7 +278,7 @@ export async function generateManimScript({
       await sleep(delayMs);
     }
   }
-  
+
   // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
   const flashModel = createGoogleModel("gemini-2.5-flash");
   const { text: flashText } = await generateTextWithTracking(
@@ -495,7 +495,7 @@ export async function regenerateManimScriptWithError({
       await sleep(delayMs);
     }
   }
-  
+
   // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
   const flashModel = createGoogleModel("gemini-2.5-flash");
   const { text: flashText } = await generateTextWithTracking(

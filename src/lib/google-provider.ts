@@ -1,5 +1,5 @@
 import { createGoogleGenerativeAI, type GoogleGenerativeAIProvider } from "@ai-sdk/google";
-import { GoogleKeyHealthManager, KeyStatus } from "./google-key-manager";
+import { GoogleKeyHealthManager } from "./google-key-manager";
 
 const GOOGLE_KEY_PREFIX = "GOOGLE_GENERATIVE_AI_API_KEY_";
 
@@ -22,7 +22,7 @@ const providerKeyMap = new WeakMap<GoogleGenerativeAIProvider, string>();
 
 const getNextApiKey = () => {
   const selection = keyManager.selectKey();
-  
+
   // Optional debug logging (only if DEBUG_API_KEYS is set)
   if (process.env.DEBUG_API_KEYS === "true") {
     console.log(
@@ -30,17 +30,17 @@ const getNextApiKey = () => {
       `(${selection.key.slice(0, 8)}...) - Status: ${selection.health.status}`
     );
   }
-  
+
   return selection.key;
 };
 
 export const createGoogleProvider = (): GoogleGenerativeAIProvider => {
   const apiKey = getNextApiKey();
   const provider = createGoogleGenerativeAI({ apiKey });
-  
+
   // Store the key associated with this provider for error reporting
   providerKeyMap.set(provider, apiKey);
-  
+
   return provider;
 };
 
