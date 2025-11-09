@@ -1,12 +1,46 @@
 import { MANIM_SYSTEM_PROMPT, VOICEOVER_SYSTEM_PROMPT } from "@/prompt";
-import { generateText } from "ai";
+import { generateText, LanguageModel } from "ai";
 import fs from "fs";
 import path from "path";
-import { createGoogleProvider } from "./google-provider";
+import { createGoogleProvider, reportSuccess, reportError } from "./google-provider";
 import { selectGroqModel, GROQ_MODEL_IDS } from "./groq-provider";
 import { RenderLogEntry, ValidationStage } from "@/lib/types";
 
-const google = (modelId: string) => createGoogleProvider()(modelId);
+interface GoogleModelConfig {
+  modelId: string;
+  provider: ReturnType<typeof createGoogleProvider>;
+}
+
+const createGoogleModel = (modelId: string): GoogleModelConfig => {
+  const provider = createGoogleProvider();
+  return { modelId, provider };
+};
+
+/**
+ * Wrapper for generateText that automatically reports success/failure to key manager
+ */
+async function generateTextWithTracking<T extends Parameters<typeof generateText>[0]>(
+  config: T & { model: LanguageModel },
+  googleConfig?: GoogleModelConfig
+): Promise<Awaited<ReturnType<typeof generateText>>> {
+  try {
+    const result = await generateText(config);
+    
+    // Report success if this was a Google model
+    if (googleConfig) {
+      reportSuccess(googleConfig.provider);
+    }
+    
+    return result;
+  } catch (error) {
+    // Report error if this was a Google model
+    if (googleConfig) {
+      reportError(googleConfig.provider, error);
+    }
+    
+    throw error;
+  }
+}
 
 // Retry helpers for Gemini calls
 const SLEEP_MIN_MS = 30_000;
@@ -72,88 +106,48 @@ function loadManimReferenceDocs(): ManimReferenceDocs {
   return cachedManimDocs;
 }
 
-function detectLanguage(text: string): string {
-  const lowerText = text.toLowerCase();
-
-  // Check for distinctive scripts first (highest confidence)
-
-  // Russian (Cyrillic) - check before word patterns
-  if (/[а-яА-ЯёЁ]/.test(text)) {
-    return 'russian';
+/**
+ * Detects the language of the given text using LLM.
+ * Falls back to 'english' if detection fails.
+ */
+async function detectLanguageWithLLM(text: string): Promise<string> {
+  try {
+    const googleModel = createGoogleModel("gemini-2.5-flash-lite");
+    
+    // Truncate text to avoid excessive token usage (first 500 chars should be enough)
+    const sampleText = text.slice(0, 500);
+    
+    const { text: response } = await generateTextWithTracking(
+      {
+        model: googleModel.provider(googleModel.modelId),
+        system: `You are a language detection expert. Analyze the given text and identify its primary language. 
+Respond with ONLY ONE lowercase language name from this list: english, spanish, french, german, italian, portuguese, russian, chinese, japanese, korean, hindi, arabic.
+If the text is in multiple languages, return the dominant one. If you cannot determine the language with confidence, return "english".
+Do not provide any explanation, just the language name.`,
+        prompt: `Detect the language of this text:\n\n${sampleText}`,
+        temperature: 0,
+      },
+      googleModel
+    );
+    
+    const detectedLang = response.trim().toLowerCase();
+    
+    // Validate the response is a known language
+    const validLanguages = [
+      'english', 'spanish', 'french', 'german', 'italian', 'portuguese',
+      'russian', 'chinese', 'japanese', 'korean', 'hindi', 'arabic'
+    ];
+    
+    if (validLanguages.includes(detectedLang)) {
+      return detectedLang;
+    }
+    
+    console.warn(`LLM returned unexpected language: "${detectedLang}", defaulting to english`);
+    return 'english';
+  } catch (error) {
+    console.error('Language detection failed:', error);
+    return 'english'; // Default fallback
   }
-
-  // Arabic - check before word patterns
-  if (/[\u0600-\u06ff]/.test(text)) {
-    return 'arabic';
-  }
-
-  // Hindi (Devanagari) - check before word patterns
-  if (/[\u0900-\u097f]/.test(text)) {
-    return 'hindi';
-  }
-
-  // Korean (Hangul) - check before word patterns
-  if (/[\uac00-\ud7af]/.test(text)) {
-    return 'korean';
-  }
-
-  // Japanese (Hiragana/Katakana) - check before CJK to avoid confusion with Chinese
-  if (/[\u3040-\u309f\u30a0-\u30ff]/.test(text)) {
-    return 'japanese';
-  }
-
-  // Chinese (CJK) - after Japanese check
-  if (/[\u4e00-\u9fff]/.test(text)) {
-    return 'chinese';
-  }
-
-  // Check for distinctive diacritics and patterns for European languages
-
-  // Portuguese - distinctive nasal vowels and specific patterns
-  if (/[ãõ]/.test(text) || /\b(não|são|também|está|muito|português)\b/.test(lowerText)) {
-    return 'portuguese';
-  }
-
-  // Spanish - check for distinctive patterns
-  if (/[ñ¿¡]/.test(text) || /\b(español|qué|cómo|dónde|cuándo)\b/.test(lowerText)) {
-    return 'spanish';
-  }
-
-  // French - check for distinctive accents and common words
-  if (/[àâæçéèêëïîôùûüÿœ]/.test(text) || /\b(français|où|être|avoir|très)\b/.test(lowerText)) {
-    return 'french';
-  }
-
-  // German - check for umlauts and distinctive words
-  if (/[äöüß]/.test(text) || /\b(der|die|das|und|nicht|ich|sie|werden|können)\b/.test(lowerText)) {
-    return 'german';
-  }
-
-  // Italian - check for distinctive patterns
-  if (/\b(italiano|perché|così|può|già|più)\b/.test(lowerText)) {
-    return 'italian';
-  }
-
-  // Count matches for ambiguous cases (when no distinctive features found)
-  const spanishWords = (lowerText.match(/\b(el|la|los|las|un|una|es|por|con|del|hola|mundo|esto)\b/g) || []).length;
-  const portugueseWords = (lowerText.match(/\b(o|a|os|as|um|uma|de|em|para|por|olá|este)\b/g) || []).length;
-  const frenchWords = (lowerText.match(/\b(le|la|les|un|une|de|du|des|et|est|pour|dans|bonjour|monde)\b/g) || []).length;
-  const italianWords = (lowerText.match(/\b(il|lo|la|i|gli|le|un|uno|una|di|da|in|e|che|ciao)\b/g) || []).length;
-
-  // Calculate word count to adjust threshold
-  const wordCount = lowerText.split(/\s+/).length;
-  const threshold = wordCount < 20 ? 2 : 3; // Lower threshold for shorter texts
-
-  // If we have multiple matches from the same language group, use that
-  const maxMatches = Math.max(spanishWords, portugueseWords, frenchWords, italianWords);
-  if (maxMatches >= threshold) {
-    if (spanishWords === maxMatches) return 'spanish';
-    if (portugueseWords === maxMatches) return 'portuguese';
-    if (frenchWords === maxMatches) return 'french';
-    if (italianWords === maxMatches) return 'italian';
-  }
-
-  return 'english';
 }
 
 function buildAugmentedSystemPrompt(base: string, language?: string): string {
@@ -214,7 +208,7 @@ export async function generateVoiceoverScript({
   prompt,
 }: VoiceoverScriptRequest): Promise<string> {
   // const model = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
-  const model = google("gemini-2.5-flash")
+  const googleModel = createGoogleModel("gemini-2.5-flash");
 
   const systemPrompt = VOICEOVER_SYSTEM_PROMPT;
 
@@ -232,11 +226,14 @@ export async function generateVoiceoverScript({
     "Draft the narration segments:",
   ].join("\n\n");
 
-  const { text } = await generateText({
-    model,
-    system: systemPrompt,
-    prompt: composedPrompt,
-  });
+  const { text } = await generateTextWithTracking(
+    {
+      model: googleModel.provider(googleModel.modelId),
+      system: systemPrompt,
+      prompt: composedPrompt,
+    },
+    googleModel
+  );
 
   return text.trim();
 }
@@ -245,21 +242,25 @@ export async function generateManimScript({
   prompt,
   voiceoverScript,
 }: ManimScriptRequest): Promise<string> {
-  // Detect language from voiceover script
-  const detectedLanguage = detectLanguage(voiceoverScript);
+  // Detect language from voiceover script using LLM
+  const detectedLanguage = await detectLanguageWithLLM(voiceoverScript);
   console.log(`Detected language: ${detectedLanguage}`);
 
   const augmentedSystemPrompt = buildAugmentedSystemPrompt(MANIM_SYSTEM_PROMPT, detectedLanguage);
+  const generationPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration with purposeful, step-by-step visuals that directly reinforce each narrated idea while staying on the same core topic:`;
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
+    const googleModel = createGoogleModel("gemini-2.5-pro");
     try {
-      const model = google("gemini-2.5-pro");
-      const { text } = await generateText({
-        model,
-        system: augmentedSystemPrompt,
-        prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration with purposeful, step-by-step visuals that directly reinforce each narrated idea while staying on the same core topic:`,
-        temperature: 0.1,
-      });
+      const { text } = await generateTextWithTracking(
+        {
+          model: googleModel.provider(googleModel.modelId),
+          system: augmentedSystemPrompt,
+          prompt: generationPrompt,
+          temperature: 0.1,
+        },
+        googleModel
+      );
 
       const code = text
         .replace(/```python?\n?/g, "")
@@ -277,13 +278,18 @@ export async function generateManimScript({
       await sleep(delayMs);
     }
   }
-  const flashModel = google("gemini-2.5-flash");
-  const { text: flashText } = await generateText({
-    model: flashModel,
-    system: augmentedSystemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration with purposeful, step-by-step visuals that directly reinforce each narrated idea while staying on the same core topic:`,
-    temperature: 0.1,
-  });
+  
+  // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
+  const flashModel = createGoogleModel("gemini-2.5-flash");
+  const { text: flashText } = await generateTextWithTracking(
+    {
+      model: flashModel.provider(flashModel.modelId),
+      system: augmentedSystemPrompt,
+      prompt: generationPrompt,
+      temperature: 0.1,
+    },
+    flashModel
+  );
   const code = flashText
     .replace(/```python?\n?/g, "")
     .replace(/```\n?/g, "")
@@ -355,8 +361,8 @@ export async function regenerateManimScriptWithError({
   forcedReason,
   repeatedErrorCount = 0,
 }: RegenerateManimScriptRequest): Promise<string> {
-  // Detect language from voiceover script
-  const detectedLanguage = detectLanguage(voiceoverScript);
+  // Detect language from voiceover script using LLM
+  const detectedLanguage = await detectLanguageWithLLM(voiceoverScript);
   console.log(`Detected language for regeneration: ${detectedLanguage}`);
 
   const augmentedSystemPrompt = buildAugmentedSystemPrompt(MANIM_SYSTEM_PROMPT, detectedLanguage);
@@ -458,15 +464,20 @@ export async function regenerateManimScriptWithError({
     "You must analyze the failure, apply all necessary fixes, and generate a corrected Manim script that:\n1. Resolves the specific error\n2. Follows the narration timeline\n3. Uses proper Manim syntax and best practices\n4. Avoids repeating any previous mistakes or failing scripts\n5. Differs meaningfully from the broken script when required\n\nReturn ONLY the fully corrected Python code with no commentary, no analysis, and no Markdown fences. Provide just the executable script:",
   ].filter((section) => section && section.trim().length > 0);
 
+  const regenerationPrompt = promptSections.join("\n\n");
+
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
+    const googleModel = createGoogleModel("gemini-2.5-pro");
     try {
-      const model = google("gemini-2.5-pro");
-      const { text } = await generateText({
-        model,
-        system: augmentedSystemPrompt,
-        prompt: promptSections.join("\n\n"),
-        temperature: 0.1,
-      });
+      const { text } = await generateTextWithTracking(
+        {
+          model: googleModel.provider(googleModel.modelId),
+          system: augmentedSystemPrompt,
+          prompt: regenerationPrompt,
+          temperature: 0.1,
+        },
+        googleModel
+      );
 
       const code = text
         .replace(/```python?\n?/g, "")
@@ -484,14 +495,18 @@ export async function regenerateManimScriptWithError({
       await sleep(delayMs);
     }
   }
+  
   // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
-  const flashModel = google("gemini-2.5-flash");
-  const { text: flashText } = await generateText({
-    model: flashModel,
-    system: augmentedSystemPrompt,
-    prompt: promptSections.join("\n\n"),
-    temperature: 0.1,
-  });
+  const flashModel = createGoogleModel("gemini-2.5-flash");
+  const { text: flashText } = await generateTextWithTracking(
+    {
+      model: flashModel.provider(flashModel.modelId),
+      system: augmentedSystemPrompt,
+      prompt: regenerationPrompt,
+      temperature: 0.1,
+    },
+    flashModel
+  );
   const code = flashText
     .replace(/```python?\n?/g, "")
     .replace(/```\n?/g, "")

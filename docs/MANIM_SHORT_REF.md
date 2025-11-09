@@ -445,22 +445,35 @@ These hard rules are designed to prevent overlapping labels and off‑screen con
 6. **Bullet points and lists.**
 
    - **Alignment:** Bullet points MUST start at the LEFT side of the frame, not centered.
-   - **Left-aligned pattern:**
+   - **RECOMMENDED:** Use the `create_bullet_list` helper function:
 
      ```python
-     # GOOD: Left-aligned bullets
-     bullet1 = Text("• First point", font_size=36)
-     bullet2 = Text("• Second point", font_size=36)
-     bullet3 = Text("• Third point", font_size=36)
-     bullets = VGroup(bullet1, bullet2, bullet3).arrange(DOWN, buff=0.3, aligned_edge=LEFT)
-     bullets.to_edge(LEFT, buff=1.0)  # Start from left side
+     # BEST: Use create_bullet_list for safe, consistent bullets
+     bullets = create_bullet_list(
+         ["First point", "Second point", "Third point"],
+         font_size=FONT_BODY,
+         item_buff=0.8,
+         edge_buff=1.2
+     )
+     ```
+
+   - **Alternative manual pattern:**
+
+     ```python
+     # GOOD: Left-aligned bullets with create_bullet_item
+     bullet1 = create_bullet_item("First point", font_size=FONT_BODY)
+     bullet2 = create_bullet_item("Second point", font_size=FONT_BODY)
+     bullet3 = create_bullet_item("Third point", font_size=FONT_BODY)
+     bullets = VGroup(bullet1, bullet2, bullet3).arrange(DOWN, buff=0.8, aligned_edge=LEFT)
+     bullets.to_edge(LEFT, buff=1.2)
 
      # BAD: Centered bullets (looks wrong)
      bullets = VGroup(bullet1, bullet2, bullet3).arrange(DOWN).move_to(ORIGIN)
      ```
 
-   - **Bullet spacing:** `buff=0.3` to `buff=0.4` between items.
+   - **Bullet spacing:** `buff=0.8` between items (never less).
    - **Max bullets visible:** No more than 5-6 bullets on screen at once.
+   - **IMPORTANT:** Never use `\textbullet~` syntax - it causes LaTeX errors. Use helper functions instead.
 
 7. **Z-order and readability.**
 
@@ -674,7 +687,7 @@ Key reminders:
 
 - Split long text into multiple lines (max width ~12 units)
 - Titles at top (`to_edge(UP, buff=0.5)`), content at center (`ORIGIN`) or below
-- Bullet points must be LEFT-aligned (`to_edge(LEFT, buff=1.0)`)
+- Bullet points must be LEFT-aligned (use `create_bullet_list` or `to_edge(LEFT, buff=1.2)`)
 - Minimum 0.8 units vertical spacing between title and content
 - Clear previous content before showing new sections
 - Check text width after creation: `text.width <= 13.4`

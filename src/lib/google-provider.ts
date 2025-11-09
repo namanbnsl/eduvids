@@ -1,4 +1,5 @@
 import { createGoogleGenerativeAI, type GoogleGenerativeAIProvider } from "@ai-sdk/google";
+import { GoogleKeyHealthManager, KeyStatus } from "./google-key-manager";
 
 const GOOGLE_KEY_PREFIX = "GOOGLE_GENERATIVE_AI_API_KEY_";
 
@@ -13,29 +14,113 @@ if (!googleApiKeys.length) {
   );
 }
 
-let nextApiKeyIndex = 0;
+// Initialize the key health manager
+const keyManager = new GoogleKeyHealthManager(googleApiKeys);
+
+// Track which key was used for each provider instance to report success/errors
+const providerKeyMap = new WeakMap<GoogleGenerativeAIProvider, string>();
 
 const getNextApiKey = () => {
-  const apiKey = googleApiKeys[nextApiKeyIndex];
-  const currentIndex = nextApiKeyIndex;
-  nextApiKeyIndex = (nextApiKeyIndex + 1) % googleApiKeys.length;
+  const selection = keyManager.selectKey();
   
   // Optional debug logging (only if DEBUG_API_KEYS is set)
   if (process.env.DEBUG_API_KEYS === "true") {
-    console.log(`[Google Provider] Using API key ${currentIndex + 1}/${googleApiKeys.length} (${apiKey.slice(0, 8)}...)`);
+    console.log(
+      `[Google Provider] Using API key ${selection.index + 1}/${googleApiKeys.length} ` +
+      `(${selection.key.slice(0, 8)}...) - Status: ${selection.health.status}`
+    );
   }
   
-  return apiKey;
+  return selection.key;
 };
 
 export const createGoogleProvider = (): GoogleGenerativeAIProvider => {
   const apiKey = getNextApiKey();
-  return createGoogleGenerativeAI({ apiKey });
+  const provider = createGoogleGenerativeAI({ apiKey });
+  
+  // Store the key associated with this provider for error reporting
+  providerKeyMap.set(provider, apiKey);
+  
+  return provider;
+};
+
+/**
+ * Report a successful API call (call this after successful generation)
+ */
+export const reportSuccess = (provider: GoogleGenerativeAIProvider): void => {
+  const apiKey = providerKeyMap.get(provider);
+  if (apiKey) {
+    keyManager.reportSuccess(apiKey);
+  }
+};
+
+/**
+ * Report an API error (call this when generation fails)
+ */
+export const reportError = (provider: GoogleGenerativeAIProvider, error: unknown): void => {
+  const apiKey = providerKeyMap.get(provider);
+  if (apiKey) {
+    keyManager.reportError(apiKey, error);
+  }
+};
+
+/**
+ * Manually mark a specific API key as blocked
+ */
+export const markKeyBlocked = (keyIndex: number): void => {
+  if (keyIndex >= 0 && keyIndex < googleApiKeys.length) {
+    keyManager.markKeyBlocked(googleApiKeys[keyIndex]);
+  }
+};
+
+/**
+ * Manually mark a specific API key as healthy
+ */
+export const markKeyHealthy = (keyIndex: number): void => {
+  if (keyIndex >= 0 && keyIndex < googleApiKeys.length) {
+    keyManager.markKeyHealthy(googleApiKeys[keyIndex]);
+  }
+};
+
+/**
+ * Reset all keys to healthy state
+ */
+export const resetAllKeys = (): void => {
+  keyManager.resetAllKeys();
+};
+
+/**
+ * Get current health status of all keys
+ */
+export const getKeyHealthStatus = () => {
+  return keyManager.getHealthStatus();
+};
+
+/**
+ * Get statistics about key usage
+ */
+export const getKeyStats = () => {
+  return keyManager.getStats();
+};
+
+/**
+ * Print detailed health report to console
+ */
+export const printHealthReport = (): void => {
+  keyManager.printHealthReport();
 };
 
 // Export info about the key pool for debugging
-export const getKeyPoolInfo = () => ({
-  totalKeys: googleApiKeys.length,
-  currentIndex: nextApiKeyIndex,
-  hasMultipleKeys: googleApiKeys.length > 1,
-});
+export const getKeyPoolInfo = () => {
+  const stats = keyManager.getStats();
+  return {
+    totalKeys: googleApiKeys.length,
+    hasMultipleKeys: googleApiKeys.length > 1,
+    healthyKeys: stats.healthy,
+    blockedKeys: stats.blocked,
+    rateLimitedKeys: stats.rateLimited,
+    quotaExceededKeys: stats.quotaExceeded,
+    totalSuccesses: stats.totalSuccesses,
+    totalErrors: stats.totalErrors,
+  };
+};

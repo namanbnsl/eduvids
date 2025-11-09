@@ -374,6 +374,7 @@ export async function renderManimVideo({
       { logs: [...renderLogs] }
     );
   }
+
   const warnings: ValidationWarning[] = [...heuristicResult.warnings];
   let sandbox: Sandbox | null = null;
   let cleanupAttempted = false;
@@ -645,7 +646,7 @@ export async function renderManimVideo({
       hint: "Ensure MyScene imports correctly, inherits from manim.Scene, and defines construct(self).",
     });
 
-    if (plugins.includes("manim-ml")) {
+    if (plugins.includes("manim_ml")) {
       await runCommandOrThrow("pip install manim-ml", {
         description: "Plugin installation (manim-ml)",
         stage: "plugin-installation",

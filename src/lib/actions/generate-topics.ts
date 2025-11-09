@@ -6,11 +6,9 @@ import { createGoogleProvider } from "@/lib/google-provider";
 export async function generateTopics(): Promise<string[]> {
   if (process.env.NODE_ENV === "production") {
     try {
-      const google = createGoogleProvider();
-      const model = google("gemini-2.5-flash-lite");
-
+      // Create a new provider instance to rotate API keys
       const { text } = await generateText({
-        model,
+        model: createGoogleProvider()("gemini-2.5-flash-lite"),
         prompt: `Generate 2 fun and interesting video/short topic ideas for an educational content platform focused on math, physics, and chemistry.
 
 Topics should:

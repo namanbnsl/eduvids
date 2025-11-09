@@ -28,6 +28,7 @@ export async function POST(req: Request) {
       '\n\nIMPORTANT: The user has requested a VERTICAL SHORT. When calling generate_video tool, you MUST pass variant="short" to create a vertical/portrait video format.';
   }
 
+  // Create a new provider instance for each request to rotate API keys
   const result = streamText({
     model: createGoogleProvider()("gemini-2.5-flash-lite"),
     toolChoice: "required",

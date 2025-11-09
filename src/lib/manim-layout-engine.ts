@@ -181,58 +181,127 @@ def get_safe_content_bounds(padding=SAFE_SPACING_MIN / 2):
     bottom = -FRAME_HEIGHT/2 + SAFE_MARGIN_BOTTOM + SAFE_BOTTOM_ZONE + padding
     return left, right, top, bottom
 
-def _nudge_into_safe_frame(mobject, padding=SAFE_SPACING_MIN / 2):
+def _nudge_into_safe_frame(mobject, padding=SAFE_SPACING_MIN / 2, recursive=True):
+    """Nudge mobject (and optionally its submobjects) into the safe frame."""
+    # First handle any submobjects if recursive
+    if recursive and hasattr(mobject, 'submobjects') and len(mobject.submobjects) > 0:
+        for submob in mobject.submobjects:
+            _nudge_into_safe_frame(submob, padding=padding, recursive=True)
+    
     left, right, top, bottom = get_safe_content_bounds(padding=padding)
 
-    mob_left = mobject.get_left()[0]
-    mob_right = mobject.get_right()[0]
-    mob_top = mobject.get_top()[1]
-    mob_bottom = mobject.get_bottom()[1]
+    # Get mobject bounds with safe checks
+    try:
+        mob_left = mobject.get_left()[0]
+        mob_right = mobject.get_right()[0]
+        mob_top = mobject.get_top()[1]
+        mob_bottom = mobject.get_bottom()[1]
+    except (IndexError, AttributeError):
+        return mobject
 
     shift_x = 0
     shift_y = 0
 
+    # Check horizontal bounds
     if mob_left < left:
         shift_x = left - mob_left
     elif mob_right > right:
         shift_x = right - mob_right
 
+    # Check vertical bounds
     if mob_top > top:
         shift_y = top - mob_top
     elif mob_bottom < bottom:
         shift_y = bottom - mob_bottom
 
-    if shift_x or shift_y:
+    # Apply shift if needed
+    if abs(shift_x) > 0.01 or abs(shift_y) > 0.01:
         mobject.shift(shift_x * RIGHT + shift_y * UP)
+    
     return mobject
 
-def ensure_fits_width(mobject, max_width=MAX_CONTENT_WIDTH, shrink=True):
+def ensure_fits_width(mobject, max_width=MAX_CONTENT_WIDTH, shrink=True, safety_margin=0.95):
     """Scale mobject to fit within safe width with breathing room"""
-    target_width = max_width
-    if shrink:
-        target_width = max_width
+    if not shrink:
+        return mobject
+    
+    target_width = max_width * safety_margin
     if target_width <= 0:
-        target_width = max_width
-    if mobject.width > target_width:
-        mobject.scale_to_fit_width(target_width)
+        target_width = MAX_CONTENT_WIDTH * safety_margin
+    
+    try:
+        current_width = mobject.width
+        if current_width > target_width and current_width > 0:
+            scale_factor = target_width / current_width
+            mobject.scale(scale_factor)
+    except (AttributeError, ZeroDivisionError):
+        pass
+    
     return mobject
 
-def ensure_fits_height(mobject, max_height=MAX_CONTENT_HEIGHT, shrink=True):
+def ensure_fits_height(mobject, max_height=MAX_CONTENT_HEIGHT, shrink=True, safety_margin=0.95):
     """Scale mobject to fit within safe height with breathing room"""
-    target_height = max_height
-    if shrink:
-        target_height = max_height
+    if not shrink:
+        return mobject
+    
+    target_height = max_height * safety_margin
     if target_height <= 0:
-        target_height = max_height
-    if mobject.height > target_height:
-        mobject.scale_to_fit_height(target_height)
+        target_height = MAX_CONTENT_HEIGHT * safety_margin
+    
+    try:
+        current_height = mobject.height
+        if current_height > target_height and current_height > 0:
+            scale_factor = target_height / current_height
+            mobject.scale(scale_factor)
+    except (AttributeError, ZeroDivisionError):
+        pass
+    
     return mobject
 
-def ensure_fits_screen(mobject, shrink=True):
-    """Scale mobject to fit within safe content area"""
-    mobject = ensure_fits_width(mobject, shrink=shrink)
-    mobject = ensure_fits_height(mobject, shrink=shrink)
-    return _nudge_into_safe_frame(mobject)
+def ensure_fits_screen(mobject, shrink=True, safety_margin=0.95, max_iterations=3):
+    """
+    Scale mobject to fit within safe content area with robust multi-pass fitting.
+    
+    Args:
+        mobject: The mobject to fit
+        shrink: Whether to allow shrinking
+        safety_margin: Safety factor (0.95 = use 95% of available space)
+        max_iterations: Maximum fitting iterations
+    """
+    if not shrink:
+        return _nudge_into_safe_frame(mobject)
+    
+    for iteration in range(max_iterations):
+        # Get current dimensions
+        try:
+            current_width = mobject.width
+            current_height = mobject.height
+        except AttributeError:
+            break
+        
+        if current_width <= 0 or current_height <= 0:
+            break
+        
+        # Calculate target dimensions
+        target_width = MAX_CONTENT_WIDTH * safety_margin
+        target_height = MAX_CONTENT_HEIGHT * safety_margin
+        
+        # Calculate scale factors
+        width_scale = target_width / current_width if current_width > target_width else 1.0
+        height_scale = target_height / current_height if current_height > target_height else 1.0
+        
+        # Use the most restrictive scale factor
+        scale_factor = min(width_scale, height_scale)
+        
+        # If we need to scale, do it
+        if scale_factor < 0.999:
+            mobject.scale(scale_factor)
+        else:
+            # Already fits, we're done
+            break
+    
+    # Final nudge into safe frame
+    return _nudge_into_safe_frame(mobject, recursive=True)
 
 
 def fade_out_scene(scene, *mobjects, run_time=0.6):
@@ -354,11 +423,27 @@ export function getRecommendedFontSizes(
  */
 export function generateLayoutValidation(): string {
     return `# Layout validation helpers
-def validate_position(mobject, label="object"):
-    """Check if mobject is within safe bounds"""
-    center = mobject.get_center()
-    half_width = mobject.width / 2
-    half_height = mobject.height / 2
+def validate_position(mobject, label="object", strict=False, auto_fix=False):
+    """
+    Check if mobject is within safe bounds.
+    
+    Args:
+        mobject: The mobject to validate
+        label: Label for error messages
+        strict: If True, raise an exception on validation failure
+        auto_fix: If True, automatically fix positioning issues
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    try:
+        center = mobject.get_center()
+        half_width = mobject.width / 2
+        half_height = mobject.height / 2
+    except (AttributeError, IndexError):
+        if strict:
+            raise ValueError(f"{label}: Cannot validate - missing required attributes")
+        return True
     
     left = center[0] - half_width
     right = center[0] + half_width
@@ -368,21 +453,58 @@ def validate_position(mobject, label="object"):
     frame_left = -FRAME_WIDTH / 2 + SAFE_MARGIN_LEFT
     frame_right = FRAME_WIDTH / 2 - SAFE_MARGIN_RIGHT
     frame_top = FRAME_HEIGHT / 2 - SAFE_MARGIN_TOP
-    frame_bottom = -FRAME_HEIGHT / 2 + SAFE_MARGIN_BOTTOM
+    frame_bottom = -FRAME_HEIGHT / 2 + SAFE_MARGIN_BOTTOM + SAFE_BOTTOM_ZONE
     
     issues = []
+    overflow_amounts = {}
+    
     if left < frame_left:
-        issues.append(f"{label} extends too far left")
+        overflow = frame_left - left
+        issues.append(f"{label} extends {overflow:.2f} units too far left")
+        overflow_amounts['left'] = overflow
     if right > frame_right:
-        issues.append(f"{label} extends too far right")
+        overflow = right - frame_right
+        issues.append(f"{label} extends {overflow:.2f} units too far right")
+        overflow_amounts['right'] = overflow
     if top > frame_top:
-        issues.append(f"{label} extends too far up")
+        overflow = top - frame_top
+        issues.append(f"{label} extends {overflow:.2f} units too far up")
+        overflow_amounts['top'] = overflow
     if bottom < frame_bottom:
-        issues.append(f"{label} extends too far down")
+        overflow = frame_bottom - bottom
+        issues.append(f"{label} extends {overflow:.2f} units too far down")
+        overflow_amounts['bottom'] = overflow
     
     if issues:
-        print(f"WARNING: {', '.join(issues)}")
+        error_msg = f"[LAYOUT WARNING] {', '.join(issues)}"
+        print(error_msg)
+        
+        if auto_fix:
+            print(f"[LAYOUT ENGINE] Auto-fixing position for {label}")
+            # Try to fix by scaling down and repositioning
+            try:
+                if overflow_amounts:
+                    max_overflow = max(overflow_amounts.values())
+                    # Scale down proportionally to the overflow
+                    current_max_dim = max(mobject.width, mobject.height)
+                    if current_max_dim > 0:
+                        scale_factor = max(0.5, 1.0 - (max_overflow / current_max_dim))
+                        mobject.scale(scale_factor)
+                
+                # Nudge back into frame
+                _nudge_into_safe_frame(mobject, recursive=True)
+                
+                # Validate again
+                return validate_position(mobject, label, strict=False, auto_fix=False)
+            except Exception as e:
+                print(f"[LAYOUT ENGINE] Auto-fix failed for {label}: {e}")
+                if strict:
+                    raise
+        
+        if strict:
+            raise ValueError(error_msg)
         return False
+    
     return True
 
 def safe_add(scene, mobject, auto_fit=True, label="object"):
@@ -490,66 +612,202 @@ def normalize_math_mobject(math_mobject, max_width_ratio=0.65, max_height_ratio=
     return math_mobject
 
 
-def enforce_min_gap(mobjects, min_gap=1.0):
+def enforce_min_gap(mobjects, min_gap=1.0, max_iterations=8, aggressive=True):
+    """
+    Enforce minimum gap between mobjects with robust collision detection.
+    
+    Args:
+        mobjects: List of mobjects to space
+        min_gap: Minimum gap between elements
+        max_iterations: Maximum iterations for collision resolution
+        aggressive: If True, scale down more aggressively when collisions persist
+    """
     items = [m for m in (mobjects or []) if m is not None]
     if len(items) <= 1:
         return VGroup(*items)
 
-    for _ in range(6):
+    # Store original positions for fallback
+    original_positions = [item.get_center().copy() for item in items]
+    
+    # Multiple passes to resolve collisions
+    for iteration in range(max_iterations):
         adjusted = False
+        max_overlap = 0
+        
         for i, a in enumerate(items):
-            for b in items[i + 1:]:
-                delta = b.get_center() - a.get_center()
-                overlap_x = (a.width + b.width) / 2 + min_gap - abs(delta[0])
-                overlap_y = (a.height + b.height) / 2 + min_gap - abs(delta[1])
-                if overlap_x > 0 and overlap_y > 0:
-                    if overlap_x >= overlap_y:
-                        shift = overlap_x / 2
-                        a.shift(-shift * RIGHT)
-                        b.shift(shift * RIGHT)
-                    else:
-                        shift = overlap_y / 2
-                        a.shift(-shift * UP)
-                        b.shift(shift * UP)
-                    adjusted = True
-                    if hasattr(a, "set_z_index"):
-                        a.set_z_index(2)
-                    if hasattr(b, "set_z_index"):
-                        b.set_z_index(2)
+            for j, b in enumerate(items[i + 1:], start=i + 1):
+                try:
+                    # Get accurate bounding info
+                    a_center = a.get_center()
+                    b_center = b.get_center()
+                    delta = b_center - a_center
+                    
+                    # Calculate actual overlap with padding
+                    required_x_gap = (a.width + b.width) / 2 + min_gap
+                    required_y_gap = (a.height + b.height) / 2 + min_gap
+                    
+                    actual_x_dist = abs(delta[0])
+                    actual_y_dist = abs(delta[1])
+                    
+                    overlap_x = required_x_gap - actual_x_dist
+                    overlap_y = required_y_gap - actual_y_dist
+                    
+                    # Check if there's a collision
+                    if overlap_x > 0 and overlap_y > 0:
+                        max_overlap = max(max_overlap, overlap_x, overlap_y)
+                        
+                        # Determine primary direction of separation
+                        if overlap_x >= overlap_y:
+                            # Separate horizontally
+                            shift = (overlap_x / 2) * 1.1  # 10% extra separation
+                            direction = 1 if delta[0] >= 0 else -1
+                            a.shift(-shift * direction * RIGHT)
+                            b.shift(shift * direction * RIGHT)
+                        else:
+                            # Separate vertically
+                            shift = (overlap_y / 2) * 1.1  # 10% extra separation
+                            direction = 1 if delta[1] >= 0 else -1
+                            a.shift(-shift * direction * UP)
+                            b.shift(shift * direction * UP)
+                        
+                        adjusted = True
+                        
+                        # Set z-indices to ensure visibility
+                        if hasattr(a, "set_z_index"):
+                            a.set_z_index(max(getattr(a, 'z_index', 0) or 0, 1))
+                        if hasattr(b, "set_z_index"):
+                            b.set_z_index(max(getattr(b, 'z_index', 0) or 0, 1))
+                            
+                except (AttributeError, IndexError, TypeError):
+                    continue
+        
+        # If we had adjustments, check if we need to scale down
         if adjusted:
-            VGroup(*items).scale(0.97)
-        else:
+            # After separation, check if group still fits
+            group = VGroup(*items)
+            try:
+                if group.width > MAX_CONTENT_WIDTH * 0.95 or group.height > MAX_CONTENT_HEIGHT * 0.95:
+                    # Scale down more aggressively if we're over budget
+                    scale_factor = 0.92 if aggressive else 0.95
+                    group.scale(scale_factor)
+                    adjusted = True
+            except (AttributeError, ZeroDivisionError):
+                pass
+        
+        # If no more collisions, we're done
+        if not adjusted:
             break
-
+    
+    # Final validation and fitting
     group = VGroup(*items)
+    
+    # If we still have major issues after all iterations, try a more aggressive approach
+    try:
+        if group.width > MAX_CONTENT_WIDTH or group.height > MAX_CONTENT_HEIGHT:
+            # Scale to fit with safety margin
+            width_factor = MAX_CONTENT_WIDTH * 0.9 / group.width if group.width > MAX_CONTENT_WIDTH else 1.0
+            height_factor = MAX_CONTENT_HEIGHT * 0.9 / group.height if group.height > MAX_CONTENT_HEIGHT else 1.0
+            scale_factor = min(width_factor, height_factor)
+            if scale_factor < 1.0:
+                group.scale(scale_factor)
+    except (AttributeError, ZeroDivisionError):
+        pass
+    
+    # Final ensure fits
     ensure_fits_screen(group)
     return group
 
 
-def layout_horizontal(mobjects, center=None, buff=1.0):
+def layout_horizontal(mobjects, center=None, buff=1.0, auto_fit=True, align_edge=None):
+    """
+    Arrange mobjects horizontally with proper spacing and fitting.
+    
+    Args:
+        mobjects: List of mobjects to arrange
+        center: Target center position (defaults to content center)
+        buff: Buffer space between elements
+        auto_fit: Whether to automatically fit to screen
+        align_edge: Alignment edge (UP, DOWN, or None for center)
+    """
     items = [m for m in (mobjects or []) if m is not None]
-    group = VGroup(*items)
     if not items:
-        return group
+        return VGroup()
 
-    group.arrange(RIGHT, buff=buff)
-    enforce_min_gap(group.submobjects, min_gap=max(buff, 1.1))
-    ensure_fits_screen(group)
-    group.move_to(center or get_content_center())
+    # First ensure each item fits individually
+    if auto_fit:
+        for item in items:
+            try:
+                max_item_width = MAX_CONTENT_WIDTH * 0.85 / len(items)
+                max_item_height = MAX_CONTENT_HEIGHT * 0.85
+                ensure_fits_width(item, max_width=max_item_width, safety_margin=0.9)
+                ensure_fits_height(item, max_height=max_item_height, safety_margin=0.9)
+            except (AttributeError, ZeroDivisionError):
+                continue
+
+    # Arrange with buffer
+    group = VGroup(*items)
+    group.arrange(RIGHT, buff=buff, aligned_edge=align_edge)
+    
+    # Enforce minimum gaps
+    min_gap = max(buff * 0.8, 0.8)
+    group = enforce_min_gap(group.submobjects, min_gap=min_gap)
+    
+    # Fit to screen
+    if auto_fit:
+        ensure_fits_screen(group)
+    
+    # Position the group
+    target_center = center if center is not None else get_content_center()
+    group.move_to(target_center)
+    
+    # Validate final position
     validate_position(group, "horizontal layout")
     return group
 
 
-def layout_vertical(mobjects, center=None, buff=1.0):
+def layout_vertical(mobjects, center=None, buff=1.0, auto_fit=True, align_edge=None):
+    """
+    Arrange mobjects vertically with proper spacing and fitting.
+    
+    Args:
+        mobjects: List of mobjects to arrange
+        center: Target center position (defaults to content center)
+        buff: Buffer space between elements
+        auto_fit: Whether to automatically fit to screen
+        align_edge: Alignment edge (LEFT, RIGHT, or None for center)
+    """
     items = [m for m in (mobjects or []) if m is not None]
-    group = VGroup(*items)
     if not items:
-        return group
+        return VGroup()
 
-    group.arrange(DOWN, buff=buff)
-    enforce_min_gap(group.submobjects, min_gap=max(buff, 1.1))
-    ensure_fits_screen(group)
-    group.move_to(center or get_content_center())
+    # First ensure each item fits individually
+    if auto_fit:
+        for item in items:
+            try:
+                max_item_width = MAX_CONTENT_WIDTH * 0.85
+                max_item_height = MAX_CONTENT_HEIGHT * 0.85 / len(items)
+                ensure_fits_width(item, max_width=max_item_width, safety_margin=0.9)
+                ensure_fits_height(item, max_height=max_item_height, safety_margin=0.9)
+            except (AttributeError, ZeroDivisionError):
+                continue
+
+    # Arrange with buffer
+    group = VGroup(*items)
+    group.arrange(DOWN, buff=buff, aligned_edge=align_edge)
+    
+    # Enforce minimum gaps
+    min_gap = max(buff * 0.8, 0.8)
+    group = enforce_min_gap(group.submobjects, min_gap=min_gap)
+    
+    # Fit to screen
+    if auto_fit:
+        ensure_fits_screen(group)
+    
+    # Position the group
+    target_center = center if center is not None else get_content_center()
+    group.move_to(target_center)
+    
+    # Validate final position
     validate_position(group, "vertical layout")
     return group
 
@@ -847,9 +1105,15 @@ def build_latex_text(
         if not lines:
             lines = [raw_text]
         escaped_lines = [_escape_latex_text(line) for line in lines]
-        content = r" \\ ".join(escaped_lines)
         base_command = "texttt" if monospace else "text"
-        latex = f"\\{base_command}{{{content}}}"
+        
+        # Create separate \text{} or \texttt{} for each line and join with \\
+        # This avoids "Not allowed in LR mode" error when using \\ inside \text{}
+        if len(escaped_lines) > 1:
+            latex_lines = [f"\\{base_command}{{{line}}}" for line in escaped_lines]
+            latex = r" \\ ".join(latex_lines)
+        else:
+            latex = f"\\{base_command}{{{escaped_lines[0]}}}"
 
     if bold:
         latex = f"\\textbf{{{latex}}}"
@@ -907,8 +1171,23 @@ def create_text_panel(
     text_kwargs=None,
     panel_kwargs=None,
     min_contrast=MIN_CONTRAST_RATIO,
+    max_width=None,
+    max_height=None,
 ):
-    """Create a text label with a readable panel behind it."""
+    """
+    Create a text label with a readable panel behind it.
+    
+    Args:
+        text: Text content
+        font_size: Font size for the text
+        panel_class: Class for the background panel (Rectangle, RoundedRectangle, etc.)
+        panel_padding: Padding around text inside panel
+        text_kwargs: Additional kwargs for text creation
+        panel_kwargs: Additional kwargs for panel creation
+        min_contrast: Minimum contrast ratio for readability
+        max_width: Maximum width constraint (defaults to MAX_CONTENT_WIDTH)
+        max_height: Maximum height constraint (defaults to MAX_CONTENT_HEIGHT)
+    """
 
     text_kwargs = dict(text_kwargs or {})
     panel_kwargs = dict(panel_kwargs or {})
@@ -919,6 +1198,7 @@ def create_text_panel(
     monospace = bool(text_kwargs.pop("monospace", False))
     auto_detect_latex = bool(text_kwargs.pop("auto_detect_latex", True))
 
+    # Create text label
     label = create_tex_label(
         text,
         font_size=font_size,
@@ -930,28 +1210,47 @@ def create_text_panel(
         **text_kwargs,
     )
 
+    # Set constraints
+    if max_width is None:
+        max_width = MAX_CONTENT_WIDTH * 0.85
+    if max_height is None:
+        max_height = MAX_CONTENT_HEIGHT * 0.85
+
+    # Ensure text fits within constraints before creating panel
+    if label.width > max_width * 0.9:
+        label.scale_to_fit_width(max_width * 0.9)
+    if label.height > max_height * 0.9:
+        label.scale_to_fit_height(max_height * 0.9)
+
+    # Calculate panel padding
     if panel_padding is None:
         panel_padding = DEFAULT_PANEL_PADDING
 
+    # Create panel with proper sizing
     h_padding = panel_padding * 2
+    v_padding = panel_padding * 2
+    
     if "width" not in panel_kwargs:
-        panel_kwargs["width"] = label.width + h_padding
+        panel_kwargs["width"] = min(label.width + h_padding, max_width)
     if "height" not in panel_kwargs:
-        panel_kwargs["height"] = label.height + h_padding
+        panel_kwargs["height"] = min(label.height + v_padding, max_height)
 
     panel = panel_class(**panel_kwargs)
 
+    # Apply contrast and readability
     apply_text_panel(label, panel, min_contrast=min_contrast)
 
+    # Position text centered in panel
     label.move_to(panel.get_center())
+    
+    # Set proper z-indices
     panel.set_z_index(1)
     label.set_z_index(panel.z_index + 1)
 
+    # Create group and ensure it fits
     group = VGroup(panel, label)
-    ensure_fits_width(group)
-    ensure_fits_height(group)
-    group = ensure_fits_screen(group)
-    validate_position(group, "text panel")
+    group = ensure_fits_screen(group, safety_margin=0.9)
+    validate_position(group, "text panel", auto_fix=True)
     return group
 
 
@@ -1029,6 +1328,194 @@ def create_bullet_list(
         validate_position(bullets, "bullet list")
 
     return bullets
+`);
+
+    parts.push(`
+
+# ========================================
+# ADVANCED LAYOUT HELPERS
+# ========================================
+
+def create_fitted_group(*mobjects, buff=0.5, direction=DOWN, max_width=MAX_CONTENT_WIDTH, max_height=MAX_CONTENT_HEIGHT):
+    """
+    Create a VGroup with proper fitting and spacing.
+    
+    Args:
+        *mobjects: Mobjects to group
+        buff: Buffer between elements
+        direction: Arrangement direction (DOWN, RIGHT, etc.)
+        max_width: Maximum width constraint
+        max_height: Maximum height constraint
+    
+    Returns:
+        VGroup with fitted mobjects
+    """
+    items = [m for m in mobjects if m is not None]
+    if not items:
+        return VGroup()
+    
+    # Pre-fit each item
+    for item in items:
+        try:
+            if direction == RIGHT or direction == LEFT:
+                item_max_width = max_width * 0.8 / len(items)
+                item_max_height = max_height * 0.8
+            else:  # DOWN or UP
+                item_max_width = max_width * 0.8
+                item_max_height = max_height * 0.8 / len(items)
+            
+            ensure_fits_width(item, max_width=item_max_width, safety_margin=0.9)
+            ensure_fits_height(item, max_height=item_max_height, safety_margin=0.9)
+        except (AttributeError, ZeroDivisionError):
+            continue
+    
+    # Create and arrange group
+    group = VGroup(*items)
+    group.arrange(direction, buff=buff)
+    
+    # Enforce gaps and fit to screen
+    group = enforce_min_gap(group.submobjects, min_gap=max(buff * 0.8, 0.6))
+    group = ensure_fits_screen(group, safety_margin=0.9)
+    
+    # Validate
+    validate_position(group, "fitted group", auto_fix=True)
+    return group
+
+
+def create_title_and_content(title_text, content_mobject, *, title_font_size=FONT_TITLE, spacing=None):
+    """
+    Create a layout with title and content properly spaced.
+    
+    Args:
+        title_text: Title text
+        content_mobject: Content mobject
+        title_font_size: Font size for title
+        spacing: Spacing between title and content (auto-calculated if None)
+    
+    Returns:
+        VGroup containing title and content
+    """
+    # Create title
+    title = create_tex_label(title_text, font_size=title_font_size, bold=True)
+    title.set_color(WHITE)
+    
+    # Ensure title fits
+    ensure_fits_width(title, max_width=MAX_CONTENT_WIDTH * 0.9, safety_margin=0.95)
+    
+    # Position title at safe position
+    title.move_to(get_title_position())
+    
+    # Calculate spacing
+    if spacing is None:
+        spacing = SAFE_SPACING_MIN * 1.2
+    
+    # Ensure content fits in remaining space
+    available_height = MAX_CONTENT_HEIGHT - title.height - spacing
+    ensure_fits_height(content_mobject, max_height=available_height * 0.9, safety_margin=0.95)
+    ensure_fits_width(content_mobject, max_width=MAX_CONTENT_WIDTH * 0.9, safety_margin=0.95)
+    
+    # Position content below title
+    content_mobject.next_to(title, DOWN, buff=spacing)
+    
+    # Create group
+    group = VGroup(title, content_mobject)
+    
+    # Final validation
+    validate_position(group, "title and content", auto_fix=True)
+    return group
+
+
+def create_labeled_diagram(label_text, diagram_mobject, *, position="bottom", label_font_size=FONT_CAPTION, spacing=0.5):
+    """
+    Create a diagram with a label.
+    
+    Args:
+        label_text: Label text
+        diagram_mobject: Diagram mobject
+        position: Label position ("top", "bottom", "left", "right")
+        label_font_size: Font size for label
+        spacing: Spacing between diagram and label
+    
+    Returns:
+        VGroup containing diagram and label
+    """
+    # Create label
+    label = create_tex_label(label_text, font_size=label_font_size)
+    
+    # Ensure diagram fits
+    diagram_max = 0.8
+    ensure_fits_width(diagram_mobject, max_width=MAX_CONTENT_WIDTH * diagram_max, safety_margin=0.95)
+    ensure_fits_height(diagram_mobject, max_height=MAX_CONTENT_HEIGHT * diagram_max, safety_margin=0.95)
+    
+    # Position label relative to diagram
+    if position == "bottom":
+        label.next_to(diagram_mobject, DOWN, buff=spacing)
+    elif position == "top":
+        label.next_to(diagram_mobject, UP, buff=spacing)
+    elif position == "left":
+        label.next_to(diagram_mobject, LEFT, buff=spacing)
+    elif position == "right":
+        label.next_to(diagram_mobject, RIGHT, buff=spacing)
+    
+    # Create group
+    group = VGroup(diagram_mobject, label)
+    group = ensure_fits_screen(group, safety_margin=0.9)
+    
+    # Validate
+    validate_position(group, "labeled diagram", auto_fix=True)
+    return group
+
+
+def ensure_no_overlap(mobject_a, mobject_b, min_gap=1.0):
+    """
+    Ensure two mobjects don't overlap by adjusting their positions.
+    
+    Args:
+        mobject_a: First mobject
+        mobject_b: Second mobject
+        min_gap: Minimum gap between them
+    
+    Returns:
+        Tuple of (mobject_a, mobject_b) with adjusted positions
+    """
+    try:
+        a_center = mobject_a.get_center()
+        b_center = mobject_b.get_center()
+        delta = b_center - a_center
+        
+        required_x_gap = (mobject_a.width + mobject_b.width) / 2 + min_gap
+        required_y_gap = (mobject_a.height + mobject_b.height) / 2 + min_gap
+        
+        actual_x_dist = abs(delta[0])
+        actual_y_dist = abs(delta[1])
+        
+        overlap_x = required_x_gap - actual_x_dist
+        overlap_y = required_y_gap - actual_y_dist
+        
+        if overlap_x > 0 and overlap_y > 0:
+            # There's an overlap, separate them
+            if overlap_x >= overlap_y:
+                # Separate horizontally
+                shift = (overlap_x / 2) * 1.15
+                direction = 1 if delta[0] >= 0 else -1
+                mobject_a.shift(-shift * direction * RIGHT)
+                mobject_b.shift(shift * direction * RIGHT)
+            else:
+                # Separate vertically
+                shift = (overlap_y / 2) * 1.15
+                direction = 1 if delta[1] >= 0 else -1
+                mobject_a.shift(-shift * direction * UP)
+                mobject_b.shift(shift * direction * UP)
+            
+            # Ensure both still fit on screen
+            _nudge_into_safe_frame(mobject_a, recursive=True)
+            _nudge_into_safe_frame(mobject_b, recursive=True)
+    
+    except (AttributeError, IndexError, TypeError):
+        pass
+    
+    return mobject_a, mobject_b
+
 `);
 
     // PREMIUM COLOR PALETTE - Meticulously designed for #1E1E1E background
