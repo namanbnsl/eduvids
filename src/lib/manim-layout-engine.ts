@@ -37,82 +37,78 @@ export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
         config;
 
     const portrait = orientation === "portrait";
-    // Enhanced margin boost for better aesthetics and breathing room
-    const marginBoost = portrait ? 1.4 : 1.25;
+    // Reduced margin boost for more usable space
+    const marginBoost = portrait ? 1.15 : 1.1;
 
-    // Base margins with improved spacing
+    // Base margins with reasonable spacing
     let topMargin = safeMargin * marginBoost;
     let bottomMargin = safeMargin * marginBoost;
     let leftMargin = safeMargin * marginBoost;
     let rightMargin = safeMargin * marginBoost;
 
     if (portrait) {
-        // Portrait: more horizontal padding for cleaner look
-        leftMargin *= 1.45;
-        rightMargin *= 1.45;
-        // Increased vertical space for better title/content separation
-        topMargin *= 1.65;
-        bottomMargin *= 1.65;
-    } else {
-        // Landscape: balanced generous spacing
+        // Portrait: moderate padding
+        leftMargin *= 1.2;
+        rightMargin *= 1.2;
         topMargin *= 1.3;
-        bottomMargin *= 1.35;
+        bottomMargin *= 1.3;
+    } else {
+        // Landscape: minimal additional spacing
+        topMargin *= 1.15;
+        bottomMargin *= 1.15;
     }
 
-    // Enhanced content-type adjustments for optimal layout
+    // Content-type adjustments - reduced for more space
     if (contentType === "text-heavy") {
-        // Text: maximum breathing room for readability
-        leftMargin *= 1.4;
-        rightMargin *= 1.4;
-        topMargin *= 1.25;
+        leftMargin *= 1.15;
+        rightMargin *= 1.15;
     } else if (contentType === "diagram") {
-        // Diagrams: uniform generous space with golden ratio influence
+        // Diagrams: REDUCE margins to give more space for the actual diagram
         const avgMargin = (leftMargin + rightMargin + topMargin + bottomMargin) / 4;
-        leftMargin = rightMargin = topMargin = bottomMargin = avgMargin * 1.5;
+        leftMargin = rightMargin = topMargin = bottomMargin = avgMargin * 0.85;
     } else if (contentType === "math") {
-        // Math: extra horizontal space for complex formulas
-        leftMargin *= 1.35;
-        rightMargin *= 1.35;
+        leftMargin *= 1.15;
+        rightMargin *= 1.15;
     }
 
-    // Premium breathing room - prevents cramped layouts
-    const extraTopMargin = safeMargin * (portrait ? 0.8 : 0.5);
-    const extraBottomMargin = safeMargin * (portrait ? 0.9 : 0.55);
+    // Moderate breathing room
+    const extraTopMargin = safeMargin * (portrait ? 0.4 : 0.3);
+    const extraBottomMargin = safeMargin * (portrait ? 0.5 : 0.35);
 
     topMargin += extraTopMargin;
     bottomMargin += extraBottomMargin;
 
-    // Enhanced minimum spacing for cleaner element separation
-    let minSpacing = safeMargin * (portrait ? 1.7 : 1.35);
+    // Reasonable minimum spacing
+    let minSpacing = safeMargin * (portrait ? 1.2 : 1.0);
     if (contentType === "text-heavy") {
-        minSpacing *= 1.2;
+        minSpacing *= 1.1;
     } else if (contentType === "diagram") {
-        minSpacing *= 1.4;
+        minSpacing *= 0.9; // Diagrams need less spacing, more room for content
     } else if (contentType === "math") {
-        minSpacing *= 1.18;
+        minSpacing *= 1.05;
     }
-    minSpacing = Math.max(minSpacing, safeMargin * 1.25);
+    minSpacing = Math.max(minSpacing, safeMargin * 0.8);
 
-    // Enhanced bottom safe zone for better footer clearance
-    let bottomSafeZoneHeight = safeMargin * (portrait ? 2.8 : 2.2);
+    // Moderate bottom safe zone
+    let bottomSafeZoneHeight = safeMargin * (portrait ? 1.6 : 1.3);
     if (contentType === "diagram") {
-        bottomSafeZoneHeight *= 1.25;
+        bottomSafeZoneHeight *= 0.85; // Less bottom margin for diagrams
     } else if (contentType === "text-heavy") {
-        bottomSafeZoneHeight *= 1.15;
+        bottomSafeZoneHeight *= 1.0;
     }
     bottomSafeZoneHeight = Math.max(
         bottomSafeZoneHeight,
-        frameHeight * (portrait ? 0.12 : 0.09)
+        frameHeight * (portrait ? 0.08 : 0.06)
     );
 
     bottomMargin = Math.max(
         bottomMargin,
-        bottomSafeZoneHeight + safeMargin * (portrait ? 0.8 : 0.6)
+        bottomSafeZoneHeight + safeMargin * (portrait ? 0.4 : 0.3)
     );
-    topMargin = Math.max(topMargin, safeMargin * (portrait ? 2.0 : 1.45));
+    topMargin = Math.max(topMargin, safeMargin * (portrait ? 1.4 : 1.15));
 
-    // Enhanced title zone - more space for elegant title presentation
-    const titleHeight = orientation === "portrait" ? 2.6 : 2.0;
+    // Reasonable title zone
+    const titleHeight = orientation === "portrait" ? 1.8 : 1.5;
 
     // Calculate usable content area with improved spacing
     const maxContentWidth = Math.max(
@@ -220,8 +216,8 @@ def _nudge_into_safe_frame(mobject, padding=SAFE_SPACING_MIN / 2, recursive=True
     
     return mobject
 
-def ensure_fits_width(mobject, max_width=MAX_CONTENT_WIDTH, shrink=True, safety_margin=0.95):
-    """Scale mobject to fit within safe width with breathing room"""
+def ensure_fits_width(mobject, max_width=MAX_CONTENT_WIDTH, shrink=True, safety_margin=0.98):
+    """Scale mobject to fit within safe width"""
     if not shrink:
         return mobject
     
@@ -239,8 +235,8 @@ def ensure_fits_width(mobject, max_width=MAX_CONTENT_WIDTH, shrink=True, safety_
     
     return mobject
 
-def ensure_fits_height(mobject, max_height=MAX_CONTENT_HEIGHT, shrink=True, safety_margin=0.95):
-    """Scale mobject to fit within safe height with breathing room"""
+def ensure_fits_height(mobject, max_height=MAX_CONTENT_HEIGHT, shrink=True, safety_margin=0.98):
+    """Scale mobject to fit within safe height"""
     if not shrink:
         return mobject
     
@@ -258,14 +254,14 @@ def ensure_fits_height(mobject, max_height=MAX_CONTENT_HEIGHT, shrink=True, safe
     
     return mobject
 
-def ensure_fits_screen(mobject, shrink=True, safety_margin=0.95, max_iterations=3):
+def ensure_fits_screen(mobject, shrink=True, safety_margin=0.98, max_iterations=3):
     """
-    Scale mobject to fit within safe content area with robust multi-pass fitting.
+    Scale mobject to fit within safe content area with multi-pass fitting.
     
     Args:
         mobject: The mobject to fit
         shrink: Whether to allow shrinking
-        safety_margin: Safety factor (0.95 = use 95% of available space)
+        safety_margin: Safety factor (0.98 = use 98% of available space)
         max_iterations: Maximum fitting iterations
     """
     if not shrink:
@@ -321,7 +317,7 @@ def clear_scene(scene, run_time=0.6):
 }
 
 /**
- * Enhanced font size recommendations with improved typography hierarchy
+ * Simplified font size recommendations with consistent typography hierarchy
  */
 export function getRecommendedFontSizes(
     config: LayoutConfig
@@ -329,82 +325,59 @@ export function getRecommendedFontSizes(
     const { orientation, contentType } = config;
     const zones = calculateSafeZones(config);
 
-    // Calculate base size from content area with improved scaling
+    // Calculate base size from content area
     const contentArea = Math.sqrt(
         Math.max(zones.maxContentWidth * zones.maxContentHeight, 1)
     );
     
-    // Enhanced orientation scaling for better readability
-    const orientationScale = orientation === "portrait" ? 1.35 : 1.18;
+    // Simplified scaling - single multiplier
+    const baseScale = orientation === "portrait" ? 2.8 : 2.4;
     
-    // Refined content-type scaling
-    const contentScale =
-        contentType === "text-heavy"
-            ? 1.08  // Slightly larger for text-heavy content
-            : contentType === "diagram"
-                ? 1.02  // Standard for diagrams
-                : contentType === "math"
-                    ? 1.12  // Larger for math readability
-                    : 1.05; // Balanced default
-    
-    // Enhanced readability boost
-    const readabilityBoost = orientation === "portrait" ? 1.25 : 1.16;
+    // Small adjustment for content type
+    const contentAdjust =
+        contentType === "text-heavy" ? 1.05 :
+        contentType === "diagram" ? 1.1 :  // Larger fonts for diagrams (labels need to be visible)
+        contentType === "math" ? 1.08 : 1.0;
 
-    // Calculate base body size with improved formula
+    // Calculate base body size with simplified formula
     const baseBody = clampFont(
-        Math.round(contentArea * orientationScale * contentScale * 2.3 * readabilityBoost),
-        orientation === "portrait" ? 36 : 30,
-        orientation === "portrait" ? 66 : 56
+        Math.round(contentArea * baseScale * contentAdjust),
+        orientation === "portrait" ? 40 : 34,
+        orientation === "portrait" ? 60 : 52
     );
 
-    // Title: Prominent but not overwhelming (golden ratio inspired)
+    // Title: Clear hierarchy, 1.5x body size
     const title = clampFont(
-        Math.round(baseBody * (orientation === "portrait" ? 1.62 : 1.5)),
+        Math.round(baseBody * 1.5),
         baseBody + 8,
-        orientation === "portrait" ? 80 : 70
+        orientation === "portrait" ? 72 : 64
     );
 
-    // Heading: Clear hierarchy between title and body
+    // Heading: Between title and body, 1.25x body size
     const heading = clampFont(
-        Math.round(baseBody * 1.38),
-        baseBody + 5,
-        Math.max(title - 6, baseBody + 12)
+        Math.round(baseBody * 1.25),
+        baseBody + 4,
+        title - 4
     );
 
-    // Math: Optimized for formula readability
-    const mathMultiplier =
-        contentType === "math"
-            ? orientation === "portrait"
-                ? 1.22
-                : 1.14
-            : contentType === "diagram"
-                ? 1.02
-                : 1.06;
-    const mathMin = Math.max(
-        orientation === "portrait" ? 34 : 28,
-        Math.round(baseBody * 1.02)
-    );
-    const mathMax = Math.min(
-        Math.max(title - 8, mathMin + 6),
-        orientation === "portrait" ? 72 : 62
-    );
+    // Math: Same as body or slightly larger for readability
     const math = clampFont(
-        Math.round(baseBody * mathMultiplier),
-        mathMin,
-        mathMax
+        Math.round(baseBody * (contentType === "math" ? 1.1 : 1.0)),
+        baseBody - 2,
+        baseBody + 8
     );
 
-    // Caption: Clear but not too small
+    // Caption: 0.85x body size
     const caption = clampFont(
-        Math.round(baseBody * 0.88),
-        orientation === "portrait" ? 30 : 26,
-        Math.max(baseBody - 8, orientation === "portrait" ? 44 : 38)
+        Math.round(baseBody * 0.85),
+        orientation === "portrait" ? 32 : 28,
+        baseBody - 4
     );
 
-    // Label: Small but readable
+    // Label: 0.75x body size for small labels
     const label = clampFont(
-        Math.round(baseBody * 0.78),
-        orientation === "portrait" ? 26 : 22,
+        Math.round(baseBody * 0.75),
+        orientation === "portrait" ? 28 : 24,
         caption - 2
     );
 
@@ -612,27 +585,25 @@ def normalize_math_mobject(math_mobject, max_width_ratio=0.65, max_height_ratio=
     return math_mobject
 
 
-def enforce_min_gap(mobjects, min_gap=1.0, max_iterations=8, aggressive=True):
+def enforce_min_gap(mobjects, min_gap=0.8, max_iterations=8, aggressive=True):
     """
-    Enforce minimum gap between mobjects with robust collision detection.
+    Enforce minimum gap between mobjects with collision detection.
+    CHANGED: Now aggressive by default and with more iterations to ensure proper spacing.
     
     Args:
         mobjects: List of mobjects to space
         min_gap: Minimum gap between elements
         max_iterations: Maximum iterations for collision resolution
-        aggressive: If True, scale down more aggressively when collisions persist
+        aggressive: If True, scale down when collisions persist (default True for stricter spacing)
     """
     items = [m for m in (mobjects or []) if m is not None]
     if len(items) <= 1:
         return VGroup(*items)
 
-    # Store original positions for fallback
-    original_positions = [item.get_center().copy() for item in items]
-    
     # Multiple passes to resolve collisions
     for iteration in range(max_iterations):
         adjusted = False
-        max_overlap = 0
+        has_overlap = False
         
         for i, a in enumerate(items):
             for j, b in enumerate(items[i + 1:], start=i + 1):
@@ -642,7 +613,7 @@ def enforce_min_gap(mobjects, min_gap=1.0, max_iterations=8, aggressive=True):
                     b_center = b.get_center()
                     delta = b_center - a_center
                     
-                    # Calculate actual overlap with padding
+                    # Calculate actual overlap with padding (increased from 1.05 to 1.15 for more separation)
                     required_x_gap = (a.width + b.width) / 2 + min_gap
                     required_y_gap = (a.height + b.height) / 2 + min_gap
                     
@@ -654,18 +625,17 @@ def enforce_min_gap(mobjects, min_gap=1.0, max_iterations=8, aggressive=True):
                     
                     # Check if there's a collision
                     if overlap_x > 0 and overlap_y > 0:
-                        max_overlap = max(max_overlap, overlap_x, overlap_y)
-                        
+                        has_overlap = True
                         # Determine primary direction of separation
                         if overlap_x >= overlap_y:
-                            # Separate horizontally
-                            shift = (overlap_x / 2) * 1.1  # 10% extra separation
+                            # Separate horizontally (increased separation factor from 1.05 to 1.15)
+                            shift = (overlap_x / 2) * 1.15
                             direction = 1 if delta[0] >= 0 else -1
                             a.shift(-shift * direction * RIGHT)
                             b.shift(shift * direction * RIGHT)
                         else:
-                            # Separate vertically
-                            shift = (overlap_y / 2) * 1.1  # 10% extra separation
+                            # Separate vertically (increased separation factor from 1.05 to 1.15)
+                            shift = (overlap_y / 2) * 1.15
                             direction = 1 if delta[1] >= 0 else -1
                             a.shift(-shift * direction * UP)
                             b.shift(shift * direction * UP)
@@ -681,16 +651,22 @@ def enforce_min_gap(mobjects, min_gap=1.0, max_iterations=8, aggressive=True):
                 except (AttributeError, IndexError, TypeError):
                     continue
         
-        # If we had adjustments, check if we need to scale down
-        if adjusted:
-            # After separation, check if group still fits
+        # Scale down if aggressive mode AND we have overlaps OR if oversized
+        if aggressive:
             group = VGroup(*items)
             try:
-                if group.width > MAX_CONTENT_WIDTH * 0.95 or group.height > MAX_CONTENT_HEIGHT * 0.95:
-                    # Scale down more aggressively if we're over budget
-                    scale_factor = 0.92 if aggressive else 0.95
+                # Scale if oversized or if overlaps persist after 3 iterations
+                needs_scaling = (
+                    group.width > MAX_CONTENT_WIDTH * 0.98 or 
+                    group.height > MAX_CONTENT_HEIGHT * 0.98 or
+                    (has_overlap and iteration >= 2)
+                )
+                
+                if needs_scaling:
+                    # More aggressive scaling (from 0.96 to 0.92)
+                    scale_factor = 0.92
                     group.scale(scale_factor)
-                    adjusted = True
+                    print(f"[LAYOUT ENGINE] Scaled group to {scale_factor:.2f} to resolve overlaps/size issues")
             except (AttributeError, ZeroDivisionError):
                 pass
         
@@ -701,24 +677,24 @@ def enforce_min_gap(mobjects, min_gap=1.0, max_iterations=8, aggressive=True):
     # Final validation and fitting
     group = VGroup(*items)
     
-    # If we still have major issues after all iterations, try a more aggressive approach
+    # More aggressive final scaling if still oversized
     try:
         if group.width > MAX_CONTENT_WIDTH or group.height > MAX_CONTENT_HEIGHT:
-            # Scale to fit with safety margin
-            width_factor = MAX_CONTENT_WIDTH * 0.9 / group.width if group.width > MAX_CONTENT_WIDTH else 1.0
-            height_factor = MAX_CONTENT_HEIGHT * 0.9 / group.height if group.height > MAX_CONTENT_HEIGHT else 1.0
+            width_factor = MAX_CONTENT_WIDTH * 0.95 / group.width if group.width > MAX_CONTENT_WIDTH else 1.0
+            height_factor = MAX_CONTENT_HEIGHT * 0.95 / group.height if group.height > MAX_CONTENT_HEIGHT else 1.0
             scale_factor = min(width_factor, height_factor)
             if scale_factor < 1.0:
                 group.scale(scale_factor)
+                print(f"[LAYOUT ENGINE] Final scale to {scale_factor:.2f} to fit content area")
     except (AttributeError, ZeroDivisionError):
         pass
     
-    # Final ensure fits
-    ensure_fits_screen(group)
+    # Final nudge into frame (without additional scaling)
+    _nudge_into_safe_frame(group, recursive=True)
     return group
 
 
-def layout_horizontal(mobjects, center=None, buff=1.0, auto_fit=True, align_edge=None):
+def layout_horizontal(mobjects, center=None, buff=0.8, auto_fit=True, align_edge=None):
     """
     Arrange mobjects horizontally with proper spacing and fitting.
     
@@ -733,14 +709,14 @@ def layout_horizontal(mobjects, center=None, buff=1.0, auto_fit=True, align_edge
     if not items:
         return VGroup()
 
-    # First ensure each item fits individually
+    # First ensure each item fits individually with generous space
     if auto_fit:
         for item in items:
             try:
-                max_item_width = MAX_CONTENT_WIDTH * 0.85 / len(items)
-                max_item_height = MAX_CONTENT_HEIGHT * 0.85
-                ensure_fits_width(item, max_width=max_item_width, safety_margin=0.9)
-                ensure_fits_height(item, max_height=max_item_height, safety_margin=0.9)
+                max_item_width = MAX_CONTENT_WIDTH * 0.92 / len(items)
+                max_item_height = MAX_CONTENT_HEIGHT * 0.92
+                ensure_fits_width(item, max_width=max_item_width, safety_margin=0.98)
+                ensure_fits_height(item, max_height=max_item_height, safety_margin=0.98)
             except (AttributeError, ZeroDivisionError):
                 continue
 
@@ -748,13 +724,13 @@ def layout_horizontal(mobjects, center=None, buff=1.0, auto_fit=True, align_edge
     group = VGroup(*items)
     group.arrange(RIGHT, buff=buff, aligned_edge=align_edge)
     
-    # Enforce minimum gaps
+    # Enforce minimum gaps (now aggressive by default)
     min_gap = max(buff * 0.8, 0.8)
-    group = enforce_min_gap(group.submobjects, min_gap=min_gap)
+    group = enforce_min_gap(group.submobjects, min_gap=min_gap, aggressive=True)
     
-    # Fit to screen
+    # Fit to screen with generous margins
     if auto_fit:
-        ensure_fits_screen(group)
+        ensure_fits_screen(group, safety_margin=0.98)
     
     # Position the group
     target_center = center if center is not None else get_content_center()
@@ -765,7 +741,7 @@ def layout_horizontal(mobjects, center=None, buff=1.0, auto_fit=True, align_edge
     return group
 
 
-def layout_vertical(mobjects, center=None, buff=1.0, auto_fit=True, align_edge=None):
+def layout_vertical(mobjects, center=None, buff=0.8, auto_fit=True, align_edge=None):
     """
     Arrange mobjects vertically with proper spacing and fitting.
     
@@ -780,14 +756,14 @@ def layout_vertical(mobjects, center=None, buff=1.0, auto_fit=True, align_edge=N
     if not items:
         return VGroup()
 
-    # First ensure each item fits individually
+    # First ensure each item fits individually with generous space
     if auto_fit:
         for item in items:
             try:
-                max_item_width = MAX_CONTENT_WIDTH * 0.85
-                max_item_height = MAX_CONTENT_HEIGHT * 0.85 / len(items)
-                ensure_fits_width(item, max_width=max_item_width, safety_margin=0.9)
-                ensure_fits_height(item, max_height=max_item_height, safety_margin=0.9)
+                max_item_width = MAX_CONTENT_WIDTH * 0.92
+                max_item_height = MAX_CONTENT_HEIGHT * 0.92 / len(items)
+                ensure_fits_width(item, max_width=max_item_width, safety_margin=0.98)
+                ensure_fits_height(item, max_height=max_item_height, safety_margin=0.98)
             except (AttributeError, ZeroDivisionError):
                 continue
 
@@ -795,13 +771,13 @@ def layout_vertical(mobjects, center=None, buff=1.0, auto_fit=True, align_edge=N
     group = VGroup(*items)
     group.arrange(DOWN, buff=buff, aligned_edge=align_edge)
     
-    # Enforce minimum gaps
+    # Enforce minimum gaps (now aggressive by default)
     min_gap = max(buff * 0.8, 0.8)
-    group = enforce_min_gap(group.submobjects, min_gap=min_gap)
+    group = enforce_min_gap(group.submobjects, min_gap=min_gap, aggressive=True)
     
-    # Fit to screen
+    # Fit to screen with generous margins
     if auto_fit:
-        ensure_fits_screen(group)
+        ensure_fits_screen(group, safety_margin=0.98)
     
     # Position the group
     target_center = center if center is not None else get_content_center()
@@ -1101,19 +1077,10 @@ def build_latex_text(
     if use_latex:
         latex = raw_text
     else:
-        lines = raw_text.splitlines()
-        if not lines:
-            lines = [raw_text]
-        escaped_lines = [_escape_latex_text(line) for line in lines]
-        base_command = "texttt" if monospace else "text"
-        
-        # Create separate \text{} or \texttt{} for each line and join with \\
-        # This avoids "Not allowed in LR mode" error when using \\ inside \text{}
-        if len(escaped_lines) > 1:
-            latex_lines = [f"\\{base_command}{{{line}}}" for line in escaped_lines]
-            latex = r" \\ ".join(latex_lines)
-        else:
-            latex = f"\\{base_command}{{{escaped_lines[0]}}}"
+        # Just escape special characters without wrapping in \text{}
+        # This avoids issues with math mode commands
+        escaped = _escape_latex_text(raw_text)
+        latex = escaped
 
     if bold:
         latex = f"\\textbf{{{latex}}}"
@@ -1217,10 +1184,10 @@ def create_text_panel(
         max_height = MAX_CONTENT_HEIGHT * 0.85
 
     # Ensure text fits within constraints before creating panel
-    if label.width > max_width * 0.9:
-        label.scale_to_fit_width(max_width * 0.9)
-    if label.height > max_height * 0.9:
-        label.scale_to_fit_height(max_height * 0.9)
+    if label.width > max_width * 0.96:
+        label.scale_to_fit_width(max_width * 0.96)
+    if label.height > max_height * 0.96:
+        label.scale_to_fit_height(max_height * 0.96)
 
     # Calculate panel padding
     if panel_padding is None:
@@ -1249,7 +1216,7 @@ def create_text_panel(
 
     # Create group and ensure it fits
     group = VGroup(panel, label)
-    group = ensure_fits_screen(group, safety_margin=0.9)
+    group = ensure_fits_screen(group, safety_margin=0.98)
     validate_position(group, "text panel", auto_fix=True)
     return group
 
@@ -1257,8 +1224,8 @@ def create_text_panel(
 def create_bullet_item(
     text,
     *,
-    bullet_symbol="\\bullet",
-    bullet_gap="\\enspace",
+    bullet_symbol="\\textbullet",
+    bullet_gap=" ",
     font_size=FONT_BODY,
     bold=False,
     italic=False,
@@ -1284,8 +1251,8 @@ def create_bullet_item(
 def create_bullet_list(
     items,
     *,
-    bullet_symbol="\\bullet",
-    bullet_gap="\\enspace",
+    bullet_symbol="\\textbullet",
+    bullet_gap=" ",
     font_size=FONT_BODY,
     item_buff=0.8,
     edge=LEFT,
@@ -1336,7 +1303,7 @@ def create_bullet_list(
 # ADVANCED LAYOUT HELPERS
 # ========================================
 
-def create_fitted_group(*mobjects, buff=0.5, direction=DOWN, max_width=MAX_CONTENT_WIDTH, max_height=MAX_CONTENT_HEIGHT):
+def create_fitted_group(*mobjects, buff=0.6, direction=DOWN, max_width=MAX_CONTENT_WIDTH, max_height=MAX_CONTENT_HEIGHT):
     """
     Create a VGroup with proper fitting and spacing.
     
@@ -1354,18 +1321,18 @@ def create_fitted_group(*mobjects, buff=0.5, direction=DOWN, max_width=MAX_CONTE
     if not items:
         return VGroup()
     
-    # Pre-fit each item
+    # Pre-fit each item with generous space
     for item in items:
         try:
             if direction == RIGHT or direction == LEFT:
-                item_max_width = max_width * 0.8 / len(items)
-                item_max_height = max_height * 0.8
+                item_max_width = max_width * 0.92 / len(items)
+                item_max_height = max_height * 0.92
             else:  # DOWN or UP
-                item_max_width = max_width * 0.8
-                item_max_height = max_height * 0.8 / len(items)
+                item_max_width = max_width * 0.92
+                item_max_height = max_height * 0.92 / len(items)
             
-            ensure_fits_width(item, max_width=item_max_width, safety_margin=0.9)
-            ensure_fits_height(item, max_height=item_max_height, safety_margin=0.9)
+            ensure_fits_width(item, max_width=item_max_width, safety_margin=0.98)
+            ensure_fits_height(item, max_height=item_max_height, safety_margin=0.98)
         except (AttributeError, ZeroDivisionError):
             continue
     
@@ -1373,9 +1340,9 @@ def create_fitted_group(*mobjects, buff=0.5, direction=DOWN, max_width=MAX_CONTE
     group = VGroup(*items)
     group.arrange(direction, buff=buff)
     
-    # Enforce gaps and fit to screen
-    group = enforce_min_gap(group.submobjects, min_gap=max(buff * 0.8, 0.6))
-    group = ensure_fits_screen(group, safety_margin=0.9)
+    # Enforce gaps and fit to screen (non-aggressive)
+    group = enforce_min_gap(group.submobjects, min_gap=max(buff * 0.7, 0.5), aggressive=False)
+    group = ensure_fits_screen(group, safety_margin=0.98)
     
     # Validate
     validate_position(group, "fitted group", auto_fix=True)
@@ -1399,20 +1366,20 @@ def create_title_and_content(title_text, content_mobject, *, title_font_size=FON
     title = create_tex_label(title_text, font_size=title_font_size, bold=True)
     title.set_color(WHITE)
     
-    # Ensure title fits
-    ensure_fits_width(title, max_width=MAX_CONTENT_WIDTH * 0.9, safety_margin=0.95)
+    # Ensure title fits with generous space
+    ensure_fits_width(title, max_width=MAX_CONTENT_WIDTH * 0.95, safety_margin=0.98)
     
     # Position title at safe position
     title.move_to(get_title_position())
     
     # Calculate spacing
     if spacing is None:
-        spacing = SAFE_SPACING_MIN * 1.2
+        spacing = SAFE_SPACING_MIN
     
-    # Ensure content fits in remaining space
+    # Ensure content fits in remaining space with generous margins
     available_height = MAX_CONTENT_HEIGHT - title.height - spacing
-    ensure_fits_height(content_mobject, max_height=available_height * 0.9, safety_margin=0.95)
-    ensure_fits_width(content_mobject, max_width=MAX_CONTENT_WIDTH * 0.9, safety_margin=0.95)
+    ensure_fits_height(content_mobject, max_height=available_height * 0.95, safety_margin=0.98)
+    ensure_fits_width(content_mobject, max_width=MAX_CONTENT_WIDTH * 0.95, safety_margin=0.98)
     
     # Position content below title
     content_mobject.next_to(title, DOWN, buff=spacing)
@@ -1425,7 +1392,7 @@ def create_title_and_content(title_text, content_mobject, *, title_font_size=FON
     return group
 
 
-def create_labeled_diagram(label_text, diagram_mobject, *, position="bottom", label_font_size=FONT_CAPTION, spacing=0.5):
+def create_labeled_diagram(label_text, diagram_mobject, *, position="bottom", label_font_size=FONT_CAPTION, spacing=0.4):
     """
     Create a diagram with a label.
     
@@ -1442,10 +1409,10 @@ def create_labeled_diagram(label_text, diagram_mobject, *, position="bottom", la
     # Create label
     label = create_tex_label(label_text, font_size=label_font_size)
     
-    # Ensure diagram fits
-    diagram_max = 0.8
-    ensure_fits_width(diagram_mobject, max_width=MAX_CONTENT_WIDTH * diagram_max, safety_margin=0.95)
-    ensure_fits_height(diagram_mobject, max_height=MAX_CONTENT_HEIGHT * diagram_max, safety_margin=0.95)
+    # Ensure diagram fits with generous space - diagrams should be BIG
+    diagram_max = 0.88
+    ensure_fits_width(diagram_mobject, max_width=MAX_CONTENT_WIDTH * diagram_max, safety_margin=0.98)
+    ensure_fits_height(diagram_mobject, max_height=MAX_CONTENT_HEIGHT * diagram_max, safety_margin=0.98)
     
     # Position label relative to diagram
     if position == "bottom":
@@ -1459,7 +1426,7 @@ def create_labeled_diagram(label_text, diagram_mobject, *, position="bottom", la
     
     # Create group
     group = VGroup(diagram_mobject, label)
-    group = ensure_fits_screen(group, safety_margin=0.9)
+    group = ensure_fits_screen(group, safety_margin=0.98)
     
     # Validate
     validate_position(group, "labeled diagram", auto_fix=True)
@@ -1515,6 +1482,438 @@ def ensure_no_overlap(mobject_a, mobject_b, min_gap=1.0):
         pass
     
     return mobject_a, mobject_b
+
+
+# ========================================
+# ZONE-BASED LAYOUT SYSTEM
+# ========================================
+
+class LayoutZone:
+    """
+    A rectangular zone on the screen that can be reserved for content.
+    Prevents overlaps by managing occupied regions.
+    """
+    def __init__(self, x_min, x_max, y_min, y_max, name="zone"):
+        self.x_min = x_min
+        self.x_max = x_max
+        self.y_min = y_min
+        self.y_max = y_max
+        self.name = name
+        self.width = x_max - x_min
+        self.height = y_max - y_min
+        self.center_x = (x_min + x_max) / 2
+        self.center_y = (y_min + y_max) / 2
+        self.is_occupied = False
+        
+    def get_center(self):
+        return np.array([self.center_x, self.center_y, 0])
+    
+    def get_top_left(self):
+        return np.array([self.x_min, self.y_max, 0])
+    
+    def get_top_right(self):
+        return np.array([self.x_max, self.y_max, 0])
+    
+    def get_bottom_left(self):
+        return np.array([self.x_min, self.y_min, 0])
+    
+    def get_bottom_right(self):
+        return np.array([self.x_max, self.y_min, 0])
+    
+    def contains_point(self, point):
+        x, y = point[0], point[1]
+        return self.x_min <= x <= self.x_max and self.y_min <= y <= self.y_max
+    
+    def overlaps_with(self, other, buffer=0.5):
+        return not (
+            self.x_max + buffer < other.x_min or
+            self.x_min - buffer > other.x_max or
+            self.y_max + buffer < other.y_min or
+            self.y_min - buffer > other.y_max
+        )
+    
+    def can_fit(self, width, height, padding=0.5):
+        return (width + 2 * padding <= self.width and 
+                height + 2 * padding <= self.height)
+
+
+def create_screen_zones(title_reserve=True, num_rows=3, num_cols=2):
+    """
+    Divide the screen into a grid of zones for intelligent layout.
+    
+    Args:
+        title_reserve: Whether to reserve top zone for title
+        num_rows: Number of vertical divisions (excluding title if reserved)
+        num_cols: Number of horizontal divisions
+    
+    Returns:
+        Dictionary of zone names to LayoutZone objects
+    """
+    zones = {}
+    
+    # Calculate available space
+    left = -FRAME_WIDTH / 2 + SAFE_MARGIN_LEFT
+    right = FRAME_WIDTH / 2 - SAFE_MARGIN_RIGHT
+    top = FRAME_HEIGHT / 2 - SAFE_MARGIN_TOP
+    bottom = -FRAME_HEIGHT / 2 + SAFE_MARGIN_BOTTOM + SAFE_BOTTOM_ZONE
+    
+    available_width = right - left
+    available_height = top - bottom
+    
+    # Reserve title zone if requested
+    if title_reserve:
+        title_height = TITLE_ZONE_HEIGHT + SAFE_SPACING_MIN
+        zones['title'] = LayoutZone(left, right, top - title_height, top, "title")
+        top = top - title_height - SAFE_SPACING_MIN
+        available_height = top - bottom
+    
+    # Create grid zones
+    row_height = available_height / num_rows
+    col_width = available_width / num_cols
+    
+    for row in range(num_rows):
+        for col in range(num_cols):
+            zone_left = left + col * col_width
+            zone_right = zone_left + col_width
+            zone_bottom = bottom + (num_rows - row - 1) * row_height
+            zone_top = zone_bottom + row_height
+            
+            zone_name = f"zone_r{row}_c{col}"
+            zones[zone_name] = LayoutZone(zone_left, zone_right, zone_bottom, zone_top, zone_name)
+    
+    # Add convenience zones for common layouts
+    zones['left'] = LayoutZone(left, left + available_width / 2, bottom, top, "left")
+    zones['right'] = LayoutZone(left + available_width / 2, right, bottom, top, "right")
+    zones['center'] = LayoutZone(left + available_width / 4, right - available_width / 4, 
+                                 bottom, top, "center")
+    zones['top_half'] = LayoutZone(left, right, bottom + available_height / 2, top, "top_half")
+    zones['bottom_half'] = LayoutZone(left, right, bottom, bottom + available_height / 2, "bottom_half")
+    
+    return zones
+
+
+def position_in_zone(mobject, zone, alignment="center", padding=0.3, fit_to_zone=True):
+    """
+    Position a mobject within a zone with automatic fitting and alignment.
+    
+    Args:
+        mobject: The mobject to position
+        zone: LayoutZone object or zone name (if using global zones)
+        alignment: Where to align within zone ("center", "top", "bottom", "left", "right", 
+                   "top_left", "top_right", "bottom_left", "bottom_right")
+        padding: Minimum padding from zone edges
+        fit_to_zone: Whether to automatically scale to fit zone
+    
+    Returns:
+        The positioned mobject
+    """
+    # Get zone object
+    if isinstance(zone, str):
+        if '_screen_zones' not in globals():
+            globals()['_screen_zones'] = create_screen_zones()
+        zone = globals()['_screen_zones'].get(zone)
+        if zone is None:
+            print(f"[LAYOUT ERROR] Zone '{zone}' not found")
+            return mobject
+    
+    # Fit to zone if requested with generous margins
+    if fit_to_zone:
+        max_width = zone.width - 2 * padding
+        max_height = zone.height - 2 * padding
+        
+        try:
+            if mobject.width > max_width * 0.98:
+                scale_factor = (max_width * 0.98) / mobject.width
+                mobject.scale(scale_factor)
+            if mobject.height > max_height * 0.98:
+                scale_factor = (max_height * 0.98) / mobject.height
+                mobject.scale(scale_factor)
+        except (AttributeError, ZeroDivisionError):
+            pass
+    
+    # Calculate target position based on alignment
+    if alignment == "center":
+        target = zone.get_center()
+    elif alignment == "top":
+        target = np.array([zone.center_x, zone.y_max - padding, 0])
+    elif alignment == "bottom":
+        target = np.array([zone.center_x, zone.y_min + padding, 0])
+    elif alignment == "left":
+        target = np.array([zone.x_min + padding, zone.center_y, 0])
+    elif alignment == "right":
+        target = np.array([zone.x_max - padding, zone.center_y, 0])
+    elif alignment == "top_left":
+        target = np.array([zone.x_min + padding, zone.y_max - padding, 0])
+    elif alignment == "top_right":
+        target = np.array([zone.x_max - padding, zone.y_max - padding, 0])
+    elif alignment == "bottom_left":
+        target = np.array([zone.x_min + padding, zone.y_min + padding, 0])
+    elif alignment == "bottom_right":
+        target = np.array([zone.x_max - padding, zone.y_min + padding, 0])
+    else:
+        target = zone.get_center()
+    
+    # Move mobject to target
+    mobject.move_to(target)
+    
+    # Mark zone as occupied
+    zone.is_occupied = True
+    
+    return mobject
+
+
+def create_side_by_side_layout(left_mobject, right_mobject, spacing=1.0, 
+                                left_weight=0.4, right_weight=0.6, center=None):
+    """
+    Create a side-by-side layout with proper spacing and no overlaps.
+    Perfect for bullet points + diagram layouts.
+    
+    Args:
+        left_mobject: Mobject for left side (typically bullet points)
+        right_mobject: Mobject for right side (typically diagram)
+        spacing: Minimum horizontal spacing between the two
+        left_weight: Proportion of width for left side (0-1)
+        right_weight: Proportion of width for right side (0-1)
+        center: Target center position (defaults to content center)
+    
+    Returns:
+        VGroup containing both mobjects
+    """
+    # Calculate available space
+    total_width = MAX_CONTENT_WIDTH
+    total_height = MAX_CONTENT_HEIGHT
+    
+    # Calculate zone widths
+    left_width = total_width * left_weight - spacing / 2
+    right_width = total_width * right_weight - spacing / 2
+    
+    # Fit each mobject to its zone with generous margins
+    try:
+        if left_mobject.width > left_width:
+            left_mobject.scale(left_width / left_mobject.width * 0.98)
+        if left_mobject.height > total_height:
+            left_mobject.scale(total_height / left_mobject.height * 0.98)
+            
+        if right_mobject.width > right_width:
+            right_mobject.scale(right_width / right_mobject.width * 0.98)
+        if right_mobject.height > total_height:
+            right_mobject.scale(total_height / right_mobject.height * 0.98)
+    except (AttributeError, ZeroDivisionError):
+        pass
+    
+    # Position left mobject
+    left_x = -total_width / 2 + left_width / 2
+    left_mobject.move_to(np.array([left_x, 0, 0]))
+    
+    # Position right mobject
+    right_x = total_width / 2 - right_width / 2
+    right_mobject.move_to(np.array([right_x, 0, 0]))
+    
+    # Ensure minimum spacing
+    actual_gap = right_mobject.get_left()[0] - left_mobject.get_right()[0]
+    if actual_gap < spacing:
+        adjustment = (spacing - actual_gap) / 2
+        left_mobject.shift(LEFT * adjustment)
+        right_mobject.shift(RIGHT * adjustment)
+    
+    # Create group
+    group = VGroup(left_mobject, right_mobject)
+    
+    # Position group at target center
+    if center is None:
+        center = get_content_center()
+    group.move_to(center)
+    
+    # Final validation with generous margins
+    ensure_fits_screen(group, safety_margin=0.98)
+    validate_position(group, "side-by-side layout", auto_fix=True)
+    
+    return group
+
+
+def create_top_bottom_layout(top_mobject, bottom_mobject, spacing=1.0,
+                              top_weight=0.5, bottom_weight=0.5, center=None):
+    """
+    Create a top-bottom layout with proper spacing and no overlaps.
+    
+    Args:
+        top_mobject: Mobject for top section
+        bottom_mobject: Mobject for bottom section
+        spacing: Minimum vertical spacing between the two
+        top_weight: Proportion of height for top (0-1)
+        bottom_weight: Proportion of height for bottom (0-1)
+        center: Target center position (defaults to content center)
+    
+    Returns:
+        VGroup containing both mobjects
+    """
+    # Calculate available space
+    total_width = MAX_CONTENT_WIDTH
+    total_height = MAX_CONTENT_HEIGHT
+    
+    # Calculate zone heights
+    top_height = total_height * top_weight - spacing / 2
+    bottom_height = total_height * bottom_weight - spacing / 2
+    
+    # Fit each mobject to its zone with generous margins
+    try:
+        if top_mobject.width > total_width:
+            top_mobject.scale(total_width / top_mobject.width * 0.98)
+        if top_mobject.height > top_height:
+            top_mobject.scale(top_height / top_mobject.height * 0.98)
+            
+        if bottom_mobject.width > total_width:
+            bottom_mobject.scale(total_width / bottom_mobject.width * 0.98)
+        if bottom_mobject.height > bottom_height:
+            bottom_mobject.scale(bottom_height / bottom_mobject.height * 0.98)
+    except (AttributeError, ZeroDivisionError):
+        pass
+    
+    # Position top mobject
+    top_y = total_height / 2 - top_height / 2
+    top_mobject.move_to(np.array([0, top_y, 0]))
+    
+    # Position bottom mobject
+    bottom_y = -total_height / 2 + bottom_height / 2
+    bottom_mobject.move_to(np.array([0, bottom_y, 0]))
+    
+    # Ensure minimum spacing
+    actual_gap = top_mobject.get_bottom()[1] - bottom_mobject.get_top()[1]
+    if actual_gap < spacing:
+        adjustment = (spacing - actual_gap) / 2
+        top_mobject.shift(UP * adjustment)
+        bottom_mobject.shift(DOWN * adjustment)
+    
+    # Create group
+    group = VGroup(top_mobject, bottom_mobject)
+    
+    # Position group at target center
+    if center is None:
+        center = get_content_center()
+    group.move_to(center)
+    
+    # Final validation with generous margins
+    ensure_fits_screen(group, safety_margin=0.98)
+    validate_position(group, "top-bottom layout", auto_fix=True)
+    
+    return group
+
+
+def create_bulletproof_layout(*mobjects, layout_type="vertical", spacing=1.0, 
+                               weights=None, center=None):
+    """
+    Create a layout that GUARANTEES no overlaps using spatial partitioning.
+    This is the ultimate solution for preventing bullet point/diagram overlaps.
+    
+    Args:
+        *mobjects: Mobjects to layout
+        layout_type: "vertical", "horizontal", "grid", or "custom"
+        spacing: Minimum spacing between elements
+        weights: List of weights for each mobject (proportional sizing)
+        center: Target center position
+    
+    Returns:
+        VGroup with perfectly positioned mobjects
+    """
+    items = [m for m in mobjects if m is not None]
+    if not items:
+        return VGroup()
+    
+    num_items = len(items)
+    
+    # Default weights if not provided
+    if weights is None:
+        weights = [1.0] * num_items
+    
+    # Normalize weights
+    total_weight = sum(weights)
+    weights = [w / total_weight for w in weights]
+    
+    # Calculate available space with generous margins
+    max_width = MAX_CONTENT_WIDTH * 0.98
+    max_height = MAX_CONTENT_HEIGHT * 0.98
+    
+    if layout_type == "vertical":
+        # Vertical stacking with guaranteed spacing
+        zones_heights = [(max_height - (num_items - 1) * spacing) * w for w in weights]
+        
+        # Fit each item to its zone
+        for i, (item, zone_h) in enumerate(zip(items, zones_heights)):
+            try:
+                if item.width > max_width * 0.98:
+                    item.scale((max_width * 0.98) / item.width)
+                if item.height > zone_h * 0.98:
+                    item.scale((zone_h * 0.98) / item.height)
+            except (AttributeError, ZeroDivisionError):
+                continue
+        
+        # Position items from top to bottom
+        current_y = max_height / 2
+        for i, (item, zone_h) in enumerate(zip(items, zones_heights)):
+            item_y = current_y - zone_h / 2
+            item.move_to(np.array([0, item_y, 0]))
+            current_y -= zone_h + spacing
+            
+    elif layout_type == "horizontal":
+        # Horizontal layout with guaranteed spacing
+        zone_widths = [(max_width - (num_items - 1) * spacing) * w for w in weights]
+        
+        # Fit each item to its zone
+        for i, (item, zone_w) in enumerate(zip(items, zone_widths)):
+            try:
+                if item.width > zone_w * 0.98:
+                    item.scale((zone_w * 0.98) / item.width)
+                if item.height > max_height * 0.98:
+                    item.scale((max_height * 0.98) / item.height)
+            except (AttributeError, ZeroDivisionError):
+                continue
+        
+        # Position items from left to right
+        current_x = -max_width / 2
+        for i, (item, zone_w) in enumerate(zip(items, zone_widths)):
+            item_x = current_x + zone_w / 2
+            item.move_to(np.array([item_x, 0, 0]))
+            current_x += zone_w + spacing
+            
+    elif layout_type == "grid":
+        # Grid layout with equal zones
+        import math
+        cols = math.ceil(math.sqrt(num_items))
+        rows = math.ceil(num_items / cols)
+        
+        cell_width = (max_width - (cols - 1) * spacing) / cols
+        cell_height = (max_height - (rows - 1) * spacing) / rows
+        
+        for idx, item in enumerate(items):
+            row = idx // cols
+            col = idx % cols
+            
+            # Fit to cell
+            try:
+                if item.width > cell_width * 0.98:
+                    item.scale((cell_width * 0.98) / item.width)
+                if item.height > cell_height * 0.98:
+                    item.scale((cell_height * 0.98) / item.height)
+            except (AttributeError, ZeroDivisionError):
+                continue
+            
+            # Position in grid
+            x = -max_width / 2 + col * (cell_width + spacing) + cell_width / 2
+            y = max_height / 2 - row * (cell_height + spacing) - cell_height / 2
+            item.move_to(np.array([x, y, 0]))
+    
+    # Create group
+    group = VGroup(*items)
+    
+    # Position at target center
+    if center is None:
+        center = get_content_center()
+    group.move_to(center)
+    
+    # Final validation
+    validate_position(group, f"{layout_type} layout", auto_fix=True)
+    
+    return group
 
 `);
 

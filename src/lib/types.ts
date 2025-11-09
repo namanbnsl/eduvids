@@ -82,6 +82,7 @@ type ValidationStage =
   | "plugin-validation"
   | "layout-injection"
   | "latex"
+  | "dry-run"
   | "render"
   | "video-validation"
   | "watermark"

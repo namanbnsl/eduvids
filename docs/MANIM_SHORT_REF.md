@@ -354,6 +354,13 @@ self.add(text, math)
 
 **Note:** LaTeX (`Tex` / `MathTex`) requires a TeX installation. If LaTeX is not installed, rendering will fail.
 
+**⚠️ CRITICAL - INCORRECT COLOR SYNTAX:**
+NEVER use `\color{}` or `\textcolor{}` inside raw LaTeX strings in MathTex - it will cause compilation errors!
+- ❌ WRONG: `MathTex(r"{\color{WHITE}{a+b}}")` - nested braces cause LaTeX errors
+- ❌ WRONG: `MathTex(r"\textcolor{WHITE}{a+b}")` - textcolor not available
+- ✅ CORRECT: `MathTex(r"\frac{a+b}{c}", tex_to_color_map={'a': RED, 'b': BLUE})`
+- ✅ CORRECT: `MathTex(r"\frac{a+b}{c}", color=GOLD)` - color entire formula
+
 ## 🎚️ ValueTracker (`manim.mobject.value_tracker.ValueTracker`)
 
 `ValueTracker(value=0)`: stores a numeric value that can be animated. Not shown on screen; its position encodes a number.

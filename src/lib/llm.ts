@@ -222,7 +222,7 @@ export async function generateVoiceoverScript({
     "Directive: Develop each BODY line with concrete explanations, definitions, or reasoning so the listener learns how and why—not just what.",
     "Directive: Ensure the worked example and reflection lines explicitly reference the same core concept and build on prior steps.",
     "Directive: Maintain smooth flow by referencing prior steps and previewing what comes next.",
-    "Directive: Whenever you use an acronym, initialism, or uppercase mnemonic, append a lowercase phonetic pronunciation in parentheses immediately after it so text-to-speech voices it correctly.",
+    "Directive: When you mention an acronym, initialism, or all-caps mnemonic, write ONLY the phonetic pronunciation in lowercase without showing the uppercase form or parentheses, so TTS reads it naturally once (e.g., write "soah caah toa" instead of "SOH CAH TOA", write "dee en ay" instead of "DNA"). For well-known acronyms that TTS handles correctly (like "NASA" or "FBI"), you may use the standard form.",
     "Draft the narration segments:",
   ].join("\n\n");
 
