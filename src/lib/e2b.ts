@@ -691,10 +691,10 @@ export async function renderManimVideo({
       mediaDir,
       "--disable_caching",
       "--format=mp4",
-      // "-ql",
-      "-qm",
-      "--fps",
-      15,
+      "-ql",
+      // "-qm",
+      // "--fps",
+      // 15,
     ];
     if (resolution) {
       safeWidth = Math.max(1, Math.round(resolution.width));
