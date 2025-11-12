@@ -982,11 +982,48 @@ export const generateVideo = inngest.createFunction(
                   );
                 }
 
+                const videoDataUrl = result.videoPath;
+                if (typeof videoDataUrl !== "string" || !videoDataUrl.length) {
+                  throw new Error(
+                    "Render step did not return a usable video data URL"
+                  );
+                }
+                if (!videoDataUrl.startsWith("data:video/mp4;base64,")) {
+                  throw new Error(
+                    "Render step returned video data in an unexpected format"
+                  );
+                }
+
+                if (jobId) {
+                  await jobStore.setProgress(jobId, {
+                    progress: 72,
+                    step: "rendered video",
+                  });
+                  await jobStore.setProgress(jobId, {
+                    progress: 80,
+                    step: "uploading video",
+                  });
+                }
+
+                const uploadUrl = await uploadVideo({
+                  videoPath: videoDataUrl,
+                  userId,
+                });
+
+                console.log(" Video uploaded to storage", {
+                  uploadUrl,
+                  renderAttempt: attempt,
+                });
+
+                if (typeof uploadUrl !== "string" || !uploadUrl.length) {
+                  throw new Error("Upload step did not return a valid URL");
+                }
+
                 return {
-                  videoPath: result.videoPath,
+                  uploadUrl,
                   warnings: result.warnings ?? [],
                   logs: pruneRenderLogs(result.logs),
-                };
+                } satisfies RenderAttemptSuccess;
               } catch (err) {
                 const base =
                   err instanceof Error ? err : new Error(String(err));
@@ -997,71 +1034,7 @@ export const generateVideo = inngest.createFunction(
 
           const renderWarnings = renderExecution.warnings ?? [];
           const renderLogs = renderExecution.logs ?? [];
-
-          const videoDataUrl = await step.run(
-            buildStepId("video", "render", "attempt", attempt, "validate"),
-            async () => {
-              try {
-                const { videoPath } = renderExecution;
-                if (typeof videoPath !== "string" || !videoPath.length) {
-                  throw new Error(
-                    "Render step did not return a usable video data URL"
-                  );
-                }
-                if (!videoPath.startsWith("data:video/mp4;base64,")) {
-                  throw new Error(
-                    "Render step returned video data in an unexpected format"
-                  );
-                }
-                return videoPath;
-              } catch (err) {
-                const base =
-                  err instanceof Error ? err : new Error(String(err));
-                throw new NonRetriableError(base.message, { cause: base });
-              }
-            }
-          );
-
-          if (jobId) {
-            await jobStore.setProgress(jobId, {
-              progress: 72,
-              step: "rendered video",
-            });
-          }
-
-          const uploadUrl = await step.run(
-            buildStepId("video", "upload", "attempt", attempt),
-            async () => {
-              try {
-                if (jobId) {
-                  await jobStore.setProgress(jobId, {
-                    progress: 80,
-                    step: "uploading video",
-                  });
-                }
-
-                const url = await uploadVideo({
-                  videoPath: videoDataUrl,
-                  userId,
-                });
-
-                console.log(" Video uploaded to storage", {
-                  uploadUrl: url,
-                  renderAttempt: attempt,
-                });
-
-                if (typeof url !== "string" || !url.length) {
-                  throw new Error("Upload step did not return a valid URL");
-                }
-
-                return url;
-              } catch (err) {
-                const base =
-                  err instanceof Error ? err : new Error(String(err));
-                throw new NonRetriableError(base.message, { cause: base });
-              }
-            }
-          );
+          const uploadUrl = renderExecution.uploadUrl;
 
           renderOutcome = {
             uploadUrl,
