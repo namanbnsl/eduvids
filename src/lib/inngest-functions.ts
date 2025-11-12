@@ -953,8 +953,8 @@ export const generateVideo = inngest.createFunction(
         );
 
         try {
-          const stepResult = await step.run(
-            buildStepId("video", "render", "attempt", attempt),
+          const renderExecution = await step.run(
+            buildStepId("video", "render", "attempt", attempt, "execute"),
             async () => {
               try {
                 const usesManimML = currentScript.includes("manim_ml");
@@ -982,39 +982,11 @@ export const generateVideo = inngest.createFunction(
                   );
                 }
 
-                const videoDataUrl = result.videoPath;
-                if (!videoDataUrl.startsWith("data:video/mp4;base64,")) {
-                  throw new Error(
-                    "Render step returned video data in an unexpected format"
-                  );
-                }
-
-                if (jobId) {
-                  await jobStore.setProgress(jobId, {
-                    progress: 72,
-                    step: "rendered video",
-                  });
-                  await jobStore.setProgress(jobId, {
-                    progress: 80,
-                    step: "uploading video",
-                  });
-                }
-
-                const uploadUrl = await uploadVideo({
-                  videoPath: videoDataUrl,
-                  userId,
-                });
-
-                console.log(" Video uploaded to storage", {
-                  uploadUrl,
-                  renderAttempt: attempt,
-                });
-
                 return {
-                  uploadUrl,
+                  videoPath: result.videoPath,
                   warnings: result.warnings ?? [],
                   logs: pruneRenderLogs(result.logs),
-                } satisfies RenderAttemptSuccess;
+                };
               } catch (err) {
                 const base =
                   err instanceof Error ? err : new Error(String(err));
@@ -1023,25 +995,79 @@ export const generateVideo = inngest.createFunction(
             }
           );
 
-          if (
-            !stepResult ||
-            typeof stepResult.uploadUrl !== "string" ||
-            !stepResult.uploadUrl.length
-          ) {
-            console.error(" Render step did not return an upload URL", {
-              result: stepResult,
+          const renderWarnings = renderExecution.warnings ?? [];
+          const renderLogs = renderExecution.logs ?? [];
+
+          const videoDataUrl = await step.run(
+            buildStepId("video", "render", "attempt", attempt, "validate"),
+            async () => {
+              try {
+                const { videoPath } = renderExecution;
+                if (typeof videoPath !== "string" || !videoPath.length) {
+                  throw new Error(
+                    "Render step did not return a usable video data URL"
+                  );
+                }
+                if (!videoPath.startsWith("data:video/mp4;base64,")) {
+                  throw new Error(
+                    "Render step returned video data in an unexpected format"
+                  );
+                }
+                return videoPath;
+              } catch (err) {
+                const base =
+                  err instanceof Error ? err : new Error(String(err));
+                throw new NonRetriableError(base.message, { cause: base });
+              }
+            }
+          );
+
+          if (jobId) {
+            await jobStore.setProgress(jobId, {
+              progress: 72,
+              step: "rendered video",
             });
-            throw new Error("Render pipeline did not produce an upload URL");
           }
 
-          const renderWarnings = stepResult.warnings ?? [];
-          const renderLogs = stepResult.logs ?? [];
+          const uploadUrl = await step.run(
+            buildStepId("video", "upload", "attempt", attempt),
+            async () => {
+              try {
+                if (jobId) {
+                  await jobStore.setProgress(jobId, {
+                    progress: 80,
+                    step: "uploading video",
+                  });
+                }
+
+                const url = await uploadVideo({
+                  videoPath: videoDataUrl,
+                  userId,
+                });
+
+                console.log(" Video uploaded to storage", {
+                  uploadUrl: url,
+                  renderAttempt: attempt,
+                });
+
+                if (typeof url !== "string" || !url.length) {
+                  throw new Error("Upload step did not return a valid URL");
+                }
+
+                return url;
+              } catch (err) {
+                const base =
+                  err instanceof Error ? err : new Error(String(err));
+                throw new NonRetriableError(base.message, { cause: base });
+              }
+            }
+          );
 
           renderOutcome = {
-            uploadUrl: stepResult.uploadUrl,
+            uploadUrl,
             warnings: renderWarnings,
             logs: renderLogs,
-          };
+          } satisfies RenderAttemptSuccess;
 
           if (renderOutcome.warnings.length) {
             pipelineWarnings.push(...renderOutcome.warnings);
