@@ -402,6 +402,27 @@ function runHeuristicChecks(
     });
   }
 
+  // Check for problematic MathTex patterns that split badly
+  const PROBLEMATIC_MATHTEX_PATTERNS = [
+    // Consecutive fractions with operators: \frac{a}{b} + \frac{c}{d}
+    /MathTex\([^)]*\\frac\{[^}]+\}\{[^}]+\}\s*[+\-*/]\s*\\frac\{[^}]+\}\{[^}]+\}/,
+    // Long chains of fractions: \frac{1}{1} + \frac{1}{2} + \frac{1}{3} + ...
+    /MathTex\([^)]*(?:\\frac\{[^}]+\}\{[^}]+\}\s*[+\-*/]\s*){3,}/,
+    // Incomplete exponent patterns that split badly: 1^s} +
+    /MathTex\([^)]*\^\{[^}]+\}\s*[+\-*/]/,
+  ];
+
+  for (const pattern of PROBLEMATIC_MATHTEX_PATTERNS) {
+    if (pattern.test(normalized)) {
+      issues.push({
+        message:
+          "❌ MathTex with problematic LaTeX pattern detected. Long chains of fractions or complex nested structures can split into invalid LaTeX fragments during animation. Use summation notation (\\sum), break into multiple MathTex objects, or explicitly isolate substrings.",
+        severity: "fixable",
+      });
+      break;
+    }
+  }
+
   const FONT_SIZE_PATTERN = /font_size\s*=\s*([0-9]+(?:\.[0-9]+)?)/g;
   const ALLOWED_FONT_SIZES = [20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 46];
   const TEXT_CONSTRUCTOR_PATTERN =

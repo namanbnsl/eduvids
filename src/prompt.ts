@@ -192,8 +192,45 @@ Video Structure Requirements:
   - Use transitions like Transform for smooth morphing between similar shapes or text
   - **ALL ON-SCREEN TEXT MUST BE LATEX**: Use Tex/MathTex via the provided helpers (create_tex_label, create_text_panel). NEVER use Text, MarkupText, or Paragraph directly.
 
-⚠️ CRITICAL - LATEX COLOR SYNTAX ⚠️
-**CORRECT COLOR SYNTAX IN MathTex:**
+⚠️ CRITICAL - LATEX & MathTex BEST PRACTICES ⚠️
+
+**1. LATEX SPLITTING ISSUES (PREVENTS COMPILATION ERRORS):**
+MathTex automatically splits equations for animation, which can create invalid LaTeX fragments. Follow these rules:
+
+- ✅ CORRECT: Use simple, complete expressions
+  '''python
+  # Good - simple and won't split badly
+  zeta = MathTex(r"\\zeta(s) = \\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
+  '''
+
+- ❌ WRONG: Complex expressions that split into invalid fragments
+  '''python
+  # BAD - splits into fragments like "} + \\frac{1}{2^{" which are invalid
+  zeta = MathTex(r"\\zeta(s) = \\frac{1}{1^s} + \\frac{1}{2^s} + \\frac{1}{3^s} + \\cdots", font_size=FONT_MATH)
+  '''
+
+- ✅ FIX: Break into multiple MathTex objects or use substrings_to_isolate
+  '''python
+  # Option 1: Separate objects
+  zeta_def = MathTex(r"\\zeta(s) =", font_size=FONT_MATH)
+  zeta_sum = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
+  formula = VGroup(zeta_def, zeta_sum).arrange(RIGHT, buff=0.3)
+  
+  # Option 2: Control splitting with substrings_to_isolate
+  zeta = MathTex(
+      r"\\zeta(s)", "=", r"\\frac{1}{1^s}", "+", r"\\frac{1}{2^s}", "+", "\\cdots",
+      font_size=FONT_MATH
+  )
+  '''
+
+**CRITICAL RULES TO AVOID SPLITTING ERRORS:**
+1. **Avoid consecutive fractions with operators:** "\\frac{a}{b} + \\frac{c}{d}" splits badly
+2. **Avoid incomplete braces in sequences:** Series like "f(x_1) + f(x_2) + ..." can break
+3. **Use summation/product notation:** Replace "1 + 2 + 3 + ..." with "\\sum_{i=1}^{n} i"
+4. **Prefer simple expressions:** Keep each MathTex focused on one complete mathematical object
+5. **Test mentally:** Would a random split of this string create valid LaTeX? If no, simplify it.
+
+**2. COLOR SYNTAX IN MathTex:**
 - ✅ CORRECT: MathTex(r"\\frac{a+b}{c}") - no color
 - ✅ CORRECT: MathTex(r"\\frac{a+b}{c}", color=BLUE) - color entire formula
 - ✅ CORRECT: MathTex(r"\\frac{a+b}{c}", tex_to_color_map={'a': RED, 'b': BLUE}) - use tex_to_color_map
@@ -224,6 +261,27 @@ formula = MathTex(r"\\frac{a+b}{c}", color=GOLD, font_size=FONT_MATH)
 '''
 
 **NEVER use \\color{} or \\textcolor{} inside raw LaTeX strings in MathTex - it will cause compilation errors!**
+
+**3. SAFE PATTERNS FOR COMMON MATHEMATICAL EXPRESSIONS:**
+'''python
+# ✅ SAFE: Infinite series using summation notation
+series = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^2}", font_size=FONT_MATH)
+
+# ✅ SAFE: Simple equations
+equation = MathTex(r"E = mc^2", font_size=FONT_MATH)
+
+# ✅ SAFE: Explicit substring isolation
+formula = MathTex(
+    r"f(x)", "=", r"ax^2", "+", r"bx", "+", "c",
+    font_size=FONT_MATH
+)
+
+# ❌ UNSAFE: Long chains of fractions
+bad = MathTex(r"\\frac{1}{1^s} + \\frac{1}{2^s} + \\frac{1}{3^s} + \\cdots", font_size=FONT_MATH)
+
+# ✅ FIX: Use summation or break apart
+good = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
+'''
 
 - RETURN ONLY THE CODE. NOTHING ELSE. ONLY THE CODE
 

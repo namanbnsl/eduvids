@@ -207,9 +207,6 @@ export interface ManimGenerationAttempt {
 export async function generateVoiceoverScript({
   prompt,
 }: VoiceoverScriptRequest): Promise<string> {
-  // const model = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
-  const googleModel = createGoogleModel("gemini-2.5-flash");
-
   const systemPrompt = VOICEOVER_SYSTEM_PROMPT;
 
   const composedPrompt = [
@@ -226,16 +223,41 @@ export async function generateVoiceoverScript({
     "Draft the narration segments:",
   ].join("\n\n");
 
-  const { text } = await generateTextWithTracking(
+  for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
+    const googleModel = createGoogleModel("gemini-2.5-flash");
+    try {
+      const { text } = await generateTextWithTracking(
+        {
+          model: googleModel.provider(googleModel.modelId),
+          system: systemPrompt,
+          prompt: composedPrompt,
+        },
+        googleModel
+      );
+
+      return text.trim();
+    } catch (err) {
+      if (attempt === GEMINI_MAX_RETRIES) {
+        logRetry("generateVoiceoverScript", attempt, err);
+        break;
+      }
+      const delayMs = randomDelayMs();
+      logRetry("generateVoiceoverScript", attempt, err, delayMs);
+      await sleep(delayMs);
+    }
+  }
+
+  // Fallback to Gemini 2.5 Pro if Gemini Flash fails after retries
+  const proModel = createGoogleModel("gemini-2.5-pro");
+  const { text: proText } = await generateTextWithTracking(
     {
-      model: googleModel.provider(googleModel.modelId),
+      model: proModel.provider(proModel.modelId),
       system: systemPrompt,
       prompt: composedPrompt,
     },
-    googleModel
+    proModel
   );
-
-  return text.trim();
+  return proText.trim();
 }
 
 export async function generateManimScript({
