@@ -32,6 +32,7 @@ import {
   Monitor,
   Smartphone,
   Video,
+  TwitterIcon,
 } from "lucide-react";
 
 // Types
@@ -159,6 +160,14 @@ export default function ChatPage() {
             className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           >
             <Youtube className="size-5" />
+          </Link>
+          <Link
+            target="_blank"
+            href="https://www.x.com/eduvidsai"
+            aria-label="YouTube"
+            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            <TwitterIcon className="size-5" />
           </Link>
           <Link
             target="_blank"

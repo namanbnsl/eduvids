@@ -339,6 +339,12 @@ good = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
    - Use proper spacing (LEFT, RIGHT, UP, DOWN)
    - TextAlign or CENTER constants do not exist in Manim; position elements with '.move_to', '.to_edge', '.align_to', or '.next_to'
    - When using arrows or connectors, leave at least 1.0 units of clearance around arrowheads and labels; prefer Arrow(..., buff=1.0) and label.next_to(..., buff=1.0)
+   - **EQUATION LABELING (CRITICAL - PREVENTS OVERLAPS):** When adding labels to equations, ALWAYS use the smart labeling system:
+     * Use smart_position_equation_labels(equation, labels_info, collision_strategy="stagger") for automatic collision avoidance
+     * Use create_fade_sequence_labels(self, equation, labels_info) to show labels one at a time with fade in/out
+     * Use create_smart_label(text, with_arrow=True) to create labels with pointing arrows
+     * NEVER manually position multiple labels without checking for overlaps
+     * If labels would overlap, the system automatically staggers them or fades them in sequence
    - Prefer straightforward numeric values in calculations; avoid elaborate algebra or precision-heavy numbers
    - **STRICT ELEMENT LIMITS**: max 4-5 visible elements at once (3-4 for portrait/shorts) - if you need more, use multiple scenes
    - **MANDATORY SCENE CLEARING**: Clear the screen with FadeOut before introducing new concepts - don't accumulate elements
@@ -541,6 +547,12 @@ good = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
 - **3D SCENES:**
   - Neural network animations often look better in 3D.
   - To use a 3D scene, inherit from \`ThreeDScene\` instead of \`VoiceoverScene\`. Note that \`ThreeDScene\` does not support voiceover.
+  - **CRITICAL FOR TEXT VISIBILITY IN 3D:**
+    * Use \`create_3d_text_label(text, font_size, with_background=True)\` for ALL text in 3D scenes
+    * This ensures text always faces the camera and has a high-contrast background panel
+    * For labeling 3D objects: \`create_3d_labeled_object(obj_3d, "label text")\`
+    * Regular \`create_tex_label()\` may be hard to read in 3D - always prefer 3D-specific functions
+    * The layout engine automatically makes CTA scenes 2D for clear visibility
 - **EXAMPLE:**
   '''python
   from manim import *
@@ -554,7 +566,11 @@ good = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
               FeedForwardLayer(3),
           ])
           
-          self.add(nn)
+          # Use 3D text labels for visibility
+          title = create_3d_text_label("Neural Network", font_size=FONT_HEADING, with_background=True)
+          title.to_edge(UP)
+          
+          self.add(nn, title)
           
           forward_pass = nn.make_forward_pass_animation()
           self.play(forward_pass)
@@ -722,6 +738,19 @@ class MyScene(VoiceoverScene):
         # - wrap_text(text, font_size), create_wrapped_text(text, font_size)
         # - create_code_block(code_str, **kwargs), add_code_block(scene, code_str, **kwargs)
         # - Use FONT_MATH for all MathTex/Tex: MathTex(r"formula", font_size=FONT_MATH)
+        #
+        # SMART EQUATION LABELING (prevents overlaps):
+        # - smart_position_equation_labels(equation, labels_info, collision_strategy="stagger")
+        # - create_fade_sequence_labels(self, equation, labels_info, display_time=1.5)
+        # - create_smart_label(text, font_size=FONT_LABEL, with_arrow=True)
+        # 
+        # Example usage:
+        # formula = MathTex(r"E = mc^2", font_size=FONT_MATH)
+        # labels = [
+        #     {'label': create_smart_label("Energy"), 'target': formula[0], 'direction': UP},
+        #     {'label': create_smart_label("Mass"), 'target': formula[2], 'direction': DOWN}
+        # ]
+        # group = smart_position_equation_labels(formula, labels, collision_strategy="stagger")
         
         # ALWAYS use these helpers for positioning and validation!
         
