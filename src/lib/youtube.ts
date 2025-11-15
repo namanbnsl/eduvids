@@ -97,7 +97,7 @@ export async function uploadToYouTube({
     requestBody: {
       snippet: {
         title: finalYoutubeTitle,
-        description: finalDescription,
+        description: finalDescription + `\n\n Generate your own videos for free at https://eduvids.vercel.app`,
         tags,
         categoryId: "27",
       },

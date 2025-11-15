@@ -262,7 +262,47 @@ formula = MathTex(r"\\frac{a+b}{c}", color=GOLD, font_size=FONT_MATH)
 
 **NEVER use \\color{} or \\textcolor{} inside raw LaTeX strings in MathTex - it will cause compilation errors!**
 
-**3. SAFE PATTERNS FOR COMMON MATHEMATICAL EXPRESSIONS:**
+**3. BACKSLASH ESCAPING IN MATHTEX (CRITICAL - PREVENTS LATEX ERRORS):**
+
+Python has TWO ways to write backslashes in strings:
+1. **Raw strings (r"...")**: Backslashes are literal, so r"\\theta" stays as "\\theta"
+2. **Regular strings ("...")**: Backslashes escape, so "\\\\theta" becomes "\\theta"
+
+For LaTeX in MathTex:
+- ✅ CORRECT: Use raw strings with SINGLE backslash
+  '''python
+  # CORRECT - raw string with single backslash
+  formula = MathTex(r"e^{i\\theta}", r"\\frac{a}{b}", font_size=FONT_MATH)
+  '''
+
+- ✅ CORRECT: Use regular strings with DOUBLE backslash
+  '''python
+  # CORRECT - regular string with double backslash
+  formula = MathTex("e^{i\\\\theta}", "\\\\frac{a}{b}", font_size=FONT_MATH)
+  '''
+
+- ❌ WRONG: Raw strings with DOUBLE backslash (CAUSES LATEX ERROR!)
+  '''python
+  # WRONG - raw string with double backslash creates "\\\\theta" in LaTeX
+  formula = MathTex(r"e^{i\\\\theta}", r"\\\\frac{a}{b}", font_size=FONT_MATH)  # ERROR!
+  '''
+
+- ❌ WRONG: Mixing raw and regular strings inconsistently
+  '''python
+  # WRONG - inconsistent escaping causes errors
+  formula = MathTex("e^{i\\\\theta}", r"\\\\frac{a}{b}", font_size=FONT_MATH)  # ERROR!
+  '''
+
+**BEST PRACTICE**: Use raw strings (r"...") with single backslashes throughout:
+'''python
+# ✅ RECOMMENDED PATTERN
+formula = MathTex(
+    r"e^{i\\theta}", "=", r"\\cos(\\theta)", "+", r"i\\sin(\\theta)",
+    font_size=FONT_MATH
+)
+'''
+
+**4. SAFE PATTERNS FOR COMMON MATHEMATICAL EXPRESSIONS:**
 '''python
 # ✅ SAFE: Infinite series using summation notation
 series = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^2}", font_size=FONT_MATH)
