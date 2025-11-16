@@ -154,11 +154,49 @@ function buildAugmentedSystemPrompt(base: string, language?: string): string {
   const { markdown, json } = loadManimReferenceDocs();
   let modifiedBase = base;
 
-  // If language is not English, modify the prompt to allow Text instead of requiring LaTeX
+  // If language is not English, comprehensively modify the prompt to allow Text instead of requiring LaTeX
   if (language && language !== 'english') {
-    modifiedBase = base.replace(
+    const langUpper = language.toUpperCase();
+    
+    // 1. Replace the main LaTeX requirement line
+    modifiedBase = modifiedBase.replace(
       /- \*\*ALL ON-SCREEN TEXT MUST BE LATEX\*\*: Use Tex\/MathTex via the provided helpers \(create_tex_label, create_text_panel\)\. NEVER use Text, MarkupText, or Paragraph directly\./g,
-      `- **FOR NON-ENGLISH TEXT (${language.toUpperCase()}), USE Text() INSTEAD OF LATEX**: LaTeX does not properly support non-English characters. For all non-mathematical text in ${language}, use the Text() class directly: Text("your text", font_size=FONT_BODY). Only use Tex/MathTex for mathematical formulas and equations. For English text, you still use create_tex_label helpers, but for ${language} text, always use Text() to ensure proper rendering.`
+      `- **FOR ${langUpper} TEXT, USE Text() INSTEAD OF LATEX**: LaTeX does not properly support ${language} characters. For all non-mathematical text, use the Text() class directly: Text("your text", font_size=FONT_BODY, color=WHITE). ONLY use Tex/MathTex for mathematical formulas and equations. Never use create_tex_label for ${language} text.`
+    );
+
+    // 2. Modify all create_tex_label references to suggest Text() for non-English
+    modifiedBase = modifiedBase.replace(
+      /create_tex_label\(/g,
+      `Text(  # For ${language}, use Text() instead of create_tex_label(`
+    );
+
+    // 3. Add a prominent section at the beginning about non-English text handling
+    const nonEnglishHeader = `
+⚠️ CRITICAL - ${langUpper} LANGUAGE DETECTED ⚠️
+This video is in ${language.toUpperCase()}. IMPORTANT RULES:
+1. **USE Text() FOR ALL NON-MATHEMATICAL TEXT**: Text("your text", font_size=FONT_BODY, color=WHITE)
+2. **USE Tex/MathTex ONLY FOR MATH**: MathTex(r"E = mc^2", font_size=FONT_MATH)
+3. **NEVER use create_tex_label, create_text_panel, or create_bullet_item for ${language} text**
+4. **For bullets in ${language}**: Create Text() objects and arrange them manually
+5. **Example correct usage**:
+   title = Text("${language === 'spanish' ? 'Título' : language === 'french' ? 'Titre' : language === 'german' ? 'Titel' : 'Title'}", font_size=FONT_TITLE, color=WHITE)
+   body = Text("${language === 'spanish' ? 'Contenido' : language === 'french' ? 'Contenu' : language === 'german' ? 'Inhalt' : 'Content'}", font_size=FONT_BODY, color=WHITE)
+6. **LaTeX will NOT work for ${language} characters** - it will show garbled text or errors
+
+`;
+
+    modifiedBase = nonEnglishHeader + modifiedBase;
+
+    // 4. Modify bullet point creation instructions
+    modifiedBase = modifiedBase.replace(
+      /\*\*RECOMMENDED:\*\* Use the \\`create_bullet_list\\` helper function for safe, consistent bullet points/g,
+      `**FOR ${langUpper}**: DO NOT use create_bullet_list - it uses LaTeX which doesn't support ${language}. Instead, create Text() objects and arrange them vertically`
+    );
+
+    // 5. Update text panel instructions
+    modifiedBase = modifiedBase.replace(
+      /create_text_panel\(/g,
+      `# For ${language}, manually create Text() + Rectangle instead of create_text_panel(`
     );
   }
 
