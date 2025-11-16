@@ -2482,53 +2482,29 @@ export function getTextWrappingGuidelines(config: LayoutConfig): string {
   )} chars
 
 def wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH, max_lines=None):
-    """
-    Automatically wrap text to fit within max_width with improved wrapping.
-    
-    Args:
-        text: Text to wrap
-        font_size: Font size for character width calculation
-        max_width: Maximum width constraint
-        max_lines: Maximum number of lines (None for unlimited)
-    
-    Returns:
-        Wrapped text with LaTeX line breaks (\\\\)
-    """
     if not text or not isinstance(text, str):
         return ""
-    
-    # Approximate character width - adjusted for better accuracy
-    # Use 0.55 instead of 0.6 for tighter estimation (prevents overflow)
     char_width = font_size * 0.55
-    max_chars_per_line = max(int(max_width / char_width), 10)  # Minimum 10 chars per line
-    
+    max_chars_per_line = max(int(max_width / char_width), 10)
     words = text.split()
     lines = []
     current_line = []
     current_length = 0
-    
     for word in words:
-        # Handle long words that exceed max_chars_per_line
         if len(word) > max_chars_per_line:
-            # If current line has content, finish it first
             if current_line:
                 lines.append(' '.join(current_line))
                 current_line = []
                 current_length = 0
-            
-            # Split long word with hyphenation
             while len(word) > max_chars_per_line:
                 chunk = word[:max_chars_per_line - 1]
                 lines.append(chunk + "-")
                 word = word[max_chars_per_line - 1:]
-            
-            # Add remaining part of word
             if word:
                 current_line = [word]
                 current_length = len(word)
             continue
-        
-        word_length = len(word) + 1  # +1 for space
+        word_length = len(word) + 1
         if current_length + word_length > max_chars_per_line and current_line:
             lines.append(' '.join(current_line))
             current_line = [word]
@@ -2536,22 +2512,15 @@ def wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH, max_lines=
         else:
             current_line.append(word)
             current_length += word_length
-    
     if current_line:
         lines.append(' '.join(current_line))
-    
-    # Limit number of lines if specified
     if max_lines and len(lines) > max_lines:
         lines = lines[:max_lines]
-        # Add ellipsis to last line if truncated
         if lines:
             lines[-1] = lines[-1] + "..."
-    
-    # Use LaTeX line break (\\) instead of \n for proper rendering
     return " \\\\\\\\ ".join(lines)
 
 def create_wrapped_text(text, font_size=FONT_BODY, **kwargs):
-    """Create Tex mobject with automatic wrapping"""
     wrapped = wrap_text(text, font_size)
     return create_tex_label(wrapped, font_size=font_size, **kwargs)
 `;
