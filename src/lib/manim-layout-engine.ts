@@ -1,6 +1,6 @@
 /**
  * MANIM LAYOUT ENGINE - ULTRA-AGGRESSIVE OVERLAP PREVENTION
- * 
+ *
  * MAJOR IMPROVEMENTS (2025-11-15):
  * ===============================================
  * 1. INCREASED SAFE MARGINS: 35-45% larger fixed boundaries to prevent all cut-offs
@@ -9,13 +9,13 @@
  * 4. HARD BOUNDARY ENFORCEMENT: _nudge_into_safe_frame now has strict verification with auto-scaling
  * 5. SMART EQUATION LABELING: New collision detection with automatic staggering/fade-in-out
  * 6. COLLISION STRATEGIES: "stagger" (offset labels), "scale" (shrink), "fade_sequence" (one at a time)
- * 
+ *
  * KEY FUNCTIONS:
  * - smart_position_equation_labels(): Intelligent label positioning with collision avoidance
  * - create_fade_sequence_labels(): Show labels one at a time with fade in/out
  * - create_smart_label(): Create labels with optional arrows
  * - detect_label_collisions(): Detect overlapping labels
- * 
+ *
  * GUARANTEES:
  * - Fixed margins that CANNOT be violated (hard boundaries)
  * - Zero overlaps between elements (ultra-aggressive separation)
@@ -24,149 +24,149 @@
  */
 
 export interface LayoutConfig {
-    frameWidth: number;
-    frameHeight: number;
-    safeMargin: number;
-    orientation: "landscape" | "portrait";
-    contentType?: "text-heavy" | "diagram" | "math" | "mixed";
+  frameWidth: number;
+  frameHeight: number;
+  safeMargin: number;
+  orientation: "landscape" | "portrait";
+  contentType?: "text-heavy" | "diagram" | "math" | "mixed";
 }
 
 export interface LayoutConfig3D extends LayoutConfig {
-    cameraDistance: number;
-    cameraFov: number;
+  cameraDistance: number;
+  cameraFov: number;
 }
 
 export interface SafeZoneConfig {
-    top: number;
-    bottom: number;
-    left: number;
-    right: number;
-    titleHeight: number;
-    maxContentWidth: number;
-    maxContentHeight: number;
-    minSpacing: number;
-    bottomSafeZoneHeight: number;
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+  titleHeight: number;
+  maxContentWidth: number;
+  maxContentHeight: number;
+  minSpacing: number;
+  bottomSafeZoneHeight: number;
 }
 
 function clampFont(value: number, min: number, max: number): number {
-    let lower = min;
-    let upper = max;
-    if (lower > upper) {
-        [lower, upper] = [upper, lower];
-    }
-    return Math.max(lower, Math.min(upper, value));
+  let lower = min;
+  let upper = max;
+  if (lower > upper) {
+    [lower, upper] = [upper, lower];
+  }
+  return Math.max(lower, Math.min(upper, value));
 }
 
 export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
-    const { frameWidth, frameHeight, safeMargin, orientation, contentType } =
-        config;
+  const { frameWidth, frameHeight, safeMargin, orientation, contentType } =
+    config;
 
-    const portrait = orientation === "portrait";
-    // INCREASED margin boost to create larger fixed boundaries
-    const marginBoost = portrait ? 1.35 : 1.25;
+  const portrait = orientation === "portrait";
+  // INCREASED margin boost to create larger fixed boundaries
+  const marginBoost = portrait ? 1.35 : 1.25;
 
-    // Base margins with MORE generous spacing to prevent cut-offs
-    let topMargin = safeMargin * marginBoost;
-    let bottomMargin = safeMargin * marginBoost;
-    let leftMargin = safeMargin * marginBoost;
-    let rightMargin = safeMargin * marginBoost;
+  // Base margins with MORE generous spacing to prevent cut-offs
+  let topMargin = safeMargin * marginBoost;
+  let bottomMargin = safeMargin * marginBoost;
+  let leftMargin = safeMargin * marginBoost;
+  let rightMargin = safeMargin * marginBoost;
 
-    if (portrait) {
-        // Portrait: INCREASED padding for fixed margins
-        leftMargin *= 1.35;
-        rightMargin *= 1.35;
-        topMargin *= 1.45;
-        bottomMargin *= 1.45;
-    } else {
-        // Landscape: INCREASED spacing for fixed margins
-        topMargin *= 1.30;
-        bottomMargin *= 1.30;
-        leftMargin *= 1.15;
-        rightMargin *= 1.15;
-    }
+  if (portrait) {
+    // Portrait: INCREASED padding for fixed margins
+    leftMargin *= 1.35;
+    rightMargin *= 1.35;
+    topMargin *= 1.45;
+    bottomMargin *= 1.45;
+  } else {
+    // Landscape: INCREASED spacing for fixed margins
+    topMargin *= 1.3;
+    bottomMargin *= 1.3;
+    leftMargin *= 1.15;
+    rightMargin *= 1.15;
+  }
 
-    // Content-type adjustments - MAINTAIN larger margins to prevent cut-offs
-    if (contentType === "text-heavy") {
-        leftMargin *= 1.20;
-        rightMargin *= 1.20;
-    } else if (contentType === "diagram") {
-        // Diagrams: Keep SAFE margins - diagrams need protection from cut-offs
-        const avgMargin = (leftMargin + rightMargin + topMargin + bottomMargin) / 4;
-        leftMargin = rightMargin = topMargin = bottomMargin = avgMargin * 1.0; // Changed from 0.85 to 1.0
-    } else if (contentType === "math") {
-        leftMargin *= 1.20;
-        rightMargin *= 1.20;
-    }
+  // Content-type adjustments - MAINTAIN larger margins to prevent cut-offs
+  if (contentType === "text-heavy") {
+    leftMargin *= 1.2;
+    rightMargin *= 1.2;
+  } else if (contentType === "diagram") {
+    // Diagrams: Keep SAFE margins - diagrams need protection from cut-offs
+    const avgMargin = (leftMargin + rightMargin + topMargin + bottomMargin) / 4;
+    leftMargin = rightMargin = topMargin = bottomMargin = avgMargin * 1.0; // Changed from 0.85 to 1.0
+  } else if (contentType === "math") {
+    leftMargin *= 1.2;
+    rightMargin *= 1.2;
+  }
 
-    // Moderate breathing room
-    const extraTopMargin = safeMargin * (portrait ? 0.4 : 0.3);
-    const extraBottomMargin = safeMargin * (portrait ? 0.5 : 0.35);
+  // Moderate breathing room
+  const extraTopMargin = safeMargin * (portrait ? 0.4 : 0.3);
+  const extraBottomMargin = safeMargin * (portrait ? 0.5 : 0.35);
 
-    topMargin += extraTopMargin;
-    bottomMargin += extraBottomMargin;
+  topMargin += extraTopMargin;
+  bottomMargin += extraBottomMargin;
 
-    // Reasonable minimum spacing
-    let minSpacing = safeMargin * (portrait ? 1.2 : 1.0);
-    if (contentType === "text-heavy") {
-        minSpacing *= 1.1;
-    } else if (contentType === "diagram") {
-        minSpacing *= 0.9; // Diagrams need less spacing, more room for content
-    } else if (contentType === "math") {
-        minSpacing *= 1.05;
-    }
-    minSpacing = Math.max(minSpacing, safeMargin * 0.8);
+  // Reasonable minimum spacing
+  let minSpacing = safeMargin * (portrait ? 1.2 : 1.0);
+  if (contentType === "text-heavy") {
+    minSpacing *= 1.1;
+  } else if (contentType === "diagram") {
+    minSpacing *= 0.9; // Diagrams need less spacing, more room for content
+  } else if (contentType === "math") {
+    minSpacing *= 1.05;
+  }
+  minSpacing = Math.max(minSpacing, safeMargin * 0.8);
 
-    // Moderate bottom safe zone
-    let bottomSafeZoneHeight = safeMargin * (portrait ? 1.6 : 1.3);
-    if (contentType === "diagram") {
-        bottomSafeZoneHeight *= 0.85; // Less bottom margin for diagrams
-    } else if (contentType === "text-heavy") {
-        bottomSafeZoneHeight *= 1.0;
-    }
-    bottomSafeZoneHeight = Math.max(
-        bottomSafeZoneHeight,
-        frameHeight * (portrait ? 0.08 : 0.06)
-    );
+  // Moderate bottom safe zone
+  let bottomSafeZoneHeight = safeMargin * (portrait ? 1.6 : 1.3);
+  if (contentType === "diagram") {
+    bottomSafeZoneHeight *= 0.85; // Less bottom margin for diagrams
+  } else if (contentType === "text-heavy") {
+    bottomSafeZoneHeight *= 1.0;
+  }
+  bottomSafeZoneHeight = Math.max(
+    bottomSafeZoneHeight,
+    frameHeight * (portrait ? 0.08 : 0.06)
+  );
 
-    bottomMargin = Math.max(
-        bottomMargin,
-        bottomSafeZoneHeight + safeMargin * (portrait ? 0.4 : 0.3)
-    );
-    topMargin = Math.max(topMargin, safeMargin * (portrait ? 1.4 : 1.15));
+  bottomMargin = Math.max(
+    bottomMargin,
+    bottomSafeZoneHeight + safeMargin * (portrait ? 0.4 : 0.3)
+  );
+  topMargin = Math.max(topMargin, safeMargin * (portrait ? 1.4 : 1.15));
 
-    // Reasonable title zone
-    const titleHeight = orientation === "portrait" ? 1.8 : 1.5;
+  // Reasonable title zone
+  const titleHeight = orientation === "portrait" ? 1.8 : 1.5;
 
-    // Calculate usable content area with improved spacing
-    const maxContentWidth = Math.max(
-        frameWidth - leftMargin - rightMargin,
-        Number.EPSILON
-    );
-    const maxContentHeight = Math.max(
-        frameHeight - topMargin - bottomMargin - titleHeight,
-        Number.EPSILON
-    );
+  // Calculate usable content area with improved spacing
+  const maxContentWidth = Math.max(
+    frameWidth - leftMargin - rightMargin,
+    Number.EPSILON
+  );
+  const maxContentHeight = Math.max(
+    frameHeight - topMargin - bottomMargin - titleHeight,
+    Number.EPSILON
+  );
 
-    return {
-        top: topMargin,
-        bottom: bottomMargin,
-        left: leftMargin,
-        right: rightMargin,
-        titleHeight,
-        maxContentWidth,
-        maxContentHeight,
-        minSpacing,
-        bottomSafeZoneHeight,
-    };
+  return {
+    top: topMargin,
+    bottom: bottomMargin,
+    left: leftMargin,
+    right: rightMargin,
+    titleHeight,
+    maxContentWidth,
+    maxContentHeight,
+    minSpacing,
+    bottomSafeZoneHeight,
+  };
 }
 
 /**
  * Generate Python code for safe zone constants
  */
 export function generateSafeZoneConstants(config: LayoutConfig): string {
-    const zones = calculateSafeZones(config);
+  const zones = calculateSafeZones(config);
 
-    return `# Auto-generated safe zone configuration
+  return `# Auto-generated safe zone configuration
 FRAME_WIDTH = ${config.frameWidth}
 FRAME_HEIGHT = ${config.frameHeight}
 SAFE_MARGIN_TOP = ${zones.top.toFixed(2)}
@@ -393,82 +393,86 @@ def clear_scene(scene, run_time=0.6):
  * Simplified font size recommendations with consistent typography hierarchy
  */
 export function getRecommendedFontSizes(
-    config: LayoutConfig
+  config: LayoutConfig
 ): Record<string, number> {
-    const { orientation, contentType } = config;
-    const zones = calculateSafeZones(config);
+  const { orientation, contentType } = config;
+  const zones = calculateSafeZones(config);
 
-    // Calculate base size from content area
-    const contentArea = Math.sqrt(
-        Math.max(zones.maxContentWidth * zones.maxContentHeight, 1)
-    );
-    
-    // Simplified scaling - single multiplier
-    const baseScale = orientation === "portrait" ? 2.8 : 2.4;
-    
-    // Small adjustment for content type
-    const contentAdjust =
-        contentType === "text-heavy" ? 1.05 :
-        contentType === "diagram" ? 1.1 :  // Larger fonts for diagrams (labels need to be visible)
-        contentType === "math" ? 1.08 : 1.0;
+  // Calculate base size from content area
+  const contentArea = Math.sqrt(
+    Math.max(zones.maxContentWidth * zones.maxContentHeight, 1)
+  );
 
-    // Calculate base body size with simplified formula
-    const baseBody = clampFont(
-        Math.round(contentArea * baseScale * contentAdjust),
-        orientation === "portrait" ? 40 : 34,
-        orientation === "portrait" ? 60 : 52
-    );
+  // Simplified scaling - single multiplier
+  const baseScale = orientation === "portrait" ? 2.8 : 2.4;
 
-    // Title: Clear hierarchy, 1.5x body size
-    const title = clampFont(
-        Math.round(baseBody * 1.5),
-        baseBody + 8,
-        orientation === "portrait" ? 72 : 64
-    );
+  // Small adjustment for content type
+  const contentAdjust =
+    contentType === "text-heavy"
+      ? 1.05
+      : contentType === "diagram"
+      ? 1.1 // Larger fonts for diagrams (labels need to be visible)
+      : contentType === "math"
+      ? 1.08
+      : 1.0;
 
-    // Heading: Between title and body, 1.25x body size
-    const heading = clampFont(
-        Math.round(baseBody * 1.25),
-        baseBody + 4,
-        title - 4
-    );
+  // Calculate base body size with simplified formula
+  const baseBody = clampFont(
+    Math.round(contentArea * baseScale * contentAdjust),
+    orientation === "portrait" ? 40 : 34,
+    orientation === "portrait" ? 60 : 52
+  );
 
-    // Math: Same as body or slightly larger for readability
-    const math = clampFont(
-        Math.round(baseBody * (contentType === "math" ? 1.1 : 1.0)),
-        baseBody - 2,
-        baseBody + 8
-    );
+  // Title: Clear hierarchy, 1.5x body size
+  const title = clampFont(
+    Math.round(baseBody * 1.5),
+    baseBody + 8,
+    orientation === "portrait" ? 72 : 64
+  );
 
-    // Caption: 0.85x body size
-    const caption = clampFont(
-        Math.round(baseBody * 0.85),
-        orientation === "portrait" ? 32 : 28,
-        baseBody - 4
-    );
+  // Heading: Between title and body, 1.25x body size
+  const heading = clampFont(
+    Math.round(baseBody * 1.25),
+    baseBody + 4,
+    title - 4
+  );
 
-    // Label: 0.75x body size for small labels
-    const label = clampFont(
-        Math.round(baseBody * 0.75),
-        orientation === "portrait" ? 28 : 24,
-        caption - 2
-    );
+  // Math: Same as body or slightly larger for readability
+  const math = clampFont(
+    Math.round(baseBody * (contentType === "math" ? 1.1 : 1.0)),
+    baseBody - 2,
+    baseBody + 8
+  );
 
-    return {
-        title,
-        heading,
-        body: baseBody,
-        math,
-        caption,
-        label,
-    };
+  // Caption: 0.85x body size
+  const caption = clampFont(
+    Math.round(baseBody * 0.85),
+    orientation === "portrait" ? 32 : 28,
+    baseBody - 4
+  );
+
+  // Label: 0.75x body size for small labels
+  const label = clampFont(
+    Math.round(baseBody * 0.75),
+    orientation === "portrait" ? 28 : 24,
+    caption - 2
+  );
+
+  return {
+    title,
+    heading,
+    body: baseBody,
+    math,
+    caption,
+    label,
+  };
 }
 
 /**
  * Generate layout validation checks (Python code)
  */
 export function generateLayoutValidation(): string {
-    return `# Layout validation helpers
+  return `# Layout validation helpers
 def validate_position(mobject, label="object", strict=False, auto_fix=False):
     """
     Check if mobject is within safe bounds.
@@ -568,80 +572,80 @@ def safe_add(scene, mobject, auto_fit=True, label="object"):
  * Content type detection heuristics
  */
 export function detectContentType(script: string): LayoutConfig["contentType"] {
-    const lowerScript = script.toLowerCase();
+  const lowerScript = script.toLowerCase();
 
-    // Count indicators
-    const textIndicators = (lowerScript.match(/text\(/gi) || []).length;
-    const mathIndicators = (lowerScript.match(/mathtex|tex\(/gi) || []).length;
-    const diagramIndicators = (
-        lowerScript.match(/circle|square|rectangle|arrow|line|dot/gi) || []
-    ).length;
+  // Count indicators
+  const textIndicators = (lowerScript.match(/text\(/gi) || []).length;
+  const mathIndicators = (lowerScript.match(/mathtex|tex\(/gi) || []).length;
+  const diagramIndicators = (
+    lowerScript.match(/circle|square|rectangle|arrow|line|dot/gi) || []
+  ).length;
 
-    // Determine dominant type
-    const total = textIndicators + mathIndicators + diagramIndicators;
-    if (total === 0) return "mixed";
+  // Determine dominant type
+  const total = textIndicators + mathIndicators + diagramIndicators;
+  if (total === 0) return "mixed";
 
-    const textRatio = textIndicators / total;
-    const mathRatio = mathIndicators / total;
-    const diagramRatio = diagramIndicators / total;
+  const textRatio = textIndicators / total;
+  const mathRatio = mathIndicators / total;
+  const diagramRatio = diagramIndicators / total;
 
-    if (textRatio > 0.5) return "text-heavy";
-    if (mathRatio > 0.4) return "math";
-    if (diagramRatio > 0.5) return "diagram";
+  if (textRatio > 0.5) return "text-heavy";
+  if (mathRatio > 0.4) return "math";
+  if (diagramRatio > 0.5) return "diagram";
 
-    return "mixed";
+  return "mixed";
 }
 
 /**
  * Generate comprehensive layout setup code
  */
 export function generateLayoutSetup(
-    config: LayoutConfig,
-    includeHelpers: boolean = true
+  config: LayoutConfig,
+  includeHelpers: boolean = true
 ): string {
-    const parts: string[] = [];
-    const fonts = getRecommendedFontSizes(config);
+  const parts: string[] = [];
+  const fonts = getRecommendedFontSizes(config);
 
-    parts.push(["import math", "import re", "import numpy as np", ""].join("\n"));
+  parts.push(["import math", "import re", "import numpy as np", ""].join("\n"));
 
-    // Add safe zone constants
-    parts.push(generateSafeZoneConstants(config));
-    parts.push(
-        [
-            'config.background_color = "#1E1E1E"',
-            'BRIGHT_TEXT_COLOR = "#F9FBFF"',
-            'DARK_TEXT_COLOR = "#050B16"',
-            'CONTRAST_DARK_PANEL = "#1C2E4A"',
-            'CONTRAST_LIGHT_PANEL = "#F3F7FF"',
-            "MIN_CONTRAST_RATIO = 5.2",
-            "MIN_PANEL_FILL_OPACITY = 0.9",
-            "DEFAULT_PANEL_PADDING = 0.48",
-            'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F5FAFF", "#EEF2FF"]',
-            "Paragraph.set_default(color=BRIGHT_TEXT_COLOR)",
-            "MarkupText.set_default(color=BRIGHT_TEXT_COLOR)",
-            "BulletedList.set_default(color=BRIGHT_TEXT_COLOR)",
-            "myTemplate = TexTemplate()",
-            'myTemplate.preamble += r"\\usepackage{lmodern}"',
-            'Tex.set_default(tex_template=myTemplate)',
-            "Rectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
-            "RoundedRectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
-            "SurroundingRectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
-        ].join("\n")
-    );
-    parts.push(
-        [
-            "",
-            "# Recommended font sizes for this layout",
-            `FONT_TITLE = ${fonts.title}`,
-            `FONT_HEADING = ${fonts.heading}`,
-            `FONT_BODY = ${fonts.body}`,
-            `FONT_MATH = ${fonts.math}  # Use for mathematical formulae (MathTex, Tex)`,
-            `FONT_CAPTION = ${fonts.caption}`,
-            `FONT_LABEL = ${fonts.label}`,
-            "",
-        ].join("\n")
-    );
-    parts.push(`
+  // Add safe zone constants
+  parts.push(generateSafeZoneConstants(config));
+  parts.push(
+    [
+      'config.background_color = "#1E1E1E"',
+      'BRIGHT_TEXT_COLOR = "#F9FBFF"',
+      'DARK_TEXT_COLOR = "#050B16"',
+      'CONTRAST_DARK_PANEL = "#1C2E4A"',
+      'CONTRAST_LIGHT_PANEL = "#F3F7FF"',
+      "MIN_CONTRAST_RATIO = 5.2",
+      "MIN_PANEL_FILL_OPACITY = 0.9",
+      "DEFAULT_PANEL_PADDING = 0.48",
+      'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F5FAFF", "#EEF2FF"]',
+      "Paragraph.set_default(color=BRIGHT_TEXT_COLOR)",
+      "MarkupText.set_default(color=BRIGHT_TEXT_COLOR)",
+      "BulletedList.set_default(color=BRIGHT_TEXT_COLOR)",
+      "myTemplate = TexTemplate()",
+      'myTemplate.preamble += r"\\usepackage{lmodern}"',
+      "Tex.set_default(tex_template=myTemplate)",
+      "Rectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
+      "RoundedRectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
+      "SurroundingRectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
+    ].join("\n")
+  );
+  parts.push(
+    [
+      "",
+      "# Recommended font sizes for this layout",
+      `FONT_TITLE = ${fonts.title}`,
+      `FONT_HEADING = ${fonts.heading}`,
+      `FONT_BODY = ${fonts.body}`,
+      `FONT_MATH = ${fonts.math}  # Use for mathematical formulae (MathTex, Tex)`,
+      `FONT_CAPTION = ${fonts.caption}`,
+      `FONT_LABEL = ${fonts.label}`,
+      "",
+    ].join("\n")
+  );
+  parts.push(`
 
 # Additional layout utilities
 def get_safe_frame_dimensions():
@@ -1117,7 +1121,7 @@ def highlight_graph_intersections(scene, ax, graphs, *, tolerance=1e-3, samples=
 
     return []
 `);
-    parts.push(String.raw`
+  parts.push(String.raw`
 # Accessibility and readability helpers
 def _relative_luminance(color_value):
     color = Color(color_value)
@@ -1700,7 +1704,7 @@ def create_bullet_list(
     return bullets
 `);
 
-    parts.push(`
+  parts.push(`
 
 # ========================================
 # ADVANCED LAYOUT HELPERS
@@ -2367,115 +2371,115 @@ def create_bulletproof_layout(*mobjects, layout_type="vertical", spacing=1.0,
 
 `);
 
-    // PREMIUM COLOR PALETTE - Meticulously designed for #1E1E1E background
-    // Optimized for maximum contrast, harmony, and visual appeal
-    const colorPalette: Record<string, string> = {
-        // === Neutrals (High contrast base colors) ===
-        WHITE: "#FAFCFF",           // Softer white for less eye strain
-        LIGHT_GRAY: "#E8EDF5",      // Bright neutral
-        GRAY: "#B4C5E4",            // Mid-tone neutral
-        DARK_GRAY: "#52637B",       // Subtle contrast
-        BLACK: "#0F1419",           // Rich black
+  // PREMIUM COLOR PALETTE - Meticulously designed for #1E1E1E background
+  // Optimized for maximum contrast, harmony, and visual appeal
+  const colorPalette: Record<string, string> = {
+    // === Neutrals (High contrast base colors) ===
+    WHITE: "#FAFCFF", // Softer white for less eye strain
+    LIGHT_GRAY: "#E8EDF5", // Bright neutral
+    GRAY: "#B4C5E4", // Mid-tone neutral
+    DARK_GRAY: "#52637B", // Subtle contrast
+    BLACK: "#0F1419", // Rich black
 
-        // === Blues (Professional, trustworthy) ===
-        BLUE: "#4FC3F7",            // Vibrant sky blue
-        SKY: "#56D4FF",             // Bright sky
-        INDIGO: "#7C8CFF",          // Deep indigo
-        NAVY: "#3D5AFE",            // Bold navy
-        CYAN: "#26E5FF",            // Electric cyan
-        AZURE: "#3DCBFF",           // Bright azure
+    // === Blues (Professional, trustworthy) ===
+    BLUE: "#4FC3F7", // Vibrant sky blue
+    SKY: "#56D4FF", // Bright sky
+    INDIGO: "#7C8CFF", // Deep indigo
+    NAVY: "#3D5AFE", // Bold navy
+    CYAN: "#26E5FF", // Electric cyan
+    AZURE: "#3DCBFF", // Bright azure
 
-        // === Greens (Growth, success, natural) ===
-        TEAL: "#26DAC5",            // Modern teal
-        MINT: "#6FFFD3",            // Fresh mint
-        GREEN: "#4AE290",           // Vibrant green
-        PURE_GREEN: "#3ED47F",      // Pure emerald
-        EMERALD: "#50E5AC",         // Rich emerald
-        LIME: "#B8FF6D",            // Bright lime
-        FOREST: "#2AAA7F",          // Deep forest
+    // === Greens (Growth, success, natural) ===
+    TEAL: "#26DAC5", // Modern teal
+    MINT: "#6FFFD3", // Fresh mint
+    GREEN: "#4AE290", // Vibrant green
+    PURE_GREEN: "#3ED47F", // Pure emerald
+    EMERALD: "#50E5AC", // Rich emerald
+    LIME: "#B8FF6D", // Bright lime
+    FOREST: "#2AAA7F", // Deep forest
 
-        // === Yellows & Oranges (Energy, warmth, attention) ===
-        YELLOW: "#FFE156",          // Warm yellow
-        GOLD: "#FFCD48",            // Rich gold
-        AMBER: "#FFD563",           // Bright amber
-        ORANGE: "#FF9D5C",          // Vibrant orange
-        PEACH: "#FFB38A",           // Soft peach
-        CORAL: "#FF9680",           // Warm coral
+    // === Yellows & Oranges (Energy, warmth, attention) ===
+    YELLOW: "#FFE156", // Warm yellow
+    GOLD: "#FFCD48", // Rich gold
+    AMBER: "#FFD563", // Bright amber
+    ORANGE: "#FF9D5C", // Vibrant orange
+    PEACH: "#FFB38A", // Soft peach
+    CORAL: "#FF9680", // Warm coral
 
-        // === Reds & Pinks (Emphasis, passion, important) ===
-        RED: "#FF6B7A",             // Vibrant red
-        CRIMSON: "#FF5273",         // Deep crimson
-        ROSE: "#FF8FAD",            // Soft rose
-        PINK: "#FFA3DB",            // Bright pink
-        HOT_PINK: "#FF7DE0",        // Neon pink
+    // === Reds & Pinks (Emphasis, passion, important) ===
+    RED: "#FF6B7A", // Vibrant red
+    CRIMSON: "#FF5273", // Deep crimson
+    ROSE: "#FF8FAD", // Soft rose
+    PINK: "#FFA3DB", // Bright pink
+    HOT_PINK: "#FF7DE0", // Neon pink
 
-        // === Purples (Creative, sophisticated) ===
-        MAGENTA: "#FF7DF7",         // Bright magenta
-        FUCHSIA: "#F066FF",         // Vibrant fuchsia
-        PURPLE: "#B57EFF",          // Rich purple
-        VIOLET: "#A26EFF",          // Deep violet
-        LAVENDER: "#D4BFFF",        // Soft lavender
-        ELECTRIC_PURPLE: "#BD8FFF", // Electric purple
+    // === Purples (Creative, sophisticated) ===
+    MAGENTA: "#FF7DF7", // Bright magenta
+    FUCHSIA: "#F066FF", // Vibrant fuchsia
+    PURPLE: "#B57EFF", // Rich purple
+    VIOLET: "#A26EFF", // Deep violet
+    LAVENDER: "#D4BFFF", // Soft lavender
+    ELECTRIC_PURPLE: "#BD8FFF", // Electric purple
 
-        // === Specialty Colors ===
-        NEON_BLUE: "#5DD5FF",       // Neon blue glow
-        NEON_GREEN: "#91FFB3",      // Neon green glow
-        NEON_PINK: "#FF7DE0",       // Neon pink glow
-        NEON_YELLOW: "#FFEB5C",     // Neon yellow glow
+    // === Specialty Colors ===
+    NEON_BLUE: "#5DD5FF", // Neon blue glow
+    NEON_GREEN: "#91FFB3", // Neon green glow
+    NEON_PINK: "#FF7DE0", // Neon pink glow
+    NEON_YELLOW: "#FFEB5C", // Neon yellow glow
 
-        // === Soft Pastels (Subtle, gentle) ===
-        SOFT_BLUE: "#B0DCFF",       // Pastel blue
-        SOFT_GREEN: "#A8FFD6",      // Pastel green
-        SOFT_YELLOW: "#FFF2B8",     // Pastel yellow
-        SOFT_PINK: "#FFDDF0",       // Pastel pink
-        SOFT_PURPLE: "#E0CBFF",     // Pastel purple
+    // === Soft Pastels (Subtle, gentle) ===
+    SOFT_BLUE: "#B0DCFF", // Pastel blue
+    SOFT_GREEN: "#A8FFD6", // Pastel green
+    SOFT_YELLOW: "#FFF2B8", // Pastel yellow
+    SOFT_PINK: "#FFDDF0", // Pastel pink
+    SOFT_PURPLE: "#E0CBFF", // Pastel purple
 
-        // === Earth Tones ===
-        SAND: "#F4DDC4",            // Warm sand
-        BROWN: "#A57856",           // Earthy brown
-        SLATE: "#B0C4E2",           // Cool slate
-        STEEL: "#9DB3D6",           // Metallic steel
+    // === Earth Tones ===
+    SAND: "#F4DDC4", // Warm sand
+    BROWN: "#A57856", // Earthy brown
+    SLATE: "#B0C4E2", // Cool slate
+    STEEL: "#9DB3D6", // Metallic steel
 
-        // === Nord-inspired (Modern, clean) ===
-        NORD: "#A6DCE8",            // Nord blue
-        NORD_FROST: "#A8E4E1",      // Nord frost
-        NORD_NIGHT: "#394D6B",      // Nord night
-    };
+    // === Nord-inspired (Modern, clean) ===
+    NORD: "#A6DCE8", // Nord blue
+    NORD_FROST: "#A8E4E1", // Nord frost
+    NORD_NIGHT: "#394D6B", // Nord night
+  };
 
-    parts.push("\n# Script color palette - Optimized for #1E1E1E background");
-    const paletteEntries = Object.entries(colorPalette);
-    paletteEntries.forEach(([name, hex]) => {
-        parts.push(`${name} = "${hex}"`);
-    });
-    parts.push("");
+  parts.push("\n# Script color palette - Optimized for #1E1E1E background");
+  const paletteEntries = Object.entries(colorPalette);
+  paletteEntries.forEach(([name, hex]) => {
+    parts.push(`${name} = "${hex}"`);
+  });
+  parts.push("");
 
-    // Add helpers if requested
-    if (includeHelpers) {
-        parts.push("\n");
-        parts.push(generateLayoutValidation());
-    }
+  // Add helpers if requested
+  if (includeHelpers) {
+    parts.push("\n");
+    parts.push(generateLayoutValidation());
+  }
 
-    return parts.join("\n");
+  return parts.join("\n");
 }
 
 /**
  * Advanced text wrapping recommendations
  */
 export function getTextWrappingGuidelines(config: LayoutConfig): string {
-    const zones = calculateSafeZones(config);
-    const fonts = getRecommendedFontSizes(config);
+  const zones = calculateSafeZones(config);
+  const fonts = getRecommendedFontSizes(config);
 
-    return `# Text Wrapping Guidelines
+  return `# Text Wrapping Guidelines
 # Maximum recommended characters per line (approximate):
 # - Title (${fonts.title}pt): ~${Math.floor(
-        zones.maxContentWidth / (fonts.title * 0.6)
-    )} chars
+    zones.maxContentWidth / (fonts.title * 0.6)
+  )} chars
 # - Body (${fonts.body}pt): ~${Math.floor(
-        zones.maxContentWidth / (fonts.body * 0.6)
-    )} chars
+    zones.maxContentWidth / (fonts.body * 0.6)
+  )} chars
 # - Caption (${fonts.caption}pt): ~${Math.floor(
-        zones.maxContentWidth / (fonts.caption * 0.6)
-    )} chars
+    zones.maxContentWidth / (fonts.caption * 0.6)
+  )} chars
 
 def wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH, max_lines=None):
     """
@@ -2557,7 +2561,7 @@ def create_wrapped_text(text, font_size=FONT_BODY, **kwargs):
  * Generate helpers for rendering code blocks safely
  */
 export function getCodeRenderingHelpers(): string {
-    return `# Code Rendering Helpers
+  return `# Code Rendering Helpers
 def create_code_block(
     code_str,
     *,
@@ -2603,42 +2607,46 @@ def add_code_block(scene, code_str, **kwargs):
  * Get all layout code for a configuration
  */
 export function getCompleteLayoutCode(config: LayoutConfig): string {
-    const parts: string[] = [];
+  const parts: string[] = [];
 
-    parts.push("# ========================================");
-    parts.push("# ADVANCED LAYOUT SYSTEM");
-    parts.push("# Auto-generated safe zone and helpers");
-    parts.push("# ========================================\n");
+  parts.push("# ========================================");
+  parts.push("# ADVANCED LAYOUT SYSTEM");
+  parts.push("# Auto-generated safe zone and helpers");
+  parts.push("# ========================================\n");
 
-    parts.push(generateLayoutSetup(config, true));
-    parts.push("\n");
-    parts.push(getTextWrappingGuidelines(config));
-    parts.push("\n");
-    parts.push(getCodeRenderingHelpers());
-    parts.push("\n");
-    parts.push(generate3DLayoutCode());
+  parts.push(generateLayoutSetup(config, true));
+  parts.push("\n");
+  parts.push(getTextWrappingGuidelines(config));
+  parts.push("\n");
+  parts.push(getCodeRenderingHelpers());
+  parts.push("\n");
+  parts.push(generate3DLayoutCode());
 
-    parts.push("\n# ========================================");
-    parts.push("# Usage:");
-    parts.push("# 1. Use get_title_position() for titles");
-    parts.push("# 2. Use get_content_center() for content");
-    parts.push("# 3. Use ensure_fits_screen() before adding");
-    parts.push("# 4. Use validate_position() to check bounds");
-    parts.push("# 5. For 3D scenes:");
-    parts.push("#    - Use create_3d_text_label() for ALL text (ensures camera-facing + background)");
-    parts.push("#    - Use create_3d_labeled_object() to label 3D objects");
-    parts.push("#    - Use set_camera_for_3d_scene() to frame 3D content");
-    parts.push("#    - Use set_camera_for_2d_view() for text-heavy scenes like CTAs");
-    parts.push("# ========================================\n");
+  parts.push("\n# ========================================");
+  parts.push("# Usage:");
+  parts.push("# 1. Use get_title_position() for titles");
+  parts.push("# 2. Use get_content_center() for content");
+  parts.push("# 3. Use ensure_fits_screen() before adding");
+  parts.push("# 4. Use validate_position() to check bounds");
+  parts.push("# 5. For 3D scenes:");
+  parts.push(
+    "#    - Use create_3d_text_label() for ALL text (ensures camera-facing + background)"
+  );
+  parts.push("#    - Use create_3d_labeled_object() to label 3D objects");
+  parts.push("#    - Use set_camera_for_3d_scene() to frame 3D content");
+  parts.push(
+    "#    - Use set_camera_for_2d_view() for text-heavy scenes like CTAs"
+  );
+  parts.push("# ========================================\n");
 
-    return parts.join("\n");
+  return parts.join("\n");
 }
 
 /**
  * Generate helpers for 3D scene layout
  */
 export function generate3DLayoutCode(): string {
-    return `# 3D Scene Layout Helpers
+  return `# 3D Scene Layout Helpers
 def get_3d_mobjects_bounding_box(mobjects):
     """Calculate the bounding box containing all 3D mobjects"""
     if not mobjects:
@@ -2698,8 +2706,7 @@ def make_text_always_face_camera(text_mobject):
     text_mobject.rotate(90 * DEGREES, axis=RIGHT)
     return text_mobject
 
-def create_3d_text_label(text, font_size=FONT_BODY, with_background=True, 
-                        background_padding=0.3, **text_kwargs):
+def create_3d_text_label(text, font_size=FONT_BODY, with_background=True, background_padding=0.3, **text_kwargs):
     """
     Create a text label optimized for 3D scenes with high visibility.
     Text will always face the camera and have a solid background for readability.
@@ -2755,8 +2762,7 @@ def set_camera_for_2d_view(scene):
     scene.camera.set_focal_distance(10)
     print("[3D Layout] Camera set to 2D view for clear text visibility")
 
-def create_3d_labeled_object(obj_3d, label_text, label_position=UP, label_buff=0.5, 
-                            label_font_size=FONT_LABEL):
+def create_3d_labeled_object(obj_3d, label_text, label_position=UP, label_buff=0.5, label_font_size=FONT_LABEL):
     """
     Create a 3D object with a label that's always readable.
     
@@ -2787,51 +2793,51 @@ def create_3d_labeled_object(obj_3d, label_text, label_position=UP, label_buff=0
  * Default layout configurations
  */
 export const DEFAULT_LANDSCAPE_CONFIG: LayoutConfig = {
-    frameWidth: 14.2,
-    frameHeight: 8.0,
-    safeMargin: 0.72,
-    orientation: "landscape",
-    contentType: "mixed",
+  frameWidth: 14.2,
+  frameHeight: 8.0,
+  safeMargin: 0.72,
+  orientation: "landscape",
+  contentType: "mixed",
 };
 
 export const DEFAULT_PORTRAIT_CONFIG: LayoutConfig = {
-    frameWidth: 7.2,
-    frameHeight: 12.8,
-    safeMargin: 0.85,
-    orientation: "portrait",
-    contentType: "mixed",
+  frameWidth: 7.2,
+  frameHeight: 12.8,
+  safeMargin: 0.85,
+  orientation: "portrait",
+  contentType: "mixed",
 };
 
 export const DEFAULT_3D_CONFIG: LayoutConfig3D = {
-    ...DEFAULT_LANDSCAPE_CONFIG,
-    cameraDistance: 50,
-    cameraFov: 50,
+  ...DEFAULT_LANDSCAPE_CONFIG,
+  cameraDistance: 50,
+  cameraFov: 50,
 };
 
 export function getLayoutConfig(options: {
-    orientation?: "landscape" | "portrait";
-    resolution?: { width: number; height: number };
-    contentType?: LayoutConfig["contentType"];
-    is3D?: boolean;
+  orientation?: "landscape" | "portrait";
+  resolution?: { width: number; height: number };
+  contentType?: LayoutConfig["contentType"];
+  is3D?: boolean;
 }): LayoutConfig {
-    if (options.is3D) {
-        return { ...DEFAULT_3D_CONFIG };
-    }
-    const base =
-        options.orientation === "portrait"
-            ? { ...DEFAULT_PORTRAIT_CONFIG }
-            : { ...DEFAULT_LANDSCAPE_CONFIG };
+  if (options.is3D) {
+    return { ...DEFAULT_3D_CONFIG };
+  }
+  const base =
+    options.orientation === "portrait"
+      ? { ...DEFAULT_PORTRAIT_CONFIG }
+      : { ...DEFAULT_LANDSCAPE_CONFIG };
 
-    // Adjust frame dimensions based on resolution if provided
-    if (options.resolution) {
-        const aspectRatio = options.resolution.width / options.resolution.height;
-        base.frameWidth = 14.2; // Keep manim's default
-        base.frameHeight = base.frameWidth / aspectRatio;
-    }
+  // Adjust frame dimensions based on resolution if provided
+  if (options.resolution) {
+    const aspectRatio = options.resolution.width / options.resolution.height;
+    base.frameWidth = 14.2; // Keep manim's default
+    base.frameHeight = base.frameWidth / aspectRatio;
+  }
 
-    if (options.contentType) {
-        base.contentType = options.contentType;
-    }
+  if (options.contentType) {
+    base.contentType = options.contentType;
+  }
 
-    return base;
+  return base;
 }
