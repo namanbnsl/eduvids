@@ -493,16 +493,33 @@ good = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
 4. 🔸 Bullet Points:
    - **MUST be LEFT-aligned**, never centered
    - **RECOMMENDED:** Use the \`create_bullet_list\` helper function for safe, consistent bullet points
+   - **✨ NEW: Automatic text wrapping** - Long bullet text is now automatically wrapped to prevent overlaps!
    - **SETTINGS:** Use FONT_BODY for all bullets, buff=1.0 between bullets, left edge buff=1.2
    - **STRICT LIMITS**: Max 4-5 bullets per scene (3-4 for portrait/shorts) - NO EXCEPTIONS
    - Example (RECOMMENDED):
      '''python
-     # GOOD: 4 bullets max
+     # GOOD: 4 bullets max with automatic text wrapping
      bullets = create_bullet_list(
-         ["First point", "Second point", "Third point", "Fourth point"],
+         ["First point", "Second point with much longer text that will automatically wrap to multiple lines", "Third point", "Fourth point"],
          font_size=FONT_BODY,
          item_buff=1.0,
-         edge_buff=1.2
+         edge_buff=1.2,
+         auto_wrap=True  # Default: True - automatically wraps long text
+     )
+     
+     # ✨ NEW: For portrait/YouTube Shorts (optimized wrapping and spacing)
+     bullets = create_bullet_list_for_shorts(
+         ["Point 1", "Point 2 with longer text", "Point 3", "Point 4"],
+         max_bullets=4  # Automatically limits and optimizes for portrait format
+     )
+     
+     # Advanced: Custom wrapping control
+     bullets = create_bullet_list(
+         ["Your points here"],
+         font_size=FONT_BODY,
+         auto_wrap=True,
+         max_width=MAX_CONTENT_WIDTH * 0.8,  # Control wrap width
+         max_lines=2  # Limit lines per bullet (default: 3)
      )
      
      # BAD: Too many bullets (7 bullets will overlap!)
@@ -524,13 +541,14 @@ good = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
      '''
    - Alternative manual approach (if needed):
      '''python
-     bullet1 = create_bullet_item("First point", font_size=FONT_BODY)
-     bullet2 = create_bullet_item("Second point", font_size=FONT_BODY)
-     bullet3 = create_bullet_item("Third point", font_size=FONT_BODY)
+     bullet1 = create_bullet_item("First point", font_size=FONT_BODY, auto_wrap=True)
+     bullet2 = create_bullet_item("Second point", font_size=FONT_BODY, auto_wrap=True)
+     bullet3 = create_bullet_item("Third point", font_size=FONT_BODY, auto_wrap=True)
      bullets = VGroup(bullet1, bullet2, bullet3).arrange(DOWN, buff=1.0, aligned_edge=LEFT)
      bullets.to_edge(LEFT, buff=1.2)
      '''
    - **IMPORTANT:** Never use \\textbullet or ~ for spacing - use create_bullet_item/create_bullet_list instead
+   - **✨ FIXED:** Character encoding issues (inverted question marks, random backslashes) are now resolved
    - NEVER use buff<1.0 between bullet points
    - **When combining bullets with diagrams:** ALWAYS use \`create_side_by_side_layout()\` to prevent overlaps
    - **If you have >5 things to list:** Use multiple scenes or consolidate points - don't squeeze them all in

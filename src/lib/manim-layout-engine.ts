@@ -1268,16 +1268,15 @@ def ensure_panel_readability(panel_mobject, text_color=BRIGHT_TEXT_COLOR, min_co
 
 
 LATEX_SPECIAL_CHARS = {
-    "&": "\\&",
-    "%": "\\%",
-    "$": "\\$",
-    "#": "\\#",
-    "_": "\\_",
-    "{": "\\{",
-    "}": "\\}",
-    "~": "\\textasciitilde{}",
-    "^": "\\textasciicircum{}",
-    '\\\\': r'\\textbackslash{}',
+    "&": r"\\&",
+    "%": r"\\%",
+    "$": r"\\$",
+    "#": r"\\#",
+    "_": r"\\_",
+    "{": r"\\{",
+    "}": r"\\}",
+    "~": r"\\textasciitilde{}",
+    "^": r"\\textasciicircum{}",
 }
 
 
@@ -1303,35 +1302,71 @@ def _looks_like_latex(text):
 
 
 def _escape_latex_text(text):
+    """
+    Escape special LaTeX characters in text while preserving LaTeX commands.
+    Fixes encoding issues that cause inverted question marks and random backslashes.
+    
+    Args:
+        text: Text to escape
+    
+    Returns:
+        Escaped text safe for LaTeX
+    """
     if text is None:
         return ""
-    text_str = str(text)
+    
+    # Ensure text is a proper string (fixes encoding issues)
+    try:
+        text_str = str(text)
+        # Normalize unicode characters to avoid encoding issues
+        import unicodedata
+        text_str = unicodedata.normalize('NFKD', text_str)
+        # Encode to ASCII, ignoring problematic characters
+        text_str = text_str.encode('ascii', 'ignore').decode('ascii')
+    except Exception:
+        text_str = str(text)
+    
     length = len(text_str)
     result = []
     idx = 0
 
     while idx < length:
         char = text_str[idx]
-        if char == "\\":
+        
+        # Handle backslash (escape character)
+        if char == "\\\\":
             next_idx = idx + 1
-            if next_idx < length and text_str[next_idx] == "\\":
-                result.append("\\\\")
+            
+            # Check if it's a double backslash (line break)
+            if next_idx < length and text_str[next_idx] == "\\\\":
+                result.append(r"\\\\")
                 idx += 2
                 continue
-
-            command_end = next_idx
-            while command_end < length and text_str[command_end].isalpha():
-                command_end += 1
-
-            if command_end > next_idx:
+            
+            # Check if it's a LaTeX command (starts with letter)
+            if next_idx < length and text_str[next_idx].isalpha():
+                command_end = next_idx
+                while command_end < length and text_str[command_end].isalpha():
+                    command_end += 1
+                
+                # Preserve the LaTeX command
                 result.append(text_str[idx:command_end])
                 idx = command_end
                 continue
-
-            result.append(LATEX_SPECIAL_CHARS.get("\\\\", "\\textbackslash{}"))
+            
+            # Check if it's an escaped special character
+            if next_idx < length and text_str[next_idx] in LATEX_SPECIAL_CHARS:
+                # Already escaped, preserve it
+                result.append(text_str[idx:next_idx + 1])
+                idx = next_idx + 1
+                continue
+            
+            # Single backslash not part of a command - escape it
+            result.append(r"\\textbackslash{}")
             idx += 1
             continue
 
+        # Escape other special characters
         result.append(LATEX_SPECIAL_CHARS.get(char, char))
         idx += 1
 
@@ -1347,24 +1382,54 @@ def build_latex_text(
     allow_latex=False,
     auto_detect=True,
 ):
+    """
+    Build LaTeX text with proper escaping and formatting.
+    Improved to handle special characters and prevent encoding issues.
+    
+    Args:
+        text: Text to convert to LaTeX
+        bold: Make text bold
+        italic: Make text italic
+        monospace: Use monospace font
+        allow_latex: Treat text as LaTeX (skip escaping)
+        auto_detect: Auto-detect if text contains LaTeX
+    
+    Returns:
+        LaTeX formatted text string
+    """
     raw_text = "" if text is None else str(text)
 
     use_latex = allow_latex or (auto_detect and _looks_like_latex(raw_text))
 
     if use_latex:
+        # Text contains LaTeX, use as-is
         latex = raw_text
     else:
-        # Just escape special characters without wrapping in \text{}
-        # This avoids issues with math mode commands
+        # Escape special characters to prevent encoding issues
         escaped = _escape_latex_text(raw_text)
-        latex = escaped
+        
+        # For text mode in LaTeX, wrap in \text{} to ensure proper rendering
+        # This prevents issues with special characters and spacing
+        if escaped and not (bold or italic or monospace):
+            # Only wrap if not already applying formatting
+            # Check if text contains line breaks (already formatted)
+            if "\\\\\\\\" in escaped:
+                # Text has line breaks, don't wrap in \text{} to preserve formatting
+                latex = escaped
+            else:
+                # Regular text, safe to wrap
+                latex = f"\\text{{{escaped}}}"
+        else:
+            latex = escaped
 
+    # Apply formatting
     if bold:
         latex = f"\\textbf{{{latex}}}"
     if italic:
         latex = f"\\textit{{{latex}}}"
     if monospace and not use_latex:
         latex = f"\\texttt{{{latex}}}"
+    
     return latex
 
 
@@ -1509,10 +1574,43 @@ def create_bullet_item(
     monospace=False,
     treat_as_latex=False,
     auto_detect_latex=True,
+    auto_wrap=True,
+    max_width=None,
+    max_lines=3,
     **tex_kwargs,
 ):
-    """Create a single bullet item as a Tex mobject."""
-
+    """
+    Create a single bullet item as a Tex mobject with automatic text wrapping.
+    
+    Args:
+        text: Bullet point text
+        bullet_symbol: Symbol for bullet (default: \\textbullet)
+        bullet_gap: Gap after bullet symbol
+        font_size: Font size
+        bold: Make text bold
+        italic: Make text italic
+        monospace: Use monospace font
+        treat_as_latex: Treat text as LaTeX code
+        auto_detect_latex: Auto-detect LaTeX in text
+        auto_wrap: Automatically wrap long text (default: True)
+        max_width: Maximum width for wrapping (defaults to MAX_CONTENT_WIDTH * 0.85)
+        max_lines: Maximum lines for bullet text (default: 3)
+        **tex_kwargs: Additional Tex arguments
+    
+    Returns:
+        Tex mobject with bullet point
+    """
+    # Set default max_width if not provided
+    if max_width is None:
+        max_width = MAX_CONTENT_WIDTH * 0.85  # Leave room for margins and spacing
+    
+    # Wrap text if enabled and not LaTeX
+    if auto_wrap and not treat_as_latex and not _looks_like_latex(text):
+        # Account for bullet symbol width (approximately)
+        bullet_width_chars = 2  # Approximate character width taken by bullet
+        effective_width = max_width - (bullet_width_chars * font_size * 0.55)
+        text = wrap_text(text, font_size=font_size, max_width=effective_width, max_lines=max_lines)
+    
     body_fragment = build_latex_text(
         text,
         bold=bold,
@@ -1536,14 +1634,42 @@ def create_bullet_list(
     edge_buff=1.2,
     auto_fit=True,
     validate=True,
+    auto_wrap=True,
+    max_width=None,
+    max_lines=3,
     item_kwargs=None,
 ):
-    """Create a left-aligned bullet list with spacing and safe positioning."""
-
+    """
+    Create a left-aligned bullet list with spacing and safe positioning.
+    Now with automatic text wrapping to prevent overlaps in constrained spaces.
+    
+    Args:
+        items: List of bullet point texts
+        bullet_symbol: Symbol for bullets (default: \\textbullet)
+        bullet_gap: Gap after bullet symbol
+        font_size: Font size for bullets
+        item_buff: Vertical spacing between bullets
+        edge: Edge to align to (default: LEFT)
+        edge_buff: Distance from edge
+        auto_fit: Automatically fit to screen
+        validate: Validate positioning
+        auto_wrap: Automatically wrap long text (default: True)
+        max_width: Maximum width for each bullet (defaults to MAX_CONTENT_WIDTH * 0.85)
+        max_lines: Maximum lines per bullet (default: 3)
+        item_kwargs: Additional kwargs for bullet items
+    
+    Returns:
+        VGroup containing all bullet items
+    """
     entries = []
     item_kwargs = dict(item_kwargs or {})
     auto_detect_latex = bool(item_kwargs.pop("auto_detect_latex", True))
     treat_as_latex = bool(item_kwargs.pop("treat_as_latex", False))
+    
+    # Pass wrapping parameters to each bullet item
+    item_kwargs["auto_wrap"] = auto_wrap
+    item_kwargs["max_width"] = max_width
+    item_kwargs["max_lines"] = max_lines
 
     for item in items or []:
         if item is None:
@@ -2076,6 +2202,53 @@ def create_top_bottom_layout(top_mobject, bottom_mobject, spacing=1.0,
     return group
 
 
+def create_bullet_list_for_shorts(
+    items,
+    *,
+    font_size=None,
+    max_bullets=4,
+    **kwargs
+):
+    """
+    Create a bullet list optimized for portrait/YouTube Shorts format.
+    Uses aggressive text wrapping and spacing to prevent overlaps in constrained spaces.
+    
+    Args:
+        items: List of bullet point texts
+        font_size: Font size (auto-calculated if None, smaller for portraits)
+        max_bullets: Maximum number of bullets (default: 4 for portraits)
+        **kwargs: Additional arguments passed to create_bullet_list
+    
+    Returns:
+        VGroup containing bullet items optimized for portrait format
+    """
+    # Limit bullet count for portrait format
+    if len(items) > max_bullets:
+        print(f"[LAYOUT WARNING] Too many bullets ({len(items)}) for portrait format. Limiting to {max_bullets}.")
+        items = items[:max_bullets]
+    
+    # Auto-calculate smaller font size for portrait if not provided
+    if font_size is None:
+        font_size = FONT_BODY * 0.9  # 10% smaller for portrait
+    
+    # More aggressive wrapping for portrait
+    max_width = MAX_CONTENT_WIDTH * 0.75  # Use only 75% of width for better readability
+    max_lines = 2  # Limit to 2 lines per bullet to prevent vertical overflow
+    
+    # Set portrait-optimized defaults
+    kwargs.setdefault("item_buff", 1.0)  # Larger spacing between bullets
+    kwargs.setdefault("edge_buff", 1.0)  # Smaller edge buffer to maximize space
+    kwargs.setdefault("auto_wrap", True)
+    kwargs.setdefault("max_width", max_width)
+    kwargs.setdefault("max_lines", max_lines)
+    
+    return create_bullet_list(
+        items,
+        font_size=font_size,
+        **kwargs
+    )
+
+
 def create_bulletproof_layout(*mobjects, layout_type="vertical", spacing=1.0, 
                                weights=None, center=None):
     """
@@ -2304,11 +2477,26 @@ export function getTextWrappingGuidelines(config: LayoutConfig): string {
         zones.maxContentWidth / (fonts.caption * 0.6)
     )} chars
 
-def wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH):
-    """Automatically wrap text to fit within max_width"""
-    # Approximate character width as font_size * 0.6
-    char_width = font_size * 0.6
-    max_chars_per_line = int(max_width / char_width)
+def wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH, max_lines=None):
+    """
+    Automatically wrap text to fit within max_width with improved wrapping.
+    
+    Args:
+        text: Text to wrap
+        font_size: Font size for character width calculation
+        max_width: Maximum width constraint
+        max_lines: Maximum number of lines (None for unlimited)
+    
+    Returns:
+        Wrapped text with LaTeX line breaks (\\\\)
+    """
+    if not text or not isinstance(text, str):
+        return ""
+    
+    # Approximate character width - adjusted for better accuracy
+    # Use 0.55 instead of 0.6 for tighter estimation (prevents overflow)
+    char_width = font_size * 0.55
+    max_chars_per_line = max(int(max_width / char_width), 10)  # Minimum 10 chars per line
     
     words = text.split()
     lines = []
@@ -2316,6 +2504,26 @@ def wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH):
     current_length = 0
     
     for word in words:
+        # Handle long words that exceed max_chars_per_line
+        if len(word) > max_chars_per_line:
+            # If current line has content, finish it first
+            if current_line:
+                lines.append(' '.join(current_line))
+                current_line = []
+                current_length = 0
+            
+            # Split long word with hyphenation
+            while len(word) > max_chars_per_line:
+                chunk = word[:max_chars_per_line - 1]
+                lines.append(chunk + "-")
+                word = word[max_chars_per_line - 1:]
+            
+            # Add remaining part of word
+            if word:
+                current_line = [word]
+                current_length = len(word)
+            continue
+        
         word_length = len(word) + 1  # +1 for space
         if current_length + word_length > max_chars_per_line and current_line:
             lines.append(' '.join(current_line))
@@ -2328,7 +2536,15 @@ def wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH):
     if current_line:
         lines.append(' '.join(current_line))
     
-    return "\\n".join(lines)
+    # Limit number of lines if specified
+    if max_lines and len(lines) > max_lines:
+        lines = lines[:max_lines]
+        # Add ellipsis to last line if truncated
+        if lines:
+            lines[-1] = lines[-1] + "..."
+    
+    # Use LaTeX line break (\\) instead of \n for proper rendering
+    return " \\\\\\\\ ".join(lines)
 
 def create_wrapped_text(text, font_size=FONT_BODY, **kwargs):
     """Create Tex mobject with automatic wrapping"""
