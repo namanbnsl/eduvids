@@ -12,7 +12,7 @@ import {
 } from "./llm";
 
 // Rendering
-import { renderManimVideo } from "./e2b";
+import { renderManimVideo, RenderLifecycleStage } from "./e2b";
 
 // Youtube & Uploads
 import { uploadVideo } from "./uploadthing";
@@ -39,6 +39,58 @@ import type {
 } from "./types";
 
 const MAX_RENDER_LOG_ENTRIES = 200;
+
+type JobProgressUpdate = {
+  progress?: number;
+  step?: string;
+  details?: string;
+};
+
+const RENDER_STAGE_PROGRESS: Partial<
+  Record<RenderLifecycleStage, { progress: number; step: string }>
+> = {
+  sandbox: { progress: 46, step: "provisioning sandbox" },
+  "layout-injection": { progress: 48, step: "injecting layout helpers" },
+  prepare: { progress: 50, step: "uploading script to sandbox" },
+  syntax: { progress: 52, step: "running syntax check" },
+  "ast-guard": { progress: 54, step: "enforcing safety guards" },
+  "scene-validation": { progress: 56, step: "validating scene" },
+  "plugin-installation": { progress: 58, step: "installing plugins" },
+  latex: { progress: 60, step: "checking latex environment" },
+  render: { progress: 66, step: "rendering frames" },
+  "render-output": { progress: 70, step: "render completed" },
+  files: { progress: 72, step: "collecting render output" },
+  "video-validation": { progress: 75, step: "validating video" },
+  "video-processing": { progress: 78, step: "enhancing video" },
+  watermark: { progress: 82, step: "applying watermark" },
+  "watermark-validation": { progress: 84, step: "verifying watermark" },
+};
+
+const formatStepLabel = (value: string): string =>
+  value
+    .split(/[-_\s]+/)
+    .map((word) =>
+      word.length > 0 ? `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}` : ""
+    )
+    .join(" ");
+
+const stageToJobUpdate = (stage: RenderLifecycleStage) =>
+  RENDER_STAGE_PROGRESS[stage] ?? {
+    progress: 60,
+    step: formatStepLabel(stage),
+  };
+
+const updateJobProgress = async (
+  jobId: string | undefined,
+  update: JobProgressUpdate
+) => {
+  if (!jobId) return;
+  try {
+    await jobStore.setProgress(jobId, update);
+  } catch (error) {
+    console.warn("Failed to update job progress", { jobId, update, error });
+  }
+};
 
 const pruneRenderLogs = (
   logs: RenderLogEntry[] | undefined
@@ -693,12 +745,43 @@ export const generateVideo = inngest.createFunction(
       context,
       narration,
       stepBaseParts,
+      jobId,
+      progressFloor,
     }: {
       scriptToCheck: string;
       context: string;
       narration: string;
       stepBaseParts: ReadonlyArray<string | number | undefined>;
+      jobId?: string;
+      progressFloor?: number;
     }): Promise<string> => {
+      const defaultBase = 30;
+      const baseProgress =
+        typeof progressFloor === "number" ? progressFloor : defaultBase;
+      let validationProgress = baseProgress;
+      let lastValidationSignature: string | undefined;
+      const translateProgress = (target: number) => {
+        const offset = target - defaultBase;
+        return Math.max(baseProgress, baseProgress + offset);
+      };
+      const markValidationStage = async (
+        targetProgress: number,
+        stepLabel: string,
+        detail?: string
+      ) => {
+        const desired = translateProgress(targetProgress);
+        validationProgress = Math.max(validationProgress, desired);
+        const normalizedDetail = detail ?? context;
+        const signature = `${validationProgress}:${stepLabel}:${normalizedDetail}`;
+        if (signature === lastValidationSignature) return;
+        lastValidationSignature = signature;
+        await updateJobProgress(jobId, {
+          progress: validationProgress,
+          step: stepLabel,
+          details: normalizedDetail,
+        });
+      };
+      await markValidationStage(30, "verifying script", context);
       const MAX_VERIFY_PASSES = 1;
       const limitHistory = <T>(history: T[], max: number) => {
         if (history.length <= max) return;
@@ -719,6 +802,11 @@ export const generateVideo = inngest.createFunction(
           );
         }
         seenScripts.add(current);
+        await markValidationStage(
+          Math.min(36, 30 + pass * 2),
+          `script validation pass ${pass}`,
+          context
+        );
 
         const result = await step.run(
           buildStepId(...baseStepParts, "pass", pass),
@@ -807,10 +895,23 @@ export const generateVideo = inngest.createFunction(
             );
           }
 
+          await markValidationStage(
+            40,
+            "script approved",
+            `${context} verification succeeded`
+          );
           return approvedScript;
         }
 
         lastError = "error" in result ? result.error : undefined;
+
+        if (lastError) {
+          await markValidationStage(
+            Math.min(38, 32 + pass * 2),
+            `regenerating script (pass ${pass})`,
+            lastError
+          );
+        }
 
         if (lastError) {
           attemptHistory.push({
@@ -881,9 +982,10 @@ export const generateVideo = inngest.createFunction(
         .join("\n");
 
     try {
-      await jobStore.setProgress(jobId!, {
+      await updateJobProgress(jobId, {
         progress: 5,
         step: "generating voiceover",
+        details: "Drafting narration script",
       });
       const voiceoverScript = await step.run(
         "generate-voiceover-script",
@@ -896,9 +998,16 @@ export const generateVideo = inngest.createFunction(
         length: voiceoverScript.length,
       });
 
-      await jobStore.setProgress(jobId!, {
-        progress: 20,
+      await updateJobProgress(jobId, {
+        progress: 12,
+        step: "voiceover ready",
+        details: "Narration approved",
+      });
+
+      await updateJobProgress(jobId, {
+        progress: 18,
         step: "generating script",
+        details: "Drafting Manim scene",
       });
 
       let script = await step.run("generate-full-manim-script", async () => {
@@ -912,9 +1021,16 @@ export const generateVideo = inngest.createFunction(
         length: script.length,
       });
 
-      await jobStore.setProgress(jobId!, {
-        progress: 27,
+      await updateJobProgress(jobId, {
+        progress: 24,
+        step: "script drafted",
+        details: "Initial Manim code ready",
+      });
+
+      await updateJobProgress(jobId, {
+        progress: 30,
         step: "verifying script",
+        details: "Running automated checks",
       });
 
       const preValidation = validateRequiredElements(script);
@@ -929,15 +1045,23 @@ export const generateVideo = inngest.createFunction(
         context: "full video script",
         narration: voiceoverScript,
         stepBaseParts: ["video", "verify", "initial"],
+        jobId,
       });
 
       console.log("Manim script verified", {
         length: script.length,
       });
 
-      await jobStore.setProgress(jobId!, {
-        progress: 35,
-        step: "validated script",
+      await updateJobProgress(jobId, {
+        progress: 42,
+        step: "script ready for render",
+        details: "Validation complete, preparing render",
+      });
+
+      await updateJobProgress(jobId, {
+        progress: 44,
+        step: "preparing render environment",
+        details: "Bundling assets for sandbox",
       });
 
       const MAX_RENDER_RETRIES = 3;
@@ -991,6 +1115,14 @@ export const generateVideo = inngest.createFunction(
                         }
                       : undefined,
                   plugins: usesManimML ? ["manim-ml"] : [],
+                  onProgress: async ({ stage, message }) => {
+                    const mapping = stageToJobUpdate(stage);
+                    await updateJobProgress(jobId, {
+                      progress: mapping.progress,
+                      step: mapping.step,
+                      details: message,
+                    });
+                  },
                 });
 
                 if (
@@ -1015,16 +1147,11 @@ export const generateVideo = inngest.createFunction(
                   );
                 }
 
-                if (jobId) {
-                  await jobStore.setProgress(jobId, {
-                    progress: 72,
-                    step: "rendered video",
-                  });
-                  await jobStore.setProgress(jobId, {
-                    progress: 80,
-                    step: "uploading video",
-                  });
-                }
+                await updateJobProgress(jobId, {
+                  progress: 88,
+                  step: "uploading video",
+                  details: "Transferring render to storage",
+                });
 
                 const uploadUrl = await uploadVideo({
                   videoPath: videoDataUrl,
@@ -1039,6 +1166,12 @@ export const generateVideo = inngest.createFunction(
                 if (typeof uploadUrl !== "string" || !uploadUrl.length) {
                   throw new Error("Upload step did not return a valid URL");
                 }
+
+                await updateJobProgress(jobId, {
+                  progress: 90,
+                  step: "video uploaded",
+                  details: "Video stored successfully",
+                });
 
                 return {
                   uploadUrl,
@@ -1123,8 +1256,10 @@ export const generateVideo = inngest.createFunction(
             hint: renderError.hint,
           });
 
-          await jobStore.setProgress(jobId!, {
-            details: `render attempt ${attempt}: ${normalizedMessage}`,
+          await updateJobProgress(jobId, {
+            progress: 66,
+            step: `render retry (attempt ${attempt})`,
+            details: normalizedMessage,
           });
 
           if (attempt === MAX_RENDER_RETRIES) {
@@ -1216,6 +1351,8 @@ export const generateVideo = inngest.createFunction(
                 "cycle",
                 regenPass,
               ],
+              jobId,
+              progressFloor: Math.min(70, 60 + attempt * 2),
             });
 
             const fingerprint = fingerprintScript(verifiedScript);
@@ -1262,15 +1399,10 @@ export const generateVideo = inngest.createFunction(
         ? renderOutcome.logs
         : [];
 
-      if (jobId) {
-        await jobStore.setProgress(jobId, {
-          progress: 82,
-          step: "uploaded video",
-        });
-      }
-
       if (pipelineWarnings.length) {
-        await jobStore.setProgress(jobId!, {
+        await updateJobProgress(jobId, {
+          progress: 91,
+          step: "render warnings",
           details: pipelineWarnings
             .map((warning) => `[${warning.stage}] ${warning.message}`)
             .join(" | "),
@@ -1278,7 +1410,11 @@ export const generateVideo = inngest.createFunction(
       }
 
       if (jobId) {
-        await jobStore.setProgress(jobId, { progress: 95, step: "finalizing" });
+        await updateJobProgress(jobId, {
+          progress: 95,
+          step: "finalizing",
+          details: "Preparing download and YouTube upload",
+        });
         await jobStore.setReady(jobId, uploadUrl);
         await jobStore.setYoutubeStatus(jobId, { youtubeStatus: "pending" });
       }
@@ -1378,14 +1514,10 @@ export const generateVideo = inngest.createFunction(
         err
       );
       if (jobId) {
-        try {
-          await jobStore.setProgress(jobId, {
-            step: "error",
-            details: detail,
-          });
-        } catch (progressError) {
-          console.warn("Failed to record error progress", progressError);
-        }
+        await updateJobProgress(jobId, {
+          step: "error",
+          details: detail,
+        });
         await jobStore.setError(jobId, jobErrorMessage);
       }
       throw err;

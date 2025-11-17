@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 // Types
 import type {
+  JobProgressEntry,
   JobStatus,
   VideoJob,
   VideoVariant,
@@ -22,11 +23,32 @@ import { Monitor, Smartphone, Youtube } from "lucide-react";
 const STEP_TITLES: Record<string, string> = {
   queued: "Queued",
   "generating voiceover": "Generating Voiceover",
+  "voiceover ready": "Voiceover Ready",
   "generating script": "Generating Script",
+  "script drafted": "Drafting Script",
   "verifying script": "Verifying Script",
+  "script approved": "Script Approved",
+  "script ready for render": "Script Ready for Render",
+  "preparing render environment": "Preparing Render Environment",
+  "provisioning sandbox": "Provisioning Sandbox",
+  "injecting layout helpers": "Injecting Layout Helpers",
+  "uploading script to sandbox": "Uploading Script to Sandbox",
+  "running syntax check": "Running Syntax Check",
+  "enforcing safety guards": "Enforcing Safety Guards",
+  "validating scene": "Validating Scene",
+  "installing plugins": "Installing Plugins",
+  "checking latex environment": "Checking LaTeX Environment",
   "validated script": "Validating Script",
+  "rendering frames": "Rendering Video",
   "rendering video": "Rendering Video",
+  "render completed": "Render Complete",
   "rendered video": "Render Complete",
+  "collecting render output": "Collecting Render Output",
+  "render warnings": "Render Warnings",
+  "validating video": "Validating Video",
+  "enhancing video": "Enhancing Video",
+  "applying watermark": "Applying Watermark",
+  "verifying watermark": "Verifying Watermark",
   "uploading video": "Uploading Video",
   "uploaded video": "Video Uploaded",
   finalizing: "Finalizing",
@@ -34,6 +56,23 @@ const STEP_TITLES: Record<string, string> = {
   error: "Error",
 };
 
+
+const formatStepName = (step?: string): string | undefined => {
+  const rawStep = step?.trim();
+  if (!rawStep) return undefined;
+  const normalized = rawStep.toLowerCase();
+  if (STEP_TITLES[normalized]) {
+    return STEP_TITLES[normalized];
+  }
+  return rawStep
+    .split(/\s+/)
+    .map((word) =>
+      word.length > 0
+        ? `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`
+        : ""
+    )
+    .join(" ");
+};
 const PROGRESS_HISTORY_WINDOW_MS = 5 * 60 * 1000;
 
 interface VideoPlayerProps {
@@ -63,6 +102,8 @@ export function VideoPlayer({
   const [errorDetails, setErrorDetails] = useState<string | undefined>();
   const [progress, setProgress] = useState<number>(0);
   const [step, setStep] = useState<string | undefined>(undefined);
+  const [progressDetails, setProgressDetails] = useState<string | undefined>();
+  const [progressLog, setProgressLog] = useState<JobProgressEntry[]>([]);
   const [youtubeStatus, setYoutubeStatus] = useState<YoutubeStatus | undefined>(
     undefined
   );
@@ -127,6 +168,7 @@ export function VideoPlayer({
           | "youtubeUrl"
           | "youtubeError"
           | "variant"
+          | "progressLog"
         > & { jobId?: string })
       | null => {
       if (!job || typeof job !== "object") return null;
@@ -159,7 +201,8 @@ export function VideoPlayer({
         | "youtubeStatus"
         | "youtubeUrl"
         | "youtubeError"
-        | "variant"
+          | "variant"
+          | "progressLog"
       > & {
         jobId?: string;
       } = {
@@ -186,6 +229,34 @@ export function VideoPlayer({
             ? value.id
             : undefined,
       };
+
+      if (Array.isArray(value.progressLog)) {
+        const sanitizedLog = value.progressLog
+          .map((entry) => {
+            if (!entry || typeof entry !== "object") return null;
+            const raw = entry as Record<string, unknown>;
+            const at = typeof raw.at === "string" ? raw.at : undefined;
+            if (!at) return null;
+            const entryProgress =
+              typeof raw.progress === "number"
+                ? raw.progress
+                : undefined;
+            const entryStep =
+              typeof raw.step === "string" ? raw.step : undefined;
+            const entryDetails =
+              typeof raw.details === "string" ? raw.details : undefined;
+            return {
+              at,
+              progress: entryProgress,
+              step: entryStep,
+              details: entryDetails,
+            } as JobProgressEntry;
+          })
+          .filter((entry): entry is JobProgressEntry => Boolean(entry));
+        if (sanitizedLog.length) {
+          normalized.progressLog = sanitizedLog;
+        }
+      }
 
       return normalized;
     },
@@ -217,6 +288,12 @@ export function VideoPlayer({
         return nextProgress;
       });
       if (parsed.step) setStep(parsed.step);
+      setProgressDetails((prev) =>
+        parsed.details !== undefined ? parsed.details : prev
+      );
+      if (parsed.progressLog) {
+        setProgressLog(parsed.progressLog);
+      }
       setYoutubeStatus(parsed.youtubeStatus);
       setYoutubeUrl(parsed.youtubeUrl);
       setYoutubeError(parsed.youtubeError);
@@ -278,6 +355,8 @@ export function VideoPlayer({
     setYoutubeStatus(undefined);
     setCurrentVariant(initialVariant ?? "video");
     setDisplayProgress(0);
+    setProgressDetails(undefined);
+    setProgressLog([]);
   }, [jobId, initialVariant]);
 
   useEffect(() => {
@@ -400,26 +479,23 @@ export function VideoPlayer({
   }, [normalizedProgress]);
 
   const stageTitle = useMemo(() => {
-    const rawStep = (step ?? (jobStatus === "ready" ? "completed" : "")).trim();
-    if (rawStep.length) {
-      const normalized = rawStep.toLowerCase();
-      if (STEP_TITLES[normalized]) {
-        return STEP_TITLES[normalized];
-      }
-      return rawStep
-        .split(/\s+/)
-        .map((word) =>
-          word.length > 0
-            ? `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`
-            : ""
-        )
-        .join(" ");
+    const formatted = formatStepName(step);
+    if (formatted) {
+      return formatted;
     }
     if (jobStatus === "ready") {
       return STEP_TITLES["completed"];
     }
+    if (jobStatus === "error") {
+      return STEP_TITLES["error"];
+    }
     return STEP_TITLES["queued"];
   }, [step, jobStatus]);
+  const stageSubtitle = progressDetails ?? stageTitle;
+  const recentProgressLog = useMemo(() => {
+    if (!progressLog.length) return [] as JobProgressEntry[];
+    return [...progressLog].slice(-6).reverse();
+  }, [progressLog]);
 
   useEffect(() => {
     if (jobStatus !== "generating") {
@@ -515,10 +591,53 @@ export function VideoPlayer({
           title={`Generating your ${
             currentVariant == "short" ? "Short" : "Video"
           }`}
-          subtitle={stageTitle}
+          subtitle={stageSubtitle}
           stepLabel={stageTitle}
           progress={displayProgress}
         />
+        {recentProgressLog.length ? (
+          <div className="rounded-xl border bg-card/50 p-3 shadow-sm">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Live updates
+            </div>
+            <ol className="space-y-2 text-sm">
+              {recentProgressLog.map((entry, index) => {
+                const time = new Date(entry.at);
+                const timeLabel = Number.isNaN(time.getTime())
+                  ? ""
+                  : time.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+                return (
+                  <li
+                    key={`${entry.at}-${index}`}
+                    className="flex items-start justify-between gap-3"
+                  >
+                    <div className="flex-1">
+                      <div className="font-medium text-foreground">
+                        {formatStepName(entry.step) ?? entry.step ?? "Update"}
+                      </div>
+                      {entry.details ? (
+                        <p className="text-xs text-muted-foreground">
+                          {entry.details}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="min-w-[4.5rem] text-right text-xs text-muted-foreground">
+                      {typeof entry.progress === "number" ? (
+                        <div className="font-semibold text-foreground">
+                          {Math.round(entry.progress)}%
+                        </div>
+                      ) : null}
+                      <div>{timeLabel}</div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        ) : null}
         <SubscribePrompt />
       </div>
     );

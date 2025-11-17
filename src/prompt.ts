@@ -504,7 +504,6 @@ good = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
          font_size=FONT_BODY,
          item_buff=1.0,
          edge_buff=1.2,
-         auto_wrap=True  # Default: True - automatically wraps long text
      )
      
      # ✨ NEW: For portrait/YouTube Shorts (optimized wrapping and spacing)
@@ -517,7 +516,6 @@ good = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
      bullets = create_bullet_list(
          ["Your points here"],
          font_size=FONT_BODY,
-         auto_wrap=True,
          max_width=MAX_CONTENT_WIDTH * 0.8,  # Control wrap width
          max_lines=2  # Limit lines per bullet (default: 3)
      )
@@ -541,9 +539,9 @@ good = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
      '''
    - Alternative manual approach (if needed):
      '''python
-     bullet1 = create_bullet_item("First point", font_size=FONT_BODY, auto_wrap=True)
-     bullet2 = create_bullet_item("Second point", font_size=FONT_BODY, auto_wrap=True)
-     bullet3 = create_bullet_item("Third point", font_size=FONT_BODY, auto_wrap=True)
+     bullet1 = create_bullet_item("First point", font_size=FONT_BODY)
+     bullet2 = create_bullet_item("Second point", font_size=FONT_BODY)
+     bullet3 = create_bullet_item("Third point", font_size=FONT_BODY)
      bullets = VGroup(bullet1, bullet2, bullet3).arrange(DOWN, buff=1.0, aligned_edge=LEFT)
      bullets.to_edge(LEFT, buff=1.2)
      '''

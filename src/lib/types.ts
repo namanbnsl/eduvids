@@ -28,7 +28,14 @@ type JobStatus = "generating" | "ready" | "error";
 type YoutubeStatus = "pending" | "uploaded" | "failed";
 type VideoVariant = "video" | "short";
 
-interface VideoJob {
+type JobProgressEntry = {
+  progress?: number;
+  step?: string;
+  details?: string;
+  at: string;
+};
+
+type VideoJob = {
   id: string;
   description: string;
   status: JobStatus;
@@ -40,12 +47,13 @@ interface VideoJob {
   step?: string;
   details?: string;
   youtubeStatus?: YoutubeStatus;
+  progressLog?: JobProgressEntry[];
   youtubeUrl?: string;
   youtubeVideoId?: string;
   youtubeError?: string;
   createdAt: string;
   updatedAt: string;
-}
+};
 
 // Interface for our job store
 interface JobStore {
@@ -133,4 +141,5 @@ export type {
   HeuristicIssue,
   HeuristicOptions,
   HeuristicSeverity,
+  JobProgressEntry,
 };

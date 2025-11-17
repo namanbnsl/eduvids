@@ -204,6 +204,19 @@ export interface RenderOptions {
   orientation?: "landscape" | "portrait";
 }
 
+export type RenderLifecycleStage =
+  | ValidationStage
+  | "sandbox"
+  | "prepare"
+  | "render-output"
+  | "video-processing"
+  | "files";
+
+export type RenderProgressUpdate = {
+  stage: RenderLifecycleStage;
+  message: string;
+};
+
 const PROHIBITED_MODULES = [
   "os",
   "sys",
@@ -355,6 +368,7 @@ export interface RenderRequest {
   applyWatermark?: boolean;
   renderOptions?: RenderOptions;
   plugins?: string[];
+  onProgress?: (update: RenderProgressUpdate) => Promise<void> | void;
 }
 
 export interface ThumbnailResult {
@@ -373,10 +387,27 @@ export async function renderManimVideo({
   applyWatermark = true,
   renderOptions,
   plugins = [],
+  onProgress,
 }: RenderRequest): Promise<RenderResult> {
   void _prompt;
   const normalizedScript = script.trim();
   const renderLogs: RenderLogEntry[] = [];
+
+  const reportProgress = async (
+    stage: RenderLifecycleStage,
+    message: string
+  ) => {
+    if (!onProgress) return;
+    try {
+      await onProgress({ stage, message });
+    } catch (error) {
+      console.warn("Failed to deliver render progress update", {
+        stage,
+        message,
+        error,
+      });
+    }
+  };
 
   const pushLog = (
     entry: Omit<RenderLogEntry, "timestamp"> & { timestamp?: string }
@@ -615,6 +646,7 @@ export async function renderManimVideo({
   };
 
   try {
+    await reportProgress("sandbox", "Provisioning secure rendering sandbox");
     sandbox = await Sandbox.create("manim-ffmpeg-latex-voiceover-watermark-languages", {
       timeoutMs: 2_400_000,
       envs: {
@@ -651,6 +683,10 @@ export async function renderManimVideo({
     });
 
     const layoutCode = getCompleteLayoutCode(layoutConfig);
+    await reportProgress(
+      "layout-injection",
+      `Injecting layout helpers (${layoutConfig.orientation}, ${contentType})`
+    );
 
     if (!enhancedScript.includes(LAYOUT_SENTINEL)) {
       const lines = enhancedScript.split("\n");
@@ -673,6 +709,7 @@ export async function renderManimVideo({
 
     enhancedScript = injectEduvidsCallout(enhancedScript);
 
+    await reportProgress("prepare", "Uploading enhanced script to sandbox");
     await sandbox.files.write(scriptPath, enhancedScript);
     console.log("Manim script written to sandbox");
     pushLog({
@@ -681,6 +718,7 @@ export async function renderManimVideo({
       context: "prepare",
     });
 
+    await reportProgress("syntax", "Running Python syntax check");
     await runCommandOrThrow(`python -m py_compile ${scriptPath}`, {
       description: "Python syntax check",
       stage: "syntax",
@@ -688,6 +726,7 @@ export async function renderManimVideo({
       hint: "Fix Python syntax errors reported above before rendering with Manim.",
     });
 
+    await reportProgress("ast-guard", "Enforcing AST safety rules");
     await runCommandOrThrow(buildAstValidationCommand(scriptPath), {
       description: "AST safety validation",
       stage: "ast-guard",
@@ -695,6 +734,7 @@ export async function renderManimVideo({
       hint: "Remove disallowed imports or builtins from the Manim script before rendering.",
     });
 
+    await reportProgress("scene-validation", "Validating MyScene definition");
     await runCommandOrThrow(buildSceneValidationCommand(scriptPath), {
       description: "Scene validation",
       stage: "scene-validation",
@@ -703,6 +743,10 @@ export async function renderManimVideo({
     });
 
     if (plugins.includes("manim_ml")) {
+      await reportProgress(
+        "plugin-installation",
+        "Installing optional manim-ml plugin"
+      );
       await runCommandOrThrow("pip install manim-ml", {
         description: "Plugin installation (manim-ml)",
         stage: "plugin-installation",
@@ -712,6 +756,7 @@ export async function renderManimVideo({
     }
 
     if (!latexEnvironmentVerified) {
+      await reportProgress("latex", "Verifying LaTeX toolchain availability");
       await runCommandOrThrow(`latex --version`, {
         description: "LaTeX availability check",
         stage: "latex",
@@ -761,6 +806,7 @@ export async function renderManimVideo({
     const manimCmd = `manim ${manimArgs.join(" ")}`;
 
     console.log("Starting manim render with command:", manimCmd);
+    await reportProgress("render", "Rendering frames with Manim");
     await runCommandOrThrow(manimCmd, {
       description: "Manim render",
       stage: "render",
@@ -768,6 +814,8 @@ export async function renderManimVideo({
       hint: "Review the traceback to resolve errors inside your Manim scene.",
       streamOutput: true,
     });
+
+    await reportProgress("render-output", "Render complete, locating output");
 
     const scriptFilename = scriptPath.split("/").pop() ?? "script.py";
     const moduleName = scriptFilename.replace(/\.py$/i, "");
@@ -798,6 +846,7 @@ export async function renderManimVideo({
       );
     }
 
+    await reportProgress("files", "Locating rendered video file");
     let videoPath: string | undefined;
     for (const candidate of candidatePaths) {
       const existsCheck = await sandbox.commands.run(
@@ -862,6 +911,7 @@ export async function renderManimVideo({
     });
 
     // Validate with ffprobe
+    await reportProgress("video-validation", "Validating rendered video");
     const probe = await runCommandOrThrow(
       `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${videoPath}`,
       {
@@ -929,6 +979,7 @@ export async function renderManimVideo({
 
     // Speed up video to 1.3x
     const speedUpPath = `${outputDir}/speedup.mp4`;
+    await reportProgress("video-processing", "Speeding up rendered video");
     const speedUpCmd = `ffmpeg -y -i ${processedVideoPath} -filter:v "setpts=PTS/1.3" -filter:a "atempo=1.3" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart ${speedUpPath}`;
     await runCommandOrThrow(speedUpCmd, {
       description: "Speed up video to 1.3x",
@@ -970,6 +1021,7 @@ export async function renderManimVideo({
       const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
       // const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@1.0:fontsize=24:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw-20:y=h-th-20`;
       const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@1.0:fontsize=28:box=0:x=w-tw-20:y=h-th-20`;
+      await reportProgress("watermark", "Applying watermark overlay");
       const ffmpegCmd = `ffmpeg -y -i ${processedVideoPath} -vf "${drawText}" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart -c:a copy ${watermarkedPath}`;
       await runCommandOrThrow(ffmpegCmd, {
         description: "Watermark application",
@@ -979,6 +1031,10 @@ export async function renderManimVideo({
         streamOutput: { stdout: true, stderr: true },
       });
 
+      await reportProgress(
+        "watermark-validation",
+        "Validating watermarked video"
+      );
       const probeWm = await runCommandOrThrow(
         `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${watermarkedPath}`,
         {

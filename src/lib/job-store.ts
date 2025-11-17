@@ -1,9 +1,36 @@
 import { randomUUID } from "crypto";
 import { kv } from "@vercel/kv";
-import { JobStore, VideoJob, VideoVariant, YoutubeStatus } from "@/lib/types";
+import {
+  JobStore,
+  JobProgressEntry,
+  VideoJob,
+  VideoVariant,
+  YoutubeStatus,
+} from "@/lib/types";
 
 class KVJobStore implements JobStore {
   private ttlSeconds = 60 * 60 * 24; // 24 hours
+  private maxProgressEntries = 50;
+
+  private appendProgressLog(
+    job: VideoJob,
+    atTimestamp?: string
+  ): VideoJob {
+    const entry: JobProgressEntry = {
+      progress: job.progress,
+      step: job.step,
+      details: job.details,
+      at: atTimestamp ?? new Date().toISOString(),
+    };
+    const history = Array.isArray(job.progressLog)
+      ? [...job.progressLog]
+      : [];
+    history.push(entry);
+    if (history.length > this.maxProgressEntries) {
+      history.splice(0, history.length - this.maxProgressEntries);
+    }
+    return { ...job, progressLog: history };
+  }
 
   async create(
     description: string,
@@ -22,8 +49,9 @@ class KVJobStore implements JobStore {
       createdAt: now,
       updatedAt: now,
     };
-    await kv.set(this.key(id), job, { ex: this.ttlSeconds });
-    return job;
+    const jobWithLog = this.appendProgressLog(job, now);
+    await kv.set(this.key(id), jobWithLog, { ex: this.ttlSeconds });
+    return jobWithLog;
   }
 
   async get(id: string): Promise<VideoJob | undefined> {
@@ -44,8 +72,9 @@ class KVJobStore implements JobStore {
       details: update.details ?? job.details,
       updatedAt: new Date().toISOString(),
     };
-    await kv.set(this.key(id), updated, { ex: this.ttlSeconds });
-    return updated;
+    const updatedWithLog = this.appendProgressLog(updated);
+    await kv.set(this.key(id), updatedWithLog, { ex: this.ttlSeconds });
+    return updatedWithLog;
   }
 
   async setReady(id: string, videoUrl: string): Promise<VideoJob | undefined> {
@@ -59,8 +88,9 @@ class KVJobStore implements JobStore {
       step: "completed",
       updatedAt: new Date().toISOString(),
     };
-    await kv.set(this.key(id), updated, { ex: this.ttlSeconds });
-    return updated;
+    const updatedWithLog = this.appendProgressLog(updated);
+    await kv.set(this.key(id), updatedWithLog, { ex: this.ttlSeconds });
+    return updatedWithLog;
   }
 
   async setError(id: string, message: string): Promise<VideoJob | undefined> {
@@ -73,8 +103,9 @@ class KVJobStore implements JobStore {
       step: "error",
       updatedAt: new Date().toISOString(),
     };
-    await kv.set(this.key(id), updated, { ex: this.ttlSeconds });
-    return updated;
+    const updatedWithLog = this.appendProgressLog(updated);
+    await kv.set(this.key(id), updatedWithLog, { ex: this.ttlSeconds });
+    return updatedWithLog;
   }
 
   async setYoutubeStatus(
