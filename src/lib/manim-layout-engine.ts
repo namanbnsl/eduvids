@@ -1289,46 +1289,43 @@ LATEX_ENV_PATTERN = re.compile(r"\\begin\{[A-Za-z*]+\}")
 
 
 def _looks_like_latex(text):
+    """Detect if text contains LaTeX commands"""
     if not text:
         return False
     stripped = str(text).strip()
-    if stripped.startswith("\\\\"):
+    
+    # Check for explicit LaTeX markers
+    if stripped.startswith("\\"):
         return True
-    if "$$" in stripped or "$" in stripped:
+    if "$$" in stripped or stripped.count("$") >= 2:
         return True
     if LATEX_COMMAND_PATTERN.search(stripped):
         return True
     if LATEX_ENV_PATTERN.search(stripped):
         return True
-    if "\\bullet" in stripped:
+    if "\\bullet" in stripped or "\\textbf" in stripped or "\\textit" in stripped:
         return True
+    
     return False
-
 
 def _escape_latex_text(text):
     """
-    Escape special LaTeX characters in text while preserving LaTeX commands.
-    Fixes encoding issues that cause inverted question marks and random backslashes.
-    
-    Args:
-        text: Text to escape
-    
-    Returns:
-        Escaped text safe for LaTeX
+    FIXED: Properly escape special LaTeX characters in text.
+    This version correctly handles backslashes and other special characters.
     """
     if text is None:
         return ""
     
-    # Ensure text is a proper string (fixes encoding issues)
+    # Ensure text is a proper string
+    text_str = str(text)
+    
+    # FIXED: Less aggressive normalization - preserve more characters
     try:
-        text_str = str(text)
-        # Normalize unicode characters to avoid encoding issues
-        import unicodedata
-        text_str = unicodedata.normalize('NFKD', text_str)
-        # Encode to ASCII, ignoring problematic characters
-        text_str = text_str.encode('ascii', 'ignore').decode('ascii')
+        # Only normalize if there are actual unicode issues
+        if any(ord(c) > 127 for c in text_str):
+            text_str = unicodedata.normalize('NFKC', text_str)
     except Exception:
-        text_str = str(text)
+        pass
     
     length = len(text_str)
     result = []
@@ -1337,13 +1334,13 @@ def _escape_latex_text(text):
     while idx < length:
         char = text_str[idx]
         
-        # Handle backslash (escape character)
-        if char == "\\\\":
+        # FIXED: Check for single backslash character
+        if char == "\\":
             next_idx = idx + 1
             
             # Check if it's a double backslash (line break)
-            if next_idx < length and text_str[next_idx] == "\\\\":
-                result.append(r"\\\\")
+            if next_idx < length and text_str[next_idx] == "\\":
+                result.append(r"\\")
                 idx += 2
                 continue
             
@@ -1358,7 +1355,7 @@ def _escape_latex_text(text):
                 idx = command_end
                 continue
             
-            # Check if it's an escaped special character
+            # Check if it's an escaped special character (like \&, \%, etc.)
             if next_idx < length and text_str[next_idx] in LATEX_SPECIAL_CHARS:
                 # Already escaped, preserve it
                 result.append(text_str[idx:next_idx + 1])
@@ -1366,7 +1363,7 @@ def _escape_latex_text(text):
                 continue
             
             # Single backslash not part of a command - escape it
-            result.append(r"\\textbackslash{}")
+            result.append(r"\textbackslash{}")
             idx += 1
             continue
 
@@ -1375,7 +1372,6 @@ def _escape_latex_text(text):
         idx += 1
 
     return "".join(result)
-
 
 def build_latex_text(
     text,
@@ -1387,19 +1383,8 @@ def build_latex_text(
     auto_detect=True,
 ):
     """
-    Build LaTeX text with proper escaping and formatting.
-    Improved to handle special characters and prevent encoding issues.
-    
-    Args:
-        text: Text to convert to LaTeX
-        bold: Make text bold
-        italic: Make text italic
-        monospace: Use monospace font
-        allow_latex: Treat text as LaTeX (skip escaping)
-        auto_detect: Auto-detect if text contains LaTeX
-    
-    Returns:
-        LaTeX formatted text string
+    FIXED: Build LaTeX text with proper escaping and formatting.
+    This version handles line breaks and text wrapping correctly.
     """
     raw_text = "" if text is None else str(text)
 
@@ -1409,24 +1394,25 @@ def build_latex_text(
         # Text contains LaTeX, use as-is
         latex = raw_text
     else:
-        # Escape special characters to prevent encoding issues
+        # Escape special characters
         escaped = _escape_latex_text(raw_text)
         
-        # For text mode in LaTeX, wrap in \text{} to ensure proper rendering
-        # This prevents issues with special characters and spacing
-        if escaped and not (bold or italic or monospace):
-            # Only wrap if not already applying formatting
-            # Check if text contains line breaks (already formatted)
-            if "\\\\\\\\" in escaped:
-                # Text has line breaks, don't wrap in \text{} to preserve formatting
-                latex = escaped
-            else:
-                # Regular text, safe to wrap
-                latex = f"\\text{{{escaped}}}"
+        # FIXED: Better line break detection
+        # Check if text has multiple lines (from wrapping)
+        has_line_breaks = "\\\\" in escaped or "\n" in escaped
+        
+        if has_line_breaks:
+            # Text has line breaks - don't wrap in \text{} as it breaks formatting
+            # Instead, ensure proper LaTeX line break syntax
+            latex = escaped.replace("\n", " \\\\ ")
+        elif not (bold or italic or monospace):
+            # Regular single-line text - safe to wrap in \text{}
+            latex = f"\\text{{{escaped}}}"
         else:
+            # Text with formatting but no line breaks
             latex = escaped
 
-    # Apply formatting
+    # Apply formatting (these work with or without \text{})
     if bold:
         latex = f"\\textbf{{{latex}}}"
     if italic:
@@ -1436,11 +1422,10 @@ def build_latex_text(
     
     return latex
 
-
 def create_tex_label(
     text,
     *,
-    font_size=FONT_BODY,
+    font_size=48,  # Default font size
     bold=False,
     italic=False,
     monospace=False,
@@ -1448,8 +1433,10 @@ def create_tex_label(
     auto_detect_latex=True,
     **tex_kwargs,
 ):
-    """Convert plain text to a Tex mobject with safe escaping by default."""
-
+    """
+    FIXED: Convert plain text to a Tex mobject with safe escaping.
+    This version properly handles all text types.
+    """
     latex_string = build_latex_text(
         text,
         bold=bold,
@@ -1459,6 +1446,9 @@ def create_tex_label(
         auto_detect=auto_detect_latex,
     )
 
+    # Import here to avoid issues if Manim isn't loaded
+    from manim import Tex
+    
     return Tex(latex_string, font_size=font_size, **tex_kwargs)
 
 
@@ -1566,13 +1556,12 @@ def create_text_panel(
     validate_position(group, "text panel", auto_fix=True)
     return group
 
-
 def create_bullet_item(
     text,
     *,
-    bullet_symbol=r"\textbullet",
-    bullet_gap=r"\ ",
-    font_size=FONT_BODY,
+    bullet_symbol=r"$\bullet$",  # FIXED: Use math mode for bullet
+    bullet_gap=r" ",
+    font_size=48,
     bold=False,
     italic=False,
     monospace=False,
@@ -1584,37 +1573,20 @@ def create_bullet_item(
     **tex_kwargs,
 ):
     """
-    Create a single bullet item as a Tex mobject with automatic text wrapping.
-    
-    Args:
-        text: Bullet point text
-        bullet_symbol: Symbol for bullet (default: \\textbullet)
-        bullet_gap: Gap after bullet symbol
-        font_size: Font size
-        bold: Make text bold
-        italic: Make text italic
-        monospace: Use monospace font
-        treat_as_latex: Treat text as LaTeX code
-        auto_detect_latex: Auto-detect LaTeX in text
-        auto_wrap: Automatically wrap long text (default: True)
-        max_width: Maximum width for wrapping (defaults to MAX_CONTENT_WIDTH * 0.85)
-        max_lines: Maximum lines for bullet text (default: 3)
-        **tex_kwargs: Additional Tex arguments
-    
-    Returns:
-        Tex mobject with bullet point
+    FIXED: Create a single bullet item with proper LaTeX handling.
     """
     # Set default max_width if not provided
     if max_width is None:
-        max_width = MAX_CONTENT_WIDTH * 0.85  # Leave room for margins and spacing
+        max_width = 10.0  # Default safe width
     
     # Wrap text if enabled and not LaTeX
     if auto_wrap and not treat_as_latex and not _looks_like_latex(text):
-        # Account for bullet symbol width (approximately)
-        bullet_width_chars = 2  # Approximate character width taken by bullet
+        # Account for bullet symbol width
+        bullet_width_chars = 2
         effective_width = max_width - (bullet_width_chars * font_size * 0.55)
         text = wrap_text(text, font_size=font_size, max_width=effective_width, max_lines=max_lines)
     
+    # Build the text fragment
     body_fragment = build_latex_text(
         text,
         bold=bold,
@@ -1623,9 +1595,21 @@ def create_bullet_item(
         allow_latex=treat_as_latex,
         auto_detect=auto_detect_latex,
     )
+    
+    # FIXED: Construct bullet item with proper spacing
+    # Use math mode bullet and proper text concatenation
     bullet_tex = f"{bullet_symbol}{bullet_gap}{body_fragment}"
-    return Tex(bullet_tex, font_size=font_size, **tex_kwargs)
-
+    
+    from manim import Tex
+    
+    try:
+        return Tex(bullet_tex, font_size=font_size, **tex_kwargs)
+    except Exception as e:
+        # If LaTeX fails, print helpful debug info
+        print(f"[LATEX ERROR] Failed to compile bullet item")
+        print(f"Text: {text[:100]}...")  # First 100 chars
+        print(f"LaTeX: {bullet_tex[:200]}...")  # First 200 chars
+        raise
 
 def create_bullet_list(
     items,
@@ -2481,30 +2465,46 @@ export function getTextWrappingGuidelines(config: LayoutConfig): string {
     zones.maxContentWidth / (fonts.caption * 0.6)
   )} chars
 
-def wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH, max_lines=None):
+def wrap_text(text, font_size=48, max_width=10, max_lines=None):
+    """
+    FIXED: Wrap text properly for LaTeX rendering.
+    Returns text with LaTeX line breaks.
+    """
     if not text or not isinstance(text, str):
         return ""
+    
+    # Calculate approximate characters per line
     char_width = font_size * 0.55
     max_chars_per_line = max(int(max_width / char_width), 10)
+    
     words = text.split()
     lines = []
     current_line = []
     current_length = 0
+    
     for word in words:
+        # Handle very long words
         if len(word) > max_chars_per_line:
+            # Finish current line
             if current_line:
                 lines.append(' '.join(current_line))
                 current_line = []
                 current_length = 0
+            
+            # Break long word into chunks
             while len(word) > max_chars_per_line:
                 chunk = word[:max_chars_per_line - 1]
                 lines.append(chunk + "-")
                 word = word[max_chars_per_line - 1:]
+            
             if word:
                 current_line = [word]
                 current_length = len(word)
             continue
-        word_length = len(word) + 1
+        
+        word_length = len(word) + 1  # +1 for space
+        
+        # Check if adding this word would exceed the line length
         if current_length + word_length > max_chars_per_line and current_line:
             lines.append(' '.join(current_line))
             current_line = [word]
@@ -2512,13 +2512,20 @@ def wrap_text(text, font_size=FONT_BODY, max_width=MAX_CONTENT_WIDTH, max_lines=
         else:
             current_line.append(word)
             current_length += word_length
+    
+    # Add remaining words
     if current_line:
         lines.append(' '.join(current_line))
+    
+    # Limit number of lines
     if max_lines and len(lines) > max_lines:
         lines = lines[:max_lines]
         if lines:
             lines[-1] = lines[-1] + "..."
-    return " \\\\\\\\ ".join(lines)
+    
+    # FIXED: Use proper LaTeX line break syntax (double backslash + space)
+    # In Python, r"\\" becomes a single \ in the string, but LaTeX needs \\
+    return r" \\ ".join(lines)
 
 def create_wrapped_text(text, font_size=FONT_BODY, **kwargs):
     wrapped = wrap_text(text, font_size)
