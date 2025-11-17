@@ -1614,7 +1614,7 @@ def create_bullet_list(
             pass
     
     # Position to edge if specified
-    if edge:
+    if edge is not None:
         bullets.to_edge(edge, buff=edge_buff)
 
     # Final validation

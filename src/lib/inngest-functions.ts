@@ -49,21 +49,21 @@ type JobProgressUpdate = {
 const RENDER_STAGE_PROGRESS: Partial<
   Record<RenderLifecycleStage, { progress: number; step: string }>
 > = {
-  sandbox: { progress: 46, step: "provisioning sandbox" },
-  "layout-injection": { progress: 48, step: "injecting layout helpers" },
-  prepare: { progress: 50, step: "uploading script to sandbox" },
-  syntax: { progress: 52, step: "running syntax check" },
-  "ast-guard": { progress: 54, step: "enforcing safety guards" },
-  "scene-validation": { progress: 56, step: "validating scene" },
-  "plugin-installation": { progress: 58, step: "installing plugins" },
-  latex: { progress: 60, step: "checking latex environment" },
-  render: { progress: 66, step: "rendering frames" },
-  "render-output": { progress: 70, step: "render completed" },
-  files: { progress: 72, step: "collecting render output" },
-  "video-validation": { progress: 75, step: "validating video" },
-  "video-processing": { progress: 78, step: "enhancing video" },
-  watermark: { progress: 82, step: "applying watermark" },
-  "watermark-validation": { progress: 84, step: "verifying watermark" },
+  sandbox: { progress: 46, step: "Preparing environment" },
+  "layout-injection": { progress: 48, step: "Setting up" },
+  prepare: { progress: 50, step: "Uploading" },
+  syntax: { progress: 52, step: "Checking" },
+  "ast-guard": { progress: 54, step: "Validating" },
+  "scene-validation": { progress: 56, step: "Validating" },
+  "plugin-installation": { progress: 58, step: "Installing" },
+  latex: { progress: 60, step: "Preparing LaTeX" },
+  render: { progress: 66, step: "Rendering" },
+  "render-output": { progress: 70, step: "Done rendering" },
+  files: { progress: 72, step: "Processing" },
+  "video-validation": { progress: 75, step: "Checking video" },
+  "video-processing": { progress: 78, step: "Processing" },
+  watermark: { progress: 82, step: "Adding watermark" },
+  "watermark-validation": { progress: 84, step: "Finalizing" },
 };
 
 const formatStepLabel = (value: string): string =>
@@ -897,8 +897,8 @@ export const generateVideo = inngest.createFunction(
 
           await markValidationStage(
             40,
-            "script approved",
-            `${context} verification succeeded`
+            "Scenes approved",
+            `Done`
           );
           return approvedScript;
         }
@@ -984,8 +984,8 @@ export const generateVideo = inngest.createFunction(
     try {
       await updateJobProgress(jobId, {
         progress: 5,
-        step: "generating voiceover",
-        details: "Drafting narration script",
+        step: "Creating narration",
+        details: "Writing script",
       });
       const voiceoverScript = await step.run(
         "generate-voiceover-script",
@@ -1000,14 +1000,14 @@ export const generateVideo = inngest.createFunction(
 
       await updateJobProgress(jobId, {
         progress: 12,
-        step: "voiceover ready",
-        details: "Narration approved",
+        step: "Narration ready",
+        details: "Done",
       });
 
       await updateJobProgress(jobId, {
         progress: 18,
-        step: "generating script",
-        details: "Drafting Manim scene",
+        step: "Writing scenes",
+        details: "Creating",
       });
 
       let script = await step.run("generate-full-manim-script", async () => {
@@ -1023,14 +1023,14 @@ export const generateVideo = inngest.createFunction(
 
       await updateJobProgress(jobId, {
         progress: 24,
-        step: "script drafted",
-        details: "Initial Manim code ready",
+        step: "Scenes ready",
+        details: "Code ready",
       });
 
       await updateJobProgress(jobId, {
         progress: 30,
-        step: "verifying script",
-        details: "Running automated checks",
+        step: "Checking scenes",
+        details: "Validating",
       });
 
       const preValidation = validateRequiredElements(script);
@@ -1054,14 +1054,14 @@ export const generateVideo = inngest.createFunction(
 
       await updateJobProgress(jobId, {
         progress: 42,
-        step: "script ready for render",
-        details: "Validation complete, preparing render",
+        step: "Ready to render",
+        details: "Validation complete",
       });
 
       await updateJobProgress(jobId, {
         progress: 44,
-        step: "preparing render environment",
-        details: "Bundling assets for sandbox",
+        step: "Starting render",
+        details: "Setting up",
       });
 
       const MAX_RENDER_RETRIES = 3;
@@ -1149,8 +1149,8 @@ export const generateVideo = inngest.createFunction(
 
                 await updateJobProgress(jobId, {
                   progress: 88,
-                  step: "uploading video",
-                  details: "Transferring render to storage",
+                  step: "Saving video",
+                  details: "Uploading",
                 });
 
                 const uploadUrl = await uploadVideo({
@@ -1169,8 +1169,8 @@ export const generateVideo = inngest.createFunction(
 
                 await updateJobProgress(jobId, {
                   progress: 90,
-                  step: "video uploaded",
-                  details: "Video stored successfully",
+                  step: "Video saved",
+                  details: "Done",
                 });
 
                 return {
@@ -1258,7 +1258,7 @@ export const generateVideo = inngest.createFunction(
 
           await updateJobProgress(jobId, {
             progress: 66,
-            step: `render retry (attempt ${attempt})`,
+            step: `Retrying render`,
             details: normalizedMessage,
           });
 
@@ -1402,18 +1402,16 @@ export const generateVideo = inngest.createFunction(
       if (pipelineWarnings.length) {
         await updateJobProgress(jobId, {
           progress: 91,
-          step: "render warnings",
-          details: pipelineWarnings
-            .map((warning) => `[${warning.stage}] ${warning.message}`)
-            .join(" | "),
+          step: "Render complete",
+          details: "Processing",
         });
       }
 
       if (jobId) {
         await updateJobProgress(jobId, {
           progress: 95,
-          step: "finalizing",
-          details: "Preparing download and YouTube upload",
+          step: "Finishing up",
+          details: "Wrapping up",
         });
         await jobStore.setReady(jobId, uploadUrl);
         await jobStore.setYoutubeStatus(jobId, { youtubeStatus: "pending" });
