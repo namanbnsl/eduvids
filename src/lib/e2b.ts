@@ -119,12 +119,14 @@ function injectEduvidsCallout(script: string): string {
     `${bodyIndent}existing_mobjects = list(self.mobjects)`,
     `${bodyIndent}if existing_mobjects:`,
     `${bodyIndent}    self.play(*[FadeOut(mob) for mob in existing_mobjects])`,
-    ...(is3D ? [
-      ``,
-      `${bodyIndent}# Set camera to 2D view for clear CTA visibility`,
-      `${bodyIndent}set_camera_for_2d_view(self)`,
-      ``,
-    ] : []),
+    ...(is3D
+      ? [
+          ``,
+          `${bodyIndent}# Set camera to 2D view for clear CTA visibility`,
+          `${bodyIndent}set_camera_for_2d_view(self)`,
+          ``,
+        ]
+      : []),
     `${bodyIndent}with self.voiceover(text="Generate your own educational videos for free at eduvids dot vercel dot app"):`,
     `${bodyIndent}    # Create CTA with high-contrast background panel for visibility`,
     ``,
@@ -281,8 +283,9 @@ const truncateOutput = (value: string | undefined | null) => {
   return `${normalized.slice(
     0,
     MAX_COMMAND_OUTPUT_CHARS
-  )}\n... output truncated (${normalized.length - MAX_COMMAND_OUTPUT_CHARS
-    } more chars)`;
+  )}\n... output truncated (${
+    normalized.length - MAX_COMMAND_OUTPUT_CHARS
+  } more chars)`;
 };
 
 const buildSceneValidationCommand = (scriptPath: string) =>
@@ -498,11 +501,11 @@ export async function renderManimVideo({
       onStdout?: (chunk: string) => void;
       onStderr?: (chunk: string) => void;
       streamOutput?:
-      | boolean
-      | {
-        stdout?: boolean;
-        stderr?: boolean;
-      };
+        | boolean
+        | {
+            stdout?: boolean;
+            stderr?: boolean;
+          };
     } = {}
   ) => {
     if (!sandbox) {
@@ -558,15 +561,15 @@ export async function renderManimVideo({
 
     const defaultStdout = streamStdout
       ? (chunk: string) => {
-        if (!chunk) return;
-        console.log(`[${contextLabel}][stdout] ${chunk}`);
-      }
+          if (!chunk) return;
+          console.log(`[${contextLabel}][stdout] ${chunk}`);
+        }
       : undefined;
     const defaultStderr = streamStderr
       ? (chunk: string) => {
-        if (!chunk) return;
-        console.error(`[${contextLabel}][stderr] ${chunk}`);
-      }
+          if (!chunk) return;
+          console.error(`[${contextLabel}][stderr] ${chunk}`);
+        }
       : undefined;
 
     const combinedStdout = (chunk: string) => {
@@ -647,12 +650,15 @@ export async function renderManimVideo({
 
   try {
     await reportProgress("sandbox", "Provisioning secure rendering sandbox");
-    sandbox = await Sandbox.create("manim-ffmpeg-latex-voiceover-watermark-languages", {
-      timeoutMs: 2_400_000,
-      envs: {
-        ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
-      },
-    });
+    sandbox = await Sandbox.create(
+      "manim-ffmpeg-latex-voiceover-watermark-languages",
+      {
+        timeoutMs: 2_400_000,
+        envs: {
+          ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
+        },
+      }
+    );
     console.log("E2B sandbox created successfully", {
       sandboxId: sandbox.sandboxId,
     });
@@ -734,7 +740,7 @@ export async function renderManimVideo({
       hint: "Remove disallowed imports or builtins from the Manim script before rendering.",
     });
 
-    await reportProgress("scene-validation", "Validating MyScene definition");
+    await reportProgress("scene-validation", "Validating definitions");
     await runCommandOrThrow(buildSceneValidationCommand(scriptPath), {
       description: "Scene validation",
       stage: "scene-validation",
@@ -806,7 +812,7 @@ export async function renderManimVideo({
     const manimCmd = `manim ${manimArgs.join(" ")}`;
 
     console.log("Starting manim render with command:", manimCmd);
-    await reportProgress("render", "Rendering frames with Manim");
+    await reportProgress("render", "Rendering frames");
     await runCommandOrThrow(manimCmd, {
       description: "Manim render",
       stage: "render",
@@ -1093,8 +1099,9 @@ export async function renderManimVideo({
     console.error("E2B render error:", err);
     pushLog({
       level: "error",
-      message: `Render pipeline error: ${err instanceof Error ? err.message : String(err)
-        }`,
+      message: `Render pipeline error: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
       context: "render",
     });
     await ensureCleanup();
@@ -1117,7 +1124,7 @@ export async function renderManimVideo({
       if (
         normalizedCommandError &&
         normalizedCommandError.toLowerCase() !==
-        `exit status ${(exitCode ?? "").toString()}`
+          `exit status ${(exitCode ?? "").toString()}`
       ) {
         messageParts.push(`Error: ${normalizedCommandError}`);
       }
