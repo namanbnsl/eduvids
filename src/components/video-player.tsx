@@ -556,12 +556,7 @@ export function VideoPlayer({
   if (error) {
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-        <p className="text-red-600">❌ {error}</p>
-        {errorDetails ? (
-          <p className="mt-2 whitespace-pre-wrap text-sm text-red-500">
-            {errorDetails}
-          </p>
-        ) : null}
+        <p className="text-red-600">❌ Something went wrong</p>
       </div>
     );
   }

@@ -134,7 +134,7 @@ export const ToolOutput = ({
             : 'bg-muted/50 text-foreground'
         )}
       >
-        {errorText && <div>{errorText}</div>}
+        {errorText && <div>Something went wrong</div>}
         {output && <div>{output}</div>}
       </div>
     </div>

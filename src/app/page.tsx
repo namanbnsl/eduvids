@@ -215,7 +215,7 @@ export default function ChatPage() {
                                   );
                                 case "output-error":
                                   return (
-                                    <div key={i}>Error: {part.errorText}</div>
+                                    <div key={i}>Something went wrong</div>
                                   );
                                 default:
                                   return null;

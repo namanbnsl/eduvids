@@ -10,7 +10,7 @@ import { RenderLogEntry, ValidationStage } from "@/lib/types";
 const MAX_COMMAND_OUTPUT_CHARS = 4000;
 let latexEnvironmentVerified = false;
 
-const EDUVIDS_CALLOUT_TEXT = "Generate your own educational videos for free at";
+const EDUVIDS_CALLOUT_TEXT = "Generate your free educational videos at";
 const LAYOUT_SENTINEL = "# ADVANCED LAYOUT SYSTEM";
 const FONT_BODY_PATTERN = /\bFONT_BODY\s*=/;
 
@@ -130,7 +130,7 @@ function injectEduvidsCallout(script: string): string {
     `${bodyIndent}with self.voiceover(text="Generate your own educational videos for free at eduvids dot vercel dot app"):`,
     `${bodyIndent}    # Create CTA with high-contrast background panel for visibility`,
     ``,
-    `${bodyIndent}    cta_title = Text("Generate your own educational videos for free!", font_size=FONT_CAPTION + 6)`,
+    `${bodyIndent}    cta_title = Text("Generate your free educational videos at", font_size=FONT_CAPTION + 6)`,
     `${bodyIndent}    cta_title.set_color(WHITE)`,
     `${bodyIndent}    cta_link = Text("https://eduvids.vercel.app", font_size=FONT_CAPTION + 2)`,
     `${bodyIndent}    cta_link.set_color(TEAL)`,
