@@ -56,7 +56,6 @@ const STEP_TITLES: Record<string, string> = {
   error: "Error",
 };
 
-
 const formatStepName = (step?: string): string | undefined => {
   const rawStep = step?.trim();
   if (!rawStep) return undefined;
@@ -67,9 +66,7 @@ const formatStepName = (step?: string): string | undefined => {
   return rawStep
     .split(/\s+/)
     .map((word) =>
-      word.length > 0
-        ? `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`
-        : ""
+      word.length > 0 ? `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}` : ""
     )
     .join(" ");
 };
@@ -201,8 +198,8 @@ export function VideoPlayer({
         | "youtubeStatus"
         | "youtubeUrl"
         | "youtubeError"
-          | "variant"
-          | "progressLog"
+        | "variant"
+        | "progressLog"
       > & {
         jobId?: string;
       } = {
@@ -238,9 +235,7 @@ export function VideoPlayer({
             const at = typeof raw.at === "string" ? raw.at : undefined;
             if (!at) return null;
             const entryProgress =
-              typeof raw.progress === "number"
-                ? raw.progress
-                : undefined;
+              typeof raw.progress === "number" ? raw.progress : undefined;
             const entryStep =
               typeof raw.step === "string" ? raw.step : undefined;
             const entryDetails =
@@ -595,49 +590,6 @@ export function VideoPlayer({
           stepLabel={stageTitle}
           progress={displayProgress}
         />
-        {recentProgressLog.length ? (
-          <div className="rounded-xl border bg-card/50 p-3 shadow-sm">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Live updates
-            </div>
-            <ol className="space-y-2 text-sm">
-              {recentProgressLog.map((entry, index) => {
-                const time = new Date(entry.at);
-                const timeLabel = Number.isNaN(time.getTime())
-                  ? ""
-                  : time.toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    });
-                return (
-                  <li
-                    key={`${entry.at}-${index}`}
-                    className="flex items-start justify-between gap-3"
-                  >
-                    <div className="flex-1">
-                      <div className="font-medium text-foreground">
-                        {formatStepName(entry.step) ?? entry.step ?? "Update"}
-                      </div>
-                      {entry.details ? (
-                        <p className="text-xs text-muted-foreground">
-                          {entry.details}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="min-w-[4.5rem] text-right text-xs text-muted-foreground">
-                      {typeof entry.progress === "number" ? (
-                        <div className="font-semibold text-foreground">
-                          {Math.round(entry.progress)}%
-                        </div>
-                      ) : null}
-                      <div>{timeLabel}</div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
-        ) : null}
         <SubscribePrompt />
       </div>
     );
