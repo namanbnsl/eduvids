@@ -171,7 +171,7 @@ Do not provide any explanation, just the language name.`,
 }
 
 function buildAugmentedSystemPrompt(base: string, language?: string): string {
-  // const { markdown, json } = loadManimReferenceDocs();
+  const { markdown } = loadManimReferenceDocs();
   let modifiedBase = base;
 
   // If language is not English, comprehensively modify the prompt to allow Text instead of requiring LaTeX
@@ -236,11 +236,7 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
     );
   }
 
-  // return `${modifiedBase}\n\n---\nMANIM_SHORT_REF.md (local):\n${markdown}\n\nMANIM_SHORT_REF.json (local):\n${JSON.stringify(
-  //   json
-  // )}\n---`;
-
-  return modifiedBase;
+  return `${modifiedBase}\n\n---\nMANIM_SHORT_REF.md (local):\n${markdown}\n\nMANIM_SHORT_REF.json (local):\n---`;
 }
 
 const truncate = (value: string, max = 2000) => {
@@ -351,25 +347,17 @@ export async function generateManimScript({
   const generationPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration with purposeful, step-by-step visuals that directly reinforce each narrated idea while staying on the same core topic:`;
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-    // const googleModel = createGoogleModel("gemini-2.5-pro");
-    const googleModel = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
+    const googleModel = createGoogleModel("gemini-2.5-pro");
     try {
-      // const { text } = await generateTextWithTracking(
-      //   {
-      //     model: googleModel.provider(googleModel.modelId),
-      //     system: augmentedSystemPrompt,
-      //     prompt: generationPrompt,
-      //     temperature: 0.1,
-      //   },
-      //   googleModel
-      // );
-
-      const { text } = await generateText({
-        model: googleModel,
-        system: augmentedSystemPrompt,
-        prompt: generationPrompt,
-        temperature: 0.5,
-      });
+      const { text } = await generateTextWithTracking(
+        {
+          model: googleModel.provider(googleModel.modelId),
+          system: augmentedSystemPrompt,
+          prompt: generationPrompt,
+          temperature: 0.1,
+        },
+        googleModel
+      );
 
       const code = text
         .replace(/```python?\n?/g, "")
