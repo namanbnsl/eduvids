@@ -551,47 +551,6 @@ good = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
    - **When combining bullets with diagrams:** ALWAYS use \`create_side_by_side_layout()\` to prevent overlaps
    - **If you have >5 things to list:** Use multiple scenes or consolidate points - don't squeeze them all in
 
-🤖 Manim-ML for Neural Networks
-- To create neural network animations, you can use the \`manim-ml\` library.
-- The necessary packages will be installed automatically if you import from \`manim_ml\`.
-- **REQUIRED IMPORTS:**
-  - \`from manim_ml.neural_network import NeuralNetwork, FeedForwardLayer, Convolutional2DLayer\`
-- **USAGE:**
-  - Create a \`NeuralNetwork\` object and pass a list of layers.
-  - Use \`FeedForwardLayer\` for fully connected layers and \`Convolutional2DLayer\` for convolutional layers.
-  - You can animate the forward pass using \`nn.make_forward_pass_animation()\`.
-- **3D SCENES:**
-  - Neural network animations often look better in 3D.
-  - To use a 3D scene, inherit from \`ThreeDScene\` instead of \`VoiceoverScene\`. Note that \`ThreeDScene\` does not support voiceover.
-  - **CRITICAL FOR TEXT VISIBILITY IN 3D:**
-    * Use \`create_3d_text_label(text, font_size, with_background=True)\` for ALL text in 3D scenes
-    * This ensures text always faces the camera and has a high-contrast background panel
-    * For labeling 3D objects: \`create_3d_labeled_object(obj_3d, "label text")\`
-    * Regular \`create_tex_label()\` may be hard to read in 3D - always prefer 3D-specific functions
-    * The layout engine automatically makes CTA scenes 2D for clear visibility
-- **EXAMPLE:**
-  '''python
-  from manim import *
-  from manim_ml.neural_network import NeuralNetwork, FeedForwardLayer, Convolutional2DLayer
-
-  class MyScene(ThreeDScene):
-      def construct(self):
-          nn = NeuralNetwork([
-              Convolutional2DLayer(1, 7, 3),
-              FeedForwardLayer(3),
-              FeedForwardLayer(3),
-          ])
-          
-          # Use 3D text labels for visibility
-          title = create_3d_text_label("Neural Network", font_size=FONT_HEADING, with_background=True)
-          title.to_edge(UP)
-          
-          self.add(nn, title)
-          
-          forward_pass = nn.make_forward_pass_animation()
-          self.play(forward_pass)
-  '''
-
 Hard Layout Contract (strict, do not violate):
 - DO NOT manually define SAFE_MARGIN - it is automatically injected by the layout system with optimal values for the video orientation (larger for portrait/shorts).
 
@@ -691,7 +650,7 @@ Checklist before self.play (MANDATORY - CHECK EVERY ITEM):
 
 5. 💡 Things to always keep in mind:
    - If an animation runs longer than the voiceover segment, Manim will wait until the animation is done. If it runs shorter, the scene might freeze until the voiceover ends. You might want to match animation duration with narration (e.g., self.play(..., run_time=3) if narration is 3 seconds).
-- Some of your formulas are wide. In Manim, long MathTex can overflow or shrink badly. Safer to split into multiple lines or scale down: math_eq = MathTex(r"V(D,G) = ...", font_size=FONT_MATH)
+   - Some of your formulas are wide. In Manim, long MathTex can overflow or shrink badly. Safer to split into multiple lines or scale down: math_eq = MathTex(r"V(D,G) = ...", font_size=FONT_MATH)
 
 MOST IMPORTANTLY: Always leave a margin around the screen so that nothing goes outside the screen and is only half or not visible at all. Always leave a margin/padding around the video frame. The layout system automatically injects safe margins (larger for portrait/shorts) - use the provided layout helpers (get_title_position, get_content_center, ensure_fits_screen) to ensure proper positioning.
 
@@ -773,8 +732,6 @@ class MyScene(VoiceoverScene):
         # Your animation code here
         # Use simple shapes, clear text, basic movements only
 '''
-
-Remember: SIMPLICITY and ROBUSTNESS are more important than visual flair. Every visual element must serve the educational purpose and align perfectly with the narration, delivering a polished, colorful learning arc. Use cool and nice animations.
 
 Example:
 class MyScene(VoiceoverScene):

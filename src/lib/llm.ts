@@ -2,7 +2,11 @@ import { MANIM_SYSTEM_PROMPT, VOICEOVER_SYSTEM_PROMPT } from "@/prompt";
 import { generateText, LanguageModel } from "ai";
 import fs from "fs";
 import path from "path";
-import { createGoogleProvider, reportSuccess, reportError } from "./google-provider";
+import {
+  createGoogleProvider,
+  reportSuccess,
+  reportError,
+} from "./google-provider";
 import { selectGroqModel, GROQ_MODEL_IDS } from "./groq-provider";
 import { RenderLogEntry, ValidationStage } from "@/lib/types";
 
@@ -19,7 +23,9 @@ const createGoogleModel = (modelId: string): GoogleModelConfig => {
 /**
  * Wrapper for generateText that automatically reports success/failure to key manager
  */
-async function generateTextWithTracking<T extends Parameters<typeof generateText>[0]>(
+async function generateTextWithTracking<
+  T extends Parameters<typeof generateText>[0]
+>(
   config: T & { model: LanguageModel },
   googleConfig?: GoogleModelConfig
 ): Promise<Awaited<ReturnType<typeof generateText>>> {
@@ -59,10 +65,12 @@ const logRetry = (
 ) => {
   const errorMsg = error instanceof Error ? error.message : String(error);
   console.warn(
-    `[${fnName}] Attempt ${attempt + 1}/${GEMINI_MAX_RETRIES + 1
-    } failed: ${errorMsg}${delayMs
-      ? ` - retrying in ${Math.round(delayMs / 1000)}s`
-      : " - no more retries"
+    `[${fnName}] Attempt ${attempt + 1}/${
+      GEMINI_MAX_RETRIES + 1
+    } failed: ${errorMsg}${
+      delayMs
+        ? ` - retrying in ${Math.round(delayMs / 1000)}s`
+        : " - no more retries"
     }`
   );
 };
@@ -134,30 +142,42 @@ Do not provide any explanation, just the language name.`,
 
     // Validate the response is a known language
     const validLanguages = [
-      'english', 'spanish', 'french', 'german', 'italian', 'portuguese',
-      'russian', 'chinese', 'japanese', 'korean', 'hindi', 'arabic'
+      "english",
+      "spanish",
+      "french",
+      "german",
+      "italian",
+      "portuguese",
+      "russian",
+      "chinese",
+      "japanese",
+      "korean",
+      "hindi",
+      "arabic",
     ];
 
     if (validLanguages.includes(detectedLang)) {
       return detectedLang;
     }
 
-    console.warn(`LLM returned unexpected language: "${detectedLang}", defaulting to english`);
-    return 'english';
+    console.warn(
+      `LLM returned unexpected language: "${detectedLang}", defaulting to english`
+    );
+    return "english";
   } catch (error) {
-    console.error('Language detection failed:', error);
-    return 'english'; // Default fallback
+    console.error("Language detection failed:", error);
+    return "english"; // Default fallback
   }
 }
 
 function buildAugmentedSystemPrompt(base: string, language?: string): string {
-  const { markdown, json } = loadManimReferenceDocs();
+  // const { markdown, json } = loadManimReferenceDocs();
   let modifiedBase = base;
 
   // If language is not English, comprehensively modify the prompt to allow Text instead of requiring LaTeX
-  if (language && language !== 'english') {
+  if (language && language !== "english") {
     const langUpper = language.toUpperCase();
-    
+
     // 1. Replace the main LaTeX requirement line
     modifiedBase = modifiedBase.replace(
       /- \*\*ALL ON-SCREEN TEXT MUST BE LATEX\*\*: Use Tex\/MathTex via the provided helpers \(create_tex_label, create_text_panel\)\. NEVER use Text, MarkupText, or Paragraph directly\./g,
@@ -179,8 +199,24 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
 3. **NEVER use create_tex_label, create_text_panel, or create_bullet_item for ${language} text**
 4. **For bullets in ${language}**: Create Text() objects and arrange them manually
 5. **Example correct usage**:
-   title = Text("${language === 'spanish' ? 'Título' : language === 'french' ? 'Titre' : language === 'german' ? 'Titel' : 'Title'}", font_size=FONT_TITLE, color=WHITE)
-   body = Text("${language === 'spanish' ? 'Contenido' : language === 'french' ? 'Contenu' : language === 'german' ? 'Inhalt' : 'Content'}", font_size=FONT_BODY, color=WHITE)
+   title = Text("${
+     language === "spanish"
+       ? "Título"
+       : language === "french"
+       ? "Titre"
+       : language === "german"
+       ? "Titel"
+       : "Title"
+   }", font_size=FONT_TITLE, color=WHITE)
+   body = Text("${
+     language === "spanish"
+       ? "Contenido"
+       : language === "french"
+       ? "Contenu"
+       : language === "german"
+       ? "Inhalt"
+       : "Content"
+   }", font_size=FONT_BODY, color=WHITE)
 6. **LaTeX will NOT work for ${language} characters** - it will show garbled text or errors
 
 `;
@@ -200,9 +236,11 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
     );
   }
 
-  return `${modifiedBase}\n\n---\nMANIM_SHORT_REF.md (local):\n${markdown}\n\nMANIM_SHORT_REF.json (local):\n${JSON.stringify(
-    json
-  )}\n---`;
+  // return `${modifiedBase}\n\n---\nMANIM_SHORT_REF.md (local):\n${markdown}\n\nMANIM_SHORT_REF.json (local):\n${JSON.stringify(
+  //   json
+  // )}\n---`;
+
+  return modifiedBase;
 }
 
 const truncate = (value: string, max = 2000) => {
@@ -306,21 +344,32 @@ export async function generateManimScript({
   const detectedLanguage = await detectLanguageWithLLM(voiceoverScript);
   console.log(`Detected language: ${detectedLanguage}`);
 
-  const augmentedSystemPrompt = buildAugmentedSystemPrompt(MANIM_SYSTEM_PROMPT, detectedLanguage);
+  const augmentedSystemPrompt = buildAugmentedSystemPrompt(
+    MANIM_SYSTEM_PROMPT,
+    detectedLanguage
+  );
   const generationPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration with purposeful, step-by-step visuals that directly reinforce each narrated idea while staying on the same core topic:`;
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-    const googleModel = createGoogleModel("gemini-2.5-pro");
+    // const googleModel = createGoogleModel("gemini-2.5-pro");
+    const googleModel = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
     try {
-      const { text } = await generateTextWithTracking(
-        {
-          model: googleModel.provider(googleModel.modelId),
-          system: augmentedSystemPrompt,
-          prompt: generationPrompt,
-          temperature: 0.1,
-        },
-        googleModel
-      );
+      // const { text } = await generateTextWithTracking(
+      //   {
+      //     model: googleModel.provider(googleModel.modelId),
+      //     system: augmentedSystemPrompt,
+      //     prompt: generationPrompt,
+      //     temperature: 0.1,
+      //   },
+      //   googleModel
+      // );
+
+      const { text } = await generateText({
+        model: googleModel,
+        system: augmentedSystemPrompt,
+        prompt: generationPrompt,
+        temperature: 0.5,
+      });
 
       const code = text
         .replace(/```python?\n?/g, "")
@@ -393,7 +442,6 @@ export async function generateYoutubeDescription({
   return text.trim();
 }
 
-
 export interface RegenerateManimScriptRequest {
   prompt: string;
   voiceoverScript: string;
@@ -425,7 +473,10 @@ export async function regenerateManimScriptWithError({
   const detectedLanguage = await detectLanguageWithLLM(voiceoverScript);
   console.log(`Detected language for regeneration: ${detectedLanguage}`);
 
-  const augmentedSystemPrompt = buildAugmentedSystemPrompt(MANIM_SYSTEM_PROMPT, detectedLanguage);
+  const augmentedSystemPrompt = buildAugmentedSystemPrompt(
+    MANIM_SYSTEM_PROMPT,
+    detectedLanguage
+  );
 
   const previousAttemptsSummary = (() => {
     if (!attemptHistory.length) return "";
@@ -504,9 +555,10 @@ export async function regenerateManimScriptWithError({
   })();
 
   const rewriteDirective = forceRewrite
-    ? `\nThis is a forced rewrite because the last regeneration did not resolve the issue. ${forcedReason ??
-    "Produce a substantially different script that fixes the problem."
-    }`
+    ? `\nThis is a forced rewrite because the last regeneration did not resolve the issue. ${
+        forcedReason ??
+        "Produce a substantially different script that fixes the problem."
+      }`
     : "";
 
   const repetitionDirective =
