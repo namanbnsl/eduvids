@@ -12,7 +12,7 @@ import {
 } from "./llm";
 
 // Rendering
-import { renderManimVideo, RenderLifecycleStage } from "./e2b";
+import { renderManimVideo, RenderLifecycleStage, killSandbox } from "./e2b";
 
 // Youtube & Uploads
 import { uploadVideo } from "./uploadthing";
@@ -981,6 +981,8 @@ export const generateVideo = inngest.createFunction(
         .filter((line) => line.length > 0)
         .join("\n");
 
+    let activeSandboxId: string | undefined;
+
     try {
       await updateJobProgress(jobId, {
         progress: 5,
@@ -1098,34 +1100,75 @@ export const generateVideo = inngest.createFunction(
         );
 
         try {
-          const renderExecution = await step.run(
-            buildStepId("video", "render", "attempt", attempt, "execute"),
-            async () => {
-              try {
-                const usesManimML = currentScript.includes("manim_ml");
-                const result = await renderManimVideo({
-                  script: currentScript,
-                  prompt,
-                  applyWatermark: true,
-                  renderOptions:
-                    variant === "short"
-                      ? {
-                          orientation: "portrait",
-                          resolution: { width: 720, height: 1280 },
-                        }
-                      : undefined,
-                  plugins: usesManimML ? ["manim-ml"] : [],
-                  onProgress: async ({ stage, message }) => {
-                    const mapping = stageToJobUpdate(stage);
-                    await updateJobProgress(jobId, {
-                      progress: mapping.progress,
-                      step: mapping.step,
-                      details: message,
-                    });
-                  },
-                });
+          const renderExecution = await (async () => {
+            let currentSandboxId = activeSandboxId;
+            let currentPid: number | undefined = undefined;
+            let continuationPart = 1;
+            let finalResult: RenderAttemptSuccess | undefined;
+            const accumulatedWarnings = [];
 
-                if (
+            while (true) {
+              const stepId = buildStepId(
+                "video",
+                "render",
+                "attempt",
+                attempt,
+                "part",
+                continuationPart
+              );
+
+              const result = await step.run(stepId, async () => {
+                try {
+                  const usesManimML = currentScript.includes("manim_ml");
+                  const renderRes = await renderManimVideo({
+                    script: currentScript,
+                    prompt,
+                    applyWatermark: true,
+                    renderOptions:
+                      variant === "short"
+                        ? {
+                            orientation: "portrait",
+                            resolution: { width: 720, height: 1280 },
+                          }
+                        : undefined,
+                    plugins: usesManimML ? ["manim-ml"] : [],
+                    onProgress: async ({ stage, message }) => {
+                      const mapping = stageToJobUpdate(stage);
+                      await updateJobProgress(jobId, {
+                        progress: mapping.progress,
+                        step: mapping.step,
+                        details: message,
+                      });
+                    },
+                    sandboxId: currentSandboxId,
+                    resumeFromPid: currentPid,
+                  });
+
+                  return {
+                    ...renderRes,
+                    // Ensure we return these so they can be used in the next loop iteration
+                    sandboxId: renderRes.sandboxId,
+                    status: renderRes.status,
+                    pid: renderRes.pid,
+                  };
+                } catch (err) {
+                  const base =
+                    err instanceof Error ? err : new Error(String(err));
+                  throw new NonRetriableError(base.message, { cause: base });
+                }
+              });
+
+              // Update state for next iteration
+              currentSandboxId = result.sandboxId;
+              activeSandboxId = result.sandboxId; // Keep track globally for cleanup
+              currentPid = result.pid;
+
+              if (result.warnings) {
+                accumulatedWarnings.push(...result.warnings);
+              }
+
+              if (result.status === "completed") {
+                 if (
                   !result ||
                   typeof result !== "object" ||
                   typeof result.videoPath !== "string"
@@ -1173,18 +1216,19 @@ export const generateVideo = inngest.createFunction(
                   details: "Done",
                 });
 
-                return {
+                finalResult = {
                   uploadUrl,
-                  warnings: result.warnings ?? [],
+                  warnings: accumulatedWarnings,
                   logs: pruneRenderLogs(result.logs),
                 } satisfies RenderAttemptSuccess;
-              } catch (err) {
-                const base =
-                  err instanceof Error ? err : new Error(String(err));
-                throw new NonRetriableError(base.message, { cause: base });
+                break;
+              } else {
+                console.log(`Render continuing in next step (part ${continuationPart + 1})`);
+                continuationPart++;
               }
             }
-          );
+            return finalResult!;
+          })();
 
           const renderWarnings = renderExecution.warnings ?? [];
           const renderLogs = renderExecution.logs ?? [];
@@ -1519,6 +1563,12 @@ export const generateVideo = inngest.createFunction(
         await jobStore.setError(jobId, jobErrorMessage);
       }
       throw err;
+    } finally {
+      if (activeSandboxId) {
+        await step.run("cleanup-sandbox", async () => {
+          await killSandbox(activeSandboxId!);
+        });
+      }
     }
   }
 );

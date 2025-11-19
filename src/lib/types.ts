@@ -95,6 +95,7 @@ type ValidationStage =
   | "video-validation"
   | "watermark"
   | "watermark-validation"
+  | "render-output"
   | "download";
 
 interface RenderLogEntry {
