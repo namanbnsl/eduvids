@@ -477,6 +477,56 @@ function runHeuristicChecks(
     }
   }
 
+  // Check for unbalanced braces in LaTeX strings
+  const LATEX_STRING_PATTERN = /r?["']([^"']*)["']/g;
+  let latexMatch: RegExpExecArray | null;
+  while ((latexMatch = LATEX_STRING_PATTERN.exec(normalized)) !== null) {
+    const content = latexMatch[1];
+    if (content.includes("\\")) { // Only check strings that look like LaTeX
+      let balance = 0;
+      for (const char of content) {
+        if (char === "{") balance++;
+        else if (char === "}") balance--;
+      }
+      if (balance !== 0) {
+        issues.push({
+          message: `❌ Unbalanced braces detected in LaTeX string: "${content.slice(0, 50)}...". Check your { and } usage.`,
+          severity: "fixable",
+        });
+        break; // One is enough to fail
+      }
+    }
+  }
+
+  // Check for invalid \color usage in MathTex
+  if (/MathTex\s*\(\s*r?["'][^"']*\\color\{/.test(normalized)) {
+    issues.push({
+      message: "❌ Invalid use of \\color{} inside MathTex. Use the `color` keyword argument or `tex_to_color_map` instead.",
+      severity: "fixable",
+    });
+  }
+
+  // Check for double backslashes in raw strings
+  if (/r["'][^"']*\\\\/.test(normalized)) {
+    issues.push({
+      message: "❌ Double backslashes detected in raw string (r\"...\"). In raw strings, use single backslashes for LaTeX commands (e.g., r\"\\frac\" not r\"\\\\frac\").",
+      severity: "fixable",
+    });
+  }
+
+  // Check for hallucinated Manim properties
+  const HALLUCINATED_PROPS = [
+    "text_align", "set_style", "set_font_size", "set_text_color"
+  ];
+  for (const prop of HALLUCINATED_PROPS) {
+    if (normalized.includes(`.${prop}(`)) {
+      issues.push({
+        message: `❌ Hallucinated property detected: .${prop}(). This method does not exist in Manim. Check the documentation or use standard methods like .set_color(), .scale(), etc.`,
+        severity: "fixable",
+      });
+    }
+  }
+
   const FONT_SIZE_PATTERN = /font_size\s*=\s*([0-9]+(?:\.[0-9]+)?)/g;
   const ALLOWED_FONT_SIZES = [20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 46];
   const TEXT_CONSTRUCTOR_PATTERN =

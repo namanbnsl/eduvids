@@ -146,33 +146,36 @@ Video Structure Requirements:
 
 🔧 Technical Requirements:
 - Return ONLY complete Python code
-- COLOR SCHEME (Harmonious & Professional):
-
+-  COLOR SCHEME (Vibrant & High-Contrast):
+  
   Core Text & Structure:
-  * Primary text (titles, body, bullets): WHITE or LIGHT_GRAY for maximum readability
-  * Math formulas: WHITE or SOFT_BLUE for clear professional look
-  * Section headers: CYAN, SKY, or AZURE for distinct hierarchy
-  * Background shapes: GRAY, SLATE, or DARK_GRAY with opacity 0.1-0.3 for subtle depth
+  * Primary text: WHITE (essential for contrast on dark backgrounds)
+  * Math formulas: WHITE or BLUE_A (Manim's standard blue) for clarity
+  * Section headers: TEAL_A, BLUE_B, or MAROON_B for distinct hierarchy
+  * Background shapes: GRAY_E or GRAY_D with opacity 0.1-0.2 (subtle depth)
 
   Emphasis & Attention (Use strategically!):
-  * Primary emphasis: YELLOW or GOLD - warm attention grabber
-  * Secondary emphasis: AMBER or ORANGE - secondary importance
-  * Critical/Warning: CORAL or RED - use sparingly
-  * Success/Correct: PURE_GREEN or EMERALD - positive reinforcement
+  * Primary emphasis: YELLOW or GOLD - standard attention grabber
+  * Secondary emphasis: ORANGE or RED_B - for important warnings or distinctions
+  * Critical/Warning: RED or PURE_RED - use sparingly
+  * Success/Correct: GREEN or PURE_GREEN - positive reinforcement
 
   Color Coding by Purpose:
-  * Examples/Practice: BLUE, AZURE, or SKY - professional and calm
-  * Definitions/Terms: MINT, TEAL, or EMERALD - fresh and clear
-  * Code/Technical: ORANGE, PEACH, or CORAL - distinct technical feel
-  * Relationships/Connections: PURPLE, VIOLET, or LAVENDER - creative associations
-  * Questions/Prompts: FUCHSIA, MAGENTA, or HOT_PINK - engaging curiosity
+  * Examples/Practice: BLUE_C or TEAL_C
+  * Definitions/Terms: GREEN_B or YELLOW_D
+  * Code/Technical: MONOKAI-style colors (PINK, ORANGE, BLUE)
+  * Relationships/Connections: PURPLE_B or MAROON_B
 
-  Special Effects:
-  * Neon accents: NEON_BLUE, NEON_GREEN, NEON_YELLOW, NEON_PINK - sparingly for pop
-  * Soft highlights: SOFT_BLUE, SOFT_GREEN, SOFT_YELLOW, SOFT_PINK, SOFT_PURPLE - gentle emphasis
-  * Earth tones: SAND, BROWN - for natural/historical content
-
-  AVAILABLE COLORS: WHITE, LIGHT_GRAY, GRAY, DARK_GRAY, BLACK, BLUE, SKY, INDIGO, NAVY, CYAN, AZURE, TEAL, MINT, GREEN, PURE_GREEN, EMERALD, LIME, FOREST, YELLOW, GOLD, AMBER, ORANGE, PEACH, CORAL, RED, CRIMSON, ROSE, PINK, HOT_PINK, MAGENTA, FUCHSIA, PURPLE, VIOLET, LAVENDER, ELECTRIC_PURPLE, NEON_BLUE, NEON_GREEN, NEON_PINK, NEON_YELLOW, SOFT_BLUE, SOFT_GREEN, SOFT_YELLOW, SOFT_PINK, SOFT_PURPLE, SAND, BROWN, SLATE, STEEL, NORD, NORD_FROST, NORD_NIGHT
+  AVAILABLE COLORS: WHITE, GRAY_A, GRAY_B, GRAY_C, GRAY_D, GRAY_E, BLACK, 
+  BLUE_A, BLUE_B, BLUE_C, BLUE_D, BLUE_E,
+  TEAL_A, TEAL_B, TEAL_C, TEAL_D, TEAL_E,
+  GREEN_A, GREEN_B, GREEN_C, GREEN_D, GREEN_E,
+  YELLOW_A, YELLOW_B, YELLOW_C, YELLOW_D, YELLOW_E,
+  GOLD_A, GOLD_B, GOLD_C, GOLD_D, GOLD_E,
+  RED_A, RED_B, RED_C, RED_D, RED_E,
+  MAROON_A, MAROON_B, MAROON_C, MAROON_D, MAROON_E,
+  PURPLE_A, PURPLE_B, PURPLE_C, PURPLE_D, PURPLE_E,
+  PINK_A, PINK_B, PINK_C, PINK_D, PINK_E
   - If a different color is required, **use its HEX string literal instead of inventing a new named color** (example: 'color="#1ABC9C"').
   - NEVER reference color names outside this list; fall back to HEX when needed.
   - Typography is locked to the Inter typeface via the injected Tex template—leave fonts alone and keep using create_tex_label / MathTex for all text.
@@ -190,134 +193,27 @@ Video Structure Requirements:
 
 ⚠️ CRITICAL - LATEX & MathTex BEST PRACTICES ⚠️
 
-**1. LATEX SPLITTING ISSUES (PREVENTS COMPILATION ERRORS):**
-MathTex automatically splits equations for animation, which can create invalid LaTeX fragments. Follow these rules:
+**1. NO \\color{} COMMANDS:**
+- ❌ WRONG: MathTex(r"{\\color{blue} x^2}") - This causes compilation errors!
+- ✅ CORRECT: MathTex(r"x^2", color=BLUE) - Use the 'color' argument.
+- ✅ CORRECT: MathTex(r"x", r"^2", tex_to_color_map={"x": BLUE}) - Use 'tex_to_color_map'.
 
-- ✅ CORRECT: Use simple, complete expressions
-  '''python
-  # Good - simple and won't split badly
-  zeta = MathTex(r"\\zeta(s) = \\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
-  '''
+**2. RAW STRINGS & BACKSLASHES:**
+- ALWAYS use Python raw strings 'r"..."' for LaTeX.
+- ❌ WRONG: 'MathTex("x^2")' (Regular string, might escape wrong)
+- ❌ WRONG: 'MathTex(r"\\frac{1}{2}")' (Double backslash in raw string = error)
+- ✅ CORRECT: 'MathTex(r"\frac{1}{2}")' (Single backslash in raw string)
 
-- ❌ WRONG: Complex expressions that split into invalid fragments
-  '''python
-  # BAD - splits into fragments like "} + \\frac{1}{2^{" which are invalid
-  zeta = MathTex(r"\\zeta(s) = \\frac{1}{1^s} + \\frac{1}{2^s} + \\frac{1}{3^s} + \\cdots", font_size=FONT_MATH)
-  '''
+**3. AVOID COMPLEX SPLITTING:**
+- MathTex tries to split equations by default. Complex LaTeX often breaks this.
+- ✅ FIX: Use 'substrings_to_isolate' or separate 'MathTex' objects for complex parts.
+- ✅ SAFE: 'MathTex(r"\sum_{i=0}^n i^2")' (Standard summation is fine)
+- ❌ RISKY: 'MathTex(r"\frac{a}{b} + \frac{c}{d} + ...")' (Long chains often break)
 
-- ✅ FIX: Break into multiple MathTex objects or use substrings_to_isolate
-  '''python
-  # Option 1: Separate objects
-  zeta_def = MathTex(r"\\zeta(s) =", font_size=FONT_MATH)
-  zeta_sum = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
-  formula = VGroup(zeta_def, zeta_sum).arrange(RIGHT, buff=0.3)
-
-  # Option 2: Control splitting with substrings_to_isolate
-  zeta = MathTex(
-      r"\\zeta(s)", "=", r"\\frac{1}{1^s}", "+", r"\\frac{1}{2^s}", "+", "\\cdots",
-      font_size=FONT_MATH
-  )
-  '''
-
-**CRITICAL RULES TO AVOID SPLITTING ERRORS:**
-1. **Avoid consecutive fractions with operators:** "\\frac{a}{b} + \\frac{c}{d}" splits badly
-2. **Avoid incomplete braces in sequences:** Series like "f(x_1) + f(x_2) + ..." can break
-3. **Use summation/product notation:** Replace "1 + 2 + 3 + ..." with "\\sum_{i=1}^{n} i"
-4. **Prefer simple expressions:** Keep each MathTex focused on one complete mathematical object
-5. **Test mentally:** Would a random split of this string create valid LaTeX? If no, simplify it.
-
-**2. COLOR SYNTAX IN MathTex:**
-- ✅ CORRECT: MathTex(r"\\frac{a+b}{c}") - no color
-- ✅ CORRECT: MathTex(r"\\frac{a+b}{c}", color=BLUE) - color entire formula
-- ✅ CORRECT: MathTex(r"\\frac{a+b}{c}", tex_to_color_map={'a': RED, 'b': BLUE}) - use tex_to_color_map
-- ❌ WRONG: MathTex(r"{\\color{WHITE}{a+b}}") - NEVER use \\color with nested braces!
-- ❌ WRONG: MathTex(r"\\textcolor{WHITE}{a+b}") - textcolor not available in MathTex
-- ❌ WRONG: Any nested color braces like {\\color{X}{text}}
-
-**HOW TO COLOR PARTS OF EQUATIONS:**
-Method 1 - Use tex_to_color_map (RECOMMENDED):
-'''python
-formula = MathTex(
-    r"\\frac{a+b}{c} = \\frac{a}{b}",
-    tex_to_color_map={'a': CYAN, 'b': MINT, 'c': WHITE},
-    font_size=FONT_MATH
-)
-'''
-
-Method 2 - Use separate MathTex objects:
-'''python
-numerator = MathTex(r"a+b", color=WHITE, font_size=FONT_MATH)
-denominator = MathTex(r"c", color=CYAN, font_size=FONT_MATH)
-# Position them manually
-'''
-
-Method 3 - Color entire formula:
-'''python
-formula = MathTex(r"\\frac{a+b}{c}", color=GOLD, font_size=FONT_MATH)
-'''
-
-**NEVER use \\color{} or \\textcolor{} inside raw LaTeX strings in MathTex - it will cause compilation errors!**
-
-**3. BACKSLASH ESCAPING IN MATHTEX (CRITICAL - PREVENTS LATEX ERRORS):**
-
-Python has TWO ways to write backslashes in strings:
-1. **Raw strings (r"...")**: Backslashes are literal, so r"\\theta" stays as "\\theta"
-2. **Regular strings ("...")**: Backslashes escape, so "\\\\theta" becomes "\\theta"
-
-For LaTeX in MathTex:
-- ✅ CORRECT: Use raw strings with SINGLE backslash
-  '''python
-  # CORRECT - raw string with single backslash
-  formula = MathTex(r"e^{i\\theta}", r"\\frac{a}{b}", font_size=FONT_MATH)
-  '''
-
-- ✅ CORRECT: Use regular strings with DOUBLE backslash
-  '''python
-  # CORRECT - regular string with double backslash
-  formula = MathTex("e^{i\\\\theta}", "\\\\frac{a}{b}", font_size=FONT_MATH)
-  '''
-
-- ❌ WRONG: Raw strings with DOUBLE backslash (CAUSES LATEX ERROR!)
-  '''python
-  # WRONG - raw string with double backslash creates "\\\\theta" in LaTeX
-  formula = MathTex(r"e^{i\\\\theta}", r"\\\\frac{a}{b}", font_size=FONT_MATH)  # ERROR!
-  '''
-
-- ❌ WRONG: Mixing raw and regular strings inconsistently
-  '''python
-  # WRONG - inconsistent escaping causes errors
-  formula = MathTex("e^{i\\\\theta}", r"\\\\frac{a}{b}", font_size=FONT_MATH)  # ERROR!
-  '''
-
-**BEST PRACTICE**: Use raw strings (r"...") with single backslashes throughout:
-'''python
-# ✅ RECOMMENDED PATTERN
-formula = MathTex(
-    r"e^{i\\theta}", "=", r"\\cos(\\theta)", "+", r"i\\sin(\\theta)",
-    font_size=FONT_MATH
-)
-'''
-
-**4. SAFE PATTERNS FOR COMMON MATHEMATICAL EXPRESSIONS:**
-'''python
-# ✅ SAFE: Infinite series using summation notation
-series = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^2}", font_size=FONT_MATH)
-
-# ✅ SAFE: Simple equations
-equation = MathTex(r"E = mc^2", font_size=FONT_MATH)
-
-# ✅ SAFE: Explicit substring isolation
-formula = MathTex(
-    r"f(x)", "=", r"ax^2", "+", r"bx", "+", "c",
-    font_size=FONT_MATH
-)
-
-# ❌ UNSAFE: Long chains of fractions
-bad = MathTex(r"\\frac{1}{1^s} + \\frac{1}{2^s} + \\frac{1}{3^s} + \\cdots", font_size=FONT_MATH)
-
-# ✅ FIX: Use summation or break apart
-good = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
-'''
+**4. UNBALANCED BRACES:**
+- Ensure every '{' has a matching '}' inside the SAME string.
+- ❌ WRONG: 'MathTex(r"\frac{1}{", r"2}")'
+- ✅ CORRECT: 'MathTex(r"\frac{1}{2}")'
 
 - RETURN ONLY THE CODE. NOTHING ELSE. ONLY THE CODE
 
@@ -548,57 +444,26 @@ good = MathTex(r"\\sum_{n=1}^{\\infty} \\frac{1}{n^s}", font_size=FONT_MATH)
    - **If you have >5 things to list:** Use multiple scenes or consolidate points - don't squeeze them all in
 
 Hard Layout Contract (strict, do not violate):
-- DO NOT manually define SAFE_MARGIN - it is automatically injected by the layout system with optimal values for the video orientation (larger for portrait/shorts).
 
-- **🚨 CRITICAL: CONTENT LIMITS (NEVER EXCEED):**
-  * **Max 4-5 bullet points per scene** (3-4 for portrait/shorts)
-  * **Max 3-4 shapes/diagrams visible at once**
-  * **Max 2-3 text blocks on screen simultaneously**
-  * **Max 5 total elements on screen at any time**
-  * **If you need more:** Split into multiple scenes with FadeOut transitions
+1. **USE THE HELPERS:**
+   - 'ensure_fits_screen(mobject)': Call this on EVERY group before adding it.
+   - 'validate_position(mobject)': Check if it's safe.
+   - 'smart_position_equation_labels(...)': Use this for labeling equations.
 
-- **🚨 CRITICAL: USE ZONE-BASED LAYOUTS TO PREVENT OVERLAPS:**
-  * When combining bullet points with diagrams: ALWAYS use \`create_side_by_side_layout(bullets, diagram)\`
-  * When stacking multiple elements: ALWAYS use \`create_bulletproof_layout(elem1, elem2, elem3, layout_type="vertical")\`
-  * When arranging elements horizontally: ALWAYS use \`create_bulletproof_layout(elem1, elem2, layout_type="horizontal")\`
-  * These functions GUARANTEE no overlaps by using spatial partitioning and automatic fitting
-  * **If layout function doesn't exist or fails:** Reduce number of elements instead of manual positioning
+2. **CONTENT LIMITS:**
+   - Max 5 items on screen.
+   - Max 4 bullet points per scene.
+   - If you need more, SPLIT into multiple scenes.
 
-- **🚨 ABSOLUTE NO-OVERLAP RULE (ZERO TOLERANCE):**
-  * Before any animation, ensure bounding boxes of text, shapes, labels, and connectors never intersect
-  * Use zone-based layout functions or reposition with arrange/next_to (buff>=1.0) and scale down until every element has clear separation
-  * **If elements still overlap after positioning:** Remove the least important element - DO NOT try to squeeze it in
-  * Check bounding boxes mentally: Does each element have at least 1.0 units of clear space around it? If not, remove elements.
+3. **NO OVERLAPS:**
+   - The layout engine will try to fix overlaps, but you must start with a reasonable layout.
+   - Use 'buff=1.0' or more for spacing.
+   - Use 'create_side_by_side_layout' for bullets + diagrams.
 
-- **Text width limit:** No text wider than ~10 units. Check text.width after creation; split into lines if needed.
-- **Long sentences:** Always split into multiple Text objects or use \n for line breaks.
-- **Titles vs Content:** Titles at 'to_edge(UP, buff=1.0)', content at 'ORIGIN' or below. Minimum 1.5 units vertical spacing.
-- **Bullet points:** MUST be LEFT-aligned. Max 4-5 bullets. Use 'create_bullet_list()' helper function.
-- Build layouts with VGroup(...).arrange(...) or next_to(..., buff>=1.0). Never use buff<1.0.
-- All labels must be placed with next_to and buff>=1.0; never place a label exactly on top of another mobject.
-- Before adding/animating any group, scale to fit the frame minus margins using scale_to_fit_width/height or use zone-based layout functions.
-- Ensure shapes are fully visible: if any item would extend beyond the frame, **remove it or simplify** - don't just scale it down.
-- When zooming with \`self.camera.frame\` (only in MovingCameraScene), set the frame width/height to the focus group's bounds plus at least 2*SAFE_MARGIN before centering so the zoom keeps the padding.
-- Option 1: Fade out title before showing content. Option 2: Keep title at top, place content centered/below.
-- Use set_z_index to ensure text/labels are above shapes when needed.
-- For two-set mapping diagrams (domain→codomain), use \`create_side_by_side_layout()\` with each set as a vertical VGroup with buff>=1.0, and ensure arrows use buff>=1.0 so arrowheads never overlap labels.
-- Always add a brief wait(0.5) between major layout steps to reveal structure.
-
-**🚨 SPACE CALCULATION BEFORE ADDING ELEMENTS:**
-Before creating ANY element, mentally calculate:
-1. Current elements on screen: Count them. If >= 5, stop and FadeOut something first.
-2. Estimated size of new element: ~2-3 units for text, ~3-4 units for shapes, ~1 unit for labels
-3. Required spacing: 1.0 units minimum between elements
-4. Available space: MAX_CONTENT_WIDTH (usually ~12 units), MAX_CONTENT_HEIGHT (usually ~6 units)
-5. Formula: Can I fit (current_elements_width + new_element_width + spacing) < MAX_CONTENT_WIDTH? If NO, don't add it.
-
-**WHEN YOU HIT SPACE LIMITS:**
-- ✅ GOOD: Split into multiple scenes with FadeOut/FadeIn
-- ✅ GOOD: Simplify content (fewer bullet points, simpler diagrams)
-- ✅ GOOD: Show elements sequentially instead of simultaneously
-- ❌ BAD: Try to squeeze everything in by scaling down
-- ❌ BAD: Reduce spacing below 1.0 units
-- ❌ BAD: Hope the layout engine will fix it
+4. **AESTHETICS:**
+   - Use the provided FONT constants.
+   - Use the provided COLOR constants.
+   - Keep it simple and clean.
 
 Checklist before self.play (MANDATORY - CHECK EVERY ITEM):
 1) **ELEMENT COUNT:** How many elements are currently on screen? If >= 5, STOP and FadeOut something first. (Critical!)

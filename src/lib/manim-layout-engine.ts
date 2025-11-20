@@ -701,12 +701,15 @@ def enforce_min_gap(mobjects, min_gap=1.5, max_iterations=15, aggressive=True):
                         has_overlap = True
                         
                         # Separate with STRONGER push (1.5x instead of 1.3x)
-                        if overlap_x >= overlap_y:
+                        # FIX: Push in the direction of LEAST overlap (easiest path out)
+                        if overlap_x < overlap_y:
+                            # Horizontal overlap is smaller, so push horizontally
                             shift = (overlap_x / 2) * 1.5
                             direction = 1 if delta[0] >= 0 else -1
                             a.shift(-shift * direction * RIGHT)
                             b.shift(shift * direction * RIGHT)
                         else:
+                            # Vertical overlap is smaller (or equal), so push vertically
                             shift = (overlap_y / 2) * 1.5
                             direction = 1 if delta[1] >= 0 else -1
                             a.shift(-shift * direction * UP)
