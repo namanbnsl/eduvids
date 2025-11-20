@@ -107,6 +107,9 @@ importers:
       tailwind-merge:
         specifier: ^3.3.1
         version: 3.3.1
+      twitter-api-v2:
+        specifier: ^1.28.0
+        version: 1.28.0
       uploadthing:
         specifier: ^7.7.4
         version: 7.7.4(express@5.0.1)(next@15.5.2(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(tailwindcss@4.1.12)
@@ -4711,6 +4714,9 @@ packages:
 
   tw-animate-css@1.3.7:
     resolution: {integrity: sha512-lvLb3hTIpB5oGsk8JmLoAjeCHV58nKa2zHYn8yWOoG5JJusH3bhJlF2DLAZ/5NmJ+jyH3ssiAx/2KmbhavJy/A==}
+
+  twitter-api-v2@1.28.0:
+    resolution: {integrity: sha512-VBmiAMylCEr94OChaHJ+0TBrOZNrduwWUe7QLoa/KdOdv1fNiToJ0xZGOrNKFd2B7jrAdAkfUW6yA5LuXYOYLQ==}
 
   type-check@0.4.0:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
@@ -10335,6 +10341,8 @@ snapshots:
       fsevents: 2.3.3
 
   tw-animate-css@1.3.7: {}
+
+  twitter-api-v2@1.28.0: {}
 
   type-check@0.4.0:
     dependencies:

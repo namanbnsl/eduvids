@@ -38,6 +38,8 @@ import type {
   RenderProcessError,
 } from "./types";
 
+import { TwitterApi } from "twitter-api-v2";
+
 const MAX_RENDER_LOG_ENTRIES = 200;
 
 type JobProgressUpdate = {
@@ -895,11 +897,7 @@ export const generateVideo = inngest.createFunction(
             );
           }
 
-          await markValidationStage(
-            40,
-            "Scenes approved",
-            `Done`
-          );
+          await markValidationStage(40, "Scenes approved", `Done`);
           return approvedScript;
         }
 
@@ -1168,7 +1166,7 @@ export const generateVideo = inngest.createFunction(
               }
 
               if (result.status === "completed") {
-                 if (
+                if (
                   !result ||
                   typeof result !== "object" ||
                   typeof result.videoPath !== "string"
@@ -1223,7 +1221,11 @@ export const generateVideo = inngest.createFunction(
                 } satisfies RenderAttemptSuccess;
                 break;
               } else {
-                console.log(`Render continuing in next step (part ${continuationPart + 1})`);
+                console.log(
+                  `Render continuing in next step (part ${
+                    continuationPart + 1
+                  })`
+                );
                 continuationPart++;
               }
             }
@@ -1620,8 +1622,13 @@ export const uploadVideoToYouTube = inngest.createFunction(
         });
       });
 
-      await step.run("log-youtube-success", async () => {
-        console.log("YouTube upload complete", yt);
+      await step.sendEvent("dispatch-x-upload", {
+        name: "video/youtube.upload.request",
+        data: {
+          videoUrl: yt.watchUrl,
+          title: yt.title,
+          variant,
+        },
       });
 
       if (jobId) {
@@ -1647,6 +1654,36 @@ export const uploadVideoToYouTube = inngest.createFunction(
           youtubeError: errorMessage,
         });
       }
+      throw err;
+    }
+  }
+);
+
+export const uploadVideoToX = inngest.createFunction(
+  { id: "upload-video-to-x", timeouts: { start: "20m", finish: "45m" } },
+  { event: "video/x.upload.request" },
+  async ({ event, step }) => {
+    const { videoUrl, title } = event.data as {
+      videoUrl: string;
+      title: string;
+    };
+
+    try {
+      const tweet = await step.run("upload-to-x", async () => {
+        const twitterClient = new TwitterApi({
+          appKey: process.env.X_API_KEY!,
+          appSecret: process.env.X_API_KEY_SECRET!,
+          accessToken: process.env.X_ACCESS_TOKEN!,
+          accessSecret: process.env.X_ACCESS_SECRET!,
+        });
+
+        const result = await twitterClient.v2.tweet({
+          text: `${title} \n ${videoUrl}`,
+        });
+
+        console.log("Tweet ID: ", result.data.id);
+      });
+    } catch (err) {
       throw err;
     }
   }

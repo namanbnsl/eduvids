@@ -44,7 +44,11 @@ export async function uploadToYouTube({
   tags,
   voiceoverScript,
   privacyStatus,
-}: YouTubeUploadRequest): Promise<{ videoId: string; watchUrl: string }> {
+}: YouTubeUploadRequest): Promise<{
+  videoId: string;
+  watchUrl: string;
+  title: string;
+}> {
   const auth = getOAuth2Client();
   const youtube = google.youtube({ version: "v3", auth });
 
@@ -97,7 +101,9 @@ export async function uploadToYouTube({
     requestBody: {
       snippet: {
         title: finalYoutubeTitle,
-        description: finalDescription + `\n\n Generate your own videos for free at https://eduvids.vercel.app`,
+        description:
+          finalDescription +
+          `\n\n Generate your own videos for free at https://eduvids.vercel.app`,
         tags,
         categoryId: "27",
       },
@@ -116,5 +122,9 @@ export async function uploadToYouTube({
     throw new Error("YouTube upload did not return a video ID");
   }
 
-  return { videoId, watchUrl: `https://www.youtube.com/watch?v=${videoId}` };
+  return {
+    videoId,
+    watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
+    title: finalYoutubeTitle,
+  };
 }

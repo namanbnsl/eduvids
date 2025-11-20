@@ -1,12 +1,16 @@
 import { serve, type RequestHandler } from "inngest/next";
 import type { NextRequest } from "next/server";
 import { inngest } from "@/lib/inngest";
-import { generateVideo, uploadVideoToYouTube } from "@/lib/inngest-functions";
+import {
+  generateVideo,
+  uploadVideoToYouTube,
+  uploadVideoToX,
+} from "@/lib/inngest-functions";
 
 const handlers = serve({
   client: inngest,
-  functions: [generateVideo, uploadVideoToYouTube],
-  streaming: "allow"
+  functions: [generateVideo, uploadVideoToYouTube, uploadVideoToX],
+  streaming: "allow",
 });
 
 const createSafeRequestProxy = (request: NextRequest): NextRequest => {
@@ -37,7 +41,9 @@ const withSafeJsonBody = (handler: RequestHandler): RequestHandler => {
     if (request.method?.toUpperCase() === "PUT") {
       const contentLength = request.headers.get("content-length");
       const transferEncoding = request.headers.get("transfer-encoding");
-      const parsedLength = contentLength ? Number.parseInt(contentLength, 10) : 0;
+      const parsedLength = contentLength
+        ? Number.parseInt(contentLength, 10)
+        : 0;
       const hasBody =
         (Number.isFinite(parsedLength) && parsedLength > 0) ||
         (transferEncoding !== null && transferEncoding.length > 0);
