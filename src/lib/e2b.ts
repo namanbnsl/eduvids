@@ -693,7 +693,7 @@ export async function renderManimVideo({
     const layoutCode = getCompleteLayoutCode(layoutConfig);
     await reportProgress(
       "layout-injection",
-      `Injecting layout helpers (${layoutConfig.orientation}, ${contentType})`
+      `Injecting layout helpers`
     );
 
     if (!enhancedScript.includes(LAYOUT_SENTINEL)) {
