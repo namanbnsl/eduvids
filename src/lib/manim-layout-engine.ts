@@ -2476,7 +2476,7 @@ def create_code_block(
     language="python",
     tab_width=4,
     font_size=0,
-    style="none"
+    style="none",
     max_width=MAX_CONTENT_WIDTH,
     max_height=MAX_CONTENT_HEIGHT,
 ):
