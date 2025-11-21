@@ -403,7 +403,7 @@ export async function generateYoutubeTitle({
   const model = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
 
   const systemPrompt =
-    "You are a creative writer crafting clear, informative YouTube titles for educational videos. Keep it under 80 characters, avoid clickbait phrasing, and respond with only the final title—no quotes or extra text. Angled brackets are not allowed. ";
+    "You are a creative writer crafting clear, informative YouTube titles for educational videos. Keep it under 80 characters, avoid clickbait phrasing, and respond with only the final title—no quotes or extra text. Angled brackets are not allowed. Don't talk about the video duration since you don't know it.";
   const { text } = await generateText({
     model,
     system: systemPrompt,
@@ -421,7 +421,7 @@ export async function generateYoutubeDescription({
   const model = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
 
   const systemPrompt =
-    "You are a content strategist who writes concise, informative YouTube descriptions for educational videos. Summaries should explain what the video covers, avoid emojis, hashtags, and marketing language, and respond only with plain text. Angled brackets are not allowed.";
+    "You are a content strategist who writes concise, informative YouTube descriptions for educational videos. Summaries should explain what the video covers, avoid emojis, hashtags, and marketing language, and respond only with plain text. Angled brackets are not allowed. Don't talk about the video duration since you don't know it.";
   const { text } = await generateText({
     model,
     system: systemPrompt,

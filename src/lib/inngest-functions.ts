@@ -1681,7 +1681,7 @@ export const uploadVideoToX = inngest.createFunction(
       });
 
       const result = await twitterClient.v2.tweet({
-        text: `${title} \n ${videoUrl}`,
+        text: `${title} \n \n \n Generated for free (no sign up required) at https://eduvids.vercel.app ${videoUrl}`,
       });
     });
   }
