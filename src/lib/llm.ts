@@ -142,30 +142,7 @@ Do not provide any explanation, just the language name.`,
 
     const detectedLang = response.trim().toLowerCase();
 
-    // Validate the response is a known language
-    const validLanguages = [
-      "english",
-      "spanish",
-      "french",
-      "german",
-      "italian",
-      "portuguese",
-      "russian",
-      "chinese",
-      "japanese",
-      "korean",
-      "hindi",
-      "arabic",
-    ];
-
-    if (validLanguages.includes(detectedLang)) {
       return detectedLang;
-    }
-
-    console.warn(
-      `LLM returned unexpected language: "${detectedLang}", defaulting to english`
-    );
-    return "english";
   } catch (error) {
     console.error("Language detection failed:", error);
     return "english"; // Default fallback
@@ -400,7 +377,7 @@ export async function generateYoutubeTitle({
   prompt,
   voiceoverScript,
 }: ManimScriptRequest) {
-  const model = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
+  const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
 
   const systemPrompt =
     "You are a creative writer crafting clear, informative YouTube titles for educational videos. Keep it under 80 characters, avoid clickbait phrasing, and respond with only the final title—no quotes or extra text. Angled brackets are not allowed. Don't talk about the video duration since you don't know it.";
@@ -418,7 +395,7 @@ export async function generateYoutubeDescription({
   prompt,
   voiceoverScript,
 }: ManimScriptRequest) {
-  const model = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
+  const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
 
   const systemPrompt =
     "You are a content strategist who writes concise, informative YouTube descriptions for educational videos. Summaries should explain what the video covers, avoid emojis, hashtags, and marketing language, and respond only with plain text. Angled brackets are not allowed. Don't talk about the video duration since you don't know it.";
