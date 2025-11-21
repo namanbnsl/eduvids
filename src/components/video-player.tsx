@@ -96,7 +96,6 @@ export function VideoPlayer({
   );
   const [videoUrl, setVideoUrl] = useState<string | undefined>(src);
   const [error, setError] = useState<string | null>(null);
-  const [errorDetails, setErrorDetails] = useState<string | undefined>();
   const [progress, setProgress] = useState<number>(0);
   const [step, setStep] = useState<string | undefined>(undefined);
   const [progressDetails, setProgressDetails] = useState<string | undefined>();
@@ -302,7 +301,6 @@ export function VideoPlayer({
       } else if (parsed.status === "error") {
         setJobStatus("error");
         setError(parsed.error ?? "Video generation failed");
-        setErrorDetails(parsed.details);
         es?.close();
         if (pollInterval) clearInterval(pollInterval);
       }

@@ -966,7 +966,7 @@ export const generateVideo = inngest.createFunction(
           await markValidationStage(
             Math.min(38, 32 + pass * 2),
             `regenerating script (pass ${pass})`,
-            lastError
+            "Fixing script issues"
           );
         }
 
@@ -1316,7 +1316,7 @@ export const generateVideo = inngest.createFunction(
           await updateJobProgress(jobId, {
             progress: 66,
             step: `Retrying render`,
-            details: normalizedMessage,
+            details: "Retrying render attempt",
           });
 
           if (attempt === MAX_RENDER_RETRIES) {
