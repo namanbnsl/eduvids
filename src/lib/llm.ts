@@ -120,7 +120,9 @@ function loadManimReferenceDocs(): ManimReferenceDocs {
  */
 async function detectLanguageWithLLM(text: string): Promise<string> {
   try {
-    const googleModel = createGoogleModel("gemini-2.5-flash-lite");
+    const googleModel = createGoogleModel(
+      "gemini-2.5-flash-lite-preview-09-2025"
+    );
 
     // Truncate text to avoid excessive token usage (first 500 chars should be enough)
     const sampleText = text.slice(0, 500);
@@ -296,7 +298,7 @@ export async function generateVoiceoverScript({
   ].join("\n\n");
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-    const googleModel = createGoogleModel("gemini-2.5-flash");
+    const googleModel = createGoogleModel("gemini-2.5-flash-preview-09-2025");
     try {
       const { text } = await generateTextWithTracking(
         {
@@ -377,7 +379,7 @@ export async function generateManimScript({
   }
 
   // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
-  const flashModel = createGoogleModel("gemini-2.5-flash");
+  const flashModel = createGoogleModel("gemini-2.5-flash-preview-09-2025");
   const { text: flashText } = await generateTextWithTracking(
     {
       model: flashModel.provider(flashModel.modelId),
@@ -398,7 +400,7 @@ export async function generateYoutubeTitle({
   prompt,
   voiceoverScript,
 }: ManimScriptRequest) {
-  const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
+  const model = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
 
   const systemPrompt =
     "You are a creative writer crafting clear, informative YouTube titles for educational videos. Keep it under 80 characters, avoid clickbait phrasing, and respond with only the final title—no quotes or extra text. Angled brackets are not allowed. ";
@@ -416,7 +418,7 @@ export async function generateYoutubeDescription({
   prompt,
   voiceoverScript,
 }: ManimScriptRequest) {
-  const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
+  const model = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
 
   const systemPrompt =
     "You are a content strategist who writes concise, informative YouTube descriptions for educational videos. Summaries should explain what the video covers, avoid emojis, hashtags, and marketing language, and respond only with plain text. Angled brackets are not allowed.";
@@ -597,7 +599,7 @@ export async function regenerateManimScriptWithError({
   }
 
   // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
-  const flashModel = createGoogleModel("gemini-2.5-flash");
+  const flashModel = createGoogleModel("gemini-2.5-flash-preview-09-2025");
   const { text: flashText } = await generateTextWithTracking(
     {
       model: flashModel.provider(flashModel.modelId),

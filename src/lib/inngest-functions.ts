@@ -482,7 +482,8 @@ function runHeuristicChecks(
   let latexMatch: RegExpExecArray | null;
   while ((latexMatch = LATEX_STRING_PATTERN.exec(normalized)) !== null) {
     const content = latexMatch[1];
-    if (content.includes("\\")) { // Only check strings that look like LaTeX
+    if (content.includes("\\")) {
+      // Only check strings that look like LaTeX
       let balance = 0;
       for (const char of content) {
         if (char === "{") balance++;
@@ -490,7 +491,10 @@ function runHeuristicChecks(
       }
       if (balance !== 0) {
         issues.push({
-          message: `❌ Unbalanced braces detected in LaTeX string: "${content.slice(0, 50)}...". Check your { and } usage.`,
+          message: `❌ Unbalanced braces detected in LaTeX string: "${content.slice(
+            0,
+            50
+          )}...". Check your { and } usage.`,
           severity: "fixable",
         });
         break; // One is enough to fail
@@ -501,7 +505,8 @@ function runHeuristicChecks(
   // Check for invalid \color usage in MathTex
   if (/MathTex\s*\(\s*r?["'][^"']*\\color\{/.test(normalized)) {
     issues.push({
-      message: "❌ Invalid use of \\color{} inside MathTex. Use the `color` keyword argument or `tex_to_color_map` instead.",
+      message:
+        "❌ Invalid use of \\color{} inside MathTex. Use the `color` keyword argument or `tex_to_color_map` instead.",
       severity: "fixable",
     });
   }
@@ -509,14 +514,18 @@ function runHeuristicChecks(
   // Check for double backslashes in raw strings
   if (/r["'][^"']*\\\\/.test(normalized)) {
     issues.push({
-      message: "❌ Double backslashes detected in raw string (r\"...\"). In raw strings, use single backslashes for LaTeX commands (e.g., r\"\\frac\" not r\"\\\\frac\").",
+      message:
+        '❌ Double backslashes detected in raw string (r"..."). In raw strings, use single backslashes for LaTeX commands (e.g., r"\\frac" not r"\\\\frac").',
       severity: "fixable",
     });
   }
 
   // Check for hallucinated Manim properties
   const HALLUCINATED_PROPS = [
-    "text_align", "set_style", "set_font_size", "set_text_color"
+    "text_align",
+    "set_style",
+    "set_font_size",
+    "set_text_color",
   ];
   for (const prop of HALLUCINATED_PROPS) {
     if (normalized.includes(`.${prop}(`)) {
@@ -1618,8 +1627,12 @@ export const uploadVideoToYouTube = inngest.createFunction(
         });
       });
 
-      await step.run("log-youtube-success", async () => {
-        console.log("YouTube upload complete", yt);
+      await step.sendEvent("dispatch-x-upload", {
+        name: "video/x.upload.request",
+        data: {
+          videoUrl: yt.watchUrl,
+          title: yt.title,
+        },
       });
 
       if (jobId) {

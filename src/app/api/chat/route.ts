@@ -30,7 +30,7 @@ export async function POST(req: Request) {
 
   // Create a new provider instance for each request to rotate API keys
   const result = streamText({
-    model: createGoogleProvider()("gemini-2.5-flash-lite"),
+    model: createGoogleProvider()("gemini-2.5-flash-lite-preview-09-2025"),
     toolChoice: "required",
     system: systemPrompt,
     messages: convertToModelMessages(messages),

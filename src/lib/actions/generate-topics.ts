@@ -8,7 +8,7 @@ export async function generateTopics(): Promise<string[]> {
     try {
       // Create a new provider instance to rotate API keys
       const { text } = await generateText({
-        model: createGoogleProvider()("gemini-2.5-flash-lite"),
+        model: createGoogleProvider()("gemini-2.5-flash-lite-preview-09-2025"),
         prompt: `Generate 2 fun and interesting video/short topic ideas for an educational content platform focused on math, physics, and chemistry.
 
 Topics should:
