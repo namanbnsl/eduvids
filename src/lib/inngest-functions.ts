@@ -1673,6 +1673,7 @@ export const uploadVideoToX = inngest.createFunction(
     };
 
     try {
+      console.log("Checking Keys: ", process.env.X_API_KEY);
       const tweet = await step.run("upload-to-x", async () => {
         const twitterClient = new TwitterApi({
           appKey: process.env.X_API_KEY!,
