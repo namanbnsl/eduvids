@@ -1672,24 +1672,17 @@ export const uploadVideoToX = inngest.createFunction(
       title: string;
     };
 
-    try {
-      console.log("Checking Keys: ", process.env.X_API_KEY);
-      const tweet = await step.run("upload-to-x", async () => {
-        const twitterClient = new TwitterApi({
-          appKey: process.env.X_API_KEY!,
-          appSecret: process.env.X_API_KEY_SECRET!,
-          accessToken: process.env.X_ACCESS_TOKEN!,
-          accessSecret: process.env.X_ACCESS_SECRET!,
-        });
-
-        const result = await twitterClient.v2.tweet({
-          text: `${title} \n ${videoUrl}`,
-        });
-
-        console.log("Tweet ID: ", result.data.id);
+    const tweet = await step.run("upload-to-x", async () => {
+      const twitterClient = new TwitterApi({
+        appKey: process.env.X_API_KEY!,
+        appSecret: process.env.X_API_KEY_SECRET!,
+        accessToken: process.env.X_ACCESS_TOKEN!,
+        accessSecret: process.env.X_ACCESS_SECRET!,
       });
-    } catch (err) {
-      throw err;
-    }
+
+      const result = await twitterClient.v2.tweet({
+        text: `${title} \n ${videoUrl}`,
+      });
+    });
   }
 );
