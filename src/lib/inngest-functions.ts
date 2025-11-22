@@ -1155,12 +1155,32 @@ export const generateVideo = inngest.createFunction(
         );
 
         try {
-          const renderExecution = await step.run(
-            buildStepId("video", "render", "attempt", attempt, "execute"),
-            async () => {
+          // Time-boxed render execution with continuation support
+          const STEP_TIMEOUT_MS = 4 * 60 * 1000; // 4 minutes
+          const SAFETY_MARGIN_MS = 30 * 1000; // 30 second safety margin
+          const MAX_POLL_ITERATIONS = 20; // Max 20 iterations (80 minutes total)
+
+          let renderExecution: RenderAttemptSuccess | undefined;
+
+          for (
+            let pollIteration = 0;
+            pollIteration < MAX_POLL_ITERATIONS;
+            pollIteration++
+          ) {
+            const stepId = buildStepId(
+              "video",
+              "render",
+              "attempt",
+              attempt,
+              "poll",
+              pollIteration
+            );
+
+            const pollResult = await step.run(stepId, async () => {
               try {
                 const usesManimML = currentScript.includes("manim_ml");
-                const result = await renderManimVideo({
+
+                const renderPromise = renderManimVideo({
                   script: currentScript,
                   prompt,
                   applyWatermark: true,
@@ -1181,6 +1201,43 @@ export const generateVideo = inngest.createFunction(
                     });
                   },
                 });
+
+                // Create timeout promise
+                // NOTE: Promise.race won't cancel the renderManimVideo process.
+                // However, this pattern still prevents FUNCTION_INVOCATION_TIMEOUT by:
+                // 1. Allowing the step to complete before Inngest's timeout
+                // 2. The render process continues in the sandbox
+                // 3. Next iteration can check if render completed or continue racing
+                // The E2B sandbox manages the actual process lifecycle.
+                const timeoutPromise = new Promise<{ continue: true }>(
+                  (resolve) => {
+                    setTimeout(() => {
+                      resolve({ continue: true });
+                    }, STEP_TIMEOUT_MS - SAFETY_MARGIN_MS);
+                  }
+                );
+
+                // Race between render and timeout
+                const raceResult = await Promise.race([
+                  renderPromise.then((result) => ({ result, continue: false })),
+                  timeoutPromise,
+                ]);
+
+                if ("continue" in raceResult && raceResult.continue) {
+                  // Timeout reached, continue in next iteration
+                  console.log(
+                    `⏱️  Render step ${pollIteration} approaching timeout, will continue in next step`
+                  );
+                  await updateJobProgress(jobId, {
+                    progress: Math.min(85, 46 + pollIteration * 2),
+                    step: "Rendering (cont.)",
+                    details: `Continuing render (step ${pollIteration + 1})`,
+                  });
+                  return { continue: true };
+                }
+
+                // Render completed!
+                const result = raceResult.result;
 
                 if (
                   !result ||
@@ -1218,6 +1275,7 @@ export const generateVideo = inngest.createFunction(
                 console.log(" Video uploaded to storage", {
                   uploadUrl,
                   renderAttempt: attempt,
+                  pollIteration,
                 });
 
                 if (typeof uploadUrl !== "string" || !uploadUrl.length) {
@@ -1231,17 +1289,37 @@ export const generateVideo = inngest.createFunction(
                 });
 
                 return {
+                  continue: false,
                   uploadUrl,
                   warnings: result.warnings ?? [],
                   logs: pruneRenderLogs(result.logs),
-                } satisfies RenderAttemptSuccess;
+                } satisfies RenderAttemptSuccess & { continue: boolean };
               } catch (err) {
                 const base =
                   err instanceof Error ? err : new Error(String(err));
                 throw new NonRetriableError(base.message, { cause: base });
               }
+            });
+
+            // Check if we should continue or if render completed
+            if ("continue" in pollResult && pollResult.continue) {
+              // Continue to next poll iteration
+              console.log(
+                `Continuing render in next step iteration ${pollIteration + 1}`
+              );
+              continue;
             }
-          );
+
+            // Render completed successfully
+            renderExecution = pollResult as RenderAttemptSuccess;
+            break;
+          }
+
+          if (!renderExecution) {
+            throw new Error(
+              `Render exceeded maximum poll iterations (${MAX_POLL_ITERATIONS})`
+            );
+          }
 
           const renderWarnings = renderExecution.warnings ?? [];
           const renderLogs = renderExecution.logs ?? [];

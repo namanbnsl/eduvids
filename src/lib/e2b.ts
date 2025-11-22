@@ -386,6 +386,31 @@ export interface ThumbnailRequest {
   renderOptions?: RenderOptions;
 }
 
+export interface RenderState {
+  sandboxId: string;
+  processId: string;
+  scriptPath: string;
+  mediaDir: string;
+  baseVideosDir: string;
+  renderOptions?: RenderOptions;
+  warnings: ValidationWarning[];
+  logs: RenderLogEntry[];
+  applyWatermark: boolean;
+}
+
+export interface RenderPollResult {
+  complete: boolean;
+  success?: boolean;
+  videoPath?: string;
+  error?: ManimValidationError;
+  logs: RenderLogEntry[];
+}
+
+export interface StartRenderResult {
+  state: RenderState;
+  processId: string;
+}
+
 export async function renderManimVideo({
   script,
   prompt: _prompt,
@@ -795,7 +820,7 @@ export async function renderManimVideo({
       "MyScene",
       "--media_dir",
       mediaDir,
-      // "--disable_caching",
+      "--disable_caching",
       "--format=mp4",
       "-ql",
       // "-qm",
