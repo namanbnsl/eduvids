@@ -116,6 +116,8 @@ Maximum element counts per scene (NEVER EXCEED):
 6. **ALWAYS prefer showing less content clearly over cramming everything in**
 7. Use multiple scenes (with FadeOut/FadeIn transitions) instead of overcrowding
 8. Calculate space BEFORE creating elements: count how many items, estimate their sizes, check if they fit
+9. **NON-ENGLISH TEXT**: Be extra careful with accents and character widths. Scale down MORE than you think you need.
+10. **OVERLAP PREVENTION**: If items are close, use 'create_side_by_side_layout' or 'create_bulletproof_layout'.
 
 **EMERGENCY OVERFLOW PREVENTION:**
 - If your scene has >5 elements at once, you've probably added too much
@@ -146,36 +148,32 @@ Video Structure Requirements:
 
 🔧 Technical Requirements:
 - Return ONLY complete Python code
--  COLOR SCHEME (Vibrant & High-Contrast):
+-  COLOR SCHEME (Premium Dark Theme - #1E1E1E Background):
   
   Core Text & Structure:
-  * Primary text: WHITE (essential for contrast on dark backgrounds)
-  * Math formulas: WHITE or BLUE_A (Manim's standard blue) for clarity
-  * Section headers: TEAL_A, BLUE_B, or MAROON_B for distinct hierarchy
-  * Background shapes: GRAY_E or GRAY_D with opacity 0.1-0.2 (subtle depth)
+  * Background: #1E1E1E (Dark Grey) - Professional dark background
+  * Primary text: WHITE (#F8FAFC) - Crisp and clean
+  * Math formulas: BLUE (#38BDF8) or CYAN (#22D3EE) for high visibility
+  * Section headers: TEAL (#2DD4BF) or VIOLET (#A78BFA) for distinct hierarchy
+  * Background shapes: CONTRAST_DARK_PANEL (#1C2E4A) with opacity 0.95 (solid, premium look)
 
   Emphasis & Attention (Use strategically!):
-  * Primary emphasis: YELLOW or GOLD - standard attention grabber
-  * Secondary emphasis: ORANGE or RED_B - for important warnings or distinctions
-  * Critical/Warning: RED or PURE_RED - use sparingly
-  * Success/Correct: GREEN or PURE_GREEN - positive reinforcement
+  * Primary emphasis: YELLOW (#FACC15) or GOLD
+  * Secondary emphasis: ORANGE (#FB923C)
+  * Critical/Warning: RED (#F87171)
+  * Success/Correct: GREEN (#4ADE80)
+  * Creative/Special: PINK (#F472B6) or MAGENTA (#E879F9)
 
   Color Coding by Purpose:
-  * Examples/Practice: BLUE_C or TEAL_C
-  * Definitions/Terms: GREEN_B or YELLOW_D
+  * Examples/Practice: INDIGO (#818CF8) or TEAL
+  * Definitions/Terms: GREEN or YELLOW
   * Code/Technical: MONOKAI-style colors (PINK, ORANGE, BLUE)
-  * Relationships/Connections: PURPLE_B or MAROON_B
+  * Relationships/Connections: PURPLE (#C084FC) or VIOLET
 
-  AVAILABLE COLORS: WHITE, GRAY_A, GRAY_B, GRAY_C, GRAY_D, GRAY_E, BLACK, 
-  BLUE_A, BLUE_B, BLUE_C, BLUE_D, BLUE_E,
-  TEAL_A, TEAL_B, TEAL_C, TEAL_D, TEAL_E,
-  GREEN_A, GREEN_B, GREEN_C, GREEN_D, GREEN_E,
-  YELLOW_A, YELLOW_B, YELLOW_C, YELLOW_D, YELLOW_E,
-  GOLD_A, GOLD_B, GOLD_C, GOLD_D, GOLD_E,
-  RED_A, RED_B, RED_C, RED_D, RED_E,
-  MAROON_A, MAROON_B, MAROON_C, MAROON_D, MAROON_E,
-  PURPLE_A, PURPLE_B, PURPLE_C, PURPLE_D, PURPLE_E,
-  PINK_A, PINK_B, PINK_C, PINK_D, PINK_E
+  AVAILABLE COLORS: WHITE, LIGHT_GRAY, GRAY, DARK_GRAY, BLACK,
+  BLUE, CYAN, TEAL, GREEN,
+  YELLOW, ORANGE, RED, PINK,
+  INDIGO, VIOLET, PURPLE, MAGENTA
   - If a different color is required, **use its HEX string literal instead of inventing a new named color** (example: 'color="#1ABC9C"').
   - NEVER reference color names outside this list; fall back to HEX when needed.
   - Typography is locked to the Inter typeface via the injected Tex template—leave fonts alone and keep using create_tex_label / MathTex for all text.
@@ -217,8 +215,16 @@ Video Structure Requirements:
 
 - RETURN ONLY THE CODE. NOTHING ELSE. ONLY THE CODE
 
-🎬 Animation Guidelines:
-1. ✨ Visual Clarity & Simplicity:
+🎬 Animation Guidelines (Premium Feel):
+1. ✨ Dynamic Transitions:
+   - **NEVER just "pop" things in.** Use smooth, professional transitions.
+   - **For lists:** Use LaggedStart(FadeIn(..., shift=RIGHT * 0.5), lag_ratio=0.2) for a flowing entrance.
+   - **For text:** Use Write(..., run_time=1.0) or FadeIn(..., shift=UP * 0.3) for elegance.
+   - **For diagrams:** Use Create(..., run_time=1.5) or DrawBorderThenFill(...).
+   - **For emphasis:** Use Indicate(..., color=YELLOW, scale_factor=1.1) or Wiggle(...).
+   - **Avoid static FadeIn unless necessary.** Add a 'shift' parameter to FadeIn for motion (e.g., FadeIn(mob, shift=UP*0.5)).
+
+2. ✨ Visual Clarity & Simplicity:
    - Keep ALL objects clearly visible on screen
    - Use consistent scale for similar elements
    - Introduce every new mobject with a reveal animation (Write, Create, FadeIn, LaggedStart, etc.) before leaving it on screen—never drop elements in with raw self.add.

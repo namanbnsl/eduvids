@@ -798,7 +798,7 @@ export async function renderManimVideo({
       "MyScene",
       "--media_dir",
       mediaDir,
-      "--disable_caching",
+      // "--disable_caching",
       "--format=mp4",
       "-ql",
       // "-qm",

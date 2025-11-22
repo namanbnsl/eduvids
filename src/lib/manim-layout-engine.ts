@@ -334,8 +334,8 @@ def ensure_fits_screen(mobject, shrink=True, safety_margin=0.94, max_iterations=
     Args:
         mobject: The mobject to fit
         shrink: Whether to allow shrinking
-        safety_margin: Safety factor (0.94 = use 94% of available space, MORE aggressive)
-        max_iterations: Maximum fitting iterations (INCREASED to 5)
+        safety_margin: Safety factor (0.92 = use 92% of available space, MORE aggressive)
+        max_iterations: Maximum fitting iterations (INCREASED to 8)
     """
     if not shrink:
         return _nudge_into_safe_frame(mobject)
@@ -612,15 +612,15 @@ export function generateLayoutSetup(
   parts.push(generateSafeZoneConstants(config));
   parts.push(
     [
-      'config.background_color = "#1E1E1E"',
-      'BRIGHT_TEXT_COLOR = "#F9FBFF"',
-      'DARK_TEXT_COLOR = "#050B16"',
-      'CONTRAST_DARK_PANEL = "#1C2E4A"',
-      'CONTRAST_LIGHT_PANEL = "#F3F7FF"',
-      "MIN_CONTRAST_RATIO = 5.2",
-      "MIN_PANEL_FILL_OPACITY = 0.9",
-      "DEFAULT_PANEL_PADDING = 0.48",
-      'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F5FAFF", "#EEF2FF"]',
+      'config.background_color = "#1E1E1E"',  // Dark Grey - Standard Dark
+      'BRIGHT_TEXT_COLOR = "#F8FAFC"',        // Slate 50
+      'DARK_TEXT_COLOR = "#020617"',          // Slate 950
+      'CONTRAST_DARK_PANEL = "#1C2E4A"',      // Dark Blue Panel
+      'CONTRAST_LIGHT_PANEL = "#F1F5F9"',     // Slate 100
+      "MIN_CONTRAST_RATIO = 5.5",             // Increased for better readability
+      "MIN_PANEL_FILL_OPACITY = 0.95",
+      "DEFAULT_PANEL_PADDING = 0.5",
+      'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F1F5F9", "#E2E8F0"]',
       "Paragraph.set_default(color=BRIGHT_TEXT_COLOR)",
       "MarkupText.set_default(color=BRIGHT_TEXT_COLOR)",
       "BulletedList.set_default(color=BRIGHT_TEXT_COLOR)",
@@ -674,7 +674,7 @@ def enforce_min_gap(mobjects, min_gap=1.5, max_iterations=15, aggressive=True):
         return VGroup(*items)
 
     # CRITICAL: Start with LARGER min_gap
-    effective_min_gap = max(min_gap, 1.5)
+    effective_min_gap = max(min_gap, 1.8)
 
     for iteration in range(max_iterations):
         adjusted = False
@@ -1608,13 +1608,19 @@ def create_bullet_list(
     bullets.arrange(DOWN, buff=item_buff, aligned_edge=LEFT)
     
     # Scale down if needed BEFORE positioning
-    if auto_fit and max_width:
-        try:
+    # CHECK TOTAL HEIGHT and scale group if it exceeds safe height
+    try:
+        safe_height = globals().get('MAX_CONTENT_HEIGHT', 8.0) * 0.9
+        if bullets.height > safe_height:
+            scale_factor = safe_height / bullets.height
+            bullets.scale(scale_factor)
+            
+        if auto_fit and max_width:
             if bullets.width > max_width * 0.95:
                 scale_factor = (max_width * 0.95) / bullets.width
                 bullets.scale(scale_factor)
-        except (AttributeError, ZeroDivisionError):
-            pass
+    except (AttributeError, ZeroDivisionError):
+        pass
     
     # Position to edge if specified
     if edge is not None:
@@ -2291,75 +2297,29 @@ def create_bulletproof_layout(*mobjects, layout_type="vertical", spacing=1.0,
   // Optimized for maximum contrast, harmony, and visual appeal
   const colorPalette: Record<string, string> = {
     // === Neutrals (High contrast base colors) ===
-    WHITE: "#FAFCFF", // Softer white for less eye strain
-    LIGHT_GRAY: "#E8EDF5", // Bright neutral
-    GRAY: "#B4C5E4", // Mid-tone neutral
-    DARK_GRAY: "#52637B", // Subtle contrast
-    BLACK: "#0F1419", // Rich black
+    WHITE: "#F8FAFC", // Slate 50
+    LIGHT_GRAY: "#CBD5E1", // Slate 300
+    GRAY: "#94A3B8", // Slate 400
+    DARK_GRAY: "#475569", // Slate 600
+    BLACK: "#020617", // Slate 950
 
-    // === Blues (Professional, trustworthy) ===
-    BLUE: "#4FC3F7", // Vibrant sky blue
-    SKY: "#56D4FF", // Bright sky
-    INDIGO: "#7C8CFF", // Deep indigo
-    NAVY: "#3D5AFE", // Bold navy
-    CYAN: "#26E5FF", // Electric cyan
-    AZURE: "#3DCBFF", // Bright azure
+    // === Primary Accents (Vibrant & Professional) ===
+    BLUE: "#38BDF8", // Sky 400 - Clear, trustworthy
+    CYAN: "#22D3EE", // Cyan 400 - Electric, modern
+    TEAL: "#2DD4BF", // Teal 400 - Fresh, calm
+    GREEN: "#4ADE80", // Green 400 - Success, growth
 
-    // === Greens (Growth, success, natural) ===
-    TEAL: "#26DAC5", // Modern teal
-    MINT: "#6FFFD3", // Fresh mint
-    GREEN: "#4AE290", // Vibrant green
-    PURE_GREEN: "#3ED47F", // Pure emerald
-    EMERALD: "#50E5AC", // Rich emerald
-    LIME: "#B8FF6D", // Bright lime
-    FOREST: "#2AAA7F", // Deep forest
+    // === Warm Accents (Attention & Energy) ===
+    YELLOW: "#FACC15", // Yellow 400 - Highlight, warning
+    ORANGE: "#FB923C", // Orange 400 - Secondary highlight
+    RED: "#F87171", // Red 400 - Error, critical
+    PINK: "#F472B6", // Pink 400 - Creative
 
-    // === Yellows & Oranges (Energy, warmth, attention) ===
-    YELLOW: "#FFE156", // Warm yellow
-    GOLD: "#FFCD48", // Rich gold
-    AMBER: "#FFD563", // Bright amber
-    ORANGE: "#FF9D5C", // Vibrant orange
-    PEACH: "#FFB38A", // Soft peach
-    CORAL: "#FF9680", // Warm coral
-
-    // === Reds & Pinks (Emphasis, passion, important) ===
-    RED: "#FF6B7A", // Vibrant red
-    CRIMSON: "#FF5273", // Deep crimson
-    ROSE: "#FF8FAD", // Soft rose
-    PINK: "#FFA3DB", // Bright pink
-    HOT_PINK: "#FF7DE0", // Neon pink
-
-    // === Purples (Creative, sophisticated) ===
-    MAGENTA: "#FF7DF7", // Bright magenta
-    FUCHSIA: "#F066FF", // Vibrant fuchsia
-    PURPLE: "#B57EFF", // Rich purple
-    VIOLET: "#A26EFF", // Deep violet
-    LAVENDER: "#D4BFFF", // Soft lavender
-    ELECTRIC_PURPLE: "#BD8FFF", // Electric purple
-
-    // === Specialty Colors ===
-    NEON_BLUE: "#5DD5FF", // Neon blue glow
-    NEON_GREEN: "#91FFB3", // Neon green glow
-    NEON_PINK: "#FF7DE0", // Neon pink glow
-    NEON_YELLOW: "#FFEB5C", // Neon yellow glow
-
-    // === Soft Pastels (Subtle, gentle) ===
-    SOFT_BLUE: "#B0DCFF", // Pastel blue
-    SOFT_GREEN: "#A8FFD6", // Pastel green
-    SOFT_YELLOW: "#FFF2B8", // Pastel yellow
-    SOFT_PINK: "#FFDDF0", // Pastel pink
-    SOFT_PURPLE: "#E0CBFF", // Pastel purple
-
-    // === Earth Tones ===
-    SAND: "#F4DDC4", // Warm sand
-    BROWN: "#A57856", // Earthy brown
-    SLATE: "#B0C4E2", // Cool slate
-    STEEL: "#9DB3D6", // Metallic steel
-
-    // === Nord-inspired (Modern, clean) ===
-    NORD: "#A6DCE8", // Nord blue
-    NORD_FROST: "#A8E4E1", // Nord frost
-    NORD_NIGHT: "#394D6B", // Nord night
+    // === Deep/Rich Accents (Backgrounds & Depth) ===
+    INDIGO: "#818CF8", // Indigo 400
+    VIOLET: "#A78BFA", // Violet 400
+    PURPLE: "#C084FC", // Purple 400
+    MAGENTA: "#E879F9", // Fuchsia 400
   };
 
   parts.push("\n# Script color palette - Optimized for #1E1E1E background");
