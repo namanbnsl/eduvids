@@ -10,7 +10,7 @@ import {
 const handlers = serve({
   client: inngest,
   functions: [generateVideo, uploadVideoToYouTube, uploadVideoToX],
-  streaming: "allow",
+  streaming: "force",
 });
 
 const createSafeRequestProxy = (request: NextRequest): NextRequest => {
