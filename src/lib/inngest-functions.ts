@@ -39,7 +39,6 @@ import type {
 } from "./types";
 
 import { TwitterApi } from "twitter-api-v2";
-import Sandbox from "@e2b/code-interpreter";
 
 const MAX_RENDER_LOG_ENTRIES = 200;
 
@@ -1039,8 +1038,6 @@ export const generateVideo = inngest.createFunction(
         .filter((line) => line.length > 0)
         .join("\n");
 
-    let sandbox: Sandbox | undefined;
-
     try {
       await updateJobProgress(jobId, {
         progress: 5,
@@ -1151,21 +1148,6 @@ export const generateVideo = inngest.createFunction(
       let renderOutcome: RenderAttemptSuccess | undefined;
       let renderAttempts = 0;
 
-      const sandboxId = await step.run("create-e2b-sandbox", async () => {
-        const sb = await Sandbox.create(
-          "manim-ffmpeg-latex-voiceover-watermark-languages",
-          {
-            timeoutMs: 2_400_000,
-            envs: {
-              ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
-            },
-          }
-        );
-        return sb.sandboxId;
-      });
-
-      sandbox = await Sandbox.connect(sandboxId);
-
       for (let attempt = 1; attempt <= MAX_RENDER_RETRIES; attempt++) {
         const attemptStart = Date.now();
         console.log(
@@ -1179,7 +1161,6 @@ export const generateVideo = inngest.createFunction(
               try {
                 const usesManimML = currentScript.includes("manim_ml");
                 const result = await renderManimVideo({
-                  sandbox_provided: sandbox!,
                   script: currentScript,
                   prompt,
                   applyWatermark: true,
@@ -1568,8 +1549,6 @@ export const generateVideo = inngest.createFunction(
         },
       });
 
-      await sandbox.kill();
-
       return {
         success: true,
         videoUrl: uploadUrl,
@@ -1583,9 +1562,19 @@ export const generateVideo = inngest.createFunction(
         segments: segmentResults,
         warnings: pipelineWarnings,
       };
-    } catch (err) {
-      await sandbox?.kill();
-      console.log(err);
+    } catch (err: unknown) {
+      const { message: jobErrorMessage, detail } = formatJobError(err);
+      console.error(
+        "Error in generateVideo function (internal details hidden from UI):",
+        err
+      );
+      if (jobId) {
+        await updateJobProgress(jobId, {
+          step: "error",
+          details: detail,
+        });
+        await jobStore.setError(jobId, jobErrorMessage);
+      }
       throw err;
     }
   }
