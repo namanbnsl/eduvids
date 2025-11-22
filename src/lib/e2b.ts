@@ -371,22 +371,15 @@ export interface RenderRequest {
   script: string;
   prompt: string;
   applyWatermark?: boolean;
+  sandbox_provided: Sandbox;
   renderOptions?: RenderOptions;
   plugins?: string[];
   onProgress?: (update: RenderProgressUpdate) => Promise<void> | void;
 }
 
-export interface ThumbnailResult {
-  imagePath: string;
-}
-
-export interface ThumbnailRequest {
-  script: string;
-  prompt: string;
-  renderOptions?: RenderOptions;
-}
 
 export async function renderManimVideo({
+  sandbox_provided,
   script,
   prompt: _prompt,
   applyWatermark = true,
@@ -475,7 +468,7 @@ export async function renderManimVideo({
     if (sandbox && !cleanupAttempted) {
       cleanupAttempted = true;
       try {
-        await sandbox.kill();
+        await sandbox_provided.kill();
         console.log("E2B sandbox cleaned up successfully");
         pushLog({
           level: "info",
@@ -592,7 +585,7 @@ export async function renderManimVideo({
       }
     };
 
-    const result = await sandbox.commands.run(command, {
+    const result = await sandbox_provided.commands.run(command, {
       timeoutMs,
       onStdout: streamStdout || onStdout ? combinedStdout : undefined,
       onStderr: streamStderr || onStderr ? combinedStderr : undefined,
@@ -652,15 +645,8 @@ export async function renderManimVideo({
 
   try {
     await reportProgress("sandbox", "Provisioning secure rendering sandbox");
-    sandbox = await Sandbox.create(
-      "manim-ffmpeg-latex-voiceover-watermark-languages",
-      {
-        timeoutMs: 2_400_000,
-        envs: {
-          ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
-        },
-      }
-    );
+    const sandbox = await Sandbox.connect(sandbox_provided.sandboxId);
+    
     console.log("E2B sandbox created successfully", {
       sandboxId: sandbox.sandboxId,
     });
@@ -1090,7 +1076,6 @@ export async function renderManimVideo({
       context: "download",
     });
 
-    // Cleanup before returning
     await ensureCleanup();
     return {
       videoPath: dataUrl,

@@ -39,6 +39,7 @@ import type {
 } from "./types";
 
 import { TwitterApi } from "twitter-api-v2";
+import Sandbox from "@e2b/code-interpreter";
 
 const MAX_RENDER_LOG_ENTRIES = 200;
 
@@ -1148,6 +1149,16 @@ export const generateVideo = inngest.createFunction(
       let renderOutcome: RenderAttemptSuccess | undefined;
       let renderAttempts = 0;
 
+       let sandbox = await Sandbox.create(
+      "manim-ffmpeg-latex-voiceover-watermark-languages",
+      {
+        timeoutMs: 2_400_000,
+        envs: {
+          ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
+        },
+      }
+    );
+
       for (let attempt = 1; attempt <= MAX_RENDER_RETRIES; attempt++) {
         const attemptStart = Date.now();
         console.log(
@@ -1161,6 +1172,7 @@ export const generateVideo = inngest.createFunction(
               try {
                 const usesManimML = currentScript.includes("manim_ml");
                 const result = await renderManimVideo({
+                  sandbox_provided: sandbox,
                   script: currentScript,
                   prompt,
                   applyWatermark: true,
