@@ -99,7 +99,6 @@ export function VideoPlayer({
   const [progress, setProgress] = useState<number>(0);
   const [step, setStep] = useState<string | undefined>(undefined);
   const [progressDetails, setProgressDetails] = useState<string | undefined>();
-  const [progressLog, setProgressLog] = useState<JobProgressEntry[]>([]);
   const [youtubeStatus, setYoutubeStatus] = useState<YoutubeStatus | undefined>(
     undefined
   );
@@ -285,9 +284,6 @@ export function VideoPlayer({
       setProgressDetails((prev) =>
         parsed.details !== undefined ? parsed.details : prev
       );
-      if (parsed.progressLog) {
-        setProgressLog(parsed.progressLog);
-      }
       setYoutubeStatus(parsed.youtubeStatus);
       setYoutubeUrl(parsed.youtubeUrl);
       setYoutubeError(parsed.youtubeError);
@@ -349,7 +345,6 @@ export function VideoPlayer({
     setCurrentVariant(initialVariant ?? "video");
     setDisplayProgress(0);
     setProgressDetails(undefined);
-    setProgressLog([]);
   }, [jobId, initialVariant]);
 
   useEffect(() => {
@@ -485,10 +480,6 @@ export function VideoPlayer({
     return STEP_TITLES["queued"];
   }, [step, jobStatus]);
   const stageSubtitle = progressDetails ?? stageTitle;
-  const recentProgressLog = useMemo(() => {
-    if (!progressLog.length) return [] as JobProgressEntry[];
-    return [...progressLog].slice(-6).reverse();
-  }, [progressLog]);
 
   useEffect(() => {
     if (jobStatus !== "generating") {

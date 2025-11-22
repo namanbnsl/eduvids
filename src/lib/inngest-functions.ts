@@ -1039,6 +1039,8 @@ export const generateVideo = inngest.createFunction(
         .filter((line) => line.length > 0)
         .join("\n");
 
+    let sandbox: Sandbox | undefined;
+
     try {
       await updateJobProgress(jobId, {
         progress: 5,
@@ -1149,15 +1151,20 @@ export const generateVideo = inngest.createFunction(
       let renderOutcome: RenderAttemptSuccess | undefined;
       let renderAttempts = 0;
 
-       let sandbox = await Sandbox.create(
-      "manim-ffmpeg-latex-voiceover-watermark-languages",
-      {
-        timeoutMs: 2_400_000,
-        envs: {
-          ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
-        },
-      }
-    );
+      const sandboxId = await step.run("create-e2b-sandbox", async () => {
+        const sb = await Sandbox.create(
+          "manim-ffmpeg-latex-voiceover-watermark-languages",
+          {
+            timeoutMs: 2_400_000,
+            envs: {
+              ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
+            },
+          }
+        );
+        return sb.sandboxId;
+      });
+
+      sandbox = await Sandbox.connect(sandboxId);
 
       for (let attempt = 1; attempt <= MAX_RENDER_RETRIES; attempt++) {
         const attemptStart = Date.now();
@@ -1172,7 +1179,7 @@ export const generateVideo = inngest.createFunction(
               try {
                 const usesManimML = currentScript.includes("manim_ml");
                 const result = await renderManimVideo({
-                  sandbox_provided: sandbox,
+                  sandbox_provided: sandbox!,
                   script: currentScript,
                   prompt,
                   applyWatermark: true,
@@ -1561,6 +1568,8 @@ export const generateVideo = inngest.createFunction(
         },
       });
 
+      await sandbox.kill();
+
       return {
         success: true,
         videoUrl: uploadUrl,
@@ -1574,19 +1583,9 @@ export const generateVideo = inngest.createFunction(
         segments: segmentResults,
         warnings: pipelineWarnings,
       };
-    } catch (err: unknown) {
-      const { message: jobErrorMessage, detail } = formatJobError(err);
-      console.error(
-        "Error in generateVideo function (internal details hidden from UI):",
-        err
-      );
-      if (jobId) {
-        await updateJobProgress(jobId, {
-          step: "error",
-          details: detail,
-        });
-        await jobStore.setError(jobId, jobErrorMessage);
-      }
+    } catch (err) {
+      await sandbox?.kill();
+      console.log(err);
       throw err;
     }
   }
@@ -1684,7 +1683,7 @@ export const uploadVideoToX = inngest.createFunction(
       title: string;
     };
 
-    const tweet = await step.run("upload-to-x", async () => {
+    await step.run("upload-to-x", async () => {
       const twitterClient = new TwitterApi({
         appKey: process.env.X_API_KEY!,
         appSecret: process.env.X_API_KEY_SECRET!,
@@ -1692,7 +1691,7 @@ export const uploadVideoToX = inngest.createFunction(
         accessSecret: process.env.X_ACCESS_TOKEN_SECRET!,
       });
 
-      const result = await twitterClient.v2.tweet({
+      await twitterClient.v2.tweet({
         text: `${title} \n \n \n Generated for free (no sign up required) at https://eduvids.vercel.app ${videoUrl}`,
       });
     });

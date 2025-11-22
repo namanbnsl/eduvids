@@ -461,30 +461,8 @@ export async function renderManimVideo({
   }
 
   const warnings: ValidationWarning[] = [...heuristicResult.warnings];
-  let sandbox: Sandbox | null = null;
-  let cleanupAttempted = false;
+  const sandbox: Sandbox | null = sandbox_provided;
 
-  const ensureCleanup = async () => {
-    if (sandbox && !cleanupAttempted) {
-      cleanupAttempted = true;
-      try {
-        await sandbox_provided.kill();
-        console.log("E2B sandbox cleaned up successfully");
-        pushLog({
-          level: "info",
-          message: "Sandbox cleaned up",
-          context: "cleanup",
-        });
-      } catch (cleanupError) {
-        console.warn("Sandbox cleanup error (non-fatal):", cleanupError);
-        pushLog({
-          level: "warn",
-          message: `Sandbox cleanup error: ${String(cleanupError)}`,
-          context: "cleanup",
-        });
-      }
-    }
-  };
 
   const runCommandOrThrow = async (
     command: string,
@@ -832,7 +810,6 @@ export async function renderManimVideo({
     );
 
     if (!sandbox) {
-      await ensureCleanup();
       throw new ManimValidationError(
         "Sandbox is unavailable while locating the rendered video.",
         "render",
@@ -885,7 +862,6 @@ export async function renderManimVideo({
     }
 
     if (!videoPath) {
-      await ensureCleanup();
       throw new ManimValidationError(
         `Unable to locate MyScene.mp4 under ${baseVideosDir}/${moduleName}.`,
         "render",
@@ -924,7 +900,6 @@ export async function renderManimVideo({
     });
 
     if (!duration || duration <= 0) {
-      await ensureCleanup();
       throw new ManimValidationError(
         `Rendered video has invalid duration: ${duration}s — aborting upload`,
         "video-validation",
@@ -994,7 +969,6 @@ export async function renderManimVideo({
     );
     const speedUpDuration = parseFloat((probeSpeedUp.stdout || "").trim());
     if (!speedUpDuration || speedUpDuration <= 0) {
-      await ensureCleanup();
       throw new ManimValidationError(
         `Sped-up video has invalid duration: ${speedUpDuration}s — aborting upload`,
         "video-validation",
@@ -1040,7 +1014,6 @@ export async function renderManimVideo({
       );
       const wmDuration = parseFloat((probeWm.stdout || "").trim());
       if (!wmDuration || wmDuration <= 0) {
-        await ensureCleanup();
         throw new ManimValidationError(
           `Watermarked video has invalid duration: ${wmDuration}s — aborting upload`,
           "watermark-validation",
@@ -1057,7 +1030,6 @@ export async function renderManimVideo({
       format: "bytes",
     })) as Uint8Array;
     if (!fileBytesArray || !fileBytesArray.length) {
-      await ensureCleanup();
       throw new ManimValidationError(
         "Downloaded watermarked video is empty; aborting upload",
         "download",
@@ -1076,7 +1048,6 @@ export async function renderManimVideo({
       context: "download",
     });
 
-    await ensureCleanup();
     return {
       videoPath: dataUrl,
       warnings,
@@ -1091,7 +1062,6 @@ export async function renderManimVideo({
       }`,
       context: "render",
     });
-    await ensureCleanup();
 
     if (err instanceof ManimValidationError) {
       err.logs = err.logs ?? [...renderLogs];
@@ -1151,7 +1121,6 @@ export async function renderManimVideo({
       logs: [...renderLogs],
     });
   } finally {
-    // Ensure cleanup happens even if not already done
-    await ensureCleanup();
+    // Sandbox cleanup is now handled by the caller
   }
 }
