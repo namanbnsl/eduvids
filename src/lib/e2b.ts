@@ -91,7 +91,7 @@ function injectEduvidsCallout(script: string): string {
     `${bodyIndent}with self.voiceover(text="Generate your own educational videos for free at eduvids dot vercel dot app"):`,
     `${bodyIndent}    # Create CTA with high-contrast background panel for visibility`,
     ``,
-    `${bodyIndent}    cta_title = create_tex_label("Generate your own educational videos for free!", font_size=FONT_CAPTION + 6, bold=True)`,
+    `${bodyIndent}    cta_title = create_tex_label("Generate your own educational videos for free!", font_size=FONT_CAPTION + 6)`,
     `${bodyIndent}    cta_title.set_color(WHITE)`,
     `${bodyIndent}    cta_link = create_tex_label("https://eduvids.vercel.app", font_size=FONT_CAPTION + 2)`,
     `${bodyIndent}    cta_link.set_color(TEAL)`,
