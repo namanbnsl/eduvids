@@ -13,6 +13,7 @@ import {
 
 // Rendering
 import { renderManimVideo, RenderLifecycleStage } from "./e2b";
+import { Sandbox } from "@e2b/code-interpreter";
 
 // Youtube & Uploads
 import { uploadVideo } from "./uploadthing";
@@ -1161,6 +1162,7 @@ export const generateVideo = inngest.createFunction(
           const MAX_POLL_ITERATIONS = 20; // Max 20 iterations (80 minutes total)
 
           let renderExecution: RenderAttemptSuccess | undefined;
+          let sandboxId: string | undefined; // Track sandbox ID across iterations
 
           for (
             let pollIteration = 0;
@@ -1192,7 +1194,16 @@ export const generateVideo = inngest.createFunction(
                         }
                       : undefined,
                   plugins: usesManimML ? ["manim-ml"] : [],
-                  onProgress: async ({ stage, message }) => {
+                  onProgress: async ({
+                    stage,
+                    message,
+                    sandboxId: progressSandboxId,
+                  }) => {
+                    // Capture sandboxId as soon as it's reported (before timeout)
+                    if (progressSandboxId && !sandboxId) {
+                      sandboxId = progressSandboxId;
+                      console.log(`📦 Captured sandbox ID: ${sandboxId}`);
+                    }
                     const mapping = stageToJobUpdate(stage);
                     await updateJobProgress(jobId, {
                       progress: mapping.progress,
@@ -1200,6 +1211,7 @@ export const generateVideo = inngest.createFunction(
                       details: message,
                     });
                   },
+                  existingSandboxId: sandboxId, // Pass sandbox ID for reuse
                 });
 
                 // Create timeout promise
@@ -1233,11 +1245,21 @@ export const generateVideo = inngest.createFunction(
                     step: "Rendering (cont.)",
                     details: `Continuing render (step ${pollIteration + 1})`,
                   });
-                  return { continue: true };
+                  // Return sandboxId to persist it across iterations
+                  return { continue: true, sandboxId };
                 }
 
                 // Render completed!
                 const result = raceResult.result;
+
+                // Capture sandbox ID from result for potential continuation or cleanup
+                if (
+                  result &&
+                  typeof result === "object" &&
+                  "sandboxId" in result
+                ) {
+                  sandboxId = result.sandboxId as string;
+                }
 
                 if (
                   !result ||
@@ -1303,9 +1325,18 @@ export const generateVideo = inngest.createFunction(
 
             // Check if we should continue or if render completed
             if ("continue" in pollResult && pollResult.continue) {
+              // Extract sandboxId if present in the result
+              if (
+                "sandboxId" in pollResult &&
+                typeof pollResult.sandboxId === "string"
+              ) {
+                sandboxId = pollResult.sandboxId;
+              }
               // Continue to next poll iteration
               console.log(
-                `Continuing render in next step iteration ${pollIteration + 1}`
+                `Continuing render in next step iteration ${
+                  pollIteration + 1
+                } with sandbox ${sandboxId ?? "(new)"}`
               );
               continue;
             }
@@ -1316,6 +1347,22 @@ export const generateVideo = inngest.createFunction(
           }
 
           if (!renderExecution) {
+            // Cleanup sandbox on max iterations
+            if (sandboxId) {
+              try {
+                console.log(
+                  `Cleaning up sandbox ${sandboxId} after max iterations`
+                );
+                const sandbox = await Sandbox.connect(sandboxId);
+                await sandbox.kill();
+                console.log(`Sandbox ${sandboxId} cleaned up successfully`);
+              } catch (cleanupErr) {
+                console.warn(
+                  `Failed to cleanup sandbox ${sandboxId}:`,
+                  cleanupErr
+                );
+              }
+            }
             throw new Error(
               `Render exceeded maximum poll iterations (${MAX_POLL_ITERATIONS})`
             );
@@ -1341,6 +1388,23 @@ export const generateVideo = inngest.createFunction(
             durationMs: attemptDurationMs,
             warnings: renderOutcome.warnings.length,
           });
+
+          // Cleanup sandbox after successful render
+          if (sandboxId) {
+            try {
+              console.log(
+                `Cleaning up sandbox ${sandboxId} after successful render`
+              );
+              const sandbox = await Sandbox.connect(sandboxId);
+              await sandbox.kill();
+              console.log(`Sandbox ${sandboxId} cleaned up successfully`);
+            } catch (cleanupErr) {
+              console.warn(
+                `Failed to cleanup sandbox ${sandboxId}:`,
+                cleanupErr
+              );
+            }
+          }
           break;
         } catch (error: unknown) {
           const cause =

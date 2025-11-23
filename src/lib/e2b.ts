@@ -201,6 +201,7 @@ export interface RenderResult {
   videoPath: string;
   warnings: ValidationWarning[];
   logs: RenderLogEntry[];
+  sandboxId: string;
 }
 
 export interface RenderOptions {
@@ -219,6 +220,7 @@ export type RenderLifecycleStage =
 export type RenderProgressUpdate = {
   stage: RenderLifecycleStage;
   message: string;
+  sandboxId?: string;
 };
 
 const PROHIBITED_MODULES = [
@@ -374,6 +376,7 @@ export interface RenderRequest {
   renderOptions?: RenderOptions;
   plugins?: string[];
   onProgress?: (update: RenderProgressUpdate) => Promise<void> | void;
+  existingSandboxId?: string;
 }
 
 export interface ThumbnailResult {
@@ -418,6 +421,7 @@ export async function renderManimVideo({
   renderOptions,
   plugins = [],
   onProgress,
+  existingSandboxId,
 }: RenderRequest): Promise<RenderResult> {
   void _prompt;
   const normalizedScript = script.trim();
@@ -425,15 +429,17 @@ export async function renderManimVideo({
 
   const reportProgress = async (
     stage: RenderLifecycleStage,
-    message: string
+    message: string,
+    sandboxId?: string
   ) => {
     if (!onProgress) return;
     try {
-      await onProgress({ stage, message });
+      await onProgress({ stage, message, sandboxId });
     } catch (error) {
       console.warn("Failed to deliver render progress update", {
         stage,
         message,
+        sandboxId,
         error,
       });
     }
@@ -676,24 +682,46 @@ export async function renderManimVideo({
   };
 
   try {
-    await reportProgress("sandbox", "Provisioning secure rendering sandbox");
-    sandbox = await Sandbox.create(
-      "manim-ffmpeg-latex-voiceover-watermark-languages",
-      {
-        timeoutMs: 2_400_000,
-        envs: {
-          ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
-        },
-      }
-    );
-    console.log("E2B sandbox created successfully", {
-      sandboxId: sandbox.sandboxId,
-    });
-    pushLog({
-      level: "info",
-      message: `Sandbox created (${sandbox.sandboxId})`,
-      context: "sandbox",
-    });
+    if (existingSandboxId) {
+      await reportProgress(
+        "sandbox",
+        "Connecting to existing rendering sandbox"
+      );
+      sandbox = await Sandbox.connect(existingSandboxId, {
+        timeoutMs: 0,
+      });
+      console.log("E2B sandbox connected successfully", {
+        sandboxId: sandbox.sandboxId,
+      });
+      pushLog({
+        level: "info",
+        message: `Sandbox connected (${sandbox.sandboxId})`,
+        context: "sandbox",
+      });
+      // Report sandboxId immediately so polling loop can capture it before timeout
+      await reportProgress("sandbox", "Sandbox connected", sandbox.sandboxId);
+    } else {
+      await reportProgress("sandbox", "Provisioning secure rendering sandbox");
+      sandbox = await Sandbox.create(
+        "manim-ffmpeg-latex-voiceover-watermark-languages",
+        {
+          timeoutMs: 0,
+          envs: {
+            ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
+          },
+        }
+      );
+      console.log("E2B sandbox created successfully", {
+        sandboxId: sandbox.sandboxId,
+      });
+      pushLog({
+        level: "info",
+        message: `Sandbox created (${sandbox.sandboxId})`,
+        context: "sandbox",
+      });
+      // Report sandboxId immediately so polling loop can capture it before timeout
+      await reportProgress("sandbox", "Sandbox ready", sandbox.sandboxId);
+    }
 
     const scriptPath = `/home/user/script.py`;
     const mediaDir = `/home/user/media`;
@@ -780,7 +808,7 @@ export async function renderManimVideo({
       await runCommandOrThrow("pip install manim-ml", {
         description: "Plugin installation (manim-ml)",
         stage: "plugin-installation",
-        timeoutMs: 240_000,
+        timeoutMs: 0,
         hint: "The manim-ml plugin failed to install. The script may fail if it depends on this plugin.",
       });
     }
@@ -840,7 +868,7 @@ export async function renderManimVideo({
     await runCommandOrThrow(manimCmd, {
       description: "Manim render",
       stage: "render",
-      timeoutMs: 2_700_000,
+      timeoutMs: 0,
       hint: "Review the traceback to resolve errors inside your Manim scene.",
       streamOutput: true,
     });
@@ -1112,12 +1140,20 @@ export async function renderManimVideo({
       context: "download",
     });
 
-    // Cleanup before returning
-    await ensureCleanup();
+    // Don't cleanup if we're reusing the sandbox - caller will manage lifecycle
+    if (!existingSandboxId) {
+      await ensureCleanup();
+    }
+
+    if (!sandbox) {
+      throw new Error("Sandbox was unexpectedly null at return point");
+    }
+
     return {
       videoPath: dataUrl,
       warnings,
       logs: [...renderLogs],
+      sandboxId: sandbox.sandboxId,
     };
   } catch (err: unknown) {
     console.error("E2B render error:", err);
