@@ -688,7 +688,7 @@ export async function renderManimVideo({
         "Connecting to existing rendering sandbox"
       );
       sandbox = await Sandbox.connect(existingSandboxId, {
-        timeoutMs: 5400000, // 90 minutes
+        timeoutMs: 3_600_000, // 60 minutes
       });
       console.log("E2B sandbox connected successfully", {
         sandboxId: sandbox.sandboxId,
@@ -705,7 +705,7 @@ export async function renderManimVideo({
       sandbox = await Sandbox.create(
         "manim-ffmpeg-latex-voiceover-watermark-languages",
         {
-          timeoutMs: 5400000, // 90 minutes
+          timeoutMs: 3_600_000, // 60 minutes
           envs: {
             ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
           },
@@ -868,7 +868,7 @@ export async function renderManimVideo({
     await runCommandOrThrow(manimCmd, {
       description: "Manim render",
       stage: "render",
-      timeoutMs: 5400000, // 90 minutes
+      timeoutMs: 3_600_000, // 60 minutes
       hint: "Review the traceback to resolve errors inside your Manim scene.",
       streamOutput: true,
     });
