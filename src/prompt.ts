@@ -548,6 +548,23 @@ Code Implementation (KEEP ROBUST):
 - Test positioning with SAFE_MARGIN before animating
 - There is no such thing as TextAlign or CENTER constants in Manim; position elements with '.move_to', '.to_edge', '.align_to', or '.next_to'. CENTER is ORIGIN.
 
+🚫 COMMON ERROR PREVENTION (STRICTLY FOLLOW):
+1. **List Index Out of Range**:
+   - NEVER access \`self.mobjects[-1]\` or \`self.mobjects[i]\` without checking \`len(self.mobjects)\`.
+   - NEVER assume \`MathTex\` has a specific number of substrings. Use \`len(tex)\` to check before indexing.
+   - **BAD**: \`transform(text[0], text[1])\` (What if text has 1 part?)
+   - **GOOD**: \`VGroup(text, other).arrange(...)\` or check length first.
+
+2. **Axes & Graphing Errors**:
+   - **x_range/y_range**: Always use \`x_range=[min, max, step]\` and \`y_range=[min, max, step]\`.
+   - **DEPRECATED**: Do NOT use \`x_min\`, \`x_max\`, \`y_min\`, \`y_max\` in \`Axes\` or \`ThreeDAxes\`.
+   - **BAD**: \`Axes(x_min=-5, x_max=5)\` -> CAUSES ERROR
+   - **GOOD**: \`Axes(x_range=[-5, 5, 1], y_range=[-3, 3, 1])\`
+
+3. **Attribute Errors**:
+   - Do NOT try to access \`camera.frame\` in \`VoiceoverScene\` (use layout helpers).
+   - Do NOT use \`Write\` on non-VMobjects (like \`ImageMobject\`). Use \`FadeIn\`.
+
 Visibility Requirements (CRITICAL):
 - ALWAYS use WHITE for main text to ensure maximum contrast
 - Use YELLOW only for emphasis/highlighting (never for main content)
@@ -558,13 +575,26 @@ Visibility Requirements (CRITICAL):
 - Short titles or labels that sit on dark shapes **must** wrap text using the injected panel helpers (call create_text_panel with a short label or use apply_text_panel) so lettering always has a bright foreground on a contrast-checked panel—never leave raw text directly on dark rectangles
 - Currently, you have a dark background - avoid DARK colors for text or shapes. Use bright, vibrant colors only.
 
+🧊 3D SCENE RULES (Use ONLY if requested or strictly necessary):
+1. **Inheritance**: \`class MyScene(VoiceoverScene, ThreeDScene):\`
+2. **Setup**:
+   - Call \`self.set_camera_orientation(phi=75 * DEGREES, theta=30 * DEGREES)\` in \`construct\`.
+   - Use \`ThreeDAxes()\` instead of \`Axes()\`.
+3. **Text & Layout**:
+   - **CRITICAL**: Standard text/layouts will rotate with the camera and look bad.
+   - **SOLUTION**: Use \`self.add_fixed_in_frame_mobjects(title)\` for ALL text, titles, and 2D layouts.
+   - Do NOT use \`ensure_fits_screen()\` on 3D objects (Sphere, Cube, etc.). Only use it on fixed-in-frame 2D objects.
+4. **Animation**:
+   - Use \`self.begin_ambient_camera_rotation(rate=0.1)\` for dynamic feel.
+   - Use \`self.move_camera(phi=..., theta=...)\` for dramatic angles.
+
 Mandatory Script Structure:
 '''python
 from manim import *
 from manim_voiceover import VoiceoverScene
 ${VOICEOVER_SERVICE_IMPORT}
 
-class MyScene(VoiceoverScene):
+class MyScene(VoiceoverScene, ThreeDScene): # Inherit from ThreeDScene ONLY if 3D is required
     def construct(self):
         ${VOICEOVER_SERVICE_SETTER}
 
