@@ -1,8 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import { Roboto_Mono } from "next/font/google";
-import "./globals.css";
+
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
+import { ConvexClientProvider } from "@/components/providers/ConvexClientProvider";
+
+// @ts-ignore next-line
+import "./globals.css";
 
 const defaultFont = Roboto_Mono({
   subsets: ["latin"],
@@ -10,7 +14,8 @@ const defaultFont = Roboto_Mono({
 
 export const metadata: Metadata = {
   title: "eduvids - free educational video generator",
-  description: "Generate high-quality educational videos with code-accurate animations for math, science, and more. Free, multilingual, and simple to use with absolutely no sign-up required.",
+  description:
+    "Generate high-quality educational videos with code-accurate animations for math, science, and more. Free, multilingual, and simple to use with absolutely no sign-up required.",
   icons: { icon: "/favicon.svg" },
 };
 
@@ -54,11 +59,13 @@ export default function RootLayout({
       </head>
       <Analytics />
       <SpeedInsights />
-      <body
-        className={`${defaultFont.className} antialiased min-h-screen text-[var(--foreground)]`}
-      >
-        {children}
-      </body>
+      <ConvexClientProvider>
+        <body
+          className={`${defaultFont.className} antialiased min-h-screen text-foreground`}
+        >
+          {children}
+        </body>
+      </ConvexClientProvider>
     </html>
   );
 }

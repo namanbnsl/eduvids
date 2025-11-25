@@ -42,3 +42,4 @@ e2b.toml
 
 get_google_refresh_token_real.mjs
 get_x_refresh_token_real.mjs
+.env.local
