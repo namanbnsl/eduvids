@@ -58,6 +58,8 @@ export default function ChatPage() {
   const [isDark, setIsDark] = useState(false);
   const [topics, setTopics] = useState<string[]>([]);
   const [isLoadingTopics, setIsLoadingTopics] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const { messages, status, sendMessage } = useChat<ChatMessage>();
   const hasMessages = messages.length > 0;
@@ -132,7 +134,16 @@ export default function ChatPage() {
 
   return (
     <div className="relative flex h-svh bg-background">
-      <Sidebar />
+      <Sidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        isCollapsed={sidebarCollapsed}
+        onCollapsedChange={setSidebarCollapsed}
+        chatHistory={[]}
+        onNewChat={() => {}}
+        onSelectChat={() => {}}
+        onDeleteChat={() => {}}
+      />
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top bar */}
         <header className="flex items-center justify-between gap-3 px-4 md:px-6 py-4 border-b border-border">
@@ -154,7 +165,11 @@ export default function ChatPage() {
               aria-label="Toggle dark mode"
               className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             >
-              {isDark ? <Sun className="size-5" /> : <Moon className="size-5" />}
+              {isDark ? (
+                <Sun className="size-5" />
+              ) : (
+                <Moon className="size-5" />
+              )}
             </button>
             <Link
               target="_blank"
@@ -183,148 +198,85 @@ export default function ChatPage() {
           </div>
         </header>
 
-      {/* Main content area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {hasMessages ? (
-          <>
-            {/* Messages area */}
-            <div className="flex-1 overflow-y-auto animate-in fade-in duration-500">
-              <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4">
-                <Conversation>
-                  <ConversationContent>
-                    {messages.map((message) => (
-                      <Message from={message.role} key={message.id}>
-                        <MessageContent>
-                          {message.parts?.map((part, i) => {
-                            if (part.type === "text") {
-                              return (
-                                <StyledResponse
-                                  key={i}
-                                  text={part.text}
-                                  role={message.role}
-                                />
-                              );
-                            }
-
-                            if (isGenerateVideoToolPart(part)) {
-                              switch (part.state) {
-                                case "input-available":
-                                  return <div key={i}>Loading video...</div>;
-                                case "output-available":
-                                  return (
-                                    <div key={i}>
-                                      <VideoPlayer {...part.output} />
-                                    </div>
-                                  );
-                                case "output-error":
-                                  return (
-                                    <div key={i}>Something went wrong</div>
-                                  );
-                                default:
-                                  return null;
+        {/* Main content area */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {hasMessages ? (
+            <>
+              {/* Messages area */}
+              <div className="flex-1 overflow-y-auto animate-in fade-in duration-500">
+                <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4">
+                  <Conversation>
+                    <ConversationContent>
+                      {messages.map((message) => (
+                        <Message from={message.role} key={message.id}>
+                          <MessageContent>
+                            {message.parts?.map((part, i) => {
+                              if (part.type === "text") {
+                                return (
+                                  <StyledResponse
+                                    key={i}
+                                    text={part.text}
+                                    role={message.role}
+                                  />
+                                );
                               }
-                            }
 
-                            return null;
-                          })}
-                        </MessageContent>
-                        <MessageAvatar
-                          src=""
-                          name={message.role == "assistant" ? "AI" : "ME"}
-                        />
-                      </Message>
-                    ))}
-                  </ConversationContent>
-                </Conversation>
-              </div>
-            </div>
+                              if (isGenerateVideoToolPart(part)) {
+                                switch (part.state) {
+                                  case "input-available":
+                                    return <div key={i}>Loading video...</div>;
+                                  case "output-available":
+                                    return (
+                                      <div key={i}>
+                                        <VideoPlayer {...part.output} />
+                                      </div>
+                                    );
+                                  case "output-error":
+                                    return (
+                                      <div key={i}>Something went wrong</div>
+                                    );
+                                  default:
+                                    return null;
+                                }
+                              }
 
-            {/* Input at bottom */}
-            <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4 animate-in slide-in-from-bottom-4 fade-in duration-500">
-              <PromptInput onSubmit={handleSubmit}>
-                <PromptInputTextarea
-                  onChange={(e) => setInput(e.target.value)}
-                  value={input}
-                  placeholder="Choose a mode and describe the video you want to generate"
-                />
-                <PromptInputToolbar>
-                  <PromptInputTools>
-                    <div className="inline-flex">
-                      <div className="inline-flex gap-1">
-                        <PromptInputButton
-                          onClick={() => handleGenerationModeToggle("video")}
-                          variant={
-                            generationMode === "video" ? "default" : "outline"
-                          }
-                        >
-                          <Monitor className="size-4" />
-                          Video
-                        </PromptInputButton>
-                        <PromptInputButton
-                          onClick={() => handleGenerationModeToggle("short")}
-                          variant={
-                            generationMode === "short" ? "default" : "outline"
-                          }
-                        >
-                          <Smartphone className="size-4" />
-                          Short
-                        </PromptInputButton>
-                      </div>
-                    </div>
-                  </PromptInputTools>
-                  <PromptInputSubmit disabled={!input} status={status} />
-                </PromptInputToolbar>
-              </PromptInput>
-              <p className="mt-2 text-center text-xs text-muted-foreground">
-                Please avoid sharing personal data—everything submitted here
-                will be automatically uploaded publicly to the community YouTube
-                channel.
-              </p>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center px-4 animate-in fade-in duration-700">
-            <div className="w-full max-w-5xl animate-in slide-in-from-bottom-4 duration-700">
-              <div className="text-center mb-8 animate-in fade-in slide-in-from-top-2 duration-700">
-                <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-2 leading-tight">
-                  <span className="text-cyan-400">
-                    <Video className="inline-block size-12 mb-1" />
-                  </span>{" "}
-                  Generate Your Own Video.
-                </h1>
+                              return null;
+                            })}
+                          </MessageContent>
+                          <MessageAvatar
+                            src=""
+                            name={message.role == "assistant" ? "AI" : "ME"}
+                          />
+                        </Message>
+                      ))}
+                    </ConversationContent>
+                  </Conversation>
+                </div>
               </div>
 
-              <div className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-700 delay-100">
+              {/* Input at bottom */}
+              <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4 animate-in slide-in-from-bottom-4 fade-in duration-500">
                 <PromptInput onSubmit={handleSubmit}>
                   <PromptInputTextarea
                     onChange={(e) => setInput(e.target.value)}
                     value={input}
-                    placeholder="Choose a mode (Video or Short) and describe your topic"
+                    placeholder="Choose a mode and describe the video you want to generate"
                   />
                   <PromptInputToolbar>
                     <PromptInputTools>
                       <div className="inline-flex">
                         <div className="inline-flex gap-1">
                           <PromptInputButton
-                            onClick={() =>
-                              setGenerationMode((mode) =>
-                                mode === "video" ? null : "video"
-                              )
-                            }
+                            onClick={() => handleGenerationModeToggle("video")}
                             variant={
                               generationMode === "video" ? "default" : "outline"
                             }
                           >
-                            {" "}
                             <Monitor className="size-4" />
                             Video
                           </PromptInputButton>
                           <PromptInputButton
-                            onClick={() =>
-                              setGenerationMode((mode) =>
-                                mode === "short" ? null : "short"
-                              )
-                            }
+                            onClick={() => handleGenerationModeToggle("short")}
                             variant={
                               generationMode === "short" ? "default" : "outline"
                             }
@@ -338,32 +290,98 @@ export default function ChatPage() {
                     <PromptInputSubmit disabled={!input} status={status} />
                   </PromptInputToolbar>
                 </PromptInput>
+                <p className="mt-2 text-center text-xs text-muted-foreground">
+                  Please avoid sharing personal data—everything submitted here
+                  will be automatically uploaded publicly to the community
+                  YouTube channel.
+                </p>
               </div>
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center px-4 animate-in fade-in duration-700">
+              <div className="w-full max-w-5xl animate-in slide-in-from-bottom-4 duration-700">
+                <div className="text-center mb-8 animate-in fade-in slide-in-from-top-2 duration-700">
+                  <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-2 leading-tight">
+                    <span className="text-cyan-400">
+                      <Video className="inline-block size-12 mb-1" />
+                    </span>{" "}
+                    Generate Your Own Video.
+                  </h1>
+                </div>
 
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-700 delay-200">
-                <QuickActionCards
-                  onCardClick={(text) => {
-                    const videoPrefix = "Generate a video of ";
-                    const shortPrefix = "Generate a short vertical video of ";
+                <div className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-700 delay-100">
+                  <PromptInput onSubmit={handleSubmit}>
+                    <PromptInputTextarea
+                      onChange={(e) => setInput(e.target.value)}
+                      value={input}
+                      placeholder="Choose a mode (Video or Short) and describe your topic"
+                    />
+                    <PromptInputToolbar>
+                      <PromptInputTools>
+                        <div className="inline-flex">
+                          <div className="inline-flex gap-1">
+                            <PromptInputButton
+                              onClick={() =>
+                                setGenerationMode((mode) =>
+                                  mode === "video" ? null : "video"
+                                )
+                              }
+                              variant={
+                                generationMode === "video"
+                                  ? "default"
+                                  : "outline"
+                              }
+                            >
+                              {" "}
+                              <Monitor className="size-4" />
+                              Video
+                            </PromptInputButton>
+                            <PromptInputButton
+                              onClick={() =>
+                                setGenerationMode((mode) =>
+                                  mode === "short" ? null : "short"
+                                )
+                              }
+                              variant={
+                                generationMode === "short"
+                                  ? "default"
+                                  : "outline"
+                              }
+                            >
+                              <Smartphone className="size-4" />
+                              Short
+                            </PromptInputButton>
+                          </div>
+                        </div>
+                      </PromptInputTools>
+                      <PromptInputSubmit disabled={!input} status={status} />
+                    </PromptInputToolbar>
+                  </PromptInput>
+                </div>
 
-                    if (generationMode === "video") {
-                      setInput(videoPrefix + text);
-                    } else if (generationMode === "short") {
-                      setInput(shortPrefix + text);
-                    } else {
-                      setInput(text);
-                    }
-                  }}
-                  topics={topics}
-                  isLoading={isLoadingTopics}
-                />
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-700 delay-200">
+                  <QuickActionCards
+                    onCardClick={(text) => {
+                      const videoPrefix = "Generate a video of ";
+                      const shortPrefix = "Generate a short vertical video of ";
+
+                      if (generationMode === "video") {
+                        setInput(videoPrefix + text);
+                      } else if (generationMode === "short") {
+                        setInput(shortPrefix + text);
+                      } else {
+                        setInput(text);
+                      }
+                    }}
+                    topics={topics}
+                    isLoading={isLoadingTopics}
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
-
