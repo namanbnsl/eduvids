@@ -16,6 +16,7 @@ import {
   Github,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 interface ChatHistory {
   id: string;
@@ -189,46 +190,82 @@ export function Sidebar({
         {/* Footer */}
         <div className="p-3 border-t border-sidebar-border shrink-0">
           {!isCollapsed && (
-            <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
-              <Youtube className="size-4 shrink-0" />
-              YouTube
-            </button>
+            <Link
+              target="_blank"
+              href="https://www.youtube.com/@eduvids-ai"
+              aria-label="YouTube"
+            >
+              <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
+                <Youtube className="size-4 shrink-0" />
+                YouTube
+              </button>
+            </Link>
           )}
           {isCollapsed && (
-            <button
-              className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
-              title="Settings"
+            <Link
+              target="_blank"
+              href="https://www.youtube.com/@eduvids-ai"
+              aria-label="YouTube"
             >
-              <Youtube className="size-5" />
-            </button>
+              <button
+                className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
+                title="Settings"
+              >
+                <Youtube className="size-5" />
+              </button>
+            </Link>
           )}
           {!isCollapsed && (
-            <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
-              <Twitter className="size-4 shrink-0" />
-              X/Twitter
-            </button>
+            <Link
+              target="_blank"
+              href="https://www.x.com/eduvidsai"
+              aria-label="YouTube"
+            >
+              <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
+                <Twitter className="size-4 shrink-0" />
+                X/Twitter
+              </button>
+            </Link>
           )}
           {isCollapsed && (
-            <button
-              className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
-              title="Settings"
+            <Link
+              target="_blank"
+              href="https://www.x.com/eduvidsai"
+              aria-label="YouTube"
             >
-              <Twitter className="size-5" />
-            </button>
+              <button
+                className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
+                title="Settings"
+              >
+                <Twitter className="size-5" />
+              </button>
+            </Link>
           )}
           {!isCollapsed && (
-            <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
-              <Github className="size-4 shrink-0" />
-              Github
-            </button>
+            <Link
+              target="_blank"
+              href="https://github.com/namanbnsl/eduvids"
+              aria-label="GitHub"
+            >
+              <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
+                <Github className="size-4 shrink-0" />
+                Github
+              </button>
+            </Link>
           )}
           {isCollapsed && (
-            <button
-              className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
-              title="Settings"
+            <Link
+              target="_blank"
+              href="https://github.com/namanbnsl/eduvids"
+              aria-label="GitHub"
             >
-              <Github className="size-5" />
-            </button>
+              <button
+                className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
+                title="Settings"
+              >
+                <Github className="size-5" />
+              </button>
+            </Link>
           )}
           {!isCollapsed && (
             <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
