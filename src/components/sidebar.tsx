@@ -95,7 +95,6 @@ export function Sidebar({
             </Button>
           </div>
         </div>
-
         {/* New Chat Button */}
         {!isCollapsed && (
           <div className="p-3 shrink-0">
@@ -121,7 +120,6 @@ export function Sidebar({
             </Button>
           </div>
         )}
-
         {/* Chat History */}
         <div className="flex-1 overflow-y-auto px-3 pb-3 min-w-0">
           {!isCollapsed && (
@@ -186,7 +184,8 @@ export function Sidebar({
             </div>
           )}
         </div>
-
+        {/* TODO: Placeholder for future feature */}
+        {!isCollapsed && <span>User collapsible when auth is done</span>}{" "}
         {/* Footer */}
         <div className="p-3 border-t border-sidebar-border shrink-0">
           {!isCollapsed && (
@@ -207,10 +206,7 @@ export function Sidebar({
               href="https://www.youtube.com/@eduvids-ai"
               aria-label="YouTube"
             >
-              <button
-                className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
-                title="Settings"
-              >
+              <button className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
                 <Youtube className="size-5" />
               </button>
             </Link>
@@ -233,10 +229,7 @@ export function Sidebar({
               href="https://www.x.com/eduvidsai"
               aria-label="YouTube"
             >
-              <button
-                className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
-                title="Settings"
-              >
+              <button className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
                 <Twitter className="size-5" />
               </button>
             </Link>
@@ -259,27 +252,10 @@ export function Sidebar({
               href="https://github.com/namanbnsl/eduvids"
               aria-label="GitHub"
             >
-              <button
-                className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
-                title="Settings"
-              >
+              <button className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
                 <Github className="size-5" />
               </button>
             </Link>
-          )}
-          {!isCollapsed && (
-            <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
-              <Settings className="size-4 shrink-0" />
-              Settings
-            </button>
-          )}
-          {isCollapsed && (
-            <button
-              className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
-              title="Settings"
-            >
-              <Settings className="size-5" />
-            </button>
           )}
         </div>
       </aside>

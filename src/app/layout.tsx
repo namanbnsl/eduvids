@@ -3,7 +3,6 @@ import { Roboto_Mono } from "next/font/google";
 
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
-import { ConvexClientProvider } from "@/components/providers/ConvexClientProvider";
 
 // @ts-ignore next-line
 import "./globals.css";
@@ -59,13 +58,11 @@ export default function RootLayout({
       </head>
       <Analytics />
       <SpeedInsights />
-      <ConvexClientProvider>
-        <body
-          className={`${defaultFont.className} antialiased min-h-screen text-foreground`}
-        >
-          {children}
-        </body>
-      </ConvexClientProvider>
+      <body
+        className={`${defaultFont.className} antialiased min-h-screen text-foreground`}
+      >
+        {children}
+      </body>
     </html>
   );
 }
