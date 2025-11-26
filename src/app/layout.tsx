@@ -4,7 +4,7 @@ import { DM_Mono } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 
-// @ts-ignore next-line
+// @ts-expect-error next-line
 import "./globals.css";
 import { ConvexClerkAuthProvider } from "@/components/providers/ConvexClerkAuth";
 

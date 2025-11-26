@@ -8,7 +8,6 @@ import { useEffect, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 
 // Components
-import Link from "next/link";
 import { Message, MessageAvatar, MessageContent } from "@/components/message";
 import {
   PromptInput,
@@ -25,9 +24,10 @@ import { StyledResponse } from "@/components/ui/styled-response";
 import { Sidebar } from "@/components/sidebar";
 
 // Icons
-import { Monitor, Smartphone } from "lucide-react";
+import { Monitor, Smartphone, Youtube, Twitter, Github } from "lucide-react";
 
 import { dark } from "@clerk/themes";
+import Link from "next/link";
 
 // Types
 import type {
@@ -37,7 +37,7 @@ import type {
 } from "@/lib/types";
 import { Authenticated, Unauthenticated } from "convex/react";
 import { Button } from "@/components/ui/button";
-import { SignInButton, UserButton, SignUpButton } from "@clerk/nextjs";
+import { SignUpButton } from "@clerk/nextjs";
 
 // Helpers
 const isGenerateVideoToolPart = (
@@ -130,32 +130,54 @@ export default function ChatPage() {
         />
       </Authenticated>
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header with auth buttons */}
-        <div className="flex justify-end items-center px-6 py-4 border-b border-border/50 bg-background/50 backdrop-blur-sm">
-          <div className="flex gap-2 items-center">
-            <Authenticated>
-              <UserButton
+        <Unauthenticated>
+          <div className="flex justify-between items-center px-6 py-4 border-b border-border/50 bg-background/50 backdrop-blur-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-semibold text-foreground truncate">
+                eduvids
+              </span>
+            </div>
+            <div className="flex gap-2 items-center">
+              <Link
+                target="_blank"
+                href="https://www.youtube.com/@eduvids-ai"
+                aria-label="YouTube"
+              >
+                <button className="p-2 rounded-lg text-foreground/70 hover:bg-accent/50 hover:text-foreground transition-colors cursor-pointer">
+                  <Youtube className="size-5" />
+                </button>
+              </Link>
+              <Link
+                target="_blank"
+                href="https://www.x.com/eduvidsai"
+                aria-label="X"
+              >
+                <button className="p-2 rounded-lg text-foreground/70 hover:bg-accent/50 hover:text-foreground transition-colors cursor-pointer">
+                  <Twitter className="size-5" />
+                </button>
+              </Link>
+              <Link
+                target="_blank"
+                href="https://github.com/namanbnsl/eduvids"
+                aria-label="GitHub"
+              >
+                <button className="p-2 rounded-lg text-foreground/70 hover:bg-accent/50 hover:text-foreground transition-colors cursor-pointer">
+                  <Github className="size-5" />
+                </button>
+              </Link>
+              <div className="w-px h-6 bg-border/30" />
+              <SignUpButton
+                mode="modal"
                 appearance={{
                   theme: dark,
                   variables: { fontFamily: "Geist" },
                 }}
-              />
-            </Authenticated>
-            <Unauthenticated>
-              <div className="flex gap-2">
-                <SignUpButton
-                  mode="modal"
-                  appearance={{
-                    theme: dark,
-                    variables: { fontFamily: "Geist" },
-                  }}
-                >
-                  <Button size="sm">Sign Up for Advanced Features</Button>
-                </SignUpButton>
-              </div>
-            </Unauthenticated>
+              >
+                <Button size="sm">Sign Up for Advanced Features</Button>
+              </SignUpButton>
+            </div>
           </div>
-        </div>
+        </Unauthenticated>
 
         {/* Main content area */}
         <div className="flex-1 flex flex-col overflow-hidden">

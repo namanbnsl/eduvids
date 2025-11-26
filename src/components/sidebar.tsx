@@ -6,7 +6,6 @@ import {
   Plus,
   Trash2,
   Menu,
-  X,
   ChevronLeft,
   ChevronRight,
   Youtube,
@@ -15,6 +14,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { UserButton, useUser } from "@clerk/nextjs";
+import { useEffect, useState } from "react";
+import { dark } from "@clerk/themes";
 
 interface ChatHistory {
   id: string;
@@ -45,6 +47,13 @@ export function Sidebar({
   onSelectChat,
   onDeleteChat,
 }: ChatSidebarProps) {
+  const { user } = useUser();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <>
       {/* Mobile overlay */}
@@ -182,10 +191,45 @@ export function Sidebar({
             </div>
           )}
         </div>
-        {/* TODO: Placeholder for future feature */}
-        {!isCollapsed && <span>User collapsible when auth is done</span>}{" "}
+        <div className="p-3 border-sidebar-border shrink-0 space-y-2">
+          {/* User Profile Section */}
+          {mounted && user && !isCollapsed && (
+            <div className="flex items-center justify-between gap-4 p-2 rounded-lg bg-sidebar-accent/30 border border-sidebar-border/50">
+              <div className="shrink-0">
+                <UserButton
+                  appearance={{
+                    theme: dark,
+                    variables: { fontFamily: "Geist" },
+                    elements: {
+                      userButtonAvatarBox: "size-16",
+                    },
+                  }}
+                />
+              </div>
+              <span className="text-sm font-medium text-sidebar-foreground truncate flex-1">
+                {user.fullName ||
+                  user.primaryEmailAddress?.emailAddress ||
+                  "User"}{" "}
+                (Signed In)
+              </span>
+            </div>
+          )}
+          {mounted && user && isCollapsed && (
+            <div className="flex justify-center">
+              <UserButton
+                appearance={{
+                  theme: dark,
+                  variables: { fontFamily: "Geist" },
+                  elements: {
+                    userButtonAvatarBox: "size-16",
+                  },
+                }}
+              />
+            </div>
+          )}
+        </div>
         {/* Footer */}
-        <div className="p-3 border-t border-sidebar-border shrink-0">
+        <div className="p-3 border-t border-sidebar-border shrink-0 space-y-2">
           {!isCollapsed && (
             <Link
               target="_blank"
