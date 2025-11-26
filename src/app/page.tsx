@@ -25,16 +25,9 @@ import { StyledResponse } from "@/components/ui/styled-response";
 import { Sidebar } from "@/components/sidebar";
 
 // Icons
-import {
-  Github,
-  Youtube,
-  Moon,
-  Sun,
-  Monitor,
-  Smartphone,
-  Video,
-  TwitterIcon,
-} from "lucide-react";
+import { Monitor, Smartphone } from "lucide-react";
+
+import { dark } from "@clerk/themes";
 
 // Types
 import type {
@@ -42,6 +35,9 @@ import type {
   ChatMessagePart,
   GenerateVideoToolUIPart,
 } from "@/lib/types";
+import { Authenticated, Unauthenticated } from "convex/react";
+import { Button } from "@/components/ui/button";
+import { SignInButton, UserButton, SignUpButton } from "@clerk/nextjs";
 
 // Helpers
 const isGenerateVideoToolPart = (
@@ -119,32 +115,48 @@ export default function ChatPage() {
       .finally(() => setIsLoadingTopics(false));
   }, []);
 
-  const toggleTheme = () => {
-    const newIsDark = !isDark;
-    setIsDark(newIsDark);
-
-    if (newIsDark) {
-      document.documentElement.classList.add("dark");
-      window.localStorage.setItem("theme", "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      window.localStorage.setItem("theme", "dark"); // Keep dark theme only for now
-    }
-  };
-
   return (
     <div className="relative flex h-svh bg-background">
-      <Sidebar
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        isCollapsed={sidebarCollapsed}
-        onCollapsedChange={setSidebarCollapsed}
-        chatHistory={[]}
-        onNewChat={() => {}}
-        onSelectChat={() => {}}
-        onDeleteChat={() => {}}
-      />
+      <Authenticated>
+        <Sidebar
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          isCollapsed={sidebarCollapsed}
+          onCollapsedChange={setSidebarCollapsed}
+          chatHistory={[]}
+          onNewChat={() => {}}
+          onSelectChat={() => {}}
+          onDeleteChat={() => {}}
+        />
+      </Authenticated>
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header with auth buttons */}
+        <div className="flex justify-end items-center px-6 py-4 border-b border-border/50 bg-background/50 backdrop-blur-sm">
+          <div className="flex gap-2 items-center">
+            <Authenticated>
+              <UserButton
+                appearance={{
+                  theme: dark,
+                  variables: { fontFamily: "Geist" },
+                }}
+              />
+            </Authenticated>
+            <Unauthenticated>
+              <div className="flex gap-2">
+                <SignUpButton
+                  mode="modal"
+                  appearance={{
+                    theme: dark,
+                    variables: { fontFamily: "Geist" },
+                  }}
+                >
+                  <Button size="sm">Sign Up for Advanced Features</Button>
+                </SignUpButton>
+              </div>
+            </Unauthenticated>
+          </div>
+        </div>
+
         {/* Main content area */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {hasMessages ? (
@@ -249,11 +261,12 @@ export default function ChatPage() {
               <div className="w-full max-w-5xl animate-in slide-in-from-bottom-4 duration-700">
                 <div className="text-center mb-8 animate-in fade-in slide-in-from-top-2 duration-700">
                   <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-2 leading-tight">
-                    <span className="text-cyan-400">
-                      <Video className="inline-block size-12 mb-1" />
-                    </span>{" "}
-                    Generate Your Own Video.
+                    Generate Your Own Video
                   </h1>
+                  <p className="text-md text-muted-foreground font-light">
+                    Transform your ideas into stunning animated videos powered
+                    by AI for free.
+                  </p>
                 </div>
 
                 <div className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-700 delay-100">

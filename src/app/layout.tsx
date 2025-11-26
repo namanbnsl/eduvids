@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Roboto_Mono } from "next/font/google";
+import { DM_Mono } from "next/font/google";
 
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
@@ -8,8 +8,10 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { ConvexClerkAuthProvider } from "@/components/providers/ConvexClerkAuth";
 
-const defaultFont = Roboto_Mono({
+const defaultFont = DM_Mono({
   subsets: ["latin"],
+  weight: ["400"],
+  variable: "--font-dm-mono",
 });
 
 export const metadata: Metadata = {

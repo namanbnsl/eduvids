@@ -4,11 +4,9 @@ import { cn } from "@/lib/utils";
 import {
   MessageSquare,
   Plus,
-  Settings,
   Trash2,
   Menu,
   X,
-  Sparkles,
   ChevronLeft,
   ChevronRight,
   Youtube,
