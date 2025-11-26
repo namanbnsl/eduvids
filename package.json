@@ -19,6 +19,7 @@
     "@ai-sdk/groq": "^2.0.24",
     "@ai-sdk/openai": "^2.0.22",
     "@ai-sdk/react": "^2.0.25",
+    "@clerk/nextjs": "^6.35.5",
     "@e2b/code-interpreter": "^2.0.0",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-collapsible": "^1.1.12",

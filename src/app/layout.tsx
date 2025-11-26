@@ -6,6 +6,7 @@ import { Analytics } from "@vercel/analytics/next";
 
 // @ts-ignore next-line
 import "./globals.css";
+import { ConvexClerkAuthProvider } from "@/components/providers/ConvexClerkAuth";
 
 const defaultFont = Roboto_Mono({
   subsets: ["latin"],
@@ -61,7 +62,7 @@ export default function RootLayout({
       <body
         className={`${defaultFont.className} antialiased min-h-screen text-foreground`}
       >
-        {children}
+        <ConvexClerkAuthProvider>{children}</ConvexClerkAuthProvider>
       </body>
     </html>
   );
