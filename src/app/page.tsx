@@ -124,9 +124,9 @@ export default function ChatPage() {
           isCollapsed={sidebarCollapsed}
           onCollapsedChange={setSidebarCollapsed}
           chatHistory={[]}
-          onNewChat={() => {}}
-          onSelectChat={() => {}}
-          onDeleteChat={() => {}}
+          onNewChat={() => { }}
+          onSelectChat={() => { }}
+          onDeleteChat={() => { }}
         />
       </Authenticated>
       <div className="flex-1 flex flex-col overflow-hidden">

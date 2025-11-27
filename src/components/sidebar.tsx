@@ -5,12 +5,12 @@ import {
   MessageSquare,
   Plus,
   Trash2,
-  Menu,
   ChevronLeft,
   ChevronRight,
   Youtube,
   Twitter,
   Github,
+  Menu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -34,6 +34,7 @@ interface ChatSidebarProps {
   onNewChat: () => void;
   onSelectChat: (id: string) => void;
   onDeleteChat: (id: string) => void;
+  isLoadingHistory?: boolean;
 }
 
 export function Sidebar({
@@ -46,6 +47,7 @@ export function Sidebar({
   onNewChat,
   onSelectChat,
   onDeleteChat,
+  isLoadingHistory = false,
 }: ChatSidebarProps) {
   const { user } = useUser();
   const [mounted, setMounted] = useState(false);
@@ -90,7 +92,7 @@ export function Sidebar({
             <Button
               variant="ghost"
               size="icon"
-              className="hidden lg:flex text-sidebar-foreground hover:bg-sidebar-accent h-8 w-8"
+              className="hidden lg:flex text-sidebar-foreground hover:bg-sidebar-accent h-8 w-8 cursor-pointer"
               onClick={() => onCollapsedChange?.(!isCollapsed)}
               title={isCollapsed ? "Expand" : "Collapse"}
             >
@@ -107,7 +109,7 @@ export function Sidebar({
           <div className="p-3 shrink-0">
             <Button
               onClick={onNewChat}
-              className="w-full justify-start gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
+              className="w-full justify-start gap-2 bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer"
               title="New Chat"
             >
               <Plus className="size-4 shrink-0" />
@@ -120,7 +122,7 @@ export function Sidebar({
             <Button
               onClick={onNewChat}
               size="icon"
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer"
               title="New Chat"
             >
               <Plus className="size-4" />
@@ -137,7 +139,11 @@ export function Sidebar({
                 </span>
               </div>
               <div className="space-y-1">
-                {chatHistory.length === 0 ? (
+                {isLoadingHistory ? (
+                  <div className="px-2 py-8 text-center text-sm text-sidebar-foreground/50">
+                    Loading chats...
+                  </div>
+                ) : chatHistory.length === 0 ? (
                   <div className="px-2 py-8 text-center text-sm text-sidebar-foreground/50">
                     No conversations yet
                   </div>
@@ -236,7 +242,7 @@ export function Sidebar({
               href="https://www.youtube.com/@eduvids-ai"
               aria-label="YouTube"
             >
-              <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
+              <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors cursor-pointer">
                 <Youtube className="size-4 shrink-0" />
                 YouTube
               </button>
@@ -248,7 +254,7 @@ export function Sidebar({
               href="https://www.youtube.com/@eduvids-ai"
               aria-label="YouTube"
             >
-              <button className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
+              <button className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors cursor-pointer">
                 <Youtube className="size-5" />
               </button>
             </Link>
@@ -259,7 +265,7 @@ export function Sidebar({
               href="https://www.x.com/eduvidsai"
               aria-label="YouTube"
             >
-              <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
+              <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors cursor-pointer">
                 <Twitter className="size-4 shrink-0" />
                 X/Twitter
               </button>
@@ -271,7 +277,7 @@ export function Sidebar({
               href="https://www.x.com/eduvidsai"
               aria-label="YouTube"
             >
-              <button className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
+              <button className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors cursor-pointer">
                 <Twitter className="size-5" />
               </button>
             </Link>
@@ -282,7 +288,7 @@ export function Sidebar({
               href="https://github.com/namanbnsl/eduvids"
               aria-label="GitHub"
             >
-              <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
+              <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors cursor-pointer">
                 <Github className="size-4 shrink-0" />
                 Github
               </button>
@@ -294,7 +300,7 @@ export function Sidebar({
               href="https://github.com/namanbnsl/eduvids"
               aria-label="GitHub"
             >
-              <button className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
+              <button className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors cursor-pointer">
                 <Github className="size-5" />
               </button>
             </Link>

@@ -1,17 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Mono } from "next/font/google";
+import { Lexend } from "next/font/google";
 
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 
-// @ts-expect-error next-line
 import "./globals.css";
 import { ConvexClerkAuthProvider } from "@/components/providers/ConvexClerkAuth";
 
-const defaultFont = DM_Mono({
+const defaultFont = Lexend({
   subsets: ["latin"],
-  weight: ["400"],
-  variable: "--font-dm-mono",
 });
 
 export const metadata: Metadata = {
