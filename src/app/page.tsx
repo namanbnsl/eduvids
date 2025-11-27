@@ -4,7 +4,7 @@
 import { generateTopics } from "@/lib/actions/generate-topics";
 
 // Hooks
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 
 // Components
@@ -35,15 +35,44 @@ import type {
   ChatMessagePart,
   GenerateVideoToolUIPart,
 } from "@/lib/types";
-import { Authenticated, Unauthenticated } from "convex/react";
+import {
+  Authenticated,
+  Unauthenticated,
+  useMutation,
+  useQuery,
+} from "convex/react";
 import { Button } from "@/components/ui/button";
-import { SignUpButton } from "@clerk/nextjs";
+import { SignUpButton, useUser } from "@clerk/nextjs";
+import { api } from "../../convex/_generated/api";
 
 // Helpers
 const isGenerateVideoToolPart = (
   part: ChatMessagePart
 ): part is Extract<GenerateVideoToolUIPart, { type: "tool-generate_video" }> =>
   part.type === "tool-generate_video";
+
+type SidebarChat = {
+  id: string;
+  title: string;
+  timestamp: Date;
+  optimistic?: boolean;
+};
+
+type ConvexChatRecord = {
+  id: string;
+  title?: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
+const chatApi = api as unknown as {
+  chat: {
+    getChatsByUser: any;
+    createNewChat: any;
+    deleteChat: any;
+    updateChatTitle: any;
+  };
+};
 
 // Page
 export default function ChatPage() {
@@ -56,9 +85,157 @@ export default function ChatPage() {
   const [isLoadingTopics, setIsLoadingTopics] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [optimisticChats, setOptimisticChats] = useState<SidebarChat[]>([]);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
+  const [sidebarError, setSidebarError] = useState<string | null>(null);
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
 
   const { messages, status, sendMessage } = useChat<ChatMessage>();
   const hasMessages = messages.length > 0;
+
+  const { user } = useUser();
+  const userEmail = user?.primaryEmailAddress?.emailAddress ?? null;
+  const userId = user?.id ?? null;
+
+  const chats = useQuery(
+    chatApi.chat.getChatsByUser,
+    userEmail ? { userEmail } : undefined
+  ) as ConvexChatRecord[] | undefined;
+  const createChatMutation = useMutation(chatApi.chat.createNewChat);
+  const deleteChatMutation = useMutation(chatApi.chat.deleteChat);
+  const updateChatTitleMutation = useMutation(chatApi.chat.updateChatTitle);
+  const isLoadingChats = !!userEmail && chats === undefined;
+
+  const createChatIfNeeded = useCallback(
+    async (title: string) => {
+      if (currentChatId) {
+        return currentChatId;
+      }
+
+      if (!userEmail || !userId) {
+        setSidebarError("Please sign in to create a new chat.");
+        return null;
+      }
+
+      const normalizedTitle = title.trim() || "Untitled chat";
+      const now = Date.now();
+      const clientId = crypto.randomUUID?.() ?? `temp-${now}`;
+      const optimisticChat: SidebarChat = {
+        id: clientId,
+        title: normalizedTitle,
+        timestamp: new Date(now),
+        optimistic: true,
+      };
+
+      setOptimisticChats((prev) => [optimisticChat, ...prev]);
+
+      try {
+        const createdChat = (await createChatMutation({
+          userEmail,
+          userId,
+          title: normalizedTitle,
+          created_at: now,
+          updated_at: now,
+        })) as ConvexChatRecord | null;
+
+        if (createdChat?.id) {
+          setOptimisticChats((prev) =>
+            prev.map((chat) =>
+              chat.id === clientId
+                ? {
+                  ...chat,
+                  id: createdChat.id,
+                  timestamp: new Date(createdChat.created_at),
+                  optimistic: false,
+                }
+                : chat
+            )
+          );
+          setCurrentChatId(createdChat.id);
+          return createdChat.id;
+        }
+      } catch (error) {
+        console.error("Failed to create chat", error);
+        setSidebarError("Couldn't create chat. Please try again.");
+        setOptimisticChats((prev) =>
+          prev.filter((chat) => chat.id !== clientId)
+        );
+        return null;
+      }
+
+      return clientId;
+    },
+    [createChatMutation, currentChatId, userEmail, userId]
+  );
+
+  useEffect(() => {
+    if (!chats) {
+      return;
+    }
+    setOptimisticChats((prev) =>
+      prev.filter((optimisticChat) =>
+        !chats.some((chat) => chat.id === optimisticChat.id)
+      )
+    );
+  }, [chats]);
+
+  const formattedChats = useMemo<SidebarChat[]>(() => {
+    if (!chats) return [];
+    return chats.map((chat) => ({
+      id: chat.id,
+      title: chat.title || "Untitled chat",
+      timestamp: new Date(chat.created_at),
+    }));
+  }, [chats]);
+
+  const combinedChats = useMemo<SidebarChat[]>(() => {
+    const seen = new Set<string>();
+    const merged: SidebarChat[] = [];
+
+    for (const chat of [...optimisticChats, ...formattedChats]) {
+      if (seen.has(chat.id)) {
+        continue;
+      }
+      seen.add(chat.id);
+      merged.push(chat);
+    }
+
+    return merged.sort(
+      (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
+    );
+  }, [formattedChats, optimisticChats]);
+
+  const updateChatTitleForCurrentChat = useCallback(
+    async (title: string) => {
+      if (!currentChatId || !userEmail) {
+        return;
+      }
+
+      const normalizedTitle = title.trim();
+      if (!normalizedTitle) {
+        return;
+      }
+
+      setOptimisticChats((prev) =>
+        prev.map((chat) =>
+          chat.id === currentChatId ? { ...chat, title: normalizedTitle } : chat
+        )
+      );
+
+      try {
+        await updateChatTitleMutation({
+          userEmail,
+          chatId: currentChatId,
+          title: normalizedTitle,
+        });
+      } catch (error) {
+        console.error("Failed to update chat title", error);
+        setSidebarError("Couldn't update chat title. Please try again.");
+      }
+    },
+    [currentChatId, updateChatTitleMutation, userEmail]
+  );
 
   const handleGenerationModeToggle = (mode: "video" | "short") => {
     const videoPrefix = "Generate a video of ";
@@ -82,24 +259,136 @@ export default function ChatPage() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
 
-    const trimmed = input.trim();
-    if (!trimmed) return;
+      const trimmed = input.trim();
+      if (!trimmed) return;
 
-    sendMessage(
-      { text: trimmed },
-      {
-        body: {
-          forceVariant: generationMode,
-        },
+      const chatId = await createChatIfNeeded(trimmed);
+      if (!chatId) {
+        return;
       }
-    );
 
-    setInput("");
-    setGenerationMode(null);
-  };
+      sendMessage(
+        { text: trimmed },
+        {
+          body: {
+            forceVariant: generationMode,
+          },
+        }
+      );
+
+      setInput("");
+      setGenerationMode(null);
+
+      void updateChatTitleForCurrentChat(trimmed);
+    },
+    [createChatIfNeeded, generationMode, input, sendMessage, updateChatTitleForCurrentChat]
+  );
+
+  const handleNewChat = useCallback(async () => {
+    if (!userEmail || !userId) {
+      setSidebarError("Please sign in to create a new chat.");
+      return;
+    }
+
+    setSidebarError(null);
+    const clientId = crypto.randomUUID?.() ?? `temp-${Date.now()}`;
+    const now = Date.now();
+    const optimisticChat: SidebarChat = {
+      id: clientId,
+      title: "Untitled chat",
+      timestamp: new Date(now),
+      optimistic: true,
+    };
+
+    setOptimisticChats((prev) => [optimisticChat, ...prev]);
+    setIsCreatingChat(true);
+
+    try {
+      const createdChat = (await createChatMutation({
+        userEmail,
+        userId,
+        title: optimisticChat.title,
+        created_at: now,
+        updated_at: now,
+      })) as ConvexChatRecord | null;
+
+      if (createdChat?.id) {
+        setOptimisticChats((prev) =>
+          prev.map((chat) =>
+            chat.id === clientId
+              ? {
+                ...chat,
+                id: createdChat.id,
+                timestamp: new Date(createdChat.created_at),
+              }
+              : chat
+          )
+        );
+        setCurrentChatId((prev) =>
+          prev === clientId || prev === null ? createdChat.id : prev
+        );
+      }
+    } catch (error) {
+      console.error("Failed to create chat", error);
+      setSidebarError("Couldn't create chat. Please try again.");
+      setOptimisticChats((prev) => prev.filter((chat) => chat.id !== clientId));
+    } finally {
+      setIsCreatingChat(false);
+    }
+  }, [createChatMutation, userEmail, userId]);
+
+  const handleSelectChat = useCallback((chatId: string) => {
+    setCurrentChatId(chatId);
+    setSidebarOpen(false);
+  }, []);
+
+  const handleDeleteChat = useCallback(
+    async (chatId: string) => {
+      if (!userEmail) {
+        setSidebarError("Please sign in to delete chats.");
+        return;
+      }
+
+      let removedOptimistic: SidebarChat | null = null;
+      setOptimisticChats((prev) => {
+        const match = prev.find((chat) => chat.id === chatId);
+        if (match) {
+          removedOptimistic = match;
+          return prev.filter((chat) => chat.id !== chatId);
+        }
+        return prev;
+      });
+
+      if (removedOptimistic) {
+        return;
+      }
+
+      setPendingDeleteIds((prev) => [...prev, chatId]);
+      setSidebarError(null);
+
+      try {
+        const result = await deleteChatMutation({ chatId, userEmail });
+        if (!result?.success) {
+          throw new Error("Delete failed");
+        }
+        if (currentChatId === chatId) {
+          setCurrentChatId(null);
+        }
+      } catch (error) {
+        console.error("Failed to delete chat", error);
+        setSidebarError("Couldn't delete chat. Please try again.");
+      } finally {
+        setPendingDeleteIds((prev) =>
+          prev.filter((pendingId) => pendingId !== chatId)
+        );
+      }
+    },
+    [currentChatId, deleteChatMutation, userEmail]
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -123,10 +412,16 @@ export default function ChatPage() {
           onClose={() => setSidebarOpen(false)}
           isCollapsed={sidebarCollapsed}
           onCollapsedChange={setSidebarCollapsed}
-          chatHistory={[]}
-          onNewChat={() => { }}
-          onSelectChat={() => { }}
-          onDeleteChat={() => { }}
+          chatHistory={combinedChats}
+          currentChatId={currentChatId ?? undefined}
+          onNewChat={handleNewChat}
+          onSelectChat={handleSelectChat}
+          onDeleteChat={handleDeleteChat}
+          isLoadingHistory={isLoadingChats}
+          isCreatingChat={isCreatingChat}
+          pendingDeleteIds={pendingDeleteIds}
+          errorMessage={sidebarError}
+          canCreateChat={hasMessages}
         />
       </Authenticated>
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -179,11 +474,9 @@ export default function ChatPage() {
           </div>
         </Unauthenticated>
 
-        {/* Main content area */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {hasMessages ? (
             <>
-              {/* Messages area */}
               <div className="flex-1 overflow-y-auto animate-in fade-in duration-500">
                 <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4">
                   <Conversation>
@@ -226,7 +519,7 @@ export default function ChatPage() {
                           </MessageContent>
                           <MessageAvatar
                             src=""
-                            name={message.role == "assistant" ? "AI" : "ME"}
+                            name={message.role === "assistant" ? "AI" : "ME"}
                           />
                         </Message>
                       ))}
@@ -235,7 +528,6 @@ export default function ChatPage() {
                 </div>
               </div>
 
-              {/* Input at bottom */}
               <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4 animate-in slide-in-from-bottom-4 fade-in duration-500">
                 <PromptInput onSubmit={handleSubmit}>
                   <PromptInputTextarea
@@ -309,12 +601,9 @@ export default function ChatPage() {
                                 )
                               }
                               variant={
-                                generationMode === "video"
-                                  ? "default"
-                                  : "outline"
+                                generationMode === "video" ? "default" : "outline"
                               }
                             >
-                              {" "}
                               <Monitor className="size-4" />
                               Video
                             </PromptInputButton>
@@ -325,9 +614,7 @@ export default function ChatPage() {
                                 )
                               }
                               variant={
-                                generationMode === "short"
-                                  ? "default"
-                                  : "outline"
+                                generationMode === "short" ? "default" : "outline"
                               }
                             >
                               <Smartphone className="size-4" />
