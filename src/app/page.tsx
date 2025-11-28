@@ -28,6 +28,7 @@ import { Monitor, Smartphone, Youtube, Twitter, Github } from "lucide-react";
 
 import { dark } from "@clerk/themes";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 // Types
 import type {
@@ -144,11 +145,11 @@ export default function ChatPage() {
             prev.map((chat) =>
               chat.id === clientId
                 ? {
-                  ...chat,
-                  id: createdChat.id,
-                  timestamp: new Date(createdChat.created_at),
-                  optimistic: false,
-                }
+                    ...chat,
+                    id: createdChat.id,
+                    timestamp: new Date(createdChat.created_at),
+                    optimistic: false,
+                  }
                 : chat
             )
           );
@@ -174,8 +175,8 @@ export default function ChatPage() {
       return;
     }
     setOptimisticChats((prev) =>
-      prev.filter((optimisticChat) =>
-        !chats.some((chat) => chat.id === optimisticChat.id)
+      prev.filter(
+        (optimisticChat) => !chats.some((chat) => chat.id === optimisticChat.id)
       )
     );
   }, [chats]);
@@ -201,9 +202,7 @@ export default function ChatPage() {
       merged.push(chat);
     }
 
-    return merged.sort(
-      (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
-    );
+    return merged.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }, [formattedChats, optimisticChats]);
 
   const updateChatTitleForCurrentChat = useCallback(
@@ -259,6 +258,8 @@ export default function ChatPage() {
     }
   };
 
+  const router = useRouter();
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
@@ -271,21 +272,16 @@ export default function ChatPage() {
         return;
       }
 
-      sendMessage(
-        { text: trimmed },
-        {
-          body: {
-            forceVariant: generationMode,
-          },
-        }
-      );
+      // Redirect to the chat page with the message and mode
+      const params = new URLSearchParams();
+      params.set("q", trimmed);
+      if (generationMode) {
+        params.set("mode", generationMode);
+      }
 
-      setInput("");
-      setGenerationMode(null);
-
-      void updateChatTitleForCurrentChat(trimmed);
+      router.push(`/chat/${chatId}?${params.toString()}`);
     },
-    [createChatIfNeeded, generationMode, input, sendMessage, updateChatTitleForCurrentChat]
+    [createChatIfNeeded, generationMode, input, router]
   );
 
   const handleNewChat = useCallback(async () => {
@@ -321,10 +317,10 @@ export default function ChatPage() {
           prev.map((chat) =>
             chat.id === clientId
               ? {
-                ...chat,
-                id: createdChat.id,
-                timestamp: new Date(createdChat.created_at),
-              }
+                  ...chat,
+                  id: createdChat.id,
+                  timestamp: new Date(createdChat.created_at),
+                }
               : chat
           )
         );
@@ -601,7 +597,9 @@ export default function ChatPage() {
                                 )
                               }
                               variant={
-                                generationMode === "video" ? "default" : "outline"
+                                generationMode === "video"
+                                  ? "default"
+                                  : "outline"
                               }
                             >
                               <Monitor className="size-4" />
@@ -614,7 +612,9 @@ export default function ChatPage() {
                                 )
                               }
                               variant={
-                                generationMode === "short" ? "default" : "outline"
+                                generationMode === "short"
+                                  ? "default"
+                                  : "outline"
                               }
                             >
                               <Smartphone className="size-4" />

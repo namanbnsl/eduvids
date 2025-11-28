@@ -9,5 +9,14 @@ export default defineSchema({
     created_at: v.number(),
     updated_at: v.number(),
     id: v.string(),
-  }).index("by_userEmail_created_at", ["userEmail", "created_at"]),
+  })
+    .index("by_userEmail_created_at", ["userEmail", "created_at"])
+    .index("by_public_id", ["id"]),
+  messages: defineTable({
+    chatId: v.string(),
+    content: v.string(),
+    role: v.union(v.literal("user"), v.literal("assistant")),
+    jobId: v.optional(v.string()),
+    created_at: v.number(),
+  }).index("by_chatId", ["chatId"]),
 });

@@ -86,7 +86,10 @@ export function Sidebar({
       >
         {!isCollapsed && errorMessage && (
           <div className="px-4 pt-4">
-            <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
+            <div
+              className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+              role="alert"
+            >
               {errorMessage}
             </div>
           </div>
@@ -176,7 +179,8 @@ export function Sidebar({
                   </div>
                 ) : (
                   chatHistory.map((chat) => (
-                    <div
+                    <Link
+                      href={`/chat/${chat.id}`}
                       key={chat.id}
                       className={cn(
                         "group flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm cursor-pointer transition-colors",
@@ -185,18 +189,27 @@ export function Sidebar({
                           : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                         chat.optimistic && "opacity-70"
                       )}
-                      onClick={() => onSelectChat(chat.id)}
+                      onClick={(e) => {
+                        // If we are already on the page, prevent default or let it handle?
+                        // Link handles navigation.
+                        // We might want to call onSelectChat to update local state if needed,
+                        // but the URL change should drive the state in the new architecture.
+                        if (onSelectChat) onSelectChat(chat.id);
+                      }}
                       title={chat.title}
                     >
                       <MessageSquare className="size-4 shrink-0" />
                       <span className="flex-1 truncate">{chat.title}</span>
                       <button
                         onClick={(e) => {
+                          e.preventDefault(); // Prevent navigation when clicking delete
                           e.stopPropagation();
                           onDeleteChat(chat.id);
                         }}
                         className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/10 text-sidebar-foreground/50 hover:text-destructive transition-all shrink-0 disabled:opacity-50"
-                        disabled={pendingDeleteIds.includes(chat.id) || chat.optimistic}
+                        disabled={
+                          pendingDeleteIds.includes(chat.id) || chat.optimistic
+                        }
                       >
                         {pendingDeleteIds.includes(chat.id) ? (
                           <Loader2 className="size-3.5 animate-spin" />
@@ -204,7 +217,7 @@ export function Sidebar({
                           <Trash2 className="size-3.5" />
                         )}
                       </button>
-                    </div>
+                    </Link>
                   ))
                 )}
               </div>
@@ -213,7 +226,8 @@ export function Sidebar({
           {isCollapsed && chatHistory.length > 0 && (
             <div className="space-y-2">
               {chatHistory.map((chat) => (
-                <button
+                <Link
+                  href={`/chat/${chat.id}`}
                   key={chat.id}
                   className={cn(
                     "flex items-center justify-center rounded-lg p-2.5 transition-colors w-full",
@@ -224,10 +238,11 @@ export function Sidebar({
                   )}
                   onClick={() => onSelectChat(chat.id)}
                   title={chat.title}
-                  disabled={chat.optimistic}
+                  aria-disabled={chat.optimistic}
+                  style={{ pointerEvents: chat.optimistic ? "none" : "auto" }}
                 >
                   <MessageSquare className="size-4" />
-                </button>
+                </Link>
               ))}
             </div>
           )}
