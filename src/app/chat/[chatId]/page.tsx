@@ -4,7 +4,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useChat } from "@ai-sdk/react";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Message, MessageAvatar, MessageContent } from "@/components/message";
 import { StyledResponse } from "@/components/ui/styled-response";
 import { VideoPlayer } from "@/components/video-player";
@@ -59,9 +59,15 @@ export default function ChatIdPage() {
 
   const { user } = useUser();
   const userEmail = user?.primaryEmailAddress?.emailAddress ?? null;
+  const isAuthenticated = !!userEmail;
+  const isTemporaryChat = (chatId as string).startsWith("temp-");
 
-  const convexMessages = useQuery(chatApi.messages.getMessages, { chatId });
+  const convexMessages = useQuery(
+    chatApi.messages.getMessages,
+    isAuthenticated && !isTemporaryChat ? { chatId } : "skip"
+  );
   const saveMessageMutation = useMutation(chatApi.messages.saveMessage);
+  const deleteChatMutation = useMutation(chatApi.chat.deleteChat);
 
   const [input, setInput] = useState("");
   const [generationMode, setGenerationMode] = useState<
@@ -69,6 +75,9 @@ export default function ChatIdPage() {
   >(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [localMessages, setLocalMessages] = useState<any[]>([]);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
+  const [sidebarError, setSidebarError] = useState<string | null>(null);
 
   // Convert Convex messages to AI SDK format
   // We will set these via setMessages in useEffect
@@ -77,6 +86,7 @@ export default function ChatIdPage() {
     id: chatId,
     onFinish: async (message: any) => {
       let jobId: string | undefined;
+      let hasError = false;
 
       if (message.toolInvocations) {
         for (const toolInvocation of message.toolInvocations) {
@@ -88,6 +98,10 @@ export default function ChatIdPage() {
             if (result && typeof result.jobId === "string") {
               jobId = result.jobId;
             }
+          }
+          // Check for errors in tool invocations
+          if (toolInvocation.state === "error") {
+            hasError = true;
           }
         }
       }
@@ -101,13 +115,22 @@ export default function ChatIdPage() {
           .join("");
       }
 
-      // Save assistant message
-      await saveMessageMutation({
-        chatId,
-        content: content || "",
-        role: "assistant",
-        jobId,
-      });
+      // Save assistant message only if authenticated and not a temporary chat
+      if (isAuthenticated && !isTemporaryChat) {
+        try {
+          await saveMessageMutation({
+            chatId,
+            content: content || (hasError ? "Something went wrong" : ""),
+            role: "assistant",
+            jobId,
+            toolInvocations: message.toolInvocations
+              ? JSON.stringify(message.toolInvocations)
+              : undefined,
+          });
+        } catch (error) {
+          console.error("Failed to save message:", error);
+        }
+      }
     },
   });
 
@@ -115,18 +138,69 @@ export default function ChatIdPage() {
   const searchParams = useSearchParams();
   const hasRunInitRef = useRef(false);
 
-  // Sync initial messages when they load from Convex
+  // Sync initial messages when they load from Convex (only for authenticated non-temp chats)
   useEffect(() => {
-    if (convexMessages && messages.length === 0 && convexMessages.length > 0) {
+    if (
+      isAuthenticated &&
+      !isTemporaryChat &&
+      convexMessages &&
+      messages.length === 0 &&
+      convexMessages.length > 0
+    ) {
       setMessages(
-        convexMessages.map((msg: any) => ({
-          id: msg._id,
-          role: msg.role,
-          content: msg.content,
-        }))
+        convexMessages.map((msg: any) => {
+          const toolInvocations = msg.toolInvocations
+            ? JSON.parse(msg.toolInvocations)
+            : undefined;
+
+          // Convert toolInvocations back to parts format for proper rendering
+          let parts: any[] = [];
+          if (msg.content) {
+            parts.push({ type: "text", text: msg.content });
+          }
+          if (toolInvocations) {
+            toolInvocations.forEach((invocation: any) => {
+              if (invocation.toolName === "generate_video") {
+                if (invocation.state === "result") {
+                  parts.push({
+                    type: "tool-generate_video",
+                    state: "output-available",
+                    output: invocation.result,
+                  });
+                } else if (invocation.state === "error") {
+                  parts.push({
+                    type: "tool-generate_video",
+                    state: "output-error",
+                    error: invocation.error,
+                  });
+                } else if (invocation.state === "call") {
+                  parts.push({
+                    type: "tool-generate_video",
+                    state: "input-available",
+                    input: invocation.args,
+                  });
+                }
+              }
+            });
+          }
+
+          return {
+            id: msg._id,
+            role: msg.role,
+            content: msg.content,
+            parts: parts.length > 0 ? parts : undefined,
+            toolInvocations,
+          };
+        })
       );
     }
-  }, [convexMessages, setMessages, messages.length]);
+  }, [
+    convexMessages,
+    setMessages,
+    messages.length,
+    isAuthenticated,
+    isTemporaryChat,
+  ]);
 
   // Handle initial message from query params
   useEffect(() => {
@@ -138,12 +212,20 @@ export default function ChatIdPage() {
     if (q) {
       hasRunInitRef.current = true;
 
-      // Save user message
-      saveMessageMutation({
-        chatId,
-        content: q,
-        role: "user",
-      }).then(() => {
+      const processMessage = async () => {
+        // Save user message only if authenticated and not temporary
+        if (isAuthenticated && !isTemporaryChat) {
+          try {
+            await saveMessageMutation({
+              chatId,
+              content: q,
+              role: "user",
+            });
+          } catch (error) {
+            console.error("Failed to save user message:", error);
+          }
+        }
+
         // Start AI generation
         sendMessage(
           {
@@ -158,7 +240,9 @@ export default function ChatIdPage() {
 
         // Clear query params to prevent re-submission on refresh
         router.replace(`/chat/${chatId}`);
-      });
+      };
+
+      processMessage();
     }
   }, [searchParams, chatId, saveMessageMutation, sendMessage, router]);
 
@@ -167,12 +251,18 @@ export default function ChatIdPage() {
     const trimmed = input.trim();
     if (!trimmed) return;
 
-    // Save user message
-    await saveMessageMutation({
-      chatId,
-      content: trimmed,
-      role: "user",
-    });
+    // Save user message only if authenticated and not temporary
+    if (isAuthenticated && !isTemporaryChat) {
+      try {
+        await saveMessageMutation({
+          chatId,
+          content: trimmed,
+          role: "user",
+        });
+      } catch (error) {
+        console.error("Failed to save user message:", error);
+      }
+    }
 
     await sendMessage(
       {
@@ -209,10 +299,45 @@ export default function ChatIdPage() {
     }
   };
 
+  const handleDeleteChat = useCallback(
+    async (chatIdToDelete: string) => {
+      if (!userEmail) {
+        setSidebarError("Please sign in to delete chats.");
+        return;
+      }
+
+      setPendingDeleteIds((prev) => [...prev, chatIdToDelete]);
+      setSidebarError(null);
+
+      try {
+        const result = await deleteChatMutation({
+          chatId: chatIdToDelete,
+          userEmail,
+        });
+        if (!result?.success) {
+          throw new Error("Delete failed");
+        }
+
+        // If we deleted the current chat, redirect to home
+        if (chatId === chatIdToDelete) {
+          router.push("/");
+        }
+      } catch (error) {
+        console.error("Failed to delete chat", error);
+        setSidebarError("Couldn't delete chat. Please try again.");
+      } finally {
+        setPendingDeleteIds((prev) =>
+          prev.filter((pendingId) => pendingId !== chatIdToDelete)
+        );
+      }
+    },
+    [chatId, deleteChatMutation, router, userEmail]
+  );
+
   // Sidebar props (simplified for now, reusing logic from main page would be better but keeping it self-contained)
   const chats = useQuery(
     chatApi.chat.getChatsByUser,
-    userEmail ? { userEmail } : undefined
+    isAuthenticated ? { userEmail } : "skip"
   );
 
   const formattedChats = (chats || []).map((chat: any) => ({
@@ -231,11 +356,13 @@ export default function ChatIdPage() {
           onCollapsedChange={setSidebarCollapsed}
           chatHistory={formattedChats}
           currentChatId={chatId}
-          onNewChat={() => (window.location.href = "/")} // Simple redirect for now
-          onSelectChat={(id) => (window.location.href = `/chat/${id}`)}
-          onDeleteChat={() => {}} // Implement delete if needed
+          onNewChat={() => router.push("/")}
+          onSelectChat={(id) => router.push(`/chat/${id}`)}
+          onDeleteChat={handleDeleteChat}
           isLoadingHistory={!chats}
           canCreateChat={true}
+          pendingDeleteIds={pendingDeleteIds}
+          errorMessage={sidebarError}
         />
       </Authenticated>
 
@@ -293,7 +420,14 @@ export default function ChatIdPage() {
                                   </div>
                                 );
                               case "output-error":
-                                return <div key={i}>Something went wrong</div>;
+                                return (
+                                  <div
+                                    key={i}
+                                    className="text-muted-foreground"
+                                  >
+                                    Something went wrong
+                                  </div>
+                                );
                               default:
                                 return null;
                             }

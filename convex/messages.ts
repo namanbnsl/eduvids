@@ -7,6 +7,7 @@ export const saveMessage = mutation({
     content: v.string(),
     role: v.union(v.literal("user"), v.literal("assistant")),
     jobId: v.optional(v.string()),
+    toolInvocations: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -32,6 +33,7 @@ export const saveMessage = mutation({
       content: args.content,
       role: args.role,
       jobId: args.jobId,
+      toolInvocations: args.toolInvocations,
       created_at: Date.now(),
     });
   },

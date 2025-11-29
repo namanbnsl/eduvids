@@ -43,7 +43,7 @@ import {
   useQuery,
 } from "convex/react";
 import { Button } from "@/components/ui/button";
-import { SignUpButton, useUser } from "@clerk/nextjs";
+import { SignUpButton, useUser, useClerk } from "@clerk/nextjs";
 import { api } from "../../convex/_generated/api";
 
 // Helpers
@@ -96,6 +96,7 @@ export default function ChatPage() {
   const hasMessages = messages.length > 0;
 
   const { user } = useUser();
+  const clerk = useClerk();
   const userEmail = user?.primaryEmailAddress?.emailAddress ?? null;
   const userId = user?.id ?? null;
 
@@ -267,10 +268,23 @@ export default function ChatPage() {
       const trimmed = input.trim();
       if (!trimmed) return;
 
-      const chatId = await createChatIfNeeded(trimmed);
+      let chatId: string | null = null;
+
+      // If authenticated, create a chat in the database
+      if (userEmail && userId) {
+        chatId = await createChatIfNeeded(trimmed);
+      } else {
+        // For unauthenticated users, generate a temporary chat ID
+        chatId = `temp-${crypto.randomUUID()}`;
+      }
+
       if (!chatId) {
         return;
       }
+
+      // Clear input immediately to prevent any race conditions
+      setInput("");
+      setGenerationMode(null);
 
       // Redirect to the chat page with the message and mode
       const params = new URLSearchParams();
@@ -281,7 +295,7 @@ export default function ChatPage() {
 
       router.push(`/chat/${chatId}?${params.toString()}`);
     },
-    [createChatIfNeeded, generationMode, input, router]
+    [createChatIfNeeded, generationMode, input, router, userEmail, userId]
   );
 
   const handleNewChat = useCallback(async () => {
@@ -503,7 +517,12 @@ export default function ChatPage() {
                                     );
                                   case "output-error":
                                     return (
-                                      <div key={i}>Something went wrong</div>
+                                      <div
+                                        key={i}
+                                        className="text-muted-foreground"
+                                      >
+                                        Something went wrong
+                                      </div>
                                     );
                                   default:
                                     return null;

@@ -17,6 +17,7 @@ export default defineSchema({
     content: v.string(),
     role: v.union(v.literal("user"), v.literal("assistant")),
     jobId: v.optional(v.string()),
+    toolInvocations: v.optional(v.string()),
     created_at: v.number(),
   }).index("by_chatId", ["chatId"]),
 });

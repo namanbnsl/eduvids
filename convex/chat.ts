@@ -29,12 +29,16 @@ export const createNewChat = mutation({
 });
 
 export const getChatsByUser = query({
-  args: { userEmail: v.string() },
+  args: { userEmail: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    if (!args.userEmail) {
+      return [];
+    }
+
     const chats = await ctx.db
       .query("chats")
       .withIndex("by_userEmail_created_at", (q) =>
-        q.eq("userEmail", args.userEmail)
+        q.eq("userEmail", args.userEmail!)
       )
       .order("desc")
       .collect();
