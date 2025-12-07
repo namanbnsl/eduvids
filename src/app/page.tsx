@@ -128,7 +128,7 @@ export default function ChatPage() {
       window.localStorage.setItem("theme", "dark");
     } else {
       document.documentElement.classList.remove("dark");
-      window.localStorage.setItem("theme", "dark"); // Keep dark theme only for now
+      window.localStorage.setItem("theme", "light");
     }
   };
 
@@ -145,6 +145,59 @@ export default function ChatPage() {
         onDeleteChat={() => {}}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top bar */}
+        <header className="flex items-center justify-between gap-3 px-4 md:px-6 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Link
+              href="/"
+              className="font-mono text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              eduvids
+            </Link>
+            <span className="hidden md:inline text-muted-foreground">/</span>
+            <span className="hidden md:inline text-sm text-muted-foreground">
+              Chat
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleTheme}
+              aria-label="Toggle dark mode"
+              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              {isDark ? (
+                <Sun className="size-5" />
+              ) : (
+                <Moon className="size-5" />
+              )}
+            </button>
+            <Link
+              target="_blank"
+              href="https://www.youtube.com/@eduvids-ai"
+              aria-label="YouTube"
+              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <Youtube className="size-5" />
+            </Link>
+            <Link
+              target="_blank"
+              href="https://www.x.com/eduvidsai"
+              aria-label="YouTube"
+              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <TwitterIcon className="size-5" />
+            </Link>
+            <Link
+              target="_blank"
+              href="https://github.com/namanbnsl/eduvids"
+              aria-label="GitHub"
+              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <Github className="size-5" />
+            </Link>
+          </div>
+        </header>
+
         {/* Main content area */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {hasMessages ? (
