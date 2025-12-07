@@ -411,10 +411,10 @@ export function getRecommendedFontSizes(
     contentType === "text-heavy"
       ? 1.05
       : contentType === "diagram"
-      ? 1.1 // Larger fonts for diagrams (labels need to be visible)
-      : contentType === "math"
-      ? 1.08
-      : 1.0;
+        ? 1.1 // Larger fonts for diagrams (labels need to be visible)
+        : contentType === "math"
+          ? 1.08
+          : 1.0;
 
   // Calculate base body size with simplified formula
   const baseBody = clampFont(
@@ -612,12 +612,12 @@ export function generateLayoutSetup(
   parts.push(generateSafeZoneConstants(config));
   parts.push(
     [
-      'config.background_color = "#1E1E1E"',  // Dark Grey - Standard Dark
-      'BRIGHT_TEXT_COLOR = "#F8FAFC"',        // Slate 50
-      'DARK_TEXT_COLOR = "#020617"',          // Slate 950
-      'CONTRAST_DARK_PANEL = "#1C2E4A"',      // Dark Blue Panel
-      'CONTRAST_LIGHT_PANEL = "#F1F5F9"',     // Slate 100
-      "MIN_CONTRAST_RATIO = 5.5",             // Increased for better readability
+      'config.background_color = "#212126"', // Dark Grey - Standard Dark
+      'BRIGHT_TEXT_COLOR = "#F8FAFC"', // Slate 50
+      'DARK_TEXT_COLOR = "#020617"', // Slate 950
+      'CONTRAST_DARK_PANEL = "#1C2E4A"', // Dark Blue Panel
+      'CONTRAST_LIGHT_PANEL = "#F1F5F9"', // Slate 100
+      "MIN_CONTRAST_RATIO = 5.5", // Increased for better readability
       "MIN_PANEL_FILL_OPACITY = 0.95",
       "DEFAULT_PANEL_PADDING = 0.5",
       'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F1F5F9", "#E2E8F0"]',

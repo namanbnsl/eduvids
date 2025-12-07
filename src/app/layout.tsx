@@ -12,7 +12,7 @@ const defaultFont = Lexend({
 });
 
 export const metadata: Metadata = {
-  title: "eduvids - free educational video generator",
+  title: "eduvids - AI-powered free educational video generator",
   description:
     "Generate high-quality educational videos with code-accurate animations for math, science, and more. Free, multilingual, and simple to use with absolutely no sign-up required.",
   icons: { icon: "/favicon.svg" },

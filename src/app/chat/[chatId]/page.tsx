@@ -137,70 +137,77 @@ export default function ChatIdPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const hasRunInitRef = useRef(false);
+  const lastSyncedChatIdRef = useRef<string | null>(null);
 
-  // Sync initial messages when they load from Convex (only for authenticated non-temp chats)
+  // Sync messages from Convex database (only for authenticated non-temp chats)
   useEffect(() => {
-    if (
-      isAuthenticated &&
-      !isTemporaryChat &&
-      convexMessages &&
-      messages.length === 0 &&
-      convexMessages.length > 0
-    ) {
-      setMessages(
-        convexMessages.map((msg: any) => {
-          const toolInvocations = msg.toolInvocations
-            ? JSON.parse(msg.toolInvocations)
-            : undefined;
-
-          // Convert toolInvocations back to parts format for proper rendering
-          let parts: any[] = [];
-          if (msg.content) {
-            parts.push({ type: "text", text: msg.content });
-          }
-          if (toolInvocations) {
-            toolInvocations.forEach((invocation: any) => {
-              if (invocation.toolName === "generate_video") {
-                if (invocation.state === "result") {
-                  parts.push({
-                    type: "tool-generate_video",
-                    state: "output-available",
-                    output: invocation.result,
-                  });
-                } else if (invocation.state === "error") {
-                  parts.push({
-                    type: "tool-generate_video",
-                    state: "output-error",
-                    error: invocation.error,
-                  });
-                } else if (invocation.state === "call") {
-                  parts.push({
-                    type: "tool-generate_video",
-                    state: "input-available",
-                    input: invocation.args,
-                  });
-                }
-              }
-            });
-          }
-
-          return {
-            id: msg._id,
-            role: msg.role,
-            content: msg.content,
-            parts: parts.length > 0 ? parts : undefined,
-            toolInvocations,
-          };
-        })
-      );
+    // Skip if not authenticated or is a temporary chat
+    if (!isAuthenticated || isTemporaryChat) {
+      return;
     }
-  }, [
-    convexMessages,
-    setMessages,
-    messages.length,
-    isAuthenticated,
-    isTemporaryChat,
-  ]);
+
+    // If chatId changed, we need to sync for the new chat
+    const chatIdChanged = lastSyncedChatIdRef.current !== chatId;
+
+    if (chatIdChanged) {
+      console.log("Chat changed to:", chatId);
+      lastSyncedChatIdRef.current = chatId;
+
+      // If we have messages from database for this chat, load them
+      if (convexMessages && convexMessages.length > 0) {
+        console.log("Syncing messages from database for chat:", chatId);
+
+        setMessages(
+          convexMessages.map((msg: any) => {
+            const toolInvocations = msg.toolInvocations
+              ? JSON.parse(msg.toolInvocations)
+              : undefined;
+
+            // Convert toolInvocations back to parts format for proper rendering
+            let parts: any[] = [];
+            if (msg.content) {
+              parts.push({ type: "text", text: msg.content });
+            }
+            if (toolInvocations) {
+              toolInvocations.forEach((invocation: any) => {
+                if (invocation.toolName === "generate_video") {
+                  if (invocation.state === "result") {
+                    parts.push({
+                      type: "tool-generate_video",
+                      state: "output-available",
+                      output: invocation.result,
+                    });
+                  } else if (invocation.state === "error") {
+                    parts.push({
+                      type: "tool-generate_video",
+                      state: "output-error",
+                      error: invocation.error,
+                    });
+                  } else if (invocation.state === "call") {
+                    parts.push({
+                      type: "tool-generate_video",
+                      state: "input-available",
+                      input: invocation.args,
+                    });
+                  }
+                }
+              });
+            }
+
+            return {
+              id: msg._id,
+              role: msg.role,
+              content: msg.content,
+              parts: parts.length > 0 ? parts : undefined,
+              toolInvocations,
+            };
+          })
+        );
+      }
+      // Otherwise, keep whatever messages AI SDK has
+      // (they might be managing new messages that haven't been saved to DB yet)
+    }
+  }, [convexMessages, setMessages, chatId, isAuthenticated, isTemporaryChat]);
 
   // Handle initial message from query params
   useEffect(() => {
