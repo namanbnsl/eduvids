@@ -134,7 +134,7 @@ export default function ChatPage() {
 
   return (
     <div className="relative flex h-svh bg-background">
-      <Sidebar
+      {/* <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         isCollapsed={sidebarCollapsed}
@@ -143,7 +143,7 @@ export default function ChatPage() {
         onNewChat={() => {}}
         onSelectChat={() => {}}
         onDeleteChat={() => {}}
-      />
+      /> */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top bar */}
         <header className="flex items-center justify-between gap-3 px-4 md:px-6 py-4 border-b border-border">
@@ -222,22 +222,28 @@ export default function ChatPage() {
                               }
 
                               if (isGenerateVideoToolPart(part)) {
-                                switch (part.state) {
-                                  case "input-available":
-                                    return <div key={i}>Loading video...</div>;
-                                  case "output-available":
-                                    return (
-                                      <div key={i}>
-                                        <VideoPlayer {...part.output} />
-                                      </div>
-                                    );
-                                  case "output-error":
-                                    return (
-                                      <div key={i}>Something went wrong</div>
-                                    );
-                                  default:
-                                    return null;
-                                }
+                                return (
+                                  <div key={i}>
+                                    We are working to fix a few issues in the
+                                    app. Please try after a few days.{" "}
+                                  </div>
+                                );
+                                // switch (part.state) {
+                                //   case "input-available":
+                                //     return <div key={i}>Loading video...</div>;
+                                //   case "output-available":
+                                //     return (
+                                //       <div key={i}>
+                                //         <VideoPlayer {...part.output} />
+                                //       </div>
+                                //     );
+                                //   case "output-error":
+                                //     return (
+                                //       <div key={i}>Something went wrong</div>
+                                //     );
+                                //   default:
+                                //     return null;
+                                // }
                               }
 
                               return null;
