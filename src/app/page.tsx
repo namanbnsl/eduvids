@@ -246,7 +246,12 @@ export default function ChatPage() {
                                 // }
                               }
 
-                              return null;
+                              return (
+                                <div>
+                                  We are working to fix a few issues in the app.
+                                  Please try after a few days.{" "}
+                                </div>
+                              );
                             })}
                           </MessageContent>
                           <MessageAvatar
