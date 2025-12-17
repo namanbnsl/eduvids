@@ -222,36 +222,39 @@ export default function ChatPage() {
                               }
 
                               if (isGenerateVideoToolPart(part)) {
-                                return (
-                                  <div key={i}>
-                                    We are working to fix a few issues in the
-                                    app. Please try after a few days.{" "}
-                                  </div>
-                                );
-                                // switch (part.state) {
-                                //   case "input-available":
-                                //     return <div key={i}>Loading video...</div>;
-                                //   case "output-available":
-                                //     return (
-                                //       <div key={i}>
-                                //         <VideoPlayer {...part.output} />
-                                //       </div>
-                                //     );
-                                //   case "output-error":
-                                //     return (
-                                //       <div key={i}>Something went wrong</div>
-                                //     );
-                                //   default:
-                                //     return null;
-                                // }
+                                // return (
+                                //   <div key={i}>
+                                //     We are working to fix a few issues in the
+                                //     app. Please try after a few days.{" "}
+                                //   </div>
+                                // );
+                                switch (part.state) {
+                                  case "input-available":
+                                    return <div key={i}>Loading video...</div>;
+                                  case "output-available":
+                                    return (
+                                      <div key={i}>
+                                        <VideoPlayer {...part.output} />
+                                      </div>
+                                    );
+                                  case "output-error":
+                                    return (
+                                      <div key={i}>Something went wrong</div>
+                                    );
+                                  default:
+                                    return (
+                                      <div key={i}>Something went wrong</div>
+                                    );
+                                }
                               }
 
-                              return (
-                                <div>
-                                  We are working to fix a few issues in the app.
-                                  Please try after a few days.{" "}
-                                </div>
-                              );
+                              // return (
+                              //   <div>
+                              //     We are working to fix a few issues in the app.
+                              //     Please try after a few days.{" "}
+                              //   </div>
+                              // );
+                              return null;
                             })}
                           </MessageContent>
                           <MessageAvatar

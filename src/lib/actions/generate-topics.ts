@@ -1,14 +1,14 @@
 "use server";
 
 import { generateText } from "ai";
-import { createGoogleProvider } from "@/lib/google-provider";
+import { GROQ_MODEL_IDS, selectGroqModel } from "@/lib/groq-provider";
 
 export async function generateTopics(): Promise<string[]> {
   if (process.env.NODE_ENV === "production") {
     try {
       // Create a new provider instance to rotate API keys
       const { text } = await generateText({
-        model: createGoogleProvider()("gemini-2.5-flash-lite-preview-09-2025"),
+        model: selectGroqModel(GROQ_MODEL_IDS.kimiInstruct),
         prompt: `Generate 2 fun and interesting video/short topic ideas for an educational content platform focused on math, physics, and chemistry.
 
 Topics should:

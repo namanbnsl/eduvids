@@ -30,7 +30,7 @@ export async function POST(req: Request) {
 
   // Create a new provider instance for each request to rotate API keys
   const result = streamText({
-    model: createGoogleProvider()("gemini-2.5-flash-lite-preview-09-2025"),
+    model: createGoogleProvider()("gemini-3-flash-preview"),
     toolChoice: "required",
     system: systemPrompt,
     messages: convertToModelMessages(messages),
@@ -62,11 +62,11 @@ export async function POST(req: Request) {
             forceVariant && forceVariant !== null
               ? forceVariant
               : variant
-              ? variant
-              : normalizedLower.includes("short") ||
-                normalizedLower.includes("vertical short")
-              ? "short"
-              : "video";
+                ? variant
+                : normalizedLower.includes("short") ||
+                    normalizedLower.includes("vertical short")
+                  ? "short"
+                  : "video";
 
           console.log("Variant determination:", {
             forceVariant,

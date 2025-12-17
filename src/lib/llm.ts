@@ -24,7 +24,7 @@ const createGoogleModel = (modelId: string): GoogleModelConfig => {
  * Wrapper for generateText that automatically reports success/failure to key manager
  */
 async function generateTextWithTracking<
-  T extends Parameters<typeof generateText>[0]
+  T extends Parameters<typeof generateText>[0],
 >(
   config: T & { model: LanguageModel },
   googleConfig?: GoogleModelConfig
@@ -142,7 +142,7 @@ Do not provide any explanation, just the language name.`,
 
     const detectedLang = response.trim().toLowerCase();
 
-      return detectedLang;
+    return detectedLang;
   } catch (error) {
     console.error("Language detection failed:", error);
     return "english"; // Default fallback
@@ -182,19 +182,19 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
      language === "spanish"
        ? "Título"
        : language === "french"
-       ? "Titre"
-       : language === "german"
-       ? "Titel"
-       : "Title"
+         ? "Titre"
+         : language === "german"
+           ? "Titel"
+           : "Title"
    }", font_size=FONT_TITLE, color=WHITE)
    body = Text("${
      language === "spanish"
        ? "Contenido"
        : language === "french"
-       ? "Contenu"
-       : language === "german"
-       ? "Inhalt"
-       : "Content"
+         ? "Contenu"
+         : language === "german"
+           ? "Inhalt"
+           : "Content"
    }", font_size=FONT_BODY, color=WHITE)
 6. **LaTeX will NOT work for ${language} characters** - it will show garbled text or errors
 
@@ -299,7 +299,7 @@ export async function generateVoiceoverScript({
   }
 
   // Fallback to Gemini 2.5 Pro if Gemini Flash fails after retries
-  const proModel = createGoogleModel("gemini-2.5-pro");
+  const proModel = createGoogleModel("gemini-3-flash-preview");
   const { text: proText } = await generateTextWithTracking(
     {
       model: proModel.provider(proModel.modelId),
@@ -326,7 +326,7 @@ export async function generateManimScript({
   const generationPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration with purposeful, step-by-step visuals that directly reinforce each narrated idea while staying on the same core topic:`;
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-    const googleModel = createGoogleModel("gemini-2.5-pro");
+    const googleModel = createGoogleModel("gemini-3-flash-preview");
     try {
       const { text } = await generateTextWithTracking(
         {
@@ -500,7 +500,7 @@ export async function regenerateManimScriptWithError({
 
   const normalizedError = error?.trim().length
     ? error
-    : errorDetails?.message ?? "Unknown error";
+    : (errorDetails?.message ?? "Unknown error");
 
   const blockedScriptsSection = (() => {
     if (!blockedScripts.length) return "";
@@ -546,7 +546,7 @@ export async function regenerateManimScriptWithError({
   const regenerationPrompt = promptSections.join("\n\n");
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-    const googleModel = createGoogleModel("gemini-2.5-pro");
+    const googleModel = createGoogleModel("gemini-3-flash-preview");
     try {
       const { text } = await generateTextWithTracking(
         {
