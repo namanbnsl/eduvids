@@ -572,6 +572,7 @@ Visibility Requirements (CRITICAL):
 - Before animating, verify text is not hidden behind shapes using set_z_index()
 - Text and labels must have z-index higher than background shapes
 - Short titles or labels that sit on dark shapes **must** wrap text using the injected panel helpers (call create_text_panel with a short label or use apply_text_panel) so lettering always has a bright foreground on a contrast-checked panel—never leave raw text directly on dark rectangles
+- **create_text_panel USAGE:** create_text_panel("Your Text", font_size=FONT_BODY, color=WHITE) - supports 'color' parameter directly for text color
 - Currently, you have a dark background - avoid DARK colors for text or shapes. Use bright, vibrant colors only.
 
 🧊 3D SCENE RULES (Use ONLY if requested or strictly necessary):

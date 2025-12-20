@@ -22,15 +22,22 @@ const createGoogleModel = (modelId: string): GoogleModelConfig => {
 
 /**
  * Wrapper for generateText that automatically reports success/failure to key manager
+ * and includes timeout handling
  */
 async function generateTextWithTracking<
   T extends Parameters<typeof generateText>[0],
 >(
   config: T & { model: LanguageModel },
-  googleConfig?: GoogleModelConfig
+  googleConfig?: GoogleModelConfig,
+  timeoutMs: number = LLM_CALL_TIMEOUT_MS
 ): Promise<Awaited<ReturnType<typeof generateText>>> {
+  const { controller, cleanup } = createTimeoutController(timeoutMs);
+  
   try {
-    const result = await generateText(config);
+    const result = await generateText({
+      ...config,
+      abortSignal: controller.signal,
+    });
 
     // Report success if this was a Google model
     if (googleConfig) {
@@ -44,18 +51,44 @@ async function generateTextWithTracking<
       reportError(googleConfig.provider, error);
     }
 
+    // Add context for timeout errors
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`LLM call aborted (timeout after ${timeoutMs}ms): ${error.message}`);
+    }
+
     throw error;
+  } finally {
+    cleanup();
   }
 }
 
 // Retry helpers for Gemini calls
-const SLEEP_MIN_MS = 30_000;
-const SLEEP_MAX_MS = 40_000;
-const GEMINI_MAX_RETRIES = 3; // number of retries after the initial attempt
+const SLEEP_MIN_MS = 10_000; // Reduced from 30s to 10s
+const SLEEP_MAX_MS = 15_000; // Reduced from 40s to 15s
+const GEMINI_MAX_RETRIES = 2; // Reduced from 3 to 2 retries
+const LLM_CALL_TIMEOUT_MS = 120_000; // 2 minute timeout per LLM call
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 const randomDelayMs = () =>
   SLEEP_MIN_MS + Math.floor(Math.random() * (SLEEP_MAX_MS - SLEEP_MIN_MS + 1));
+
+/**
+ * Creates an AbortController with a timeout
+ */
+function createTimeoutController(timeoutMs: number = LLM_CALL_TIMEOUT_MS): {
+  controller: AbortController;
+  cleanup: () => void;
+} {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort(new Error(`LLM call timed out after ${timeoutMs}ms`));
+  }, timeoutMs);
+  
+  return {
+    controller,
+    cleanup: () => clearTimeout(timeoutId),
+  };
+}
 
 const logRetry = (
   fnName: string,
@@ -137,7 +170,8 @@ Do not provide any explanation, just the language name.`,
         prompt: `Detect the language of this text:\n\n${sampleText}`,
         temperature: 0,
       },
-      googleModel
+      googleModel,
+      30_000 // 30 second timeout for language detection (simpler task)
     );
 
     const detectedLang = response.trim().toLowerCase();

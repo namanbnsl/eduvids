@@ -1427,6 +1427,7 @@ def create_text_panel(
     text,
     *,
     font_size=FONT_BODY,
+    color=None,
     panel_class=RoundedRectangle,
     panel_padding=DEFAULT_PANEL_PADDING,
     text_kwargs=None,
@@ -1441,6 +1442,7 @@ def create_text_panel(
     Args:
         text: Text content
         font_size: Font size for the text
+        color: Text color (optional, defaults to WHITE via ensure_text_readability)
         panel_class: Class for the background panel (Rectangle, RoundedRectangle, etc.)
         panel_padding: Padding around text inside panel
         text_kwargs: Additional kwargs for text creation
@@ -1452,6 +1454,10 @@ def create_text_panel(
 
     text_kwargs = dict(text_kwargs or {})
     panel_kwargs = dict(panel_kwargs or {})
+
+    # Handle color parameter - pass it through to text_kwargs
+    if color is not None:
+        text_kwargs.setdefault("color", color)
 
     treat_as_latex = bool(text_kwargs.pop("treat_as_latex", False))
     bold = bool(text_kwargs.pop("bold", False))
