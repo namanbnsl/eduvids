@@ -170,7 +170,7 @@ export function Sidebar({
                 <button
                   key={chat.id}
                   className={cn(
-                    "flex items-center justify-center rounded-lg p-2.5 transition-colors w-full",
+                    "flex items-center justify-center rounded-lg p-2.5 transition-colors w-full cursor-pointer",
                     currentChatId === chat.id
                       ? "bg-sidebar-accent text-sidebar-accent-foreground"
                       : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
@@ -184,8 +184,6 @@ export function Sidebar({
             </div>
           )}
         </div>
-        {/* TODO: Placeholder for future feature */}
-        {!isCollapsed && <span>User collapsible when auth is done</span>}{" "}
         {/* Footer */}
         <div className="p-3 border-t border-sidebar-border shrink-0">
           {!isCollapsed && (
@@ -194,7 +192,7 @@ export function Sidebar({
               href="https://www.youtube.com/@eduvids-ai"
               aria-label="YouTube"
             >
-              <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
+              <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors cursor-pointer">
                 <Youtube className="size-4 shrink-0" />
                 YouTube
               </button>
@@ -206,7 +204,7 @@ export function Sidebar({
               href="https://www.youtube.com/@eduvids-ai"
               aria-label="YouTube"
             >
-              <button className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
+              <button className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors cursor-pointer">
                 <Youtube className="size-5" />
               </button>
             </Link>
@@ -217,7 +215,7 @@ export function Sidebar({
               href="https://www.x.com/eduvidsai"
               aria-label="YouTube"
             >
-              <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
+              <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors cursor-pointer">
                 <Twitter className="size-4 shrink-0" />
                 X/Twitter
               </button>
@@ -229,7 +227,7 @@ export function Sidebar({
               href="https://www.x.com/eduvidsai"
               aria-label="YouTube"
             >
-              <button className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
+              <button className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors cursor-pointer">
                 <Twitter className="size-5" />
               </button>
             </Link>
@@ -240,7 +238,7 @@ export function Sidebar({
               href="https://github.com/namanbnsl/eduvids"
               aria-label="GitHub"
             >
-              <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
+              <button className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors cursor-pointer">
                 <Github className="size-4 shrink-0" />
                 Github
               </button>
@@ -252,7 +250,7 @@ export function Sidebar({
               href="https://github.com/namanbnsl/eduvids"
               aria-label="GitHub"
             >
-              <button className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors">
+              <button className="flex items-center justify-center w-full rounded-lg p-2.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors cursor-pointer">
                 <Github className="size-5" />
               </button>
             </Link>

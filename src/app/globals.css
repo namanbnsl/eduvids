@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import '@clerk/themes/shadcn.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -77,9 +78,9 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 }
-
+/* 
 .dark {
-  --background: oklch(0.24 0.015 255);
+  --background: oklch(0.2499 0.0094 285.7);
   --foreground: oklch(0.92 0.01 255);
   --card: oklch(0.28 0.015 255);
   --card-foreground: oklch(0.92 0.01 255);
@@ -102,7 +103,7 @@
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.28 0.015 255);
+  --sidebar: oklch(0.2711 0.011 285.64);
   --sidebar-foreground: oklch(0.92 0.01 255);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.92 0.01 255);
@@ -111,6 +112,7 @@
   --sidebar-border: oklch(0.4 0.015 255 / 50%);
   --sidebar-ring: oklch(0.5 0.015 255);
 }
+*/
 
 @layer base {
   * {

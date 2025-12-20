@@ -134,7 +134,7 @@ export default function ChatPage() {
 
   return (
     <div className="relative flex h-svh bg-background">
-      {/* <Sidebar
+      <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         isCollapsed={sidebarCollapsed}
@@ -143,61 +143,8 @@ export default function ChatPage() {
         onNewChat={() => {}}
         onSelectChat={() => {}}
         onDeleteChat={() => {}}
-      /> */}
+      />
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top bar */}
-        <header className="flex items-center justify-between gap-3 px-4 md:px-6 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <Link
-              href="/"
-              className="font-mono text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              eduvids
-            </Link>
-            <span className="hidden md:inline text-muted-foreground">/</span>
-            <span className="hidden md:inline text-sm text-muted-foreground">
-              Chat
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={toggleTheme}
-              aria-label="Toggle dark mode"
-              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
-              {isDark ? (
-                <Sun className="size-5" />
-              ) : (
-                <Moon className="size-5" />
-              )}
-            </button>
-            <Link
-              target="_blank"
-              href="https://www.youtube.com/@eduvids-ai"
-              aria-label="YouTube"
-              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
-              <Youtube className="size-5" />
-            </Link>
-            <Link
-              target="_blank"
-              href="https://www.x.com/eduvidsai"
-              aria-label="YouTube"
-              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
-              <TwitterIcon className="size-5" />
-            </Link>
-            <Link
-              target="_blank"
-              href="https://github.com/namanbnsl/eduvids"
-              aria-label="GitHub"
-              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
-              <Github className="size-5" />
-            </Link>
-          </div>
-        </header>
-
         {/* Main content area */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {hasMessages ? (
@@ -222,12 +169,6 @@ export default function ChatPage() {
                               }
 
                               if (isGenerateVideoToolPart(part)) {
-                                // return (
-                                //   <div key={i}>
-                                //     We are working to fix a few issues in the
-                                //     app. Please try after a few days.{" "}
-                                //   </div>
-                                // );
                                 switch (part.state) {
                                   case "input-available":
                                     return <div key={i}>Loading video...</div>;
@@ -247,13 +188,6 @@ export default function ChatPage() {
                                     );
                                 }
                               }
-
-                              // return (
-                              //   <div>
-                              //     We are working to fix a few issues in the app.
-                              //     Please try after a few days.{" "}
-                              //   </div>
-                              // );
                               return null;
                             })}
                           </MessageContent>
@@ -316,10 +250,7 @@ export default function ChatPage() {
               <div className="w-full max-w-5xl animate-in slide-in-from-bottom-4 duration-700">
                 <div className="text-center mb-8 animate-in fade-in slide-in-from-top-2 duration-700">
                   <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-2 leading-tight">
-                    <span className="text-cyan-400">
-                      <Video className="inline-block size-12 mb-1" />
-                    </span>{" "}
-                    Generate Your Own Video.
+                    Generate Your Own Video
                   </h1>
                 </div>
 
@@ -328,7 +259,7 @@ export default function ChatPage() {
                     <PromptInputTextarea
                       onChange={(e) => setInput(e.target.value)}
                       value={input}
-                      placeholder="Choose a mode (Video or Short) and describe your topic"
+                      placeholder="Describe your video idea here..."
                     />
                     <PromptInputToolbar>
                       <PromptInputTools>
@@ -346,7 +277,6 @@ export default function ChatPage() {
                                   : "outline"
                               }
                             >
-                              {" "}
                               <Monitor className="size-4" />
                               Video
                             </PromptInputButton>

@@ -122,7 +122,8 @@ export const PromptInputButton = ({
   // - If a single non-string child (e.g., an icon) => 'icon'
   // - Otherwise (text label or multiple children) => 'default'
   const childCount = Children.count(props.children);
-  const autoSize = childCount === 1 && typeof props.children !== "string" ? "icon" : "default";
+  const autoSize =
+    childCount === 1 && typeof props.children !== "string" ? "icon" : "default";
   const newSize = size ?? autoSize;
 
   return (
@@ -130,6 +131,7 @@ export const PromptInputButton = ({
       className={cn(
         "shrink-0 gap-1.5 rounded-lg",
         variant === "ghost" && "text-muted-foreground",
+        variant === "default" && "border",
         newSize === "default" && "px-3",
         className
       )}
