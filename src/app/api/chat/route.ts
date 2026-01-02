@@ -4,6 +4,7 @@ import { z } from "zod";
 import { inngest } from "@/lib/inngest";
 import { jobStore } from "@/lib/job-store";
 import { createGoogleProvider } from "@/lib/google-provider";
+import { groq, GROQ_MODEL_IDS, selectGroqModel } from "@/lib/groq-provider";
 
 export const maxDuration = 120;
 
@@ -30,10 +31,10 @@ export async function POST(req: Request) {
 
   // Create a new provider instance for each request to rotate API keys
   const result = streamText({
-    model: createGoogleProvider()("gemini-2.5-flash-lite"),
+    model: selectGroqModel(GROQ_MODEL_IDS.gptOss),
     toolChoice: "required",
     system: systemPrompt,
-    messages: convertToModelMessages(messages),
+    messages: await convertToModelMessages(messages),
     tools: {
       generate_video: tool({
         description:

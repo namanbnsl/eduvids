@@ -8,7 +8,7 @@ export async function generateTopics(): Promise<string[]> {
     try {
       // Create a new provider instance to rotate API keys
       const { text } = await generateText({
-        model: selectGroqModel(GROQ_MODEL_IDS.kimiInstruct),
+        model: selectGroqModel(GROQ_MODEL_IDS.gptOss),
         prompt: `Generate 2 fun and interesting video/short topic ideas for an educational content platform focused on math, physics, and chemistry.
 
 Topics should:
