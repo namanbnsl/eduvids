@@ -34,7 +34,7 @@ export default function RootLayout({
       <Analytics />
       <SpeedInsights />
       <body
-        className={`${defaultFont.className} antialiased min-h-screen text-foreground`}
+        className={`${defaultFont.className} antialiased min-h-screen text-foreground dark`}
       >
         {children}
       </body>

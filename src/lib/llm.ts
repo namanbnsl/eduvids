@@ -10,6 +10,10 @@ import {
 import { selectGroqModel, GROQ_MODEL_IDS } from "./groq-provider";
 import { RenderLogEntry, ValidationStage } from "@/lib/types";
 
+import { franc } from "franc";
+// @ts-ignore
+import langs from "langs";
+
 interface GoogleModelConfig {
   modelId: string;
   provider: ReturnType<typeof createGoogleProvider>;
@@ -20,10 +24,6 @@ const createGoogleModel = (modelId: string): GoogleModelConfig => {
   return { modelId, provider };
 };
 
-/**
- * Wrapper for generateText that automatically reports success/failure to key manager
- * and includes timeout handling
- */
 async function generateTextWithTracking<
   T extends Parameters<typeof generateText>[0],
 >(
@@ -32,28 +32,21 @@ async function generateTextWithTracking<
   timeoutMs: number = LLM_CALL_TIMEOUT_MS
 ): Promise<Awaited<ReturnType<typeof generateText>>> {
   const { controller, cleanup } = createTimeoutController(timeoutMs);
-  
+
   try {
     const result = await generateText({
       ...config,
       abortSignal: controller.signal,
     });
 
-    // Report success if this was a Google model
     if (googleConfig) {
       reportSuccess(googleConfig.provider);
     }
 
     return result;
   } catch (error) {
-    // Report error if this was a Google model
     if (googleConfig) {
       reportError(googleConfig.provider, error);
-    }
-
-    // Add context for timeout errors
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`LLM call aborted (timeout after ${timeoutMs}ms): ${error.message}`);
     }
 
     throw error;
@@ -63,9 +56,9 @@ async function generateTextWithTracking<
 }
 
 // Retry helpers for Gemini calls
-const SLEEP_MIN_MS = 10_000; // Reduced from 30s to 10s
-const SLEEP_MAX_MS = 15_000; // Reduced from 40s to 15s
-const GEMINI_MAX_RETRIES = 2; // Reduced from 3 to 2 retries
+const SLEEP_MIN_MS = 30_000;
+const SLEEP_MAX_MS = 40_000;
+const GEMINI_MAX_RETRIES = 3;
 const LLM_CALL_TIMEOUT_MS = 120_000; // 2 minute timeout per LLM call
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
@@ -83,7 +76,7 @@ function createTimeoutController(timeoutMs: number = LLM_CALL_TIMEOUT_MS): {
   const timeoutId = setTimeout(() => {
     controller.abort(new Error(`LLM call timed out after ${timeoutMs}ms`));
   }, timeoutMs);
-  
+
   return {
     controller,
     cleanup: () => clearTimeout(timeoutId),
@@ -145,6 +138,29 @@ function loadManimReferenceDocs(): ManimReferenceDocs {
 
   cachedManimDocs = { markdown, json };
   return cachedManimDocs;
+}
+
+export async function detectLanguage(text: string): Promise<string> {
+  try {
+    if (!text || text.trim().length < 3) return "english";
+
+    const sample = text.slice(0, 500);
+
+    // franc returns ISO 639-3 codes like "fra", "hin", "jpn"
+    const isoCode = franc(sample);
+
+    if (isoCode === "und") return "english";
+
+    const langData = langs.where("3", isoCode);
+
+    if (!langData) return "english";
+
+    // Return lowercase English language name
+    return langData.name.toLowerCase();
+  } catch (err) {
+    console.error("Language detection failed:", err);
+    return "english";
+  }
 }
 
 /**
@@ -308,41 +324,52 @@ export async function generateVoiceoverScript({
     "Draft the narration segments:",
   ].join("\n\n");
 
-  for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-    const googleModel = createGoogleModel("gemini-2.5-flash-preview-09-2025");
-    try {
-      const { text } = await generateTextWithTracking(
-        {
-          model: googleModel.provider(googleModel.modelId),
-          system: systemPrompt,
-          prompt: composedPrompt,
-        },
-        googleModel
-      );
+  // for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
+  //   const googleModel = createGoogleModel("gemini-2.5-flash-preview-09-2025");
+  //   try {
+  //     const { text } = await generateTextWithTracking(
+  //       {
+  //         model: googleModel.provider(googleModel.modelId),
+  //         system: systemPrompt,
+  //         prompt: composedPrompt,
+  //       },
+  //       googleModel
+  //     );
 
-      return text.trim();
-    } catch (err) {
-      if (attempt === GEMINI_MAX_RETRIES) {
-        logRetry("generateVoiceoverScript", attempt, err);
-        break;
-      }
-      const delayMs = randomDelayMs();
-      logRetry("generateVoiceoverScript", attempt, err, delayMs);
-      await sleep(delayMs);
-    }
-  }
+  //     return text.trim();
+  //   } catch (err) {
+  //     if (attempt === GEMINI_MAX_RETRIES) {
+  //       logRetry("generateVoiceoverScript", attempt, err);
+  //       break;
+  //     }
+  //     const delayMs = randomDelayMs();
+  //     logRetry("generateVoiceoverScript", attempt, err, delayMs);
+  //     await sleep(delayMs);
+  //   }
+  // }
 
-  // Fallback to Gemini 2.5 Pro if Gemini Flash fails after retries
-  const proModel = createGoogleModel("gemini-3-flash-preview");
-  const { text: proText } = await generateTextWithTracking(
-    {
-      model: proModel.provider(proModel.modelId),
-      system: systemPrompt,
-      prompt: composedPrompt,
-    },
-    proModel
-  );
-  return proText.trim();
+  // // Fallback to Gemini 2.5 Pro if Gemini Flash fails after retries
+  // const proModel = createGoogleModel("gemini-3-flash-preview");
+  // const { text: proText } = await generateTextWithTracking(
+  //   {
+  //     model: proModel.provider(proModel.modelId),
+  //     system: systemPrompt,
+  //     prompt: composedPrompt,
+  //   },
+  //   proModel
+  // );
+  // return proText.trim();
+
+  const model = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
+
+  const { text } = await generateText({
+    model,
+    system: systemPrompt,
+    prompt: composedPrompt,
+    temperature: 0.7,
+  });
+
+  return text.trim();
 }
 
 export async function generateManimScript({
@@ -350,7 +377,7 @@ export async function generateManimScript({
   voiceoverScript,
 }: ManimScriptRequest): Promise<string> {
   // Detect language from voiceover script using LLM
-  const detectedLanguage = await detectLanguageWithLLM(voiceoverScript);
+  const detectedLanguage = await detectLanguage(voiceoverScript);
   console.log(`Detected language: ${detectedLanguage}`);
 
   const augmentedSystemPrompt = buildAugmentedSystemPrompt(
@@ -390,7 +417,7 @@ export async function generateManimScript({
   }
 
   // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
-  const flashModel = createGoogleModel("gemini-2.5-flash-preview-09-2025");
+  const flashModel = createGoogleModel("gemini-2.5-flash");
   const { text: flashText } = await generateTextWithTracking(
     {
       model: flashModel.provider(flashModel.modelId),
@@ -471,7 +498,7 @@ export async function regenerateManimScriptWithError({
   repeatedErrorCount = 0,
 }: RegenerateManimScriptRequest): Promise<string> {
   // Detect language from voiceover script using LLM
-  const detectedLanguage = await detectLanguageWithLLM(voiceoverScript);
+  const detectedLanguage = await detectLanguage(voiceoverScript);
   console.log(`Detected language for regeneration: ${detectedLanguage}`);
 
   const augmentedSystemPrompt = buildAugmentedSystemPrompt(
@@ -610,7 +637,7 @@ export async function regenerateManimScriptWithError({
   }
 
   // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
-  const flashModel = createGoogleModel("gemini-2.5-flash-preview-09-2025");
+  const flashModel = createGoogleModel("gemini-2.5-flash");
   const { text: flashText } = await generateTextWithTracking(
     {
       model: flashModel.provider(flashModel.modelId),
