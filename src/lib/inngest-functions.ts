@@ -1157,9 +1157,9 @@ export const generateVideo = inngest.createFunction(
 
         try {
           // Time-boxed render execution with continuation support
-          const STEP_TIMEOUT_MS = 4 * 60 * 1000; // 4 minutes
+          const STEP_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
           const SAFETY_MARGIN_MS = 30 * 1000; // 30 second safety margin
-          const MAX_POLL_ITERATIONS = 20; // Max 20 iterations (80 minutes total)
+          const MAX_POLL_ITERATIONS = 20; // Max 20 iterations (100 minutes total)
 
           let renderExecution: RenderAttemptSuccess | undefined;
           let sandboxId: string | undefined; // Track sandbox ID across iterations
