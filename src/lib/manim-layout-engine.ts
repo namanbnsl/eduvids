@@ -662,10 +662,10 @@ def normalize_math_mobject(math_mobject, max_width_ratio=0.65, max_height_ratio=
     return math_mobject
 
 
-def enforce_min_gap(mobjects, min_gap=1.5, max_iterations=15, aggressive=True):
+def enforce_min_gap(mobjects, min_gap=2.0, max_iterations=20, aggressive=True):
     """
     ULTRA-AGGRESSIVE overlap prevention with LARGER default gap.
-    This is the key function to prevent bullet point overlaps.
+    This is the key function to prevent overlaps between ANY elements.
     """
     from manim import VGroup, RIGHT, UP
     
@@ -673,8 +673,8 @@ def enforce_min_gap(mobjects, min_gap=1.5, max_iterations=15, aggressive=True):
     if len(items) <= 1:
         return VGroup(*items)
 
-    # CRITICAL: Start with LARGER min_gap
-    effective_min_gap = max(min_gap, 1.8)
+    # CRITICAL: Start with VERY LARGE min_gap to guarantee separation
+    effective_min_gap = max(min_gap, 2.2)
 
     for iteration in range(max_iterations):
         adjusted = False
@@ -1645,6 +1645,217 @@ def create_bullet_list(
 
 `);
 
+  // Add flexible text rendering helpers (Text vs MathTex)
+  parts.push(`
+
+# ========================================
+# FLEXIBLE TEXT RENDERING (Text vs MathTex)
+# ========================================
+
+def is_math_content(text):
+    """
+    Detect if text contains mathematical notation that needs MathTex.
+    Returns True for math, False for plain text.
+    """
+    if not text:
+        return False
+    
+    # Clear math indicators
+    math_chars = ['=', '±', '×', '÷', '^', '_', '∑', '∫', '∞', '≤', '≥', '≠', '∈', '∉', '⊂', '⊃', '∪', '∩']
+    if any(ch in text for ch in math_chars):
+        return True
+    
+    # LaTeX-style math
+    if text.strip().startswith('$') or text.strip().endswith('$'):
+        return True
+    if r'\\frac' in text or r'\\sqrt' in text or r'\\sum' in text or r'\\int' in text:
+        return True
+    if r'\\alpha' in text or r'\\beta' in text or r'\\gamma' in text:
+        return True
+    
+    # Simple formulas like "x^2" or "E = mc^2"
+    if '^' in text and any(c.isalpha() for c in text):
+        return True
+    
+    return False
+
+
+def create_label(
+    content,
+    *,
+    style="body",
+    is_math=None,
+    color=WHITE,
+    **kwargs
+):
+    """
+    Create a text label, automatically choosing between Text() and MathTex().
+    
+    Args:
+        content: The text content
+        style: One of "title", "heading", "body", "math", "caption", "label"
+        is_math: Force math rendering (True/False), or None for auto-detect
+        color: Text color
+        **kwargs: Additional arguments passed to Text or MathTex
+    
+    Returns:
+        A Text or MathTex mobject
+    """
+    from manim import Text, MathTex
+    
+    # Determine font size from style
+    font_size_map = {
+        "title": FONT_TITLE,
+        "heading": FONT_HEADING,
+        "body": FONT_BODY,
+        "math": FONT_MATH,
+        "caption": FONT_CAPTION,
+        "label": FONT_LABEL,
+    }
+    font_size = font_size_map.get(style, FONT_BODY)
+    
+    # Auto-detect if is_math not specified
+    if is_math is None:
+        is_math = is_math_content(content)
+    
+    # Create the appropriate mobject
+    if is_math:
+        # Clean content for MathTex
+        clean_content = content.strip()
+        if clean_content.startswith('$') and clean_content.endswith('$'):
+            clean_content = clean_content[1:-1]
+        
+        mobj = MathTex(rf"{clean_content}", font_size=font_size, color=color, **kwargs)
+    else:
+        # Use Text for plain content - supports all languages
+        mobj = Text(content, font_size=font_size, color=color, **kwargs)
+    
+    # Ensure it fits on screen
+    ensure_fits_screen(mobj, safety_margin=0.95)
+    
+    return mobj
+
+
+def create_title(text, *, color=WHITE, **kwargs):
+    """
+    Create a title positioned at the safe title position.
+    Uses Text() for plain titles, MathTex() for math titles.
+    """
+    title = create_label(text, style="title", color=color, **kwargs)
+    title.move_to(get_title_position())
+    return title
+
+
+def create_subtitle(text, title_mobject=None, *, color=WHITE, buff=0.8, **kwargs):
+    """
+    Create a subtitle below the title or at a secondary position.
+    """
+    subtitle = create_label(text, style="heading", color=color, **kwargs)
+    
+    if title_mobject is not None:
+        subtitle.next_to(title_mobject, DOWN, buff=buff)
+    else:
+        pos = get_title_position() + DOWN * 1.5
+        subtitle.move_to(pos)
+    
+    return subtitle
+
+
+def create_bullet_list_mixed(
+    items,
+    *,
+    style="body",
+    max_bullets=3,
+    item_buff=1.2,
+    edge_buff=0.8,
+    bullet_char="•",
+    **kwargs
+):
+    """
+    Create a bullet list that handles both plain text and math automatically.
+    Uses Text() for plain items, MathTex() for math items.
+    LIMITS TO 3 BULLETS BY DEFAULT to prevent crowding.
+    """
+    from manim import VGroup, LEFT, DOWN, RIGHT
+    
+    # Limit items - strict limit to prevent crowding
+    if len(items) > max_bullets:
+        print(f"[LAYOUT] Limiting bullets from {len(items)} to {max_bullets} - use multiple scenes for more")
+        items = items[:max_bullets]
+    
+    bullets = []
+    for item_text in items:
+        if item_text is None:
+            continue
+        
+        is_math = is_math_content(item_text)
+        
+        if is_math:
+            content = create_label(item_text, style=style, is_math=True, **kwargs)
+            bullet_label = create_label(bullet_char + " ", style=style, is_math=False, **kwargs)
+            bullet_item = VGroup(bullet_label, content).arrange(RIGHT, buff=0.3)
+        else:
+            full_text = f"{bullet_char} {item_text}"
+            bullet_item = create_label(full_text, style=style, is_math=False, **kwargs)
+        
+        bullets.append(bullet_item)
+    
+    if not bullets:
+        return VGroup()
+    
+    # Use LARGER spacing between bullets
+    group = VGroup(*bullets).arrange(DOWN, buff=item_buff, aligned_edge=LEFT)
+    
+    # Scale down if needed but be more aggressive
+    try:
+        if group.height > MAX_CONTENT_HEIGHT * 0.75:
+            group.scale(MAX_CONTENT_HEIGHT * 0.75 / group.height)
+        if group.width > MAX_CONTENT_WIDTH * 0.85:
+            group.scale(MAX_CONTENT_WIDTH * 0.85 / group.width)
+    except (AttributeError, ZeroDivisionError):
+        pass
+    
+    group.to_edge(LEFT, buff=edge_buff)
+    return group
+
+
+def create_math(formula, *, font_size=None, color=BLUE, **kwargs):
+    """
+    Convenience function to create a mathematical formula.
+    Always uses MathTex.
+    """
+    from manim import MathTex
+    
+    if font_size is None:
+        font_size = FONT_MATH
+    
+    clean_formula = formula.strip()
+    if clean_formula.startswith('$'):
+        clean_formula = clean_formula[1:]
+    if clean_formula.endswith('$'):
+        clean_formula = clean_formula[:-1]
+    
+    mobj = MathTex(rf"{clean_formula}", font_size=font_size, color=color, **kwargs)
+    ensure_fits_screen(mobj, safety_margin=0.9)
+    return mobj
+
+
+def create_plain_text(text, *, font_size=None, color=WHITE, **kwargs):
+    """
+    Convenience function to create plain text (never uses LaTeX).
+    Perfect for non-English text, labels, and simple content.
+    """
+    from manim import Text
+    
+    if font_size is None:
+        font_size = FONT_BODY
+    
+    mobj = Text(text, font_size=font_size, color=color, **kwargs)
+    ensure_fits_screen(mobj, safety_margin=0.95)
+    return mobj
+
+`);
+
   parts.push(`
 
 # ========================================
@@ -2010,57 +2221,60 @@ def position_in_zone(mobject, zone, alignment="center", padding=0.3, fit_to_zone
     return mobject
 
 
-def create_side_by_side_layout(left_mobject, right_mobject, spacing=1.0, 
-                                left_weight=0.4, right_weight=0.6, center=None):
+def create_side_by_side_layout(left_mobject, right_mobject, spacing=2.0, 
+                                left_weight=0.45, right_weight=0.55, center=None):
     """
-    Create a side-by-side layout with proper spacing and no overlaps.
+    Create a side-by-side layout with GENEROUS spacing and no overlaps.
     Perfect for bullet points + diagram layouts.
     
     Args:
         left_mobject: Mobject for left side (typically bullet points)
         right_mobject: Mobject for right side (typically diagram)
-        spacing: Minimum horizontal spacing between the two
+        spacing: Minimum horizontal spacing between the two (default 2.0 for safety)
         left_weight: Proportion of width for left side (0-1)
         right_weight: Proportion of width for right side (0-1)
         center: Target center position (defaults to content center)
     
     Returns:
-        VGroup containing both mobjects
+        VGroup containing both mobjects with guaranteed separation
     """
     # Calculate available space
     total_width = MAX_CONTENT_WIDTH
     total_height = MAX_CONTENT_HEIGHT
     
-    # Calculate zone widths
-    left_width = total_width * left_weight - spacing / 2
-    right_width = total_width * right_weight - spacing / 2
+    # Enforce minimum spacing
+    spacing = max(spacing, 2.0)
     
-    # Fit each mobject to its zone with generous margins
+    # Calculate zone widths with extra margin for spacing
+    left_width = total_width * left_weight - spacing
+    right_width = total_width * right_weight - spacing
+    
+    # Fit each mobject to its zone with generous margins (90% to leave room)
     try:
-        if left_mobject.width > left_width:
-            left_mobject.scale(left_width / left_mobject.width * 0.98)
-        if left_mobject.height > total_height:
-            left_mobject.scale(total_height / left_mobject.height * 0.98)
+        if left_mobject.width > left_width * 0.9:
+            left_mobject.scale((left_width * 0.9) / left_mobject.width)
+        if left_mobject.height > total_height * 0.85:
+            left_mobject.scale((total_height * 0.85) / left_mobject.height)
             
-        if right_mobject.width > right_width:
-            right_mobject.scale(right_width / right_mobject.width * 0.98)
-        if right_mobject.height > total_height:
-            right_mobject.scale(total_height / right_mobject.height * 0.98)
+        if right_mobject.width > right_width * 0.9:
+            right_mobject.scale((right_width * 0.9) / right_mobject.width)
+        if right_mobject.height > total_height * 0.85:
+            right_mobject.scale((total_height * 0.85) / right_mobject.height)
     except (AttributeError, ZeroDivisionError):
         pass
     
-    # Position left mobject
-    left_x = -total_width / 2 + left_width / 2
+    # Position left mobject with extra clearance
+    left_x = -total_width / 2 + left_width / 2 + spacing / 4
     left_mobject.move_to(np.array([left_x, 0, 0]))
     
-    # Position right mobject
-    right_x = total_width / 2 - right_width / 2
+    # Position right mobject with extra clearance
+    right_x = total_width / 2 - right_width / 2 - spacing / 4
     right_mobject.move_to(np.array([right_x, 0, 0]))
     
-    # Ensure minimum spacing
+    # Ensure minimum spacing - push apart if needed
     actual_gap = right_mobject.get_left()[0] - left_mobject.get_right()[0]
     if actual_gap < spacing:
-        adjustment = (spacing - actual_gap) / 2
+        adjustment = (spacing - actual_gap) / 2 + 0.2  # Extra push for safety
         left_mobject.shift(LEFT * adjustment)
         right_mobject.shift(RIGHT * adjustment)
     
@@ -2073,21 +2287,21 @@ def create_side_by_side_layout(left_mobject, right_mobject, spacing=1.0,
     group.move_to(center)
     
     # Final validation with generous margins
-    ensure_fits_screen(group, safety_margin=0.98)
+    ensure_fits_screen(group, safety_margin=0.95)
     validate_position(group, "side-by-side layout", auto_fix=True)
     
     return group
 
 
-def create_top_bottom_layout(top_mobject, bottom_mobject, spacing=1.0,
-                              top_weight=0.5, bottom_weight=0.5, center=None):
+def create_top_bottom_layout(top_mobject, bottom_mobject, spacing=1.5,
+                              top_weight=0.45, bottom_weight=0.55, center=None):
     """
-    Create a top-bottom layout with proper spacing and no overlaps.
+    Create a top-bottom layout with GENEROUS spacing and no overlaps.
     
     Args:
         top_mobject: Mobject for top section
         bottom_mobject: Mobject for bottom section
-        spacing: Minimum vertical spacing between the two
+        spacing: Minimum vertical spacing between the two (default 1.5)
         top_weight: Proportion of height for top (0-1)
         bottom_weight: Proportion of height for bottom (0-1)
         center: Target center position (defaults to content center)
