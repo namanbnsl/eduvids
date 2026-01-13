@@ -108,6 +108,77 @@ CRITICAL REQUIREMENTS
 5. MATCH NARRATION TO SCRIPT - the text in voiceover blocks should follow the voiceover script
 
 ═══════════════════════════════════════════════════════════════════════════════
+🚫 THINGS YOU MUST NEVER DO (MEMORIZE THIS LIST)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. ❌ NEVER use move_to(ORIGIN) or move_to(get_content_center()) for multiple objects
+   → They will ALL go to the same spot and overlap!
+   → Use: .next_to(other_object, DOWN, buff=0.5) instead
+
+2. ❌ NEVER create more than 3 bullet points per scene
+   → Use multiple scenes for more content
+   → BAD: create_bullet_list(["A", "B", "C", "D", "E"])
+   → GOOD: create_bullet_list(["A", "B", "C"]) then new scene for D, E
+
+3. ❌ NEVER skip FadeOut between showing different content
+   → ALWAYS clear old content before adding new content
+   → BAD: self.play(FadeIn(new_content))
+   → GOOD: self.play(FadeOut(old_content)); self.play(FadeIn(new_content))
+
+4. ❌ NEVER use font_size > 46 for any text
+   → Large fonts overflow the screen
+   → Use: FONT_TITLE (max), FONT_BODY, FONT_CAPTION
+
+5. ❌ NEVER place labels inside shapes - they will overlap!
+   → Use .next_to(shape, UP, buff=0.5) to place labels OUTSIDE
+   → ALWAYS include buff=0.5 or higher
+
+6. ❌ NEVER have text longer than 40 characters without line breaks
+   → Split long text across multiple lines
+   → Or use auto_break_long_text() helper
+
+7. ❌ NEVER forget buff= in .next_to() calls
+   → BAD: label.next_to(shape, UP)
+   → GOOD: label.next_to(shape, UP, buff=0.5)
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 SIMPLE TEMPLATES (COPY THESE EXACTLY)
+═══════════════════════════════════════════════════════════════════════════════
+
+TEMPLATE 1: Title Only
+    title = create_title("Your Title Here")
+    self.play(Write(title), run_time=1.0)
+    self.wait(0.5)
+
+TEMPLATE 2: Title + Diagram (ALWAYS fade out title first!)
+    self.play(FadeOut(previous_stuff))
+    diagram = VGroup(...)
+    diagram = simple_center(diagram)  # Auto-centers and fits
+    self.play(Create(diagram), run_time=1.5)
+
+TEMPLATE 3: Bullet Points (MAX 3!)
+    bullets = create_bullet_list_mixed(["Point 1", "Point 2", "Point 3"])
+    bullets.move_to(get_content_center())
+    ensure_fits_screen(bullets)
+    self.play(FadeIn(bullets, shift=UP*0.3), run_time=1.0)
+
+TEMPLATE 4: Side-by-Side (text left, diagram right) - BEST for avoiding overlap!
+    layout = simple_two_column(text_group, diagram_group)
+    self.play(FadeIn(layout), run_time=1.2)
+
+TEMPLATE 5: Title + Content Together
+    layout = simple_title_content("My Title", my_content)
+    self.play(FadeIn(layout), run_time=1.2)
+
+TEMPLATE 6: Clear Screen Before New Content
+    # Store in a VGroup first:
+    scene_content = VGroup(title, diagram, label)
+    # Then clear it all:
+    self.play(FadeOut(scene_content))
+    # Now safe to add new content
+
+
+═══════════════════════════════════════════════════════════════════════════════
 🚨 OVERLAP PREVENTION - CRITICAL (READ CAREFULLY) 🚨
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -271,6 +342,12 @@ VISUALIZATION PRINCIPLES:
 LAYOUT HELPERS (auto-injected, use these!)
 ═══════════════════════════════════════════════════════════════════════════════
 
+🌟 SIMPLE ONE-LINER LAYOUTS (RECOMMENDED - these prevent most errors!):
+- simple_title_content(title, content): Title at top, content below - auto-spaced
+- simple_two_column(left, right): Side-by-side layout - BEST for text+diagram
+- simple_stack(*mobjects): Stack vertically - auto-fits and spaces
+- simple_center(mobject): Centers and auto-scales to fit screen
+
 Position Helpers:
 - get_title_position(): Safe position for titles at top
 - get_content_center(): Safe center position for main content
@@ -279,6 +356,7 @@ Position Helpers:
 Fitting Helpers:
 - ensure_fits_screen(mobject): Auto-scales mobject to fit in viewport - USE THIS!
 - validate_position(mobject, "label"): Checks if mobject is within bounds
+- auto_break_long_text(text, max_chars=40): Breaks long text into lines
 
 Text Creation (FLEXIBLE - chooses Text vs MathTex automatically):
 - create_label(text, style="body", is_math=None): Smart text - auto-detects math
@@ -287,14 +365,16 @@ Text Creation (FLEXIBLE - chooses Text vs MathTex automatically):
 - create_plain_text(text): Creates Text (never LaTeX)
 - create_bullet_list_mixed(items): Bullet list with auto math detection
 
-Layout Helpers (USE THESE TO PREVENT OVERLAPS):
-- create_side_by_side_layout(left, right, spacing=1.5): Two-column layout - BEST for text+diagram
+Layout Helpers:
+- create_side_by_side_layout(left, right, spacing=1.5): Two-column layout
 - create_top_bottom_layout(top, bottom, spacing=1.5): Stacked layout
-- create_bulletproof_layout(*items, layout_type="vertical"): Guaranteed no-overlap layout
+- create_bulletproof_layout(*items, layout_type="vertical"): Guaranteed no-overlap
 - ensure_no_overlap(mobject_a, mobject_b, min_gap=1.0): Push apart if overlapping
+- limit_visible_elements(mobjects, max=5): Cap elements to prevent crowding
 
 Font Size Constants (use these, not hardcoded values):
 - FONT_TITLE, FONT_HEADING, FONT_BODY, FONT_MATH, FONT_CAPTION, FONT_LABEL
+
 
 ═══════════════════════════════════════════════════════════════════════════════
 TEXT RENDERING

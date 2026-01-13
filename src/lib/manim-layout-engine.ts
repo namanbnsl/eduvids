@@ -411,10 +411,10 @@ export function getRecommendedFontSizes(
     contentType === "text-heavy"
       ? 1.05
       : contentType === "diagram"
-      ? 1.1 // Larger fonts for diagrams (labels need to be visible)
-      : contentType === "math"
-      ? 1.08
-      : 1.0;
+        ? 1.1 // Larger fonts for diagrams (labels need to be visible)
+        : contentType === "math"
+          ? 1.08
+          : 1.0;
 
   // Calculate base body size with simplified formula
   const baseBody = clampFont(
@@ -612,12 +612,12 @@ export function generateLayoutSetup(
   parts.push(generateSafeZoneConstants(config));
   parts.push(
     [
-      'config.background_color = "#1E1E1E"',  // Dark Grey - Standard Dark
-      'BRIGHT_TEXT_COLOR = "#F8FAFC"',        // Slate 50
-      'DARK_TEXT_COLOR = "#020617"',          // Slate 950
-      'CONTRAST_DARK_PANEL = "#1C2E4A"',      // Dark Blue Panel
-      'CONTRAST_LIGHT_PANEL = "#F1F5F9"',     // Slate 100
-      "MIN_CONTRAST_RATIO = 5.5",             // Increased for better readability
+      'config.background_color = "#1E1E1E"', // Dark Grey - Standard Dark
+      'BRIGHT_TEXT_COLOR = "#F8FAFC"', // Slate 50
+      'DARK_TEXT_COLOR = "#020617"', // Slate 950
+      'CONTRAST_DARK_PANEL = "#1C2E4A"', // Dark Blue Panel
+      'CONTRAST_LIGHT_PANEL = "#F1F5F9"', // Slate 100
+      "MIN_CONTRAST_RATIO = 5.5", // Increased for better readability
       "MIN_PANEL_FILL_OPACITY = 0.95",
       "DEFAULT_PANEL_PADDING = 0.5",
       'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F1F5F9", "#E2E8F0"]',
@@ -660,6 +660,296 @@ def normalize_math_mobject(math_mobject, max_width_ratio=0.65, max_height_ratio=
     ensure_fits_width(math_mobject, max_width=safe_width * max_width_ratio)
     ensure_fits_height(math_mobject, max_height=safe_height * max_height_ratio)
     return math_mobject
+
+
+# ========================================
+# CHARACTER LIMITS FOR READABLE TEXT
+# ========================================
+CHAR_LIMIT_TITLE = 25      # Max chars per line for titles
+CHAR_LIMIT_HEADING = 35    # Max chars per line for headings
+CHAR_LIMIT_BODY = 45       # Max chars per line for body text
+CHAR_LIMIT_CAPTION = 55    # Max chars per line for captions
+MAX_BULLETS_PER_SCENE = 3  # Maximum bullet points in a single scene
+MAX_ELEMENTS_ON_SCREEN = 5 # Maximum total elements visible at once
+
+
+def auto_break_long_text(text, max_chars_per_line=40):
+    """
+    Automatically break long text into multiple lines for better readability.
+    Returns text with line breaks inserted.
+    """
+    if not text or len(text) <= max_chars_per_line:
+        return text
+    
+    words = text.split()
+    lines = []
+    current_line = []
+    current_length = 0
+    
+    for word in words:
+        word_len = len(word)
+        if current_length + word_len + 1 > max_chars_per_line and current_line:
+            lines.append(' '.join(current_line))
+            current_line = [word]
+            current_length = word_len
+        else:
+            current_line.append(word)
+            current_length += word_len + (1 if current_line else 0)
+    
+    if current_line:
+        lines.append(' '.join(current_line))
+    
+    return '\\n'.join(lines)
+
+
+# ========================================
+# CONTENT DENSITY ANALYZER
+# ========================================
+
+def analyze_content_density(mobjects):
+    """
+    Analyze scene complexity and recommend scaling.
+    Call this BEFORE adding mobjects to detect overcrowding.
+    
+    Returns:
+        dict with 'action', 'factor', 'reason', 'recommendation'
+    """
+    if not mobjects:
+        return {"action": "none", "factor": 1.0, "reason": "empty scene", "recommendation": None}
+    
+    items = [m for m in mobjects if m is not None and hasattr(m, 'width') and hasattr(m, 'height')]
+    
+    if not items:
+        return {"action": "none", "factor": 1.0, "reason": "no measurable objects", "recommendation": None}
+    
+    # Calculate total content area
+    total_area = sum(m.width * m.height for m in items)
+    safe_area = MAX_CONTENT_WIDTH * MAX_CONTENT_HEIGHT
+    
+    if safe_area <= 0:
+        return {"action": "none", "factor": 1.0, "reason": "invalid safe area", "recommendation": None}
+    
+    density = total_area / safe_area
+    element_count = len(items)
+    
+    # Check for overcrowding
+    if element_count > MAX_ELEMENTS_ON_SCREEN:
+        return {
+            "action": "reduce_elements",
+            "factor": 0.7,
+            "reason": f"too many elements ({element_count})",
+            "recommendation": f"Reduce to {MAX_ELEMENTS_ON_SCREEN} or fewer elements"
+        }
+    
+    if density > 1.5:
+        return {
+            "action": "scale_down",
+            "factor": 0.65,
+            "reason": "very high density",
+            "recommendation": "Scale all elements to 65% or split into multiple scenes"
+        }
+    elif density > 1.0:
+        return {
+            "action": "scale_down",
+            "factor": 0.8,
+            "reason": "high density",
+            "recommendation": "Scale all elements to 80%"
+        }
+    elif density > 0.7:
+        return {
+            "action": "scale_down",
+            "factor": 0.9,
+            "reason": "moderate density",
+            "recommendation": "Consider scaling to 90% for better spacing"
+        }
+    
+    return {"action": "none", "factor": 1.0, "reason": "good density", "recommendation": None}
+
+
+def auto_fix_density(mobjects, target_density=0.6):
+    """
+    Automatically scale mobjects to achieve target density.
+    Call this to fix overcrowded scenes.
+    """
+    analysis = analyze_content_density(mobjects)
+    
+    if analysis["action"] == "none":
+        return mobjects
+    
+    factor = analysis["factor"]
+    print(f"[LAYOUT ENGINE] Auto-fixing density: {analysis['reason']} - scaling by {factor}")
+    
+    for m in mobjects:
+        if m is not None and hasattr(m, 'scale'):
+            try:
+                m.scale(factor)
+            except Exception:
+                pass
+    
+    return mobjects
+
+
+def limit_visible_elements(mobjects, max_elements=MAX_ELEMENTS_ON_SCREEN, prioritize="first"):
+    """
+    Limit visible elements to prevent overcrowding.
+    
+    Args:
+        mobjects: List of mobjects
+        max_elements: Maximum number to keep
+        prioritize: "first" (keep first N), "last" (keep last N), or "largest" (keep largest N)
+    
+    Returns:
+        Filtered list of mobjects (capped at max_elements)
+    """
+    items = [m for m in (mobjects or []) if m is not None]
+    
+    if len(items) <= max_elements:
+        return items
+    
+    print(f"[LAYOUT ENGINE] Limiting elements from {len(items)} to {max_elements}")
+    
+    if prioritize == "first":
+        return items[:max_elements]
+    elif prioritize == "last":
+        return items[-max_elements:]
+    elif prioritize == "largest":
+        # Sort by area, keep largest
+        def get_area(m):
+            try:
+                return m.width * m.height
+            except (AttributeError, TypeError):
+                return 0
+        sorted_items = sorted(items, key=get_area, reverse=True)
+        return sorted_items[:max_elements]
+    
+    return items[:max_elements]
+
+
+# ========================================
+# SIMPLE ONE-LINER LAYOUT WRAPPERS
+# ========================================
+
+def simple_title_content(title_text, content_mobject, title_color=WHITE, spacing=None):
+    """
+    ONE-LINER: Create title + content layout with guaranteed spacing.
+    Use this instead of manually positioning title and content.
+    
+    Example:
+        layout = simple_title_content("My Title", my_diagram)
+        self.play(FadeIn(layout))
+    """
+    from manim import VGroup, DOWN
+    
+    # Create title
+    title = create_label(title_text, style="title", color=title_color)
+    title.move_to(get_title_position())
+    
+    # Ensure title fits
+    ensure_fits_width(title, max_width=MAX_CONTENT_WIDTH * 0.95)
+    
+    # Calculate spacing
+    if spacing is None:
+        spacing = SAFE_SPACING_MIN * 1.2
+    
+    # Calculate available space for content
+    title_bottom = title.get_bottom()[1]
+    content_top = FRAME_HEIGHT/2 - SAFE_MARGIN_TOP - TITLE_ZONE_HEIGHT - spacing
+    available_height = content_top - (-FRAME_HEIGHT/2 + SAFE_MARGIN_BOTTOM + SAFE_BOTTOM_ZONE)
+    
+    # Fit content to available space
+    try:
+        if content_mobject.height > available_height * 0.9:
+            content_mobject.scale((available_height * 0.9) / content_mobject.height)
+        if content_mobject.width > MAX_CONTENT_WIDTH * 0.95:
+            content_mobject.scale((MAX_CONTENT_WIDTH * 0.95) / content_mobject.width)
+    except (AttributeError, ZeroDivisionError):
+        pass
+    
+    # Position content below title
+    content_mobject.next_to(title, DOWN, buff=spacing)
+    
+    # Final fit check
+    group = VGroup(title, content_mobject)
+    ensure_fits_screen(group, safety_margin=0.95)
+    
+    return group
+
+
+def simple_two_column(left_mobject, right_mobject, spacing=2.0):
+    """
+    ONE-LINER: Two column layout with auto-spacing.
+    Perfect for bullet points on left, diagram on right.
+    
+    Example:
+        layout = simple_two_column(bullets, diagram)
+        self.play(FadeIn(layout))
+    """
+    return create_side_by_side_layout(left_mobject, right_mobject, spacing=spacing)
+
+
+def simple_stack(*mobjects, spacing=1.2):
+    """
+    ONE-LINER: Stack mobjects vertically with auto-spacing.
+    Automatically fits to screen and prevents overlaps.
+    
+    Example:
+        layout = simple_stack(title, equation, explanation)
+        self.play(FadeIn(layout))
+    """
+    from manim import VGroup, DOWN
+    
+    items = [m for m in mobjects if m is not None]
+    if not items:
+        return VGroup()
+    
+    # Limit to prevent overcrowding
+    if len(items) > MAX_ELEMENTS_ON_SCREEN:
+        print(f"[LAYOUT ENGINE] simple_stack: limiting from {len(items)} to {MAX_ELEMENTS_ON_SCREEN}")
+        items = items[:MAX_ELEMENTS_ON_SCREEN]
+    
+    # Pre-fit each item
+    max_height_per_item = (MAX_CONTENT_HEIGHT - spacing * (len(items) - 1)) / len(items)
+    for item in items:
+        try:
+            if item.height > max_height_per_item * 0.95:
+                item.scale((max_height_per_item * 0.95) / item.height)
+            if item.width > MAX_CONTENT_WIDTH * 0.95:
+                item.scale((MAX_CONTENT_WIDTH * 0.95) / item.width)
+        except (AttributeError, ZeroDivisionError):
+            continue
+    
+    # Arrange vertically
+    group = VGroup(*items)
+    group.arrange(DOWN, buff=spacing)
+    
+    # Position at content center
+    group.move_to(get_content_center())
+    
+    # Final validation
+    ensure_fits_screen(group, safety_margin=0.95)
+    
+    return group
+
+
+def simple_center(mobject, scale_to_fit=True):
+    """
+    ONE-LINER: Center a mobject safely with optional auto-scaling.
+    
+    Example:
+        diagram = simple_center(my_diagram)
+        self.play(Create(diagram))
+    """
+    if mobject is None:
+        return mobject
+    
+    if scale_to_fit:
+        ensure_fits_screen(mobject, safety_margin=0.9)
+    
+    mobject.move_to(get_content_center())
+    
+    return mobject
+
+
 
 
 def enforce_min_gap(mobjects, min_gap=2.0, max_iterations=20, aggressive=True):

@@ -537,6 +537,138 @@ function runHeuristicChecks(
     }
   }
 
+  // Check for position conflicts - multiple objects at same position
+  const POSITION_CONFLICT_PATTERNS = [
+    // Multiple move_to(ORIGIN)
+    /\.move_to\s*\(\s*ORIGIN\s*\)[\s\S]{10,300}\.move_to\s*\(\s*ORIGIN\s*\)/,
+    // Multiple move_to(get_content_center())
+    /\.move_to\s*\(\s*get_content_center\s*\(\s*\)\s*\)[\s\S]{10,300}\.move_to\s*\(\s*get_content_center\s*\(\s*\)\s*\)/,
+    // Multiple objects to same coordinate
+    /\.move_to\s*\(\s*\[?\s*0\s*,\s*0[\s\S]{10,300}\.move_to\s*\(\s*\[?\s*0\s*,\s*0/,
+  ];
+
+  for (const pattern of POSITION_CONFLICT_PATTERNS) {
+    if (pattern.test(normalized)) {
+      issues.push({
+        message:
+          "❌ Position conflict detected: Multiple objects placed at the same position (ORIGIN or get_content_center()). Use .next_to() or different positions to prevent overlap.",
+        severity: "fixable",
+      });
+      break;
+    }
+  }
+
+  // Check for missing FadeOut before new content
+  // Detect self.play(FadeIn/Create/Write) without FadeOut in between
+  const FADEOUT_CHECK =
+    /self\.play\s*\(\s*(?:FadeIn|Create|Write)\s*\([^)]+\)[\s\S]{0,50}\)\s*[\s\S]{50,500}self\.play\s*\(\s*(?:FadeIn|Create|Write)\s*\([^)]+\)/;
+  if (FADEOUT_CHECK.test(normalized)) {
+    // Count occurrences of FadeOut vs FadeIn/Create/Write
+    const fadeOutCount = (normalized.match(/FadeOut\s*\(/g) || []).length;
+    const contentAddCount = (
+      normalized.match(/(?:FadeIn|Create|Write)\s*\(/g) || []
+    ).length;
+
+    // If significantly more content adds than fadeouts, flag it
+    if (contentAddCount > fadeOutCount + 2) {
+      issues.push({
+        message:
+          "❌ Potential overlap: Multiple FadeIn/Create/Write animations without corresponding FadeOut. Call self.play(FadeOut(old_content)) before adding new content to prevent overlap.",
+        severity: "fixable",
+      });
+    }
+  }
+
+  // Check for too many bullet points
+  const BULLET_LIST_PATTERNS = [
+    /create_bullet_list\s*\(\s*\[\s*(?:[^[\]]*,){4,}/, // More than 4 items in create_bullet_list
+    /create_bullet_list_mixed\s*\(\s*\[\s*(?:[^[\]]*,){4,}/, // More than 4 items
+    /BulletedList\s*\(\s*(?:[^)]*,){4,}/, // More than 4 items in BulletedList
+  ];
+
+  for (const pattern of BULLET_LIST_PATTERNS) {
+    if (pattern.test(normalized)) {
+      issues.push({
+        message:
+          "❌ Too many bullet points detected (more than 4). Limit to 3 bullet points per scene and use multiple scenes for more content. This prevents overcrowding.",
+        severity: "fixable",
+      });
+      break;
+    }
+  }
+
+  // Check for very long text strings that would overflow
+  const LONG_TEXT_PATTERN =
+    /(?:Text|create_label|create_title)\s*\(\s*['"]([\s\S]{60,}?)['"]/g;
+  let longTextMatch: RegExpExecArray | null;
+  while ((longTextMatch = LONG_TEXT_PATTERN.exec(normalized)) !== null) {
+    const textContent = longTextMatch[1];
+    if (
+      textContent &&
+      textContent.length > 50 &&
+      !textContent.includes("\\n")
+    ) {
+      issues.push({
+        message: `❌ Very long text string detected (${textContent.length} chars) without line breaks. Text over 40 characters should include line breaks or use auto_break_long_text() to prevent overflow.`,
+        severity: "fixable",
+      });
+      break;
+    }
+  }
+
+  // Check for missing buff parameter in next_to calls
+  const MISSING_BUFF_PATTERN =
+    /\.next_to\s*\(\s*[^,]+,\s*(?:UP|DOWN|LEFT|RIGHT|UL|UR|DL|DR)\s*\)/;
+  if (MISSING_BUFF_PATTERN.test(normalized)) {
+    issues.push({
+      message:
+        "❌ Missing buff parameter in .next_to() call. Always use .next_to(target, DIR, buff=0.5) to ensure proper spacing and prevent overlap.",
+      severity: "fixable",
+    });
+  }
+
+  // Check for unclosed brackets/parentheses in common patterns
+  const checkBracketBalance = (
+    str: string,
+    open: string,
+    close: string
+  ): boolean => {
+    let count = 0;
+    for (const char of str) {
+      if (char === open) count++;
+      if (char === close) count--;
+      if (count < 0) return false; // More closes than opens
+    }
+    return count === 0;
+  };
+
+  if (!checkBracketBalance(stripped, "(", ")")) {
+    issues.push({
+      message:
+        "❌ Unbalanced parentheses detected. Check that all ( have matching ).",
+      severity: "fixable",
+    });
+  }
+
+  if (!checkBracketBalance(stripped, "[", "]")) {
+    issues.push({
+      message:
+        "❌ Unbalanced square brackets detected. Check that all [ have matching ].",
+      severity: "fixable",
+    });
+  }
+
+  // Check for static scenes (no self.play calls)
+  const playCount = (normalized.match(/self\.play\s*\(/g) || []).length;
+  const waitCount = (normalized.match(/self\.wait\s*\(/g) || []).length;
+  if (playCount === 0 && normalized.includes("def construct")) {
+    issues.push({
+      message:
+        "❌ No animations detected (no self.play() calls). Manim videos require animations. Use self.play(Write(...)), self.play(Create(...)), or self.play(FadeIn(...)).",
+      severity: "fixable",
+    });
+  }
+
   const FONT_SIZE_PATTERN = /font_size\s*=\s*([0-9]+(?:\.[0-9]+)?)/g;
   const ALLOWED_FONT_SIZES = [20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 46];
   const TEXT_CONSTRUCTOR_PATTERN =
