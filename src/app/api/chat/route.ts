@@ -81,6 +81,10 @@ export async function POST(req: Request) {
 
           // Dispatch background job to Upstash Workflow
           await workflowClient.trigger({
+            headers: {
+              "x-vercel-protection-bypass":
+                process.env.VERCEL_AUTOMATION_BYPASS_SECRET!,
+            },
             url: `${getBaseUrl()}/api/workflow/generate-video`,
             body: {
               prompt: description,

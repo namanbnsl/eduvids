@@ -436,6 +436,10 @@ export const { POST } = serve<VideoGenerationPayload>(
     // Step 8: Trigger YouTube upload workflow
     await context.run("trigger-youtube-upload", async () => {
       await workflowClient.trigger({
+        headers: {
+          "x-vercel-protection-bypass":
+            process.env.VERCEL_AUTOMATION_BYPASS_SECRET!,
+        },
         url: `${getBaseUrl()}/api/workflow/upload-youtube`,
         body: {
           videoUrl: uploadUrl,

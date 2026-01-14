@@ -54,6 +54,10 @@ export const { POST } = serve<YouTubeUploadPayload>(
     // Trigger X (Twitter) post workflow
     await context.run("trigger-x-upload", async () => {
       await workflowClient.trigger({
+        headers: {
+          "x-vercel-protection-bypass":
+            process.env.VERCEL_AUTOMATION_BYPASS_SECRET!,
+        },
         url: `${getBaseUrl()}/api/workflow/upload-x`,
         body: {
           videoUrl: youtubeResult.watchUrl,

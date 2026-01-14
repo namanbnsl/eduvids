@@ -2,6 +2,9 @@ import { Client } from "@upstash/workflow";
 
 export const workflowClient = new Client({
   token: process.env.QSTASH_TOKEN!,
+  headers: {
+    "x-vercel-protection-bypass": process.env.VERCEL_AUTOMATION_BYPASS_SECRET!,
+  },
 });
 
 export const getBaseUrl = () => {
