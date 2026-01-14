@@ -3,7 +3,7 @@ import { SYSTEM_PROMPT } from "@/prompt";
 import { z } from "zod";
 import { jobStore } from "@/lib/job-store";
 import { GROQ_MODEL_IDS, selectGroqModel } from "@/lib/groq-provider";
-import { workflowClient, getBaseUrl } from "@/lib/workflow/client";
+import { workflowClient, getBaseUrl, getTriggerHeaders } from "@/lib/workflow/client";
 
 export const maxDuration = 120;
 
@@ -81,10 +81,7 @@ export async function POST(req: Request) {
 
           // Dispatch background job to Upstash Workflow
           await workflowClient.trigger({
-            headers: {
-              "x-vercel-protection-bypass":
-                process.env.VERCEL_AUTOMATION_BYPASS_SECRET!,
-            },
+            headers: getTriggerHeaders(),
             url: `${getBaseUrl()}/api/workflow/generate-video`,
             body: {
               prompt: description,

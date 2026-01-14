@@ -1,5 +1,6 @@
 import { serve } from "@upstash/workflow/nextjs";
 import { TwitterApi } from "twitter-api-v2";
+import { qstashClientWithBypass } from "@/lib/workflow/client";
 
 type XUploadPayload = {
   videoUrl: string;
@@ -27,5 +28,6 @@ export const { POST } = serve<XUploadPayload>(
   },
   {
     retries: 2,
+    qstashClient: qstashClientWithBypass,
   }
 );

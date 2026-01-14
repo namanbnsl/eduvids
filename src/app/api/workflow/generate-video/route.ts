@@ -20,7 +20,7 @@ import {
   updateJobProgress,
   stageToJobUpdate,
 } from "@/lib/workflow/utils/progress";
-import { workflowClient, getBaseUrl } from "@/lib/workflow/client";
+import { workflowClient, getBaseUrl, qstashClientWithBypass, getTriggerHeaders } from "@/lib/workflow/client";
 
 import type {
   VideoGenerationPayload,
@@ -436,10 +436,7 @@ export const { POST } = serve<VideoGenerationPayload>(
     // Step 8: Trigger YouTube upload workflow
     await context.run("trigger-youtube-upload", async () => {
       await workflowClient.trigger({
-        headers: {
-          "x-vercel-protection-bypass":
-            process.env.VERCEL_AUTOMATION_BYPASS_SECRET!,
-        },
+        headers: getTriggerHeaders(),
         url: `${getBaseUrl()}/api/workflow/upload-youtube`,
         body: {
           videoUrl: uploadUrl,
@@ -468,6 +465,7 @@ export const { POST } = serve<VideoGenerationPayload>(
   },
   {
     retries: 0,
+    qstashClient: qstashClientWithBypass,
     failureFunction: async ({ context, failStatus, failResponse }) => {
       const { jobId } = context.requestPayload;
       console.error("Workflow failed:", { failStatus, failResponse });

@@ -2,7 +2,7 @@ import { serve } from "@upstash/workflow/nextjs";
 
 import { uploadToYouTube } from "@/lib/youtube";
 import { jobStore } from "@/lib/job-store";
-import { workflowClient, getBaseUrl } from "@/lib/workflow/client";
+import { workflowClient, getBaseUrl, qstashClientWithBypass, getTriggerHeaders } from "@/lib/workflow/client";
 
 import type { VideoVariant } from "@/lib/workflow/types";
 
@@ -54,10 +54,7 @@ export const { POST } = serve<YouTubeUploadPayload>(
     // Trigger X (Twitter) post workflow
     await context.run("trigger-x-upload", async () => {
       await workflowClient.trigger({
-        headers: {
-          "x-vercel-protection-bypass":
-            process.env.VERCEL_AUTOMATION_BYPASS_SECRET!,
-        },
+        headers: getTriggerHeaders(),
         url: `${getBaseUrl()}/api/workflow/upload-x`,
         body: {
           videoUrl: youtubeResult.watchUrl,
@@ -81,6 +78,7 @@ export const { POST } = serve<YouTubeUploadPayload>(
   },
   {
     retries: 2,
+    qstashClient: qstashClientWithBypass,
     failureFunction: async ({ context, failResponse }) => {
       const { jobId } = context.requestPayload;
       console.error("YouTube upload workflow failed:", failResponse);
