@@ -1,10 +1,9 @@
 import { streamText, UIMessage, convertToModelMessages, tool } from "ai";
 import { SYSTEM_PROMPT } from "@/prompt";
 import { z } from "zod";
-import { inngest } from "@/lib/inngest";
 import { jobStore } from "@/lib/job-store";
-import { createGoogleProvider } from "@/lib/google-provider";
-import { groq, GROQ_MODEL_IDS, selectGroqModel } from "@/lib/groq-provider";
+import { GROQ_MODEL_IDS, selectGroqModel } from "@/lib/groq-provider";
+import { workflowClient, getBaseUrl } from "@/lib/workflow/client";
 
 export const maxDuration = 120;
 
@@ -80,13 +79,13 @@ export async function POST(req: Request) {
             variant: inferredVariant,
           });
 
-          // Dispatch background job to Inngest, including jobId for status updates
-          await inngest.send({
-            name: "video/generate.request",
-            data: {
+          // Dispatch background job to Upstash Workflow
+          await workflowClient.trigger({
+            url: `${getBaseUrl()}/api/workflow/generate-video`,
+            body: {
               prompt: description,
               userId: "anonymous",
-              chatId: Date.now().toString(), // Generate a chat ID
+              chatId: Date.now().toString(),
               jobId: job.id,
               variant: inferredVariant,
             },
