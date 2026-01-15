@@ -253,11 +253,13 @@ const truncate = (value: string, max = 2000) => {
 
 export interface VoiceoverScriptRequest {
   prompt: string;
+  sessionId: string;
 }
 
 export interface ManimScriptRequest {
   prompt: string;
   voiceoverScript: string;
+  sessionId: string;
 }
 
 export interface ManimScript {
@@ -279,10 +281,12 @@ export interface ManimGenerationAttempt {
   attemptNumber: number;
   script: string;
   error: ManimGenerationErrorDetails;
+  sessionId: string;
 }
 
 export async function generateVoiceoverScript({
   prompt,
+  sessionId,
 }: VoiceoverScriptRequest): Promise<string> {
   const systemPrompt = VOICEOVER_SYSTEM_PROMPT;
 
@@ -339,7 +343,9 @@ export async function generateVoiceoverScript({
   const model = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
 
   const { text } = await generateText({
-    model: withTracing(model, phClient, {}),
+    model: withTracing(model, phClient, {
+      posthogProperties: { $ai_session_id: sessionId },
+    }),
     system: systemPrompt,
     prompt: composedPrompt,
     temperature: 0.7,
@@ -351,6 +357,7 @@ export async function generateVoiceoverScript({
 export async function generateManimScript({
   prompt,
   voiceoverScript,
+  sessionId,
 }: ManimScriptRequest): Promise<string> {
   // Detect language from voiceover script using LLM
   const detectedLanguage = await detectLanguage(voiceoverScript);
@@ -367,7 +374,7 @@ export async function generateManimScript({
     const model = withTracing(
       googleModel.provider(googleModel.modelId),
       phClient,
-      {}
+      { posthogProperties: { $ai_session_id: sessionId } }
     );
 
     try {
@@ -402,7 +409,9 @@ export async function generateManimScript({
   const flashModel = createGoogleModel("gemini-2.5-flash");
   const { text: flashText } = await generateTextWithTracking(
     {
-      model: flashModel.provider(flashModel.modelId),
+      model: withTracing(flashModel.provider(flashModel.modelId), phClient, {
+        posthogProperties: { $ai_session_id: sessionId },
+      }),
       system: augmentedSystemPrompt,
       prompt: generationPrompt,
       temperature: 0.1,
@@ -433,13 +442,16 @@ export async function generateManimScript({
 export async function generateYoutubeTitle({
   prompt,
   voiceoverScript,
+  sessionId,
 }: ManimScriptRequest) {
   const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
 
   const systemPrompt =
     "You are a creative writer crafting clear, informative YouTube titles for educational videos. Keep it under 80 characters, avoid clickbait phrasing, and respond with only the final title—no quotes or extra text. Angled brackets are not allowed. Don't talk about the video duration since you don't know it.";
   const { text } = await generateText({
-    model: withTracing(model, phClient, {}),
+    model: withTracing(model, phClient, {
+      posthogProperties: { $ai_session_id: sessionId },
+    }),
     system: systemPrompt,
     prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite an informative YouTube title that clearly states the main topic or insight of the video, highlights the primary takeaway, avoids sensational language, and stays under 80 characters:`,
     temperature: 0.5,
@@ -451,13 +463,16 @@ export async function generateYoutubeTitle({
 export async function generateYoutubeDescription({
   prompt,
   voiceoverScript,
+  sessionId,
 }: ManimScriptRequest) {
   const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
 
   const systemPrompt =
     "You are a content strategist who writes concise, informative YouTube descriptions for educational videos. Summaries should explain what the video covers, avoid emojis, hashtags, and marketing language, and respond only with plain text. Angled brackets are not allowed. Don't talk about the video duration since you don't know it.";
   const { text } = await generateText({
-    model: withTracing(model, phClient, {}),
+    model: withTracing(model, phClient, {
+      posthogProperties: { $ai_session_id: sessionId },
+    }),
     system: systemPrompt,
     prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite a YouTube description that briefly introduces the topic, outlines the main concepts viewers will learn, references any notable examples or tools, stays concise, and does not copy the voiceover script verbatim:`,
     temperature: 0.5,
@@ -478,6 +493,7 @@ export interface RegenerateManimScriptRequest {
   forceRewrite?: boolean;
   forcedReason?: string;
   repeatedErrorCount?: number;
+  sessionId: string;
 }
 
 export async function regenerateManimScriptWithError({
@@ -492,6 +508,7 @@ export async function regenerateManimScriptWithError({
   forceRewrite = false,
   forcedReason,
   repeatedErrorCount = 0,
+  sessionId,
 }: RegenerateManimScriptRequest): Promise<string> {
   // Detect language from voiceover script using LLM
   const detectedLanguage = await detectLanguage(voiceoverScript);
@@ -744,7 +761,7 @@ OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
     const model = withTracing(
       googleModel.provider(googleModel.modelId),
       phClient,
-      {}
+      { posthogProperties: { $ai_session_id: sessionId } }
     );
 
     try {
@@ -779,7 +796,9 @@ OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
   const flashModel = createGoogleModel("gemini-2.5-flash");
   const { text: flashText } = await generateTextWithTracking(
     {
-      model: flashModel.provider(flashModel.modelId),
+      model: withTracing(flashModel.provider(flashModel.modelId), phClient, {
+        posthogProperties: { $ai_session_id: sessionId },
+      }),
       system: regenerationSystemPrompt,
       prompt: regenerationPrompt,
       temperature: 0.1,

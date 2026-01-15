@@ -69,40 +69,13 @@ export async function uploadToYouTube({
   const mediaBuffer = Buffer.from(arrayBuffer);
   const mediaBody = Readable.from(mediaBuffer);
 
-  // Generate title if not provided
-  let finalYoutubeTitle = title?.trim() ?? "";
-  try {
-    finalYoutubeTitle = await generateYoutubeTitle({
-      prompt,
-      voiceoverScript: voiceoverScript ?? "",
-    });
-
-    console.log("Generated AI YouTube title:", finalYoutubeTitle);
-  } catch (titleError) {
-    console.warn("Failed to generate AI title:", titleError);
-    finalYoutubeTitle = "AI-Generated Educational Video";
-  }
-
-  // Generate description if not provided
-  let finalDescription = description?.trim() ?? "";
-  try {
-    finalDescription = await generateYoutubeDescription({
-      prompt,
-      voiceoverScript: voiceoverScript ?? "",
-    });
-  } catch (error) {
-    console.warn("Failed to generate AI description:", error);
-    finalDescription =
-      "An AI-generated educational video created with eduvids.";
-  }
-
   const insertRes = await youtube.videos.insert({
     part: ["snippet", "status"],
     requestBody: {
       snippet: {
-        title: finalYoutubeTitle,
+        title: title,
         description:
-          finalDescription +
+          description +
           `\n\n Generate your own videos for free at https://eduvids.vercel.app`,
         tags,
         categoryId: "27",
@@ -125,6 +98,6 @@ export async function uploadToYouTube({
   return {
     videoId,
     watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
-    title: finalYoutubeTitle,
+    title: title,
   };
 }

@@ -1,14 +1,11 @@
-use large font size and scale down to get rid of weird letter spacing
-create RAG library
 move to 2d scene for last CTA scene
-create stack of all pending questions so videos are always eventually generated.
-edit script on the go
+larger font sizes on shorts: see https://www.youtube.com/watch?v=mwHYuZHvkTc
+create RAG library
 
 notification to be triggered on job and not video loaded.
 
-onboarding:
+authentication, storing chats
 
-- gradient colors don't work
-- give option to go back
-- show an example video for osme
-- the LLM should never be allowed to change the background of a video.
+create stack of all pending questions so videos are always eventually generated.
+edit script on the go
+search for information allowed.

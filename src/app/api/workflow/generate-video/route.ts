@@ -21,7 +21,12 @@ import {
   updateJobProgress,
   stageToJobUpdate,
 } from "@/lib/workflow/utils/progress";
-import { workflowClient, getBaseUrl, qstashClientWithBypass, getTriggerHeaders } from "@/lib/workflow/client";
+import {
+  workflowClient,
+  getBaseUrl,
+  qstashClientWithBypass,
+  getTriggerHeaders,
+} from "@/lib/workflow/client";
 
 import type {
   VideoGenerationPayload,
@@ -100,7 +105,10 @@ export const { POST } = serve<VideoGenerationPayload>(
           step: "Creating narration",
           details: "Writing script",
         });
-        return generateVoiceoverScript({ prompt: generationPrompt });
+        return generateVoiceoverScript({
+          prompt: generationPrompt,
+          sessionId: chatId,
+        });
       }
     );
 
@@ -125,6 +133,7 @@ export const { POST } = serve<VideoGenerationPayload>(
         return generateManimScript({
           prompt: generationPrompt,
           voiceoverScript,
+          sessionId: chatId,
         });
       }
     );
@@ -171,7 +180,8 @@ export const { POST } = serve<VideoGenerationPayload>(
     const seenScripts = new Set<string>();
     seenScripts.add(fingerprintScript(script));
 
-    let needsLLMFix = !autoFixResult.ok && autoFixResult.unfixableReasons.length > 0;
+    let needsLLMFix =
+      !autoFixResult.ok && autoFixResult.unfixableReasons.length > 0;
 
     for (
       let fixAttempt = 1;
@@ -209,6 +219,7 @@ export const { POST } = serve<VideoGenerationPayload>(
           attemptNumber: fixAttempt,
           attemptHistory: [],
           blockedScripts: Array.from(seenScripts),
+          sessionId: chatId,
         });
         return fixed.trim();
       });
@@ -220,9 +231,12 @@ export const { POST } = serve<VideoGenerationPayload>(
       }
 
       // Apply auto-fix to LLM-regenerated script as well
-      const reAutoFix = await context.run(`re-autofix-${fixAttempt}`, async () => {
-        return autoFixManimScript(script);
-      });
+      const reAutoFix = await context.run(
+        `re-autofix-${fixAttempt}`,
+        async () => {
+          return autoFixManimScript(script);
+        }
+      );
 
       if (reAutoFix.appliedFixes.length > 0) {
         console.log(
@@ -233,7 +247,9 @@ export const { POST } = serve<VideoGenerationPayload>(
       }
 
       if (reAutoFix.ok) {
-        console.log(`✅ Script passed after auto-fix on LLM attempt ${fixAttempt}`);
+        console.log(
+          `✅ Script passed after auto-fix on LLM attempt ${fixAttempt}`
+        );
         needsLLMFix = false;
         break;
       }
@@ -351,6 +367,7 @@ export const { POST } = serve<VideoGenerationPayload>(
         attemptNumber: renderAttempt,
         script,
         error: renderError,
+        sessionId: chatId,
       });
 
       if (failedAttempts.length > ATTEMPT_HISTORY_LIMIT) {
@@ -371,7 +388,11 @@ export const { POST } = serve<VideoGenerationPayload>(
             details: "Regenerating script",
           });
           const MAX_REGENERATION_RETRIES = 3;
-          for (let regenAttempt = 0; regenAttempt < MAX_REGENERATION_RETRIES; regenAttempt++) {
+          for (
+            let regenAttempt = 0;
+            regenAttempt < MAX_REGENERATION_RETRIES;
+            regenAttempt++
+          ) {
             const regenerated = await regenerateManimScriptWithError({
               prompt: generationPrompt,
               voiceoverScript,
@@ -381,12 +402,15 @@ export const { POST } = serve<VideoGenerationPayload>(
               attemptNumber: renderAttempt,
               attemptHistory: failedAttempts,
               blockedScripts: Array.from(blockedScripts.values()),
+              sessionId: chatId,
             });
             const trimmed = regenerated.trim();
             if (trimmed) {
               return trimmed;
             }
-            console.warn(`⚠️ Regeneration attempt ${regenAttempt + 1} returned empty, retrying...`);
+            console.warn(
+              `⚠️ Regeneration attempt ${regenAttempt + 1} returned empty, retrying...`
+            );
           }
           return "";
         }
@@ -440,6 +464,7 @@ export const { POST } = serve<VideoGenerationPayload>(
           title = await generateYoutubeTitle({
             prompt,
             voiceoverScript,
+            sessionId: chatId,
           });
         } catch (error) {
           console.warn("Failed to generate YouTube title:", error);
@@ -449,6 +474,7 @@ export const { POST } = serve<VideoGenerationPayload>(
           description = await generateYoutubeDescription({
             prompt,
             voiceoverScript,
+            sessionId: chatId,
           });
         } catch (error) {
           console.warn("Failed to generate YouTube description:", error);
