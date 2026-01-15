@@ -199,8 +199,8 @@ DEFAULT_FONT = "EB Garamond"
 # Manim's text rendering has letter spacing issues at normal font sizes.
 # FIX: Render slightly larger, then scale down for proper kerning.
 # Keep scaling modest to avoid width explosions and random line breaks.
-KERNING_FIX_THRESHOLD = 96    # Apply fix to normal UI font sizes only
-KERNING_FIX_SCALE = 3.0       # Scale up by 3x, then down by ~0.333x
+KERNING_FIX_THRESHOLD = 32    # Apply fix to normal UI font sizes only
+KERNING_FIX_SCALE = 8.0       # Scale up by 3x, then down by ~0.333x
 KERNING_FIX_LOG_ENABLED = True  # Enable development logging
 
 # Safe positioning helpers

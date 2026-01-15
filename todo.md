@@ -4,6 +4,8 @@ move to 2d scene for last CTA scene
 create stack of all pending questions so videos are always eventually generated.
 edit script on the go
 
+notification to be triggered on job and not video loaded.
+
 onboarding:
 
 - gradient colors don't work
