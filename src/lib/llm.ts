@@ -116,38 +116,6 @@ interface ManimReferenceDocs {
 
 let cachedManimDocs: ManimReferenceDocs | null = null;
 
-function loadManimReferenceDocs(): ManimReferenceDocs {
-  if (cachedManimDocs) {
-    return cachedManimDocs;
-  }
-
-  const docsDir = path.join(process.cwd(), "docs");
-  let markdown = "";
-  let json: unknown = {};
-
-  try {
-    markdown = fs.readFileSync(
-      path.join(docsDir, "MANIM_SHORT_REF.md"),
-      "utf8"
-    );
-  } catch {
-    markdown = "";
-  }
-
-  try {
-    const raw = fs.readFileSync(
-      path.join(docsDir, "MANIM_SHORT_REF.json"),
-      "utf8"
-    );
-    json = JSON.parse(raw) as unknown;
-  } catch {
-    json = {};
-  }
-
-  cachedManimDocs = { markdown, json };
-  return cachedManimDocs;
-}
-
 export async function detectLanguage(text: string): Promise<string> {
   try {
     if (!text || text.trim().length < 3) return "english";
@@ -208,7 +176,6 @@ Do not provide any explanation, just the language name.`,
 }
 
 function buildAugmentedSystemPrompt(base: string, language?: string): string {
-  // const { markdown } = loadManimReferenceDocs();
   let modifiedBase = base;
 
   // If language is not English, comprehensively modify the prompt to allow Text instead of requiring LaTeX
