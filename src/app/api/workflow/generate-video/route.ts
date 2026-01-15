@@ -92,15 +92,14 @@ export const { POST } = serve<VideoGenerationPayload>(
     );
 
     // Step 1: Generate voiceover script
-    await updateJobProgress(jobId, {
-      progress: 5,
-      step: "Creating narration",
-      details: "Writing script",
-    });
-
     const voiceoverScript = await context.run(
       "generate-voiceover-script",
       async () => {
+        await updateJobProgress(jobId, {
+          progress: 5,
+          step: "Creating narration",
+          details: "Writing script",
+        });
         return generateVoiceoverScript({ prompt: generationPrompt });
       }
     );
@@ -109,22 +108,20 @@ export const { POST } = serve<VideoGenerationPayload>(
       length: voiceoverScript.length,
     });
 
-    await updateJobProgress(jobId, {
-      progress: 12,
-      step: "Narration ready",
-      details: "Done",
-    });
-
     // Step 2: Generate initial Manim script
-    await updateJobProgress(jobId, {
-      progress: 18,
-      step: "Writing scenes",
-      details: "Creating",
-    });
-
     let script = await context.run(
       "generate-initial-manim-script",
       async () => {
+        await updateJobProgress(jobId, {
+          progress: 12,
+          step: "Narration ready",
+          details: "Done",
+        });
+        await updateJobProgress(jobId, {
+          progress: 18,
+          step: "Writing scenes",
+          details: "Creating",
+        });
         return generateManimScript({
           prompt: generationPrompt,
           voiceoverScript,
@@ -136,20 +133,18 @@ export const { POST } = serve<VideoGenerationPayload>(
       length: script.length,
     });
 
-    await updateJobProgress(jobId, {
-      progress: 24,
-      step: "Scenes ready",
-      details: "Code ready",
-    });
-
     // Step 3: Auto-fix and validate script
-    await updateJobProgress(jobId, {
-      progress: 30,
-      step: "Checking scenes",
-      details: "Auto-fixing & validating",
-    });
-
     const autoFixResult = await context.run("autofix-script", async () => {
+      await updateJobProgress(jobId, {
+        progress: 24,
+        step: "Scenes ready",
+        details: "Code ready",
+      });
+      await updateJobProgress(jobId, {
+        progress: 30,
+        step: "Checking scenes",
+        details: "Auto-fixing & validating",
+      });
       return autoFixManimScript(script);
     });
 
@@ -200,13 +195,12 @@ export const { POST } = serve<VideoGenerationPayload>(
         `⚠️ Validation failed on attempt ${fixAttempt}: ${validation.error}`
       );
 
-      await updateJobProgress(jobId, {
-        progress: 32 + fixAttempt * 2,
-        step: `Fixing script (LLM attempt ${fixAttempt})`,
-        details: "Regenerating with LLM",
-      });
-
       script = await context.run(`fix-script-${fixAttempt}`, async () => {
+        await updateJobProgress(jobId, {
+          progress: 32 + fixAttempt * 2,
+          step: `Fixing script (LLM attempt ${fixAttempt})`,
+          details: "Regenerating with LLM",
+        });
         const fixed = await regenerateManimScriptWithError({
           prompt: generationPrompt,
           voiceoverScript,
@@ -253,12 +247,6 @@ export const { POST } = serve<VideoGenerationPayload>(
       seenScripts.add(fingerprint);
     }
 
-    await updateJobProgress(jobId, {
-      progress: 42,
-      step: "Ready to render",
-      details: "Validation complete",
-    });
-
     // Step 6: Render loop with error-driven regeneration
     const failedAttempts: ManimGenerationAttempt[] = [];
     const blockedScripts = new Map<string, string>();
@@ -272,16 +260,22 @@ export const { POST } = serve<VideoGenerationPayload>(
       renderAttempt <= MAX_RENDER_ATTEMPTS;
       renderAttempt++
     ) {
-      await updateJobProgress(jobId, {
-        progress: 44 + renderAttempt * 2,
-        step: `Render attempt ${renderAttempt}`,
-        details: "Starting render",
-      });
-
       const renderResult = await context.run(
         `render-video-${renderAttempt}`,
         async () => {
           try {
+            if (renderAttempt === 1) {
+              await updateJobProgress(jobId, {
+                progress: 42,
+                step: "Ready to render",
+                details: "Validation complete",
+              });
+            }
+            await updateJobProgress(jobId, {
+              progress: 44 + renderAttempt * 2,
+              step: `Render attempt ${renderAttempt}`,
+              details: "Starting render",
+            });
             const usesManimML = script.includes("manim_ml");
 
             const result = await renderManimVideo({
@@ -368,15 +362,14 @@ export const { POST } = serve<VideoGenerationPayload>(
       }
 
       // Regenerate script with error context
-      await updateJobProgress(jobId, {
-        progress: 66,
-        step: "Retrying render",
-        details: "Regenerating script",
-      });
-
       script = await context.run(
         `regenerate-script-after-render-${renderAttempt}`,
         async () => {
+          await updateJobProgress(jobId, {
+            progress: 66,
+            step: "Retrying render",
+            details: "Regenerating script",
+          });
           const MAX_REGENERATION_RETRIES = 3;
           for (let regenAttempt = 0; regenAttempt < MAX_REGENERATION_RETRIES; regenAttempt++) {
             const regenerated = await regenerateManimScriptWithError({
@@ -431,16 +424,15 @@ export const { POST } = serve<VideoGenerationPayload>(
       );
     }
 
-    await updateJobProgress(jobId, {
-      progress: 90,
-      step: "Video saved",
-      details: "Done",
-    });
-
     // Step 6: Generate YouTube metadata
     const metadata = await context.run(
       "generate-youtube-metadata",
       async () => {
+        await updateJobProgress(jobId, {
+          progress: 90,
+          step: "Video saved",
+          details: "Done",
+        });
         let title: string | undefined;
         let description: string | undefined;
 
@@ -466,19 +458,18 @@ export const { POST } = serve<VideoGenerationPayload>(
       }
     );
 
-    // Step 7: Update job status
-    if (jobId) {
-      await updateJobProgress(jobId, {
-        progress: 95,
-        step: "Finishing up",
-        details: "Wrapping up",
-      });
-      await jobStore.setReady(jobId, uploadUrl);
-      await jobStore.setYoutubeStatus(jobId, { youtubeStatus: "pending" });
-    }
+    // Step 7: Update job status and trigger YouTube upload
+    await context.run("finalize-and-trigger-youtube-upload", async () => {
+      if (jobId) {
+        await updateJobProgress(jobId, {
+          progress: 95,
+          step: "Finishing up",
+          details: "Wrapping up",
+        });
+        await jobStore.setReady(jobId, uploadUrl!);
+        await jobStore.setYoutubeStatus(jobId, { youtubeStatus: "pending" });
+      }
 
-    // Step 8: Trigger YouTube upload workflow
-    await context.run("trigger-youtube-upload", async () => {
       await workflowClient.trigger({
         headers: getTriggerHeaders(),
         url: `${getBaseUrl()}/api/workflow/upload-youtube`,
