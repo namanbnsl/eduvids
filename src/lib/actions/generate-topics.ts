@@ -2,13 +2,23 @@
 
 import { generateText } from "ai";
 import { GROQ_MODEL_IDS, selectGroqModel } from "@/lib/groq-provider";
+import { withTracing } from "@posthog/ai";
+import { PostHog } from "posthog-node";
+
+const phClient = new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
+  host: process.env.NEXT_PUBLIC_POSTHOG_HOST!,
+});
 
 export async function generateTopics(): Promise<string[]> {
   if (process.env.NODE_ENV === "production") {
     try {
       // Create a new provider instance to rotate API keys
       const { text } = await generateText({
-        model: selectGroqModel(GROQ_MODEL_IDS.gptOss),
+        model: withTracing(
+          selectGroqModel(GROQ_MODEL_IDS.gptOss),
+          phClient,
+          {}
+        ),
         prompt: `Generate 2 fun and interesting video/short topic ideas for an educational content platform focused on math, physics, and chemistry. It shouldn't be very hard. The person should have some idea on what it is about.
 
 Topics should:
