@@ -388,66 +388,66 @@ export async function generateManimScript({
   );
   const generationPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration with purposeful, step-by-step visuals that directly reinforce each narrated idea while staying on the same core topic:`;
 
-  // for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-  //   const googleModel = createGoogleModel("gemini-3-flash-preview");
-  //   try {
-  //     const { text } = await generateTextWithTracking(
-  //       {
-  //         model: googleModel.provider(googleModel.modelId),
-  //         system: augmentedSystemPrompt,
-  //         prompt: generationPrompt,
-  //         temperature: 0.1,
-  //       },
-  //       googleModel
-  //     );
+  for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
+    const googleModel = createGoogleModel("gemini-3-flash-preview");
+    try {
+      const { text } = await generateTextWithTracking(
+        {
+          model: googleModel.provider(googleModel.modelId),
+          system: augmentedSystemPrompt,
+          prompt: generationPrompt,
+          temperature: 0.1,
+        },
+        googleModel
+      );
 
-  //     const code = text
-  //       .replace(/```python?\n?/g, "")
-  //       .replace(/```\n?/g, "")
-  //       .trim();
+      const code = text
+        .replace(/```python?\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
 
-  //     return code;
-  //   } catch (err) {
-  //     if (attempt === GEMINI_MAX_RETRIES) {
-  //       logRetry("generateManimScript", attempt, err);
-  //       break;
-  //     }
-  //     const delayMs = randomDelayMs();
-  //     logRetry("generateManimScript", attempt, err, delayMs);
-  //     await sleep(delayMs);
-  //   }
-  // }
+      return code;
+    } catch (err) {
+      if (attempt === GEMINI_MAX_RETRIES) {
+        logRetry("generateManimScript", attempt, err);
+        break;
+      }
+      const delayMs = randomDelayMs();
+      logRetry("generateManimScript", attempt, err, delayMs);
+      await sleep(delayMs);
+    }
+  }
 
-  // // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
-  // const flashModel = createGoogleModel("gemini-2.5-flash");
-  // const { text: flashText } = await generateTextWithTracking(
-  //   {
-  //     model: flashModel.provider(flashModel.modelId),
-  //     system: augmentedSystemPrompt,
-  //     prompt: generationPrompt,
-  //     temperature: 0.1,
-  //   },
-  //   flashModel
-  // );
-  // const code = flashText
-  //   .replace(/```python?\n?/g, "")
-  //   .replace(/```\n?/g, "")
-  //   .trim();
-  // return code;
-
-  const { text } = await generateText({
-    model: cerebras("zai-glm-4.7"),
-    system: augmentedSystemPrompt,
-    prompt: generationPrompt,
-    temperature: 0.1,
-  });
-
-  const code = text
+  // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
+  const flashModel = createGoogleModel("gemini-2.5-flash");
+  const { text: flashText } = await generateTextWithTracking(
+    {
+      model: flashModel.provider(flashModel.modelId),
+      system: augmentedSystemPrompt,
+      prompt: generationPrompt,
+      temperature: 0.1,
+    },
+    flashModel
+  );
+  const code = flashText
     .replace(/```python?\n?/g, "")
     .replace(/```\n?/g, "")
     .trim();
-
   return code;
+
+  // const { text } = await generateText({
+  //   model: cerebras("zai-glm-4.7"),
+  //   system: augmentedSystemPrompt,
+  //   prompt: generationPrompt,
+  //   temperature: 0.1,
+  // });
+
+  // const code = text
+  //   .replace(/```python?\n?/g, "")
+  //   .replace(/```\n?/g, "")
+  //   .trim();
+
+  // return code;
 }
 
 export async function generateYoutubeTitle({
@@ -747,17 +747,65 @@ HELPER FUNCTIONS (these are available, use them)
 
 OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
 
-  const { text } = await generateText({
-    model: cerebras("zai-glm-4.7"),
-    system: regenerationSystemPrompt,
-    prompt: regenerationPrompt,
-    temperature: 0.1,
-  });
+  // const { text } = await generateText({
+  //   model: cerebras("zai-glm-4.7"),
+  //   system: regenerationSystemPrompt,
+  //   prompt: regenerationPrompt,
+  //   temperature: 0.1,
+  // });
 
-  const code = text
+  // const code = text
+  //   .replace(/```python?\n?/g, "")
+  //   .replace(/```\n?/g, "")
+  //   .trim();
+
+  for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
+    const googleModel = createGoogleModel("gemini-3-flash-preview");
+    try {
+      const { text } = await generateTextWithTracking(
+        {
+          model: googleModel.provider(googleModel.modelId),
+          system: regenerationSystemPrompt,
+          prompt: regenerationPrompt,
+          temperature: 0.1,
+        },
+        googleModel
+      );
+
+      const code = text
+        .replace(/```python?\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
+
+      return code;
+    } catch (err) {
+      if (attempt === GEMINI_MAX_RETRIES) {
+        logRetry("regenerateManimScriptWithError", attempt, err);
+        break;
+      }
+      const delayMs = randomDelayMs();
+      logRetry("regenerateManimScriptWithError", attempt, err, delayMs);
+      await sleep(delayMs);
+    }
+  }
+
+  // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
+  const flashModel = createGoogleModel("gemini-2.5-flash");
+  const { text: flashText } = await generateTextWithTracking(
+    {
+      model: flashModel.provider(flashModel.modelId),
+      system: regenerationSystemPrompt,
+      prompt: regenerationPrompt,
+      temperature: 0.1,
+    },
+    flashModel
+  );
+  const code = flashText
     .replace(/```python?\n?/g, "")
     .replace(/```\n?/g, "")
     .trim();
+
+  return code;
 
   return code;
 }

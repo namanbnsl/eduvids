@@ -720,6 +720,71 @@ VISUALIZATION PRINCIPLES:
 6. LABEL parts clearly with labels OUTSIDE the main shape
 
 ═══════════════════════════════════════════════════════════════════════════════
+🎯 DIAGRAM SCHEMA HELPERS - USE THESE FOR ACCURATE DIAGRAMS!
+═══════════════════════════════════════════════════════════════════════════════
+
+For the following diagram types, you MUST use the provided helper functions
+instead of manually constructing them. These helpers ensure accurate rendering.
+
+AVAILABLE DIAGRAM HELPERS:
+- create_cartesian_graph(func_expression, x_range, y_range, ...) - For function plots
+- create_bar_chart(values, labels, colors, ...) - For bar charts
+- create_labeled_triangle(vertices, vertex_labels, side_labels, ...) - For geometry
+- create_force_diagram(object_shape, forces, ...) - For physics free body diagrams
+- create_flowchart(steps, connections, ...) - For process flowcharts
+- create_atom_diagram(element_symbol, electron_config, ...) - For atomic structure
+- create_3d_axes_vector(vectors, ...) - For 3D vector visualization (requires ThreeDScene)
+
+ALWAYS add a DIAGRAM_SCHEMA comment above each helper call:
+
+\`\`\`python
+# DIAGRAM_SCHEMA: cartesian_graph_v1
+graph = create_cartesian_graph(
+    func_expression="x**2",
+    x_range=(-4, 4, 1),
+    y_range=(0, 16, 2),
+    color=BLUE,
+)
+self.play(Create(graph))
+
+# DIAGRAM_SCHEMA: force_diagram_v1
+forces_diagram = create_force_diagram(
+    object_shape="square",
+    forces=[
+        {"direction": "UP", "magnitude": 2, "label": "N"},
+        {"direction": "DOWN", "magnitude": 2, "label": "mg"},
+    ]
+)
+self.play(FadeIn(forces_diagram))
+
+# DIAGRAM_SCHEMA: triangle_labeled_v1
+triangle = create_labeled_triangle(
+    vertices="right_triangle",
+    vertex_labels=["A", "B", "C"],
+    side_labels=["a", "b", "c"],
+    show_angles=True,
+)
+self.play(Create(triangle))
+\`\`\`
+
+For 3D diagrams, use ThreeDScene and configure_3d_camera():
+\`\`\`python
+class MyScene(VoiceoverScene, ThreeDScene):
+    def construct(self):
+        # ... setup ...
+        
+        # DIAGRAM_SCHEMA: 3d_axes_vector_v1
+        vectors_3d = create_3d_axes_vector(
+            vectors=[
+                {"components": [2, 1, 3], "color": BLUE, "label": "v"},
+            ],
+            show_unit_vectors=True,
+        )
+        configure_3d_camera(self, focus=vectors_3d)
+        self.play(Create(vectors_3d))
+\`\`\`
+
+═══════════════════════════════════════════════════════════════════════════════
 LAYOUT HELPERS (auto-injected, use these!)
 ═══════════════════════════════════════════════════════════════════════════════
 

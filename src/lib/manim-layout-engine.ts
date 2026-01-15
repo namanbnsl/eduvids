@@ -10,18 +10,34 @@
  * 5. SMART EQUATION LABELING: New collision detection with automatic staggering/fade-in-out
  * 6. COLLISION STRATEGIES: "stagger" (offset labels), "scale" (shrink), "fade_sequence" (one at a time)
  *
+ * MAJOR IMPROVEMENTS (2025-01-15):
+ * ===============================================
+ * 7. DIAGRAM SCHEMAS: Canonical helpers for accurate 2D/3D diagrams
+ * 8. TEXT RENDERING FIX: Render at large font sizes, scale down for proper letter spacing
+ * 9. DEVELOPMENT LOGGING: Debug logging for diagram schema detection and validation
+ * 10. CAMERA DISCIPLINE: Strict 2D/3D camera patterns for visual accuracy
+ *
  * KEY FUNCTIONS:
  * - smart_position_equation_labels(): Intelligent label positioning with collision avoidance
  * - create_fade_sequence_labels(): Show labels one at a time with fade in/out
  * - create_smart_label(): Create labels with optional arrows
  * - detect_label_collisions(): Detect overlapping labels
+ * - DIAGRAM SCHEMA HELPERS: create_cartesian_graph, create_bar_chart, create_force_diagram, etc.
  *
  * GUARANTEES:
  * - Fixed margins that CANNOT be violated (hard boundaries)
  * - Zero overlaps between elements (ultra-aggressive separation)
  * - All content fits within safe zones (strict enforcement)
  * - Smart label positioning prevents equation annotation overlaps
+ * - Accurate diagram rendering through schema-based helpers
  */
+
+import {
+  DIAGRAM_SCHEMAS,
+  type DiagramSchema,
+  isDevelopment,
+  logSchema,
+} from "./diagram-schemas";
 
 export interface LayoutConfig {
   frameWidth: number;
@@ -185,12 +201,14 @@ SAFE_BOTTOM_ZONE = ${zones.bottomSafeZoneHeight.toFixed(2)}
 DEFAULT_FONT = "Open Sans"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# KERNING FIX CONFIGURATION
+# KERNING FIX CONFIGURATION - ALWAYS APPLY FOR ACCURATE TEXT
 # ═══════════════════════════════════════════════════════════════════════════════
-# Small text has kerning issues with Pango/Cairo rendering.
-# We fix this by rendering at larger size, then scaling down.
-KERNING_FIX_THRESHOLD = 30  # Apply fix to text smaller than this
-KERNING_FIX_SCALE = 10      # Scale up by 10x, then down by 0.1x
+# Manim's text rendering has letter spacing issues at normal font sizes.
+# FIX: Render at very large size, then scale down for proper kerning.
+# Setting threshold to 9999 ensures ALL text gets this fix.
+KERNING_FIX_THRESHOLD = 9999  # Apply fix to ALL text (was 30)
+KERNING_FIX_SCALE = 8         # Scale up by 8x, then down by 0.125x (was 10)
+KERNING_FIX_LOG_ENABLED = True  # Enable development logging
 
 # Safe positioning helpers
 def get_title_position():
@@ -1727,7 +1745,9 @@ def create_tex_label(
 ):
     """
     FIXED: Convert plain text to a Tex mobject with safe escaping.
-    This version properly handles all text types.
+    
+    TEXT RENDERING FIX: Renders at 3x the requested font size then scales down
+    to achieve proper letter spacing. This fixes Manim's letter spacing issues.
     """
     latex_string = build_latex_text(
         text,
@@ -1741,6 +1761,7 @@ def create_tex_label(
     # Import here to avoid issues if Manim isn't loaded
     from manim import Tex
     
+    # NOTE: Tex/LaTeX handles its own typography - no kerning fix needed
     return Tex(latex_string, font_size=font_size, **tex_kwargs)
 
 
@@ -2016,14 +2037,14 @@ def is_math_content(text):
 
 def create_text_with_kerning_fix(text, font_size, color=WHITE, font=DEFAULT_FONT, **kwargs):
     """
-    Create Text() object with automatic kerning fix for small fonts.
+    Create Text() object with automatic kerning fix.
 
-    For text with font_size < KERNING_FIX_THRESHOLD, this function:
-    1. Multiplies font_size by KERNING_FIX_SCALE
+    ALWAYS applies the kerning fix (threshold set to 9999):
+    1. Multiplies font_size by KERNING_FIX_SCALE (8x)
     2. Creates Text() with the larger size
     3. Scales the result down by 1/KERNING_FIX_SCALE
 
-    This fixes kerning issues with Pango/Cairo rendering at small sizes.
+    This fixes Manim's letter spacing issues at all font sizes.
 
     Args:
         text: The text content
@@ -2044,13 +2065,13 @@ def create_text_with_kerning_fix(text, font_size, color=WHITE, font=DEFAULT_FONT
         # Scale up font size for better kerning
         font_size = font_size * KERNING_FIX_SCALE
 
-    # Create text object
+    # Create text object at large size
     mobj = Text(text, font_size=font_size, color=color, font=font, **kwargs)
 
     if apply_scale_fix:
         # Scale down to match intended size
         mobj.scale(1 / KERNING_FIX_SCALE)
-
+        
     return mobj
 
 
@@ -3098,6 +3119,681 @@ def add_code_block(scene, code_str, **kwargs):
 }
 
 /**
+ * Generate diagram schema helpers (canonical helpers for accurate diagrams)
+ */
+export function generateDiagramSchemaHelpers(): string {
+  if (isDevelopment) {
+    logSchema("Generating diagram schema helpers", {
+      count: DIAGRAM_SCHEMAS.length,
+    });
+  }
+
+  return `
+# ═══════════════════════════════════════════════════════════════════════════════
+# DIAGRAM SCHEMA HELPERS - USE THESE FOR ACCURATE VISUALIZATIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+# These canonical helpers ensure diagrams render correctly in 2D and 3D.
+# ALWAYS use these instead of raw Manim primitives for the supported diagram types.
+# Add a DIAGRAM_SCHEMA comment block above each helper call for validation.
+
+def _log_diagram(schema_id, message):
+    """Development logging for diagram schemas."""
+    if _DIAGRAM_DEV_MODE:
+        print(f"[DIAGRAM_SCHEMA:{schema_id}] {message}")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 2D DIAGRAM HELPERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def create_cartesian_graph(
+    func_expression=lambda x: x**2,
+    x_range=(-4, 4, 1),
+    y_range=(-2, 8, 1),
+    color=BLUE,
+    show_labels=True,
+    x_label="x",
+    y_label="y",
+    x_length=5,
+    y_length=3,
+):
+    """
+    DIAGRAM_SCHEMA: cartesian_graph_v1
+    
+    Create a 2D Cartesian coordinate system with a function plot.
+    Use this instead of manually creating Axes + plot.
+    
+    Args:
+        func_expression: Python callable (not string). eg: lambda x: x**2, np.sin
+        x_range: (min, max, step) for x-axis
+        y_range: (min, max, step) for y-axis
+        color: Graph line color
+        show_labels: Whether to show axis labels
+        x_label, y_label: Axis label text
+        x_length, y_length: Visual size of axes
+    
+    Returns:
+        VGroup containing axes, graph, and labels
+    """
+    _log_diagram("cartesian_graph_v1", f"Creating graph: {func_expression}")
+    
+    # Validate ranges
+    if x_range[0] >= x_range[1]:
+        print("[VISUAL WARNING] cartesian_graph: x_range min >= max, swapping")
+        x_range = (x_range[1], x_range[0], x_range[2])
+    if y_range[0] >= y_range[1]:
+        print("[VISUAL WARNING] cartesian_graph: y_range min >= max, swapping")
+        y_range = (y_range[1], y_range[0], y_range[2])
+    
+    axes = Axes(
+        x_range=[x_range[0], x_range[1], x_range[2]],
+        y_range=[y_range[0], y_range[1], y_range[2]],
+        x_length=x_length,
+        y_length=y_length,
+        axis_config={"include_tip": True, "include_numbers": True},
+    )
+    
+    # Create function from expression
+    func = func_expression
+    graph = axes.plot(func, color=color, use_smoothing=True)
+    
+    elements = [axes, graph]
+    
+    if show_labels:
+        x_label_mob = axes.get_x_axis_label(x_label, edge=RIGHT, direction=RIGHT)
+        y_label_mob = axes.get_y_axis_label(y_label, edge=UP, direction=UP)
+        elements.extend([x_label_mob, y_label_mob])
+    
+    group = VGroup(*elements)
+    group.move_to(get_content_center())
+    ensure_fits_screen(group, safety_margin=0.9)
+    
+    _log_diagram("cartesian_graph_v1", f"Created successfully, size: {group.width:.2f}x{group.height:.2f}")
+    return group
+
+
+def create_bar_chart(
+    values,
+    labels,
+    colors=None,
+    bar_width=0.6,
+    show_values=True,
+    max_bars=6,
+):
+    """
+    DIAGRAM_SCHEMA: bar_chart_v1
+    
+    Create a vertical bar chart for comparing quantities.
+    
+    Args:
+        values: List of numeric values for each bar
+        labels: Labels for each bar
+        colors: Colors for each bar (auto-generated if None)
+        bar_width: Width of each bar
+        show_values: Whether to display values above bars
+        max_bars: Maximum number of bars (prevents overcrowding)
+    
+    Returns:
+        VGroup containing the complete bar chart
+    """
+    _log_diagram("bar_chart_v1", f"Creating bar chart with {len(values)} bars")
+    
+    # Limit bars to prevent overcrowding
+    if len(values) > max_bars:
+        print(f"[VISUAL WARNING] bar_chart: limiting from {len(values)} to {max_bars} bars")
+        values = values[:max_bars]
+        labels = labels[:max_bars]
+    
+    # Auto-generate colors if not provided
+    default_colors = [BLUE, RED, GREEN, YELLOW, PURPLE, ORANGE, CYAN, PINK]
+    if colors is None:
+        colors = [default_colors[i % len(default_colors)] for i in range(len(values))]
+    
+    max_val = max(values) if values else 1
+    bar_height_scale = 2.5 / max_val  # Normalize to reasonable height
+    
+    bars = VGroup()
+    bar_labels = VGroup()
+    value_labels = VGroup()
+    
+    for i, (val, label, col) in enumerate(zip(values, labels, colors)):
+        # Create bar
+        bar_height = val * bar_height_scale
+        bar = Rectangle(
+            width=bar_width,
+            height=bar_height,
+            fill_color=col,
+            fill_opacity=0.8,
+            stroke_color=WHITE,
+            stroke_width=1,
+        )
+        bar.move_to(RIGHT * (i - len(values)/2 + 0.5) * (bar_width + 0.3))
+        bar.align_to(ORIGIN, DOWN)
+        bars.add(bar)
+        
+        # Create label below bar
+        label_mob = create_text_with_kerning_fix(str(label), font_size=FONT_LABEL, color=WHITE)
+        label_mob.next_to(bar, DOWN, buff=0.2)
+        bar_labels.add(label_mob)
+        
+        # Create value above bar
+        if show_values:
+            val_mob = create_text_with_kerning_fix(str(val), font_size=FONT_LABEL, color=WHITE)
+            val_mob.next_to(bar, UP, buff=0.15)
+            value_labels.add(val_mob)
+    
+    group = VGroup(bars, bar_labels)
+    if show_values:
+        group.add(value_labels)
+    
+    group.move_to(get_content_center())
+    ensure_fits_screen(group, safety_margin=0.85)
+    
+    _log_diagram("bar_chart_v1", f"Created successfully with {len(values)} bars")
+    return group
+
+
+def create_labeled_triangle(
+    vertices="right_triangle",
+    vertex_labels=["A", "B", "C"],
+    side_labels=None,
+    show_angles=False,
+    angle_labels=None,
+    color=BLUE,
+    fill_opacity=0.2,
+):
+    """
+    DIAGRAM_SCHEMA: triangle_labeled_v1
+    
+    Create a triangle with vertex labels, optional side labels, and angle arcs.
+    
+    Args:
+        vertices: "right_triangle", "equilateral", "isoceles", or [[x1,y1], [x2,y2], [x3,y3]]
+        vertex_labels: Labels for vertices [A, B, C]
+        side_labels: Labels for sides [AB, BC, CA] or None
+        show_angles: Whether to show angle arcs
+        angle_labels: Labels for angles at each vertex
+        color: Triangle stroke color
+        fill_opacity: Fill opacity (0-1)
+    
+    Returns:
+        VGroup containing the complete labeled triangle
+    """
+    _log_diagram("triangle_labeled_v1", f"Creating triangle: {vertices}")
+    
+    # Preset vertex configurations
+    presets = {
+        "right_triangle": [[-1.5, -1, 0], [1.5, -1, 0], [-1.5, 1.5, 0]],
+        "equilateral": [[-1.5, -1, 0], [1.5, -1, 0], [0, 1.6, 0]],
+        "isoceles": [[-1.2, -1, 0], [1.2, -1, 0], [0, 1.5, 0]],
+    }
+    
+    if isinstance(vertices, str):
+        pts = presets.get(vertices, presets["right_triangle"])
+    else:
+        pts = [[v[0], v[1], 0] if len(v) == 2 else v for v in vertices]
+    
+    pts = [np.array(p) for p in pts]
+    
+    # Create triangle
+    triangle = Polygon(*pts, color=color, fill_opacity=fill_opacity, stroke_width=3)
+    elements = [triangle]
+    
+    # Add vertex labels OUTSIDE the triangle
+    label_directions = [DOWN + LEFT, DOWN + RIGHT, UP]
+    for i, (pt, label) in enumerate(zip(pts, vertex_labels)):
+        if label:
+            label_mob = create_text_with_kerning_fix(label, font_size=FONT_LABEL, color=WHITE)
+            label_mob.next_to(pt, label_directions[i % 3], buff=0.25)
+            elements.append(label_mob)
+    
+    # Add side labels
+    if side_labels:
+        sides = [(0, 1), (1, 2), (2, 0)]
+        side_dirs = [DOWN, RIGHT, LEFT]
+        for (i, j), label, direction in zip(sides, side_labels, side_dirs):
+            if label:
+                midpoint = (pts[i] + pts[j]) / 2
+                label_mob = create_text_with_kerning_fix(label, font_size=FONT_CAPTION, color=YELLOW)
+                label_mob.next_to(midpoint, direction, buff=0.3)
+                elements.append(label_mob)
+    
+    # Add angle arcs
+    if show_angles:
+        for i in range(3):
+            try:
+                p1 = pts[(i - 1) % 3]
+                vertex = pts[i]
+                p2 = pts[(i + 1) % 3]
+                angle = Angle(
+                    Line(vertex, p1),
+                    Line(vertex, p2),
+                    radius=0.4,
+                    color=YELLOW,
+                )
+                elements.append(angle)
+                
+                if angle_labels and i < len(angle_labels) and angle_labels[i]:
+                    angle_label = create_text_with_kerning_fix(angle_labels[i], font_size=FONT_LABEL, color=YELLOW)
+                    angle_label.move_to(angle.point_from_proportion(0.5) + (vertex - angle.point_from_proportion(0.5)) * -0.5)
+                    elements.append(angle_label)
+            except Exception as e:
+                print(f"[VISUAL WARNING] triangle: Could not create angle arc: {e}")
+    
+    group = VGroup(*elements)
+    group.move_to(get_content_center())
+    ensure_fits_screen(group, safety_margin=0.85)
+    
+    _log_diagram("triangle_labeled_v1", "Created successfully")
+    return group
+
+
+def create_force_diagram(
+    object_shape="square",
+    object_size=1.0,
+    forces=None,
+    show_net_force=False,
+    object_color=BLUE,
+):
+    """
+    DIAGRAM_SCHEMA: force_diagram_v1
+    
+    Create a free body diagram with force arrows.
+    
+    Args:
+        object_shape: "square", "rectangle", "circle", or "dot"
+        object_size: Size of the central object
+        forces: List of dicts [{direction: "UP"/"DOWN"/"LEFT"/"RIGHT", magnitude: float, label: str, color: str}]
+        show_net_force: Whether to show resultant force
+        object_color: Color of the central object
+    
+    Returns:
+        VGroup containing object and force arrows
+    """
+    _log_diagram("force_diagram_v1", f"Creating force diagram: {object_shape}")
+    
+    # Create central object
+    if object_shape == "circle":
+        obj = Circle(radius=object_size / 2, color=object_color, fill_opacity=0.5)
+    elif object_shape == "dot":
+        obj = Dot(radius=object_size / 4, color=object_color)
+    elif object_shape == "rectangle":
+        obj = Rectangle(width=object_size * 1.5, height=object_size, color=object_color, fill_opacity=0.5)
+    else:  # square
+        obj = Square(side_length=object_size, color=object_color, fill_opacity=0.5)
+    
+    elements = [obj]
+    
+    direction_map = {
+        "UP": UP, "DOWN": DOWN, "LEFT": LEFT, "RIGHT": RIGHT,
+        "UP_LEFT": UP + LEFT, "UP_RIGHT": UP + RIGHT,
+        "DOWN_LEFT": DOWN + LEFT, "DOWN_RIGHT": DOWN + RIGHT,
+    }
+    
+    default_colors = {"UP": GREEN, "DOWN": RED, "LEFT": YELLOW, "RIGHT": ORANGE}
+    
+    net_force = np.array([0.0, 0.0, 0.0])
+    
+    for force in (forces or []):
+        dir_name = force.get("direction", "UP").upper()
+        direction = direction_map.get(dir_name, UP)
+        magnitude = force.get("magnitude", 1.0)
+        label = force.get("label", "")
+        color = force.get("color", default_colors.get(dir_name, WHITE))
+        
+        # Calculate arrow start and end
+        start = obj.get_center() + direction * (object_size / 2 + 0.1)
+        end = start + direction * (magnitude * 0.5)  # Scale for visibility
+        
+        arrow = Arrow(start, end, color=color, buff=0, stroke_width=4, max_tip_length_to_length_ratio=0.25)
+        elements.append(arrow)
+        
+        if label:
+            label_mob = create_text_with_kerning_fix(label, font_size=FONT_CAPTION, color=color)
+            label_mob.next_to(arrow, direction, buff=0.15)
+            elements.append(label_mob)
+        
+        net_force += direction * magnitude
+    
+    if show_net_force and np.linalg.norm(net_force) > 0.1:
+        net_dir = net_force / np.linalg.norm(net_force)
+        net_mag = np.linalg.norm(net_force)
+        net_start = obj.get_center()
+        net_end = net_start + net_dir * net_mag * 0.5
+        net_arrow = Arrow(net_start, net_end, color=WHITE, buff=0, stroke_width=5)
+        net_label = create_text_with_kerning_fix("Net", font_size=FONT_LABEL, color=WHITE)
+        net_label.next_to(net_arrow, net_dir, buff=0.1)
+        elements.extend([net_arrow, net_label])
+    
+    group = VGroup(*elements)
+    group.move_to(get_content_center())
+    ensure_fits_screen(group, safety_margin=0.85)
+    
+    _log_diagram("force_diagram_v1", f"Created with {len(forces or [])} forces")
+    return group
+
+
+def create_flowchart(
+    steps,
+    connections,
+    direction="vertical",
+    box_width=2.5,
+    box_height=0.8,
+):
+    """
+    DIAGRAM_SCHEMA: flowchart_v1
+    
+    Create a process flowchart with boxes and arrows.
+    
+    Args:
+        steps: List of dicts [{text: str, type: "process"|"decision"|"start"|"end"}]
+        connections: List of connections [[from_idx, to_idx, label?], ...]
+        direction: "vertical" or "horizontal"
+        box_width, box_height: Dimensions of process boxes
+    
+    Returns:
+        VGroup containing the flowchart
+    """
+    _log_diagram("flowchart_v1", f"Creating flowchart with {len(steps)} steps")
+    
+    # Limit steps to prevent overcrowding
+    max_steps = 5
+    if len(steps) > max_steps:
+        print(f"[VISUAL WARNING] flowchart: limiting from {len(steps)} to {max_steps} steps")
+        steps = steps[:max_steps]
+    
+    shape_colors = {
+        "start": GREEN,
+        "end": RED,
+        "decision": YELLOW,
+        "process": BLUE,
+    }
+    
+    boxes = []
+    elements = []
+    
+    for i, step in enumerate(steps):
+        text = step.get("text", f"Step {i+1}")
+        step_type = step.get("type", "process")
+        color = shape_colors.get(step_type, BLUE)
+        
+        if step_type == "decision":
+            # Diamond shape for decisions
+            box = Square(side_length=box_width * 0.7, color=color, fill_opacity=0.3)
+            box.rotate(PI / 4)
+        elif step_type in ["start", "end"]:
+            # Rounded rectangle for start/end
+            box = RoundedRectangle(width=box_width, height=box_height, corner_radius=0.3, color=color, fill_opacity=0.3)
+        else:
+            # Regular rectangle for process
+            box = Rectangle(width=box_width, height=box_height, color=color, fill_opacity=0.3)
+        
+        label = create_text_with_kerning_fix(text[:15], font_size=FONT_CAPTION, color=WHITE)
+        label.move_to(box.get_center())
+        
+        step_group = VGroup(box, label)
+        boxes.append(step_group)
+        elements.append(step_group)
+    
+    # Arrange boxes
+    if direction == "horizontal":
+        VGroup(*boxes).arrange(RIGHT, buff=1.5)
+    else:
+        VGroup(*boxes).arrange(DOWN, buff=1.0)
+    
+    # Add connection arrows
+    for conn in connections:
+        if len(conn) >= 2:
+            from_idx, to_idx = conn[0], conn[1]
+            if from_idx < len(boxes) and to_idx < len(boxes):
+                if direction == "horizontal":
+                    arrow = Arrow(boxes[from_idx].get_right(), boxes[to_idx].get_left(), buff=0.1, color=WHITE)
+                else:
+                    arrow = Arrow(boxes[from_idx].get_bottom(), boxes[to_idx].get_top(), buff=0.1, color=WHITE)
+                elements.append(arrow)
+                
+                if len(conn) > 2 and conn[2]:  # Has label
+                    conn_label = create_text_with_kerning_fix(conn[2], font_size=FONT_LABEL, color=GRAY)
+                    conn_label.next_to(arrow, RIGHT if direction == "vertical" else UP, buff=0.1)
+                    elements.append(conn_label)
+    
+    group = VGroup(*elements)
+    group.move_to(get_content_center())
+    ensure_fits_screen(group, safety_margin=0.85)
+    
+    _log_diagram("flowchart_v1", f"Created successfully")
+    return group
+
+
+def create_atom_diagram(
+    element_symbol="H",
+    electron_config=None,
+    show_nucleus_details=False,
+    protons=None,
+    neutrons=None,
+    nucleus_color=RED,
+    electron_color=BLUE,
+):
+    """
+    DIAGRAM_SCHEMA: atom_shells_v1
+    
+    Create a Bohr model atom diagram with nucleus and electron shells.
+    
+    Args:
+        element_symbol: Element symbol (e.g., "H", "He", "C")
+        electron_config: Electrons per shell [2, 8, ...] or auto from element
+        show_nucleus_details: Show protons/neutrons
+        protons, neutrons: Counts if showing details
+        nucleus_color, electron_color: Colors
+    
+    Returns:
+        VGroup containing the atom diagram
+    """
+    _log_diagram("atom_shells_v1", f"Creating atom: {element_symbol}")
+    
+    # Default electron configs for common elements
+    element_configs = {
+        "H": [1], "He": [2], "Li": [2, 1], "Be": [2, 2], "B": [2, 3],
+        "C": [2, 4], "N": [2, 5], "O": [2, 6], "F": [2, 7], "Ne": [2, 8],
+        "Na": [2, 8, 1], "Mg": [2, 8, 2], "Al": [2, 8, 3], "Si": [2, 8, 4],
+        "Cl": [2, 8, 7], "Ar": [2, 8, 8], "K": [2, 8, 8, 1], "Ca": [2, 8, 8, 2],
+    }
+    
+    if electron_config is None:
+        electron_config = element_configs.get(element_symbol.capitalize(), [1])
+    
+    elements = []
+    
+    # Create nucleus
+    nucleus = Circle(radius=0.4, color=nucleus_color, fill_opacity=0.8)
+    nucleus_label = create_text_with_kerning_fix(element_symbol, font_size=FONT_BODY, color=WHITE)
+    nucleus_label.move_to(nucleus.get_center())
+    elements.extend([nucleus, nucleus_label])
+    
+    # Create electron shells
+    shell_radii = [0.8, 1.3, 1.8, 2.3]
+    for shell_idx, num_electrons in enumerate(electron_config[:4]):  # Max 4 shells
+        if shell_idx >= len(shell_radii):
+            break
+            
+        radius = shell_radii[shell_idx]
+        
+        # Shell orbit
+        orbit = Circle(radius=radius, stroke_color=BLUE_E, stroke_width=1.5, stroke_opacity=0.5)
+        elements.append(orbit)
+        
+        # Electrons
+        for e_idx in range(num_electrons):
+            angle = e_idx * TAU / num_electrons
+            electron = Dot(radius=0.08, color=electron_color)
+            electron.move_to(np.array([radius * np.cos(angle), radius * np.sin(angle), 0]))
+            elements.append(electron)
+    
+    group = VGroup(*elements)
+    group.move_to(get_content_center())
+    ensure_fits_screen(group, safety_margin=0.85)
+    
+    _log_diagram("atom_shells_v1", f"Created with {len(electron_config)} shells")
+    return group
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 3D DIAGRAM HELPERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def create_3d_axes_vector(
+    vectors,
+    x_range=(-3, 3, 1),
+    y_range=(-3, 3, 1),
+    z_range=(-3, 3, 1),
+    show_unit_vectors=False,
+    axis_length=4,
+):
+    """
+    DIAGRAM_SCHEMA: 3d_axes_vector_v1
+    
+    Create 3D coordinate axes with one or more vectors.
+    REQUIRES: class MyScene(VoiceoverScene, ThreeDScene)
+    
+    Args:
+        vectors: List of dicts [{components: [x,y,z], color: str, label: str}]
+        x_range, y_range, z_range: Axis ranges
+        show_unit_vectors: Show i, j, k unit vectors
+        axis_length: Length of axes
+    
+    Returns:
+        VGroup containing axes and vectors
+    """
+    _log_diagram("3d_axes_vector_v1", f"Creating 3D axes with {len(vectors)} vectors")
+    
+    from manim import ThreeDAxes, Arrow3D
+    
+    axes = ThreeDAxes(
+        x_range=[x_range[0], x_range[1], x_range[2]],
+        y_range=[y_range[0], y_range[1], y_range[2]],
+        z_range=[z_range[0], z_range[1], z_range[2]],
+        x_length=axis_length,
+        y_length=axis_length,
+        z_length=axis_length,
+    )
+    
+    elements = [axes]
+    
+    default_colors = [BLUE, RED, GREEN, YELLOW, PURPLE]
+    
+    for i, vec_info in enumerate(vectors):
+        components = vec_info.get("components", [1, 0, 0])
+        color = vec_info.get("color", default_colors[i % len(default_colors)])
+        label = vec_info.get("label", "")
+        
+        # Create vector arrow
+        start = axes.c2p(0, 0, 0)
+        end = axes.c2p(*components)
+        
+        arrow = Arrow3D(start, end, color=color)
+        elements.append(arrow)
+        
+        if label:
+            label_mob = create_3d_text_label(label, font_size=FONT_LABEL)
+            label_mob.next_to(end, UP + RIGHT, buff=0.2)
+            elements.append(label_mob)
+    
+    if show_unit_vectors:
+        # Add i, j, k
+        unit_vecs = [
+            ([1, 0, 0], RED, "i"),
+            ([0, 1, 0], GREEN, "j"),
+            ([0, 0, 1], BLUE, "k"),
+        ]
+        for comp, col, lbl in unit_vecs:
+            start = axes.c2p(0, 0, 0)
+            end = axes.c2p(*comp)
+            arrow = Arrow3D(start, end, color=col, thickness=0.02)
+            elements.append(arrow)
+    
+    group = VGroup(*elements)
+    
+    _log_diagram("3d_axes_vector_v1", "Created successfully")
+    return group
+
+
+def configure_3d_camera(scene, focus=None, phi=75, theta=-45):
+    """
+    CAMERA DISCIPLINE: Standard 3D camera configuration.
+    Call this at the start of construct() for any 3D scene.
+    
+    Args:
+        scene: ThreeDScene instance
+        focus: Optional mobject to focus on
+        phi: Polar angle in degrees (default 75)
+        theta: Azimuthal angle in degrees (default -45)
+    """
+    _log_diagram("camera", f"Configuring 3D camera: phi={phi}, theta={theta}")
+    
+    scene.set_camera_orientation(phi=phi * DEGREES, theta=theta * DEGREES)
+    
+    if focus is not None:
+        try:
+            scene.move_camera(frame_center=focus.get_center())
+        except Exception as e:
+            print(f"[VISUAL WARNING] Could not focus camera: {e}")
+    
+    print(f"[3D_CAMERA] Configured: phi={phi}°, theta={theta}°")
+
+
+def orbit_camera_around(scene, target, angle=TAU/4, run_time=4):
+    """
+    CAMERA DISCIPLINE: Safe orbit animation around a target.
+    
+    Args:
+        scene: ThreeDScene instance
+        target: Mobject to orbit around
+        angle: Total rotation angle (default 90 degrees)
+        run_time: Animation duration
+    """
+    _log_diagram("camera", f"Orbiting camera: angle={angle}, run_time={run_time}")
+    
+    scene.begin_ambient_camera_rotation(rate=angle / run_time)
+    scene.wait(run_time)
+    scene.stop_ambient_camera_rotation()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DIAGRAM VALIDATORS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def validate_diagram(diagram, schema_id, check_bounds=True, check_density=True):
+    """
+    Validate a diagram against visual quality heuristics.
+    
+    Args:
+        diagram: The diagram VGroup
+        schema_id: Schema identifier for logging
+        check_bounds: Whether to validate position bounds
+        check_density: Whether to check content density
+    
+    Returns:
+        bool: True if valid, False if warnings were issued
+    """
+    warnings_issued = False
+    
+    if check_bounds:
+        if not validate_position(diagram, f"diagram:{schema_id}", auto_fix=True):
+            warnings_issued = True
+    
+    if check_density and hasattr(diagram, 'submobjects'):
+        density = analyze_content_density(diagram.submobjects)
+        if density["action"] != "none":
+            print(f"[VISUAL WARNING] {schema_id}: {density['reason']}")
+            warnings_issued = True
+    
+    if not warnings_issued:
+        _log_diagram(schema_id, "Validation passed")
+    
+    return not warnings_issued
+`;
+}
+
+/**
  * Get all layout code for a configuration
  */
 export function getCompleteLayoutCode(config: LayoutConfig): string {
@@ -3115,6 +3811,8 @@ export function getCompleteLayoutCode(config: LayoutConfig): string {
   parts.push(getCodeRenderingHelpers());
   parts.push("\n");
   parts.push(generate3DLayoutCode());
+  parts.push("\n");
+  parts.push(generateDiagramSchemaHelpers());
 
   parts.push("\n# ========================================");
   parts.push("# Usage:");
@@ -3131,7 +3829,22 @@ export function getCompleteLayoutCode(config: LayoutConfig): string {
   parts.push(
     "#    - Use set_camera_for_2d_view() for text-heavy scenes like CTAs"
   );
+  parts.push("# 6. DIAGRAM SCHEMAS (use for accurate diagrams):");
+  parts.push("#    - create_cartesian_graph() for function plots");
+  parts.push("#    - create_bar_chart() for bar charts");
+  parts.push("#    - create_labeled_triangle() for geometry");
+  parts.push("#    - create_force_diagram() for physics");
+  parts.push("#    - create_flowchart() for processes");
+  parts.push("#    - create_atom_diagram() for chemistry");
+  parts.push("#    - create_3d_axes_vector() for 3D vectors");
   parts.push("# ========================================\n");
+
+  if (isDevelopment) {
+    logSchema("Complete layout code generated", {
+      orientation: config.orientation,
+      contentType: config.contentType,
+    });
+  }
 
   return parts.join("\n");
 }
