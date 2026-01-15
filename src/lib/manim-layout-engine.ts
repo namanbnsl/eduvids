@@ -184,6 +184,14 @@ SAFE_BOTTOM_ZONE = ${zones.bottomSafeZoneHeight.toFixed(2)}
 # ═══════════════════════════════════════════════════════════════════════════════
 DEFAULT_FONT = "Open Sans"
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# KERNING FIX CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+# Small text has kerning issues with Pango/Cairo rendering.
+# We fix this by rendering at larger size, then scaling down.
+KERNING_FIX_THRESHOLD = 30  # Apply fix to text smaller than this
+KERNING_FIX_SCALE = 10      # Scale up by 10x, then down by 0.1x
+
 # Safe positioning helpers
 def get_title_position():
     """Get safe position for title (top of screen with margin)"""
@@ -2006,6 +2014,46 @@ def is_math_content(text):
     return False
 
 
+def create_text_with_kerning_fix(text, font_size, color=WHITE, font=DEFAULT_FONT, **kwargs):
+    """
+    Create Text() object with automatic kerning fix for small fonts.
+
+    For text with font_size < KERNING_FIX_THRESHOLD, this function:
+    1. Multiplies font_size by KERNING_FIX_SCALE
+    2. Creates Text() with the larger size
+    3. Scales the result down by 1/KERNING_FIX_SCALE
+
+    This fixes kerning issues with Pango/Cairo rendering at small sizes.
+
+    Args:
+        text: The text content
+        font_size: The intended font size
+        color: Text color
+        font: Font family (defaults to Open Sans)
+        **kwargs: Additional arguments passed to Text()
+
+    Returns:
+        Text() mobject with proper kerning
+    """
+    from manim import Text
+
+    original_font_size = font_size
+    apply_scale_fix = font_size < KERNING_FIX_THRESHOLD
+
+    if apply_scale_fix:
+        # Scale up font size for better kerning
+        font_size = font_size * KERNING_FIX_SCALE
+
+    # Create text object
+    mobj = Text(text, font_size=font_size, color=color, font=font, **kwargs)
+
+    if apply_scale_fix:
+        # Scale down to match intended size
+        mobj.scale(1 / KERNING_FIX_SCALE)
+
+    return mobj
+
+
 def create_label(
     content,
     *,
@@ -2017,7 +2065,7 @@ def create_label(
 ):
     """
     Create a text label, automatically choosing between Text() and MathTex().
-    
+
     Args:
         content: The text content
         style: One of "title", "heading", "body", "math", "caption", "label"
@@ -2060,7 +2108,7 @@ def create_label(
         mobj = MathTex(rf"{clean_content}", font_size=font_size, color=color, **kwargs)
     else:
         # Use Text for plain content with Open Sans font
-        mobj = Text(content, font_size=font_size, color=color, font=font, **kwargs)
+        mobj = create_text_with_kerning_fix(content, font_size=font_size, color=color, font=font, **kwargs)
     
     # Ensure it fits on screen
     ensure_fits_screen(mobj, safety_margin=0.95)
@@ -2184,8 +2232,8 @@ def create_plain_text(text, *, font_size=None, color=WHITE, font=None, **kwargs)
         font_size = FONT_BODY
     if font is None:
         font = DEFAULT_FONT
-    
-    mobj = Text(text, font_size=font_size, color=color, font=font, **kwargs)
+
+    mobj = create_text_with_kerning_fix(text, font_size=font_size, color=color, font=font, **kwargs)
     ensure_fits_screen(mobj, safety_margin=0.95)
     return mobj
 
