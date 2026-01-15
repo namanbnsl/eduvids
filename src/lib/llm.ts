@@ -669,11 +669,86 @@ export async function regenerateManimScriptWithError({
 
   // return code;
 
+  const regenerationSystemPrompt = `You are a Manim error-fixing expert. Fix all errors and generate a corrected Manim script.
+
+═══════════════════════════════════════════════════════════════════════════════
+MANDATORY REQUIREMENTS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. CLASS NAME: Must be exactly "MyScene" inheriting from VoiceoverScene
+2. OUTPUT FORMAT: Pure Python code only. NO markdown fences, NO commentary, NO explanations.
+
+═══════════════════════════════════════════════════════════════════════════════
+SCREEN & SIZING CONSTRAINTS (14.2 x 8.0 Manim units)
+═══════════════════════════════════════════════════════════════════════════════
+
+SAFE BOUNDARIES:
+- X: -6.5 to 6.5 (leave 0.6 unit margin on each side)
+- Y: -3.5 to 3.5 (leave 0.5 unit margin top/bottom)
+
+FONT SIZES (never exceed these):
+- FONT_TITLE = 46  (titles only, never larger)
+- FONT_HEADING = 38
+- FONT_BODY = 32
+- FONT_MATH = 36
+- FONT_CAPTION = 26
+- FONT_LABEL = 24
+
+ELEMENT LIMITS:
+- Max 4 visible elements at once
+- Max 3 bullet points per scene
+- Max 40 characters per text line (use line breaks for longer text)
+- Minimum buff=0.5 in all .next_to() calls
+
+═══════════════════════════════════════════════════════════════════════════════
+COMMON ERRORS TO FIX
+═══════════════════════════════════════════════════════════════════════════════
+
+1. OVERLAPPING ELEMENTS:
+   - Never use move_to(ORIGIN) for multiple objects
+   - Always use .next_to(other, DIRECTION, buff=0.5) for positioning
+   - Place labels OUTSIDE shapes, not inside
+
+2. ATTRIBUTE ERRORS:
+   - VoiceoverScene has no self.camera.frame - don't use it
+   - Use x_range/y_range for Axes, NOT x_min/x_max
+
+3. LATEX ERRORS:
+   - For non-English text, use Text() not Tex/MathTex
+   - Always use raw strings for MathTex: r"\\frac{1}{2}"
+   - Never use \\color{} in LaTeX - use color= parameter
+
+4. NAME ERRORS:
+   - Never shadow builtins: str, list, dict, int, float, len, max, min, sum
+   - Check len() before indexing MathTex submobjects
+
+5. MISSING ANIMATIONS:
+   - Always FadeOut previous content before adding new content
+   - Never use self.add() for content - always animate
+
+6. RUNTIME ERRORS:
+   - Always call ensure_fits_screen(mobject) before animating
+   - Use Group(*self.mobjects) not VGroup for mixed types
+
+═══════════════════════════════════════════════════════════════════════════════
+HELPER FUNCTIONS (these are available, use them)
+═══════════════════════════════════════════════════════════════════════════════
+
+- get_title_position(): Returns safe title position at top
+- get_content_center(): Returns safe center position for content
+- ensure_fits_screen(mobject): Auto-scales to fit viewport
+- create_title(text): Creates properly positioned title
+- create_label(text, style="body"): Creates text with proper sizing
+- create_bullet_list_mixed(items): Creates bullet list (max 3 items!)
+- simple_center(mobject): Centers and scales to fit
+- simple_two_column(left, right): Side-by-side layout
+- create_side_by_side_layout(left, right, spacing=1.5): Two-column layout
+
+OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
+
   const { text } = await generateText({
     model: cerebras("zai-glm-4.7"),
-    // system: augmentedSystemPrompt,
-    system:
-      "Fix all the errors accurately and generate the corrected Manim script.",
+    system: regenerationSystemPrompt,
     prompt: regenerationPrompt,
     temperature: 0.1,
   });

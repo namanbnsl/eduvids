@@ -16,6 +16,7 @@ import {
   runHeuristicChecks,
   validateRequiredElements,
 } from "@/lib/workflow/utils/heuristics";
+import { autoFixManimScript } from "@/lib/workflow/utils/autofix";
 import {
   updateJobProgress,
   stageToJobUpdate,
@@ -141,30 +142,45 @@ export const { POST } = serve<VideoGenerationPayload>(
       details: "Code ready",
     });
 
-    // Step 3: Pre-validation of required elements
+    // Step 3: Auto-fix and validate script
+    await updateJobProgress(jobId, {
+      progress: 30,
+      step: "Checking scenes",
+      details: "Auto-fixing & validating",
+    });
+
+    const autoFixResult = await context.run("autofix-script", async () => {
+      return autoFixManimScript(script);
+    });
+
+    if (autoFixResult.appliedFixes.length > 0) {
+      console.log(
+        `🔧 Auto-fix applied ${autoFixResult.appliedFixes.length} fixes:`,
+        autoFixResult.appliedFixes
+      );
+      script = autoFixResult.script;
+    }
+
+    // Step 4: Pre-validation of required elements (after auto-fix)
     const preValidation = await context.run("pre-validate-script", async () => {
       return validateRequiredElements(script);
     });
 
-    if (!preValidation.ok) {
+    if (!preValidation.ok && !preValidation.autoFixable) {
       throw new WorkflowNonRetryableError(
         `Script failed pre-validation: ${preValidation.error}`
       );
     }
 
-    // Step 4: Heuristic validation & fix loop
-    await updateJobProgress(jobId, {
-      progress: 30,
-      step: "Checking scenes",
-      details: "Validating",
-    });
-
+    // Step 5: Heuristic validation & LLM fix loop (only if auto-fix couldn't resolve)
     const seenScripts = new Set<string>();
     seenScripts.add(fingerprintScript(script));
 
+    let needsLLMFix = !autoFixResult.ok && autoFixResult.unfixableReasons.length > 0;
+
     for (
       let fixAttempt = 1;
-      fixAttempt <= MAX_SCRIPT_FIX_ATTEMPTS;
+      fixAttempt <= MAX_SCRIPT_FIX_ATTEMPTS && needsLLMFix;
       fixAttempt++
     ) {
       const validation = await context.run(
@@ -176,6 +192,7 @@ export const { POST } = serve<VideoGenerationPayload>(
 
       if (validation.ok) {
         console.log(`✅ Script passed validation on attempt ${fixAttempt}`);
+        needsLLMFix = false;
         break;
       }
 
@@ -185,8 +202,8 @@ export const { POST } = serve<VideoGenerationPayload>(
 
       await updateJobProgress(jobId, {
         progress: 32 + fixAttempt * 2,
-        step: `Fixing script (attempt ${fixAttempt})`,
-        details: "Auto-correcting issues",
+        step: `Fixing script (LLM attempt ${fixAttempt})`,
+        details: "Regenerating with LLM",
       });
 
       script = await context.run(`fix-script-${fixAttempt}`, async () => {
@@ -208,6 +225,25 @@ export const { POST } = serve<VideoGenerationPayload>(
         );
       }
 
+      // Apply auto-fix to LLM-regenerated script as well
+      const reAutoFix = await context.run(`re-autofix-${fixAttempt}`, async () => {
+        return autoFixManimScript(script);
+      });
+
+      if (reAutoFix.appliedFixes.length > 0) {
+        console.log(
+          `🔧 Re-applied auto-fix after LLM regeneration:`,
+          reAutoFix.appliedFixes
+        );
+        script = reAutoFix.script;
+      }
+
+      if (reAutoFix.ok) {
+        console.log(`✅ Script passed after auto-fix on LLM attempt ${fixAttempt}`);
+        needsLLMFix = false;
+        break;
+      }
+
       const fingerprint = fingerprintScript(script);
       if (seenScripts.has(fingerprint)) {
         throw new WorkflowNonRetryableError(
@@ -223,7 +259,7 @@ export const { POST } = serve<VideoGenerationPayload>(
       details: "Validation complete",
     });
 
-    // Step 5: Render loop with error-driven regeneration
+    // Step 6: Render loop with error-driven regeneration
     const failedAttempts: ManimGenerationAttempt[] = [];
     const blockedScripts = new Map<string, string>();
     blockedScripts.set(fingerprintScript(script), script);

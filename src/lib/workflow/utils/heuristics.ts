@@ -1,5 +1,7 @@
 import { VOICEOVER_SERVICE_IMPORT, VOICEOVER_SERVICE_SETTER } from "@/prompt";
 
+export { autoFixManimScript, type AutoFixResult } from "./autofix";
+
 export type HeuristicSeverity = "critical" | "noncode" | "fixable";
 
 export type HeuristicIssue = {
@@ -27,12 +29,18 @@ const REQUIRED_IMPORTS = [
 const PROSE_PHRASES = [
   "here is",
   "here's",
+  "here you go",
   "sure",
   "certainly",
+  "of course",
+  "okay",
+  "absolutely",
   "explanation",
   "an analysis",
   "analysis of",
   "let's",
+  "let me",
+  "i'll",
   "in this video",
   "we will",
   "i will",
@@ -40,9 +48,41 @@ const PROSE_PHRASES = [
   "second,",
   "finally",
   "overall",
+  "the following",
+  "below is",
+  "as requested",
+  "as you asked",
+  "here's the code",
+  "here is the code",
+  "the code is",
+  "this code",
+  "implementation:",
+  "solution:",
+  "example:",
+  "note:",
+  "important:",
 ];
 
-const MARKDOWN_LIKE_PATTERNS = [/```/, /\[[^\]]+\]\([^\)]+\)/];
+const MARKDOWN_LIKE_PATTERNS = [/```/, /\[[^\]]+\]\([^\)]+\)/, /^\s*#{1,6}\s+\w/m];
+
+const SCENE_NAME_VARIANTS = [
+  "MyScene",
+  "MainScene",
+  "Scene1",
+  "MyScene1",
+  "IntroScene",
+  "VideoScene",
+  "AnimationScene",
+  "ManimScene",
+  "DemoScene",
+  "ExampleScene",
+  "TutorialScene",
+  "LessonScene",
+  "EducationScene",
+  "ExplainerScene",
+  "TestScene",
+  "CustomScene",
+];
 
 const CODE_LINE_PATTERNS = [
   /^(?:from|import|class|def|with|for|while|if|elif|else|try|except|finally|return|yield|async|await|pass|raise|break|continue|@)/,
@@ -88,38 +128,60 @@ const formatIssueList = (issues: HeuristicIssue[]): string =>
 export function validateRequiredElements(script: string): {
   ok: boolean;
   error?: string;
+  autoFixable?: boolean;
 } {
   const normalized = script.trim().replace(/\r/g, "");
   const issues: string[] = [];
+  let autoFixable = true;
 
   for (const requiredImport of REQUIRED_IMPORTS) {
     if (!normalized.includes(requiredImport)) {
-      issues.push(`Missing required import: ${requiredImport}`);
+      issues.push(`Missing required import: ${requiredImport} (auto-fixable)`);
     }
   }
 
-  if (!normalized.includes("class MyScene")) {
-    issues.push("Missing class MyScene definition");
+  const hasMyScene = normalized.includes("class MyScene");
+  const sceneVariant = SCENE_NAME_VARIANTS.find(
+    (name) => name !== "MyScene" && normalized.includes(`class ${name}`)
+  );
+  const hasAnySceneClass = /class\s+\w+\s*\([^)]*(?:Scene|VoiceoverScene)[^)]*\)/.test(normalized);
+
+  if (!hasMyScene) {
+    if (sceneVariant) {
+      issues.push(`Scene class named "${sceneVariant}" instead of "MyScene" (auto-fixable)`);
+    } else if (hasAnySceneClass) {
+      issues.push("Scene class has wrong name - should be \"MyScene\" (auto-fixable)");
+    } else {
+      issues.push("Missing class MyScene definition");
+      autoFixable = false;
+    }
   }
 
   if (!normalized.includes("def construct(self)")) {
-    issues.push("Missing def construct(self) method");
+    const hasAnyConstruct = /def\s+construct\s*\(/.test(normalized);
+    if (hasAnyConstruct) {
+      issues.push("construct() method has wrong signature - should be def construct(self) (auto-fixable)");
+    } else {
+      issues.push("Missing def construct(self) method");
+      autoFixable = false;
+    }
   }
 
   if (!normalized.includes("set_speech_service")) {
-    issues.push(`Missing ${VOICEOVER_SERVICE_SETTER} call`);
+    issues.push(`Missing ${VOICEOVER_SERVICE_SETTER} call (auto-fixable)`);
   }
 
   if (issues.length > 0) {
     return {
       ok: false,
+      autoFixable,
       error: `Script validation failed - missing required elements:\n${issues
         .map((issue, idx) => `${idx + 1}. ${issue}`)
         .join("\n")}`,
     };
   }
 
-  return { ok: true };
+  return { ok: true, autoFixable: false };
 }
 
 export function runHeuristicChecks(
@@ -264,11 +326,31 @@ export function runHeuristicChecks(
     });
   }
 
-  if (!normalized.includes("class MyScene")) {
-    issues.push({
-      message: "❌ Missing: class MyScene definition.",
-      severity: "fixable",
-    });
+  const hasMyScene = normalized.includes("class MyScene");
+  const sceneVariant = SCENE_NAME_VARIANTS.find(
+    (name) => name !== "MyScene" && normalized.includes(`class ${name}`)
+  );
+  const hasAnySceneClass = /class\s+\w+\s*\([^)]*(?:Scene|VoiceoverScene)[^)]*\)/.test(normalized);
+
+  if (!hasMyScene) {
+    if (sceneVariant) {
+      issues.push({
+        message: `❌ Scene class named "${sceneVariant}" instead of "MyScene" (auto-fixable - will be renamed).`,
+        severity: "fixable",
+      });
+    } else if (hasAnySceneClass) {
+      const classMatch = normalized.match(/class\s+(\w+)\s*\([^)]*(?:Scene|VoiceoverScene)[^)]*\)/);
+      const className = classMatch?.[1] ?? "unknown";
+      issues.push({
+        message: `❌ Scene class named "${className}" instead of "MyScene" (auto-fixable - will be renamed).`,
+        severity: "fixable",
+      });
+    } else {
+      issues.push({
+        message: "❌ Missing: class MyScene definition.",
+        severity: "critical",
+      });
+    }
   }
 
   if (!normalized.includes("def construct(self)")) {
@@ -494,6 +576,81 @@ export function runHeuristicChecks(
         "❌ No animations detected (no self.play() calls). Manim videos require animations. Use self.play(Write(...)), self.play(Create(...)), or self.play(FadeIn(...)).",
       severity: "fixable",
     });
+  }
+
+  const NON_RAW_MATHTEX = /\bMathTex\s*\(\s*"([^"]*\\[^"]*)"(?!\s*,\s*r)/;
+  if (NON_RAW_MATHTEX.test(normalized)) {
+    issues.push({
+      message:
+        '❌ MathTex with non-raw string containing backslashes detected. Use raw strings: MathTex(r"\\frac{1}{2}") not MathTex("\\frac{1}{2}") (auto-fixable).',
+      severity: "fixable",
+    });
+  }
+
+  const DOUBLE_BACKSLASH_RAW = /r["']([^"']*\\\\[^"']*)["']/;
+  if (DOUBLE_BACKSLASH_RAW.test(normalized)) {
+    issues.push({
+      message:
+        '❌ Double backslashes in raw string detected. In raw strings, use single backslashes: r"\\frac" not r"\\\\frac" (auto-fixable).',
+      severity: "fixable",
+    });
+  }
+
+  const LATEX_COLOR_CMD = /\\color\{[^}]+\}/;
+  if (LATEX_COLOR_CMD.test(normalized)) {
+    issues.push({
+      message:
+        "❌ \\color{} command detected in LaTeX. Use the color= parameter or tex_to_color_map instead (auto-fixable).",
+      severity: "fixable",
+    });
+  }
+
+  const voiceoverBlocks = [...normalized.matchAll(/with\s+self\.voiceover\s*\([^)]*\)\s*(?:as\s+\w+\s*)?:/g)];
+  if (voiceoverBlocks.length > 0) {
+    const lastBlock = voiceoverBlocks[voiceoverBlocks.length - 1];
+    if (lastBlock) {
+      const afterLastBlock = normalized.slice((lastBlock.index ?? 0) + lastBlock[0].length);
+      const hasContent = afterLastBlock.split("\n").some((line) => {
+        const trimmed = line.trim();
+        return trimmed.length > 0 && !trimmed.startsWith("#") && /^\s{4,}/.test(line);
+      });
+      if (!hasContent) {
+        issues.push({
+          message:
+            "❌ Voiceover block appears to have no body content. Each 'with self.voiceover(...):' block must contain animations.",
+          severity: "critical",
+        });
+      }
+    }
+  }
+
+  const mobjectAssignments = new Map<string, number>();
+  const assignmentPattern = /(\w+)\s*=\s*(?:Text|MathTex|Circle|Square|VGroup|Rectangle|Arrow|create_|simple_)/g;
+  let assignMatch: RegExpExecArray | null;
+  while ((assignMatch = assignmentPattern.exec(normalized)) !== null) {
+    const varName = assignMatch[1] ?? "";
+    mobjectAssignments.set(varName, (mobjectAssignments.get(varName) ?? 0) + 1);
+  }
+
+  const fadeInPattern = /FadeIn\s*\(\s*(\w+)/g;
+  const fadeInCounts = new Map<string, number>();
+  let fadeMatch: RegExpExecArray | null;
+  while ((fadeMatch = fadeInPattern.exec(normalized)) !== null) {
+    const varName = fadeMatch[1] ?? "";
+    fadeInCounts.set(varName, (fadeInCounts.get(varName) ?? 0) + 1);
+  }
+
+  for (const [varName, count] of fadeInCounts) {
+    if (count > 1 && mobjectAssignments.has(varName)) {
+      const fadeOutCount = (normalized.match(new RegExp(`FadeOut\\s*\\(\\s*${varName}`, "g")) || []).length;
+      if (fadeOutCount < count - 1) {
+        issues.push({
+          message: `❌ Object "${varName}" is FadeIn'd ${count} times but only FadeOut'd ${fadeOutCount} times. This may cause duplicate animations or overlap.`,
+          severity: "fixable",
+        });
+        break;
+      }
+    }
   }
 
   const FONT_SIZE_PATTERN = /font_size\s*=\s*([0-9]+(?:\.[0-9]+)?)/g;
