@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   title: "eduvids - free educational video generator",
   description:
     "Generate high-quality educational videos with code-accurate animations for math, science, and more. Free, multilingual, and simple to use with absolutely no sign-up required.",
-  icons: { icon: "/favicon.svg" },
+  icons: { icon: "/favicon.png" },
 };
 
 export const viewport: Viewport = {

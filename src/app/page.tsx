@@ -6,9 +6,11 @@ import { generateTopics } from "@/lib/actions/generate-topics";
 // Hooks
 import { useEffect, useState } from "react";
 import { useChat } from "@ai-sdk/react";
+import { useFirstVisit } from "@/lib/use-first-visit";
 
 // Components
 import Link from "next/link";
+import Image from "next/image";
 import { Message, MessageAvatar, MessageContent } from "@/components/message";
 import {
   PromptInput,
@@ -22,20 +24,11 @@ import { Conversation, ConversationContent } from "@/components/conversation";
 import { VideoPlayer } from "@/components/video-player";
 import { QuickActionCards } from "@/components/quick-action-cards";
 import { StyledResponse } from "@/components/ui/styled-response";
-import { Sidebar } from "@/components/sidebar";
+// import { Sidebar } from "@/components/sidebar";
+import { Onboarding } from "@/components/onboarding";
 
 // Icons
-import {
-  Github,
-  Youtube,
-  Moon,
-  Sun,
-  Monitor,
-  Smartphone,
-  Video,
-  TwitterIcon,
-  Twitter,
-} from "lucide-react";
+import { Github, Youtube, Monitor, Smartphone, Twitter } from "lucide-react";
 
 // Types
 import type {
@@ -64,6 +57,24 @@ export default function ChatPage() {
 
   const { messages, status, sendMessage } = useChat<ChatMessage>();
   const hasMessages = messages.length > 0;
+  const { isFirstVisit, completeOnboarding } = useFirstVisit();
+
+  const handleOnboardingComplete = (
+    message: string | null,
+    mode: "video" | "short" | null
+  ) => {
+    completeOnboarding();
+    if (message) {
+      sendMessage(
+        { text: message },
+        {
+          body: {
+            forceVariant: mode,
+          },
+        }
+      );
+    }
+  };
 
   const handleGenerationModeToggle = (mode: "video" | "short") => {
     const videoPrefix = "Generate a video of ";
@@ -135,6 +146,8 @@ export default function ChatPage() {
 
   return (
     <div className="relative flex h-svh bg-background">
+      {/* Onboarding for first-time visitors */}
+      {isFirstVisit && <Onboarding onComplete={handleOnboardingComplete} />}
       {/* <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -147,11 +160,19 @@ export default function ChatPage() {
       /> */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex justify-between items-center px-6 py-4 border-b border-border/50 bg-background/50 backdrop-blur-sm">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="font-semibold text-foreground truncate">
-              eduvids
-            </span>
-          </div>
+          <Link href={"/"}>
+            <div className="flex items-center gap-1 min-w-0">
+              <Image
+                src="/favicon.png"
+                alt="eduvids logo"
+                width={36}
+                height={36}
+              />
+              <span className="font-semibold text-foreground truncate text-md">
+                eduvids
+              </span>
+            </div>
+          </Link>
           <div className="flex gap-2 items-center">
             <Link
               target="_blank"

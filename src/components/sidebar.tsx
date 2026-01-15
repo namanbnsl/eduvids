@@ -73,8 +73,13 @@ export function Sidebar({
           )}
         >
           {!isCollapsed && (
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="font-semibold text-sidebar-foreground truncate">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <img
+                src="/favicon.png"
+                alt="eduvids logo"
+                className="w-7 h-7 rounded-md"
+              />
+              <span className="font-bold text-xl text-sidebar-foreground truncate tracking-tight">
                 eduvids
               </span>
             </div>
