@@ -27,162 +27,155 @@
  * GUARANTEES:
  * - Fixed margins that CANNOT be violated (hard boundaries)
  * - Zero overlaps between elements (ultra-aggressive separation)
- * - All content fits within safe zones (strict enforcement)
- * - Smart label positioning prevents equation annotation overlaps
  * - Accurate diagram rendering through schema-based helpers
  */
 
-import {
-  DIAGRAM_SCHEMAS,
-  type DiagramSchema,
-  isDevelopment,
-  logSchema,
-} from "./diagram-schemas";
+import { DIAGRAM_SCHEMAS, type DiagramSchema } from "./diagram-schemas";
 
 export interface LayoutConfig {
-  frameWidth: number;
-  frameHeight: number;
-  safeMargin: number;
-  orientation: "landscape" | "portrait";
-  contentType?: "text-heavy" | "diagram" | "math" | "mixed";
+    frameWidth: number;
+    frameHeight: number;
+    safeMargin: number;
+    orientation: "landscape" | "portrait";
+    contentType?: "text-heavy" | "diagram" | "math" | "mixed";
 }
 
 export interface LayoutConfig3D extends LayoutConfig {
-  cameraDistance: number;
-  cameraFov: number;
+    cameraDistance: number;
+    cameraFov: number;
 }
 
 export interface SafeZoneConfig {
-  top: number;
-  bottom: number;
-  left: number;
-  right: number;
-  titleHeight: number;
-  maxContentWidth: number;
-  maxContentHeight: number;
-  minSpacing: number;
-  bottomSafeZoneHeight: number;
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+    titleHeight: number;
+    maxContentWidth: number;
+    maxContentHeight: number;
+    minSpacing: number;
+    bottomSafeZoneHeight: number;
 }
 
 function clampFont(value: number, min: number, max: number): number {
-  let lower = min;
-  let upper = max;
-  if (lower > upper) {
-    [lower, upper] = [upper, lower];
-  }
-  return Math.max(lower, Math.min(upper, value));
+    let lower = min;
+    let upper = max;
+    if (lower > upper) {
+        [lower, upper] = [upper, lower];
+    }
+    return Math.max(lower, Math.min(upper, value));
 }
 
 export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
-  const { frameWidth, frameHeight, safeMargin, orientation, contentType } =
-    config;
+    const { frameWidth, frameHeight, safeMargin, orientation, contentType } =
+        config;
 
-  const portrait = orientation === "portrait";
-  // INCREASED margin boost to create larger fixed boundaries
-  const marginBoost = portrait ? 1.35 : 1.25;
+    const portrait = orientation === "portrait";
+    // INCREASED margin boost to create larger fixed boundaries
+    const marginBoost = portrait ? 1.35 : 1.25;
 
-  // Base margins with MORE generous spacing to prevent cut-offs
-  let topMargin = safeMargin * marginBoost;
-  let bottomMargin = safeMargin * marginBoost;
-  let leftMargin = safeMargin * marginBoost;
-  let rightMargin = safeMargin * marginBoost;
+    // Base margins with MORE generous spacing to prevent cut-offs
+    let topMargin = safeMargin * marginBoost;
+    let bottomMargin = safeMargin * marginBoost;
+    let leftMargin = safeMargin * marginBoost;
+    let rightMargin = safeMargin * marginBoost;
 
-  if (portrait) {
-    // Portrait: INCREASED padding for fixed margins
-    leftMargin *= 1.35;
-    rightMargin *= 1.35;
-    topMargin *= 1.45;
-    bottomMargin *= 1.45;
-  } else {
-    // Landscape: INCREASED spacing for fixed margins
-    topMargin *= 1.3;
-    bottomMargin *= 1.3;
-    leftMargin *= 1.15;
-    rightMargin *= 1.15;
-  }
+    if (portrait) {
+        // Portrait: INCREASED padding for fixed margins
+        leftMargin *= 1.35;
+        rightMargin *= 1.35;
+        topMargin *= 1.45;
+        bottomMargin *= 1.45;
+    } else {
+        // Landscape: INCREASED spacing for fixed margins
+        topMargin *= 1.3;
+        bottomMargin *= 1.3;
+        leftMargin *= 1.15;
+        rightMargin *= 1.15;
+    }
 
-  // Content-type adjustments - MAINTAIN larger margins to prevent cut-offs
-  if (contentType === "text-heavy") {
-    leftMargin *= 1.2;
-    rightMargin *= 1.2;
-  } else if (contentType === "diagram") {
-    // Diagrams: Keep SAFE margins - diagrams need protection from cut-offs
-    const avgMargin = (leftMargin + rightMargin + topMargin + bottomMargin) / 4;
-    leftMargin = rightMargin = topMargin = bottomMargin = avgMargin * 1.0; // Changed from 0.85 to 1.0
-  } else if (contentType === "math") {
-    leftMargin *= 1.2;
-    rightMargin *= 1.2;
-  }
+    // Content-type adjustments - MAINTAIN larger margins to prevent cut-offs
+    if (contentType === "text-heavy") {
+        leftMargin *= 1.2;
+        rightMargin *= 1.2;
+    } else if (contentType === "diagram") {
+        // Diagrams: Keep SAFE margins - diagrams need protection from cut-offs
+        const avgMargin = (leftMargin + rightMargin + topMargin + bottomMargin) / 4;
+        leftMargin = rightMargin = topMargin = bottomMargin = avgMargin * 1.0; // Changed from 0.85 to 1.0
+    } else if (contentType === "math") {
+        leftMargin *= 1.2;
+        rightMargin *= 1.2;
+    }
 
-  // Moderate breathing room
-  const extraTopMargin = safeMargin * (portrait ? 0.4 : 0.3);
-  const extraBottomMargin = safeMargin * (portrait ? 0.5 : 0.35);
+    // Moderate breathing room
+    const extraTopMargin = safeMargin * (portrait ? 0.4 : 0.3);
+    const extraBottomMargin = safeMargin * (portrait ? 0.5 : 0.35);
 
-  topMargin += extraTopMargin;
-  bottomMargin += extraBottomMargin;
+    topMargin += extraTopMargin;
+    bottomMargin += extraBottomMargin;
 
-  // Reasonable minimum spacing
-  let minSpacing = safeMargin * (portrait ? 1.2 : 1.0);
-  if (contentType === "text-heavy") {
-    minSpacing *= 1.1;
-  } else if (contentType === "diagram") {
-    minSpacing *= 0.9; // Diagrams need less spacing, more room for content
-  } else if (contentType === "math") {
-    minSpacing *= 1.05;
-  }
-  minSpacing = Math.max(minSpacing, safeMargin * 0.8);
+    // Reasonable minimum spacing
+    let minSpacing = safeMargin * (portrait ? 1.2 : 1.0);
+    if (contentType === "text-heavy") {
+        minSpacing *= 1.1;
+    } else if (contentType === "diagram") {
+        minSpacing *= 0.9; // Diagrams need less spacing, more room for content
+    } else if (contentType === "math") {
+        minSpacing *= 1.05;
+    }
+    minSpacing = Math.max(minSpacing, safeMargin * 0.8);
 
-  // Moderate bottom safe zone
-  let bottomSafeZoneHeight = safeMargin * (portrait ? 1.6 : 1.3);
-  if (contentType === "diagram") {
-    bottomSafeZoneHeight *= 0.85; // Less bottom margin for diagrams
-  } else if (contentType === "text-heavy") {
-    bottomSafeZoneHeight *= 1.0;
-  }
-  bottomSafeZoneHeight = Math.max(
-    bottomSafeZoneHeight,
-    frameHeight * (portrait ? 0.08 : 0.06)
-  );
+    // Moderate bottom safe zone
+    let bottomSafeZoneHeight = safeMargin * (portrait ? 1.6 : 1.3);
+    if (contentType === "diagram") {
+        bottomSafeZoneHeight *= 0.85; // Less bottom margin for diagrams
+    } else if (contentType === "text-heavy") {
+        bottomSafeZoneHeight *= 1.0;
+    }
+    bottomSafeZoneHeight = Math.max(
+        bottomSafeZoneHeight,
+        frameHeight * (portrait ? 0.08 : 0.06)
+    );
 
-  bottomMargin = Math.max(
-    bottomMargin,
-    bottomSafeZoneHeight + safeMargin * (portrait ? 0.4 : 0.3)
-  );
-  topMargin = Math.max(topMargin, safeMargin * (portrait ? 1.4 : 1.15));
+    bottomMargin = Math.max(
+        bottomMargin,
+        bottomSafeZoneHeight + safeMargin * (portrait ? 0.4 : 0.3)
+    );
+    topMargin = Math.max(topMargin, safeMargin * (portrait ? 1.4 : 1.15));
 
-  // Reasonable title zone
-  const titleHeight = orientation === "portrait" ? 1.8 : 1.5;
+    // Reasonable title zone
+    const titleHeight = orientation === "portrait" ? 1.8 : 1.5;
 
-  // Calculate usable content area with improved spacing
-  const maxContentWidth = Math.max(
-    frameWidth - leftMargin - rightMargin,
-    Number.EPSILON
-  );
-  const maxContentHeight = Math.max(
-    frameHeight - topMargin - bottomMargin - titleHeight,
-    Number.EPSILON
-  );
+    // Calculate usable content area with improved spacing
+    const maxContentWidth = Math.max(
+        frameWidth - leftMargin - rightMargin,
+        Number.EPSILON
+    );
+    const maxContentHeight = Math.max(
+        frameHeight - topMargin - bottomMargin - titleHeight,
+        Number.EPSILON
+    );
 
-  return {
-    top: topMargin,
-    bottom: bottomMargin,
-    left: leftMargin,
-    right: rightMargin,
-    titleHeight,
-    maxContentWidth,
-    maxContentHeight,
-    minSpacing,
-    bottomSafeZoneHeight,
-  };
+    return {
+        top: topMargin,
+        bottom: bottomMargin,
+        left: leftMargin,
+        right: rightMargin,
+        titleHeight,
+        maxContentWidth,
+        maxContentHeight,
+        minSpacing,
+        bottomSafeZoneHeight,
+    };
 }
 
 /**
  * Generate Python code for safe zone constants
  */
 export function generateSafeZoneConstants(config: LayoutConfig): string {
-  const zones = calculateSafeZones(config);
+    const zones = calculateSafeZones(config);
 
-  return `# Auto-generated safe zone configuration
+    return `# Auto-generated safe zone configuration
 FRAME_WIDTH = ${config.frameWidth}
 FRAME_HEIGHT = ${config.frameHeight}
 SAFE_MARGIN_TOP = ${zones.top.toFixed(2)}
@@ -204,10 +197,10 @@ DEFAULT_FONT = "EB Garamond"
 # KERNING FIX CONFIGURATION - ALWAYS APPLY FOR ACCURATE TEXT
 # ═══════════════════════════════════════════════════════════════════════════════
 # Manim's text rendering has letter spacing issues at normal font sizes.
-# FIX: Render at very large size, then scale down for proper kerning.
-# Setting threshold to 9999 ensures ALL text gets this fix.
-KERNING_FIX_THRESHOLD = 9999  # Apply fix to ALL text (was 30)
-KERNING_FIX_SCALE = 8         # Scale up by 8x, then down by 0.125x (was 10)
+# FIX: Render slightly larger, then scale down for proper kerning.
+# Keep scaling modest to avoid width explosions and random line breaks.
+KERNING_FIX_THRESHOLD = 96    # Apply fix to normal UI font sizes only
+KERNING_FIX_SCALE = 3.0       # Scale up by 3x, then down by ~0.333x
 KERNING_FIX_LOG_ENABLED = True  # Enable development logging
 
 # Safe positioning helpers
@@ -424,86 +417,86 @@ def clear_scene(scene, run_time=0.6):
  * Simplified font size recommendations with consistent typography hierarchy
  */
 export function getRecommendedFontSizes(
-  config: LayoutConfig
+    config: LayoutConfig
 ): Record<string, number> {
-  const { orientation, contentType } = config;
-  const zones = calculateSafeZones(config);
+    const { orientation, contentType } = config;
+    const zones = calculateSafeZones(config);
 
-  // Calculate base size from content area
-  const contentArea = Math.sqrt(
-    Math.max(zones.maxContentWidth * zones.maxContentHeight, 1)
-  );
+    // Calculate base size from content area
+    const contentArea = Math.sqrt(
+        Math.max(zones.maxContentWidth * zones.maxContentHeight, 1)
+    );
 
-  // Simplified scaling - single multiplier
-  const baseScale = orientation === "portrait" ? 2.8 : 2.4;
+    // Softened scaling to avoid oversized text that triggers reflow
+    const baseScale = orientation === "portrait" ? 1.8 : 1.6;
 
-  // Small adjustment for content type
-  const contentAdjust =
-    contentType === "text-heavy"
-      ? 1.05
-      : contentType === "diagram"
-        ? 1.1 // Larger fonts for diagrams (labels need to be visible)
-        : contentType === "math"
-          ? 1.08
-          : 1.0;
+    // Small adjustment for content type
+    const contentAdjust =
+        contentType === "text-heavy"
+            ? 1.03
+            : contentType === "diagram"
+                ? 1.06 // Slightly larger labels for diagrams, but keep moderate
+                : contentType === "math"
+                    ? 1.05
+                    : 1.0;
 
-  // Calculate base body size with simplified formula
-  const baseBody = clampFont(
-    Math.round(contentArea * baseScale * contentAdjust),
-    orientation === "portrait" ? 40 : 34,
-    orientation === "portrait" ? 60 : 52
-  );
+    // Calculate base body size with tighter clamps to prevent width explosions
+    const baseBody = clampFont(
+        Math.round(contentArea * baseScale * contentAdjust),
+        orientation === "portrait" ? 28 : 26,
+        orientation === "portrait" ? 36 : 34
+    );
 
-  // Title: Clear hierarchy, 1.5x body size
-  const title = clampFont(
-    Math.round(baseBody * 1.5),
-    baseBody + 8,
-    orientation === "portrait" ? 72 : 64
-  );
+    // Title: Clear hierarchy, capped to avoid forced line breaks
+    const title = clampFont(
+        Math.round(baseBody * 1.35),
+        baseBody + 4,
+        46
+    );
 
-  // Heading: Between title and body, 1.25x body size
-  const heading = clampFont(
-    Math.round(baseBody * 1.25),
-    baseBody + 4,
-    title - 4
-  );
+    // Heading: Between title and body
+    const heading = clampFont(
+        Math.round(baseBody * 1.18),
+        baseBody + 2,
+        title - 2
+    );
 
-  // Math: Same as body or slightly larger for readability
-  const math = clampFont(
-    Math.round(baseBody * (contentType === "math" ? 1.1 : 1.0)),
-    baseBody - 2,
-    baseBody + 8
-  );
+    // Math: Slightly larger for readability but constrained
+    const math = clampFont(
+        Math.round(baseBody * (contentType === "math" ? 1.06 : 1.0)),
+        baseBody - 1,
+        baseBody + 6
+    );
 
-  // Caption: 0.85x body size
-  const caption = clampFont(
-    Math.round(baseBody * 0.85),
-    orientation === "portrait" ? 32 : 28,
-    baseBody - 4
-  );
+    // Caption: Smaller but legible
+    const caption = clampFont(
+        Math.round(baseBody * 0.82),
+        orientation === "portrait" ? 22 : 20,
+        baseBody - 2
+    );
 
-  // Label: 0.75x body size for small labels
-  const label = clampFont(
-    Math.round(baseBody * 0.75),
-    orientation === "portrait" ? 28 : 24,
-    caption - 2
-  );
+    // Label: Compact for annotations
+    const label = clampFont(
+        Math.round(baseBody * 0.72),
+        orientation === "portrait" ? 18 : 16,
+        caption - 1
+    );
 
-  return {
-    title,
-    heading,
-    body: baseBody,
-    math,
-    caption,
-    label,
-  };
+    return {
+        title,
+        heading,
+        body: baseBody,
+        math,
+        caption,
+        label,
+    };
 }
 
 /**
  * Generate layout validation checks (Python code)
  */
 export function generateLayoutValidation(): string {
-  return `# Layout validation helpers
+    return `# Layout validation helpers
 def validate_position(mobject, label="object", strict=False, auto_fix=False):
     """
     Check if mobject is within safe bounds.
@@ -603,80 +596,80 @@ def safe_add(scene, mobject, auto_fit=True, label="object"):
  * Content type detection heuristics
  */
 export function detectContentType(script: string): LayoutConfig["contentType"] {
-  const lowerScript = script.toLowerCase();
+    const lowerScript = script.toLowerCase();
 
-  // Count indicators
-  const textIndicators = (lowerScript.match(/text\(/gi) || []).length;
-  const mathIndicators = (lowerScript.match(/mathtex|tex\(/gi) || []).length;
-  const diagramIndicators = (
-    lowerScript.match(/circle|square|rectangle|arrow|line|dot/gi) || []
-  ).length;
+    // Count indicators
+    const textIndicators = (lowerScript.match(/text\(/gi) || []).length;
+    const mathIndicators = (lowerScript.match(/mathtex|tex\(/gi) || []).length;
+    const diagramIndicators = (
+        lowerScript.match(/circle|square|rectangle|arrow|line|dot/gi) || []
+    ).length;
 
-  // Determine dominant type
-  const total = textIndicators + mathIndicators + diagramIndicators;
-  if (total === 0) return "mixed";
+    // Determine dominant type
+    const total = textIndicators + mathIndicators + diagramIndicators;
+    if (total === 0) return "mixed";
 
-  const textRatio = textIndicators / total;
-  const mathRatio = mathIndicators / total;
-  const diagramRatio = diagramIndicators / total;
+    const textRatio = textIndicators / total;
+    const mathRatio = mathIndicators / total;
+    const diagramRatio = diagramIndicators / total;
 
-  if (textRatio > 0.5) return "text-heavy";
-  if (mathRatio > 0.4) return "math";
-  if (diagramRatio > 0.5) return "diagram";
+    if (textRatio > 0.5) return "text-heavy";
+    if (mathRatio > 0.4) return "math";
+    if (diagramRatio > 0.5) return "diagram";
 
-  return "mixed";
+    return "mixed";
 }
 
 /**
  * Generate comprehensive layout setup code
  */
 export function generateLayoutSetup(
-  config: LayoutConfig,
-  includeHelpers: boolean = true
+    config: LayoutConfig,
+    includeHelpers: boolean = true
 ): string {
-  const parts: string[] = [];
-  const fonts = getRecommendedFontSizes(config);
+    const parts: string[] = [];
+    const fonts = getRecommendedFontSizes(config);
 
-  parts.push(["import math", "import re", "import numpy as np", ""].join("\n"));
+    parts.push(["import math", "import re", "import numpy as np", ""].join("\n"));
 
-  // Add safe zone constants
-  parts.push(generateSafeZoneConstants(config));
-  parts.push(
-    [
-      'config.background_color = "#0F0F12"', // Dark Grey - Standard Dark
-      'BRIGHT_TEXT_COLOR = "#F8FAFC"', // Slate 50
-      'DARK_TEXT_COLOR = "#020617"', // Slate 950
-      'CONTRAST_DARK_PANEL = "#1C2E4A"', // Dark Blue Panel
-      'CONTRAST_LIGHT_PANEL = "#F1F5F9"', // Slate 100
-      "MIN_CONTRAST_RATIO = 5.5", // Increased for better readability
-      "MIN_PANEL_FILL_OPACITY = 0.95",
-      "DEFAULT_PANEL_PADDING = 0.5",
-      'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F1F5F9", "#E2E8F0"]',
-      "Paragraph.set_default(color=BRIGHT_TEXT_COLOR)",
-      "MarkupText.set_default(color=BRIGHT_TEXT_COLOR)",
-      "BulletedList.set_default(color=BRIGHT_TEXT_COLOR)",
-      "myTemplate = TexTemplate()",
-      'myTemplate.preamble += "\\\\usepackage{lmodern}"',
-      "Tex.set_default(tex_template=myTemplate)",
-      "Rectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
-      "RoundedRectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
-      "SurroundingRectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
-    ].join("\n")
-  );
-  parts.push(
-    [
-      "",
-      "# Recommended font sizes for this layout",
-      `FONT_TITLE = ${fonts.title}`,
-      `FONT_HEADING = ${fonts.heading}`,
-      `FONT_BODY = ${fonts.body}`,
-      `FONT_MATH = ${fonts.math}  # Use for mathematical formulae (MathTex, Tex)`,
-      `FONT_CAPTION = ${fonts.caption}`,
-      `FONT_LABEL = ${fonts.label}`,
-      "",
-    ].join("\n")
-  );
-  parts.push(`
+    // Add safe zone constants
+    parts.push(generateSafeZoneConstants(config));
+    parts.push(
+        [
+            'config.background_color = "#0F0F12"', // Dark Grey - Standard Dark
+            'BRIGHT_TEXT_COLOR = "#F8FAFC"', // Slate 50
+            'DARK_TEXT_COLOR = "#020617"', // Slate 950
+            'CONTRAST_DARK_PANEL = "#1C2E4A"', // Dark Blue Panel
+            'CONTRAST_LIGHT_PANEL = "#F1F5F9"', // Slate 100
+            "MIN_CONTRAST_RATIO = 5.5", // Increased for better readability
+            "MIN_PANEL_FILL_OPACITY = 0.95",
+            "DEFAULT_PANEL_PADDING = 0.5",
+            'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F1F5F9", "#E2E8F0"]',
+            "Paragraph.set_default(color=BRIGHT_TEXT_COLOR)",
+            "MarkupText.set_default(color=BRIGHT_TEXT_COLOR)",
+            "BulletedList.set_default(color=BRIGHT_TEXT_COLOR)",
+            "myTemplate = TexTemplate()",
+            'myTemplate.preamble += "\\\\usepackage{lmodern}"',
+            "Tex.set_default(tex_template=myTemplate)",
+            "Rectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
+            "RoundedRectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
+            "SurroundingRectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
+        ].join("\n")
+    );
+    parts.push(
+        [
+            "",
+            "# Recommended font sizes for this layout",
+            `FONT_TITLE = ${fonts.title}`,
+            `FONT_HEADING = ${fonts.heading}`,
+            `FONT_BODY = ${fonts.body}`,
+            `FONT_MATH = ${fonts.math}  # Use for mathematical formulae (MathTex, Tex)`,
+            `FONT_CAPTION = ${fonts.caption}`,
+            `FONT_LABEL = ${fonts.label}`,
+            "",
+        ].join("\n")
+    );
+    parts.push(`
 
 # Additional layout utilities
 def get_safe_frame_dimensions():
@@ -1422,7 +1415,7 @@ def highlight_graph_intersections(scene, ax, graphs, *, tolerance=1e-3, samples=
 
     return []
 `);
-  parts.push(String.raw`
+    parts.push(String.raw`
 # Accessibility and readability helpers
 def _relative_luminance(color_value):
     color = Color(color_value)
@@ -2000,8 +1993,8 @@ def create_bullet_list(
 
 `);
 
-  // Add flexible text rendering helpers (Text vs MathTex)
-  parts.push(`
+    // Add flexible text rendering helpers (Text vs MathTex)
+    parts.push(`
 
 # ========================================
 # FLEXIBLE TEXT RENDERING (Text vs MathTex)
@@ -2260,7 +2253,7 @@ def create_plain_text(text, *, font_size=None, color=WHITE, font=None, **kwargs)
 
 `);
 
-  parts.push(`
+    parts.push(`
 
 # ========================================
 # ADVANCED LAYOUT HELPERS
@@ -2938,69 +2931,69 @@ def create_bulletproof_layout(*mobjects, layout_type="vertical", spacing=1.0,
 
 `);
 
-  // PREMIUM COLOR PALETTE - Meticulously designed for #1E1E1E background
-  // Optimized for maximum contrast, harmony, and visual appeal
-  const colorPalette: Record<string, string> = {
-    // === Neutrals (High contrast base colors) ===
-    WHITE: "#F8FAFC", // Slate 50
-    LIGHT_GRAY: "#CBD5E1", // Slate 300
-    GRAY: "#94A3B8", // Slate 400
-    DARK_GRAY: "#475569", // Slate 600
-    BLACK: "#020617", // Slate 950
+    // PREMIUM COLOR PALETTE - Meticulously designed for #1E1E1E background
+    // Optimized for maximum contrast, harmony, and visual appeal
+    const colorPalette: Record<string, string> = {
+        // === Neutrals (High contrast base colors) ===
+        WHITE: "#F8FAFC", // Slate 50
+        LIGHT_GRAY: "#CBD5E1", // Slate 300
+        GRAY: "#94A3B8", // Slate 400
+        DARK_GRAY: "#475569", // Slate 600
+        BLACK: "#020617", // Slate 950
 
-    // === Primary Accents (Vibrant & Professional) ===
-    BLUE: "#38BDF8", // Sky 400 - Clear, trustworthy
-    CYAN: "#22D3EE", // Cyan 400 - Electric, modern
-    TEAL: "#2DD4BF", // Teal 400 - Fresh, calm
-    GREEN: "#4ADE80", // Green 400 - Success, growth
+        // === Primary Accents (Vibrant & Professional) ===
+        BLUE: "#38BDF8", // Sky 400 - Clear, trustworthy
+        CYAN: "#22D3EE", // Cyan 400 - Electric, modern
+        TEAL: "#2DD4BF", // Teal 400 - Fresh, calm
+        GREEN: "#4ADE80", // Green 400 - Success, growth
 
-    // === Warm Accents (Attention & Energy) ===
-    YELLOW: "#FACC15", // Yellow 400 - Highlight, warning
-    ORANGE: "#FB923C", // Orange 400 - Secondary highlight
-    RED: "#F87171", // Red 400 - Error, critical
-    PINK: "#F472B6", // Pink 400 - Creative
+        // === Warm Accents (Attention & Energy) ===
+        YELLOW: "#FACC15", // Yellow 400 - Highlight, warning
+        ORANGE: "#FB923C", // Orange 400 - Secondary highlight
+        RED: "#F87171", // Red 400 - Error, critical
+        PINK: "#F472B6", // Pink 400 - Creative
 
-    // === Deep/Rich Accents (Backgrounds & Depth) ===
-    INDIGO: "#818CF8", // Indigo 400
-    VIOLET: "#A78BFA", // Violet 400
-    PURPLE: "#C084FC", // Purple 400
-    MAGENTA: "#E879F9", // Fuchsia 400
-  };
+        // === Deep/Rich Accents (Backgrounds & Depth) ===
+        INDIGO: "#818CF8", // Indigo 400
+        VIOLET: "#A78BFA", // Violet 400
+        PURPLE: "#C084FC", // Purple 400
+        MAGENTA: "#E879F9", // Fuchsia 400
+    };
 
-  parts.push("\n# Script color palette - Optimized for #1E1E1E background");
-  const paletteEntries = Object.entries(colorPalette);
-  paletteEntries.forEach(([name, hex]) => {
-    parts.push(`${name} = "${hex}"`);
-  });
-  parts.push("");
+    parts.push("\n# Script color palette - Optimized for #1E1E1E background");
+    const paletteEntries = Object.entries(colorPalette);
+    paletteEntries.forEach(([name, hex]) => {
+        parts.push(`${name} = "${hex}"`);
+    });
+    parts.push("");
 
-  // Add helpers if requested
-  if (includeHelpers) {
-    parts.push("\n");
-    parts.push(generateLayoutValidation());
-  }
+    // Add helpers if requested
+    if (includeHelpers) {
+        parts.push("\n");
+        parts.push(generateLayoutValidation());
+    }
 
-  return parts.join("\n");
+    return parts.join("\n");
 }
 
 /**
  * Advanced text wrapping recommendations
  */
 export function getTextWrappingGuidelines(config: LayoutConfig): string {
-  const zones = calculateSafeZones(config);
-  const fonts = getRecommendedFontSizes(config);
+    const zones = calculateSafeZones(config);
+    const fonts = getRecommendedFontSizes(config);
 
-  return `# Text Wrapping Guidelines
+    return `# Text Wrapping Guidelines
 # Maximum recommended characters per line (approximate):
 # - Title (${fonts.title}pt): ~${Math.floor(
-    zones.maxContentWidth / (fonts.title * 0.6)
-  )} chars
+        zones.maxContentWidth / (fonts.title * 0.6)
+    )} chars
 # - Body (${fonts.body}pt): ~${Math.floor(
-    zones.maxContentWidth / (fonts.body * 0.6)
-  )} chars
+        zones.maxContentWidth / (fonts.body * 0.6)
+    )} chars
 # - Caption (${fonts.caption}pt): ~${Math.floor(
-    zones.maxContentWidth / (fonts.caption * 0.6)
-  )} chars
+        zones.maxContentWidth / (fonts.caption * 0.6)
+    )} chars
 
 def wrap_text(text, font_size=48, max_width=10, max_lines=None):
     """
@@ -3074,7 +3067,7 @@ def create_wrapped_text(text, font_size=FONT_BODY, **kwargs):
  * Generate helpers for rendering code blocks safely
  */
 export function getCodeRenderingHelpers(): string {
-  return `# Code Rendering Helpers
+    return `# Code Rendering Helpers
 def create_code_block(
     code_str,
     *,
@@ -3122,13 +3115,7 @@ def add_code_block(scene, code_str, **kwargs):
  * Generate diagram schema helpers (canonical helpers for accurate diagrams)
  */
 export function generateDiagramSchemaHelpers(): string {
-  if (isDevelopment) {
-    logSchema("Generating diagram schema helpers", {
-      count: DIAGRAM_SCHEMAS.length,
-    });
-  }
-
-  return `
+    return `
 # ═══════════════════════════════════════════════════════════════════════════════
 # DIAGRAM SCHEMA HELPERS - USE THESE FOR ACCURATE VISUALIZATIONS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3797,63 +3784,56 @@ def validate_diagram(diagram, schema_id, check_bounds=True, check_density=True):
  * Get all layout code for a configuration
  */
 export function getCompleteLayoutCode(config: LayoutConfig): string {
-  const parts: string[] = [];
+    const parts: string[] = [];
 
-  parts.push("# ========================================");
-  parts.push("# ADVANCED LAYOUT SYSTEM");
-  parts.push("# Auto-generated safe zone and helpers");
-  parts.push("# ========================================\n");
+    parts.push("# ========================================");
+    parts.push("# ADVANCED LAYOUT SYSTEM");
+    parts.push("# Auto-generated safe zone and helpers");
+    parts.push("# ========================================\n");
 
-  parts.push(generateLayoutSetup(config, true));
-  parts.push("\n");
-  parts.push(getTextWrappingGuidelines(config));
-  parts.push("\n");
-  parts.push(getCodeRenderingHelpers());
-  parts.push("\n");
-  parts.push(generate3DLayoutCode());
-  parts.push("\n");
-  parts.push(generateDiagramSchemaHelpers());
+    parts.push(generateLayoutSetup(config, true));
+    parts.push("\n");
+    parts.push(getTextWrappingGuidelines(config));
+    parts.push("\n");
+    parts.push(getCodeRenderingHelpers());
+    parts.push("\n");
+    parts.push(generate3DLayoutCode());
+    parts.push("\n");
+    parts.push(generateDiagramSchemaHelpers());
 
-  parts.push("\n# ========================================");
-  parts.push("# Usage:");
-  parts.push("# 1. Use get_title_position() for titles");
-  parts.push("# 2. Use get_content_center() for content");
-  parts.push("# 3. Use ensure_fits_screen() before adding");
-  parts.push("# 4. Use validate_position() to check bounds");
-  parts.push("# 5. For 3D scenes:");
-  parts.push(
-    "#    - Use create_3d_text_label() for ALL text (ensures camera-facing + background)"
-  );
-  parts.push("#    - Use create_3d_labeled_object() to label 3D objects");
-  parts.push("#    - Use set_camera_for_3d_scene() to frame 3D content");
-  parts.push(
-    "#    - Use set_camera_for_2d_view() for text-heavy scenes like CTAs"
-  );
-  parts.push("# 6. DIAGRAM SCHEMAS (use for accurate diagrams):");
-  parts.push("#    - create_cartesian_graph() for function plots");
-  parts.push("#    - create_bar_chart() for bar charts");
-  parts.push("#    - create_labeled_triangle() for geometry");
-  parts.push("#    - create_force_diagram() for physics");
-  parts.push("#    - create_flowchart() for processes");
-  parts.push("#    - create_atom_diagram() for chemistry");
-  parts.push("#    - create_3d_axes_vector() for 3D vectors");
-  parts.push("# ========================================\n");
+    parts.push("\n# ========================================");
+    parts.push("# Usage:");
+    parts.push("# 1. Use get_title_position() for titles");
+    parts.push("# 2. Use get_content_center() for content");
+    parts.push("# 3. Use ensure_fits_screen() before adding");
+    parts.push("# 4. Use validate_position() to check bounds");
+    parts.push("# 5. For 3D scenes:");
+    parts.push(
+        "#    - Use create_3d_text_label() for ALL text (ensures camera-facing + background)"
+    );
+    parts.push("#    - Use create_3d_labeled_object() to label 3D objects");
+    parts.push("#    - Use set_camera_for_3d_scene() to frame 3D content");
+    parts.push(
+        "#    - Use set_camera_for_2d_view() for text-heavy scenes like CTAs"
+    );
+    parts.push("# 6. DIAGRAM SCHEMAS (use for accurate diagrams):");
+    parts.push("#    - create_cartesian_graph() for function plots");
+    parts.push("#    - create_bar_chart() for bar charts");
+    parts.push("#    - create_labeled_triangle() for geometry");
+    parts.push("#    - create_force_diagram() for physics");
+    parts.push("#    - create_flowchart() for processes");
+    parts.push("#    - create_atom_diagram() for chemistry");
+    parts.push("#    - create_3d_axes_vector() for 3D vectors");
+    parts.push("# ========================================\n");
 
-  if (isDevelopment) {
-    logSchema("Complete layout code generated", {
-      orientation: config.orientation,
-      contentType: config.contentType,
-    });
-  }
-
-  return parts.join("\n");
+    return parts.join("\n");
 }
 
 /**
  * Generate helpers for 3D scene layout
  */
 export function generate3DLayoutCode(): string {
-  return `# 3D Scene Layout Helpers
+    return `# 3D Scene Layout Helpers
 def get_3d_mobjects_bounding_box(mobjects):
     """Calculate the bounding box containing all 3D mobjects"""
     if not mobjects:
@@ -4000,51 +3980,51 @@ def create_3d_labeled_object(obj_3d, label_text, label_position=UP, label_buff=0
  * Default layout configurations
  */
 export const DEFAULT_LANDSCAPE_CONFIG: LayoutConfig = {
-  frameWidth: 14.2,
-  frameHeight: 8.0,
-  safeMargin: 0.72,
-  orientation: "landscape",
-  contentType: "mixed",
+    frameWidth: 14.2,
+    frameHeight: 8.0,
+    safeMargin: 0.72,
+    orientation: "landscape",
+    contentType: "mixed",
 };
 
 export const DEFAULT_PORTRAIT_CONFIG: LayoutConfig = {
-  frameWidth: 7.2,
-  frameHeight: 12.8,
-  safeMargin: 0.85,
-  orientation: "portrait",
-  contentType: "mixed",
+    frameWidth: 7.2,
+    frameHeight: 12.8,
+    safeMargin: 0.85,
+    orientation: "portrait",
+    contentType: "mixed",
 };
 
 export const DEFAULT_3D_CONFIG: LayoutConfig3D = {
-  ...DEFAULT_LANDSCAPE_CONFIG,
-  cameraDistance: 50,
-  cameraFov: 50,
+    ...DEFAULT_LANDSCAPE_CONFIG,
+    cameraDistance: 50,
+    cameraFov: 50,
 };
 
 export function getLayoutConfig(options: {
-  orientation?: "landscape" | "portrait";
-  resolution?: { width: number; height: number };
-  contentType?: LayoutConfig["contentType"];
-  is3D?: boolean;
+    orientation?: "landscape" | "portrait";
+    resolution?: { width: number; height: number };
+    contentType?: LayoutConfig["contentType"];
+    is3D?: boolean;
 }): LayoutConfig {
-  if (options.is3D) {
-    return { ...DEFAULT_3D_CONFIG };
-  }
-  const base =
-    options.orientation === "portrait"
-      ? { ...DEFAULT_PORTRAIT_CONFIG }
-      : { ...DEFAULT_LANDSCAPE_CONFIG };
+    if (options.is3D) {
+        return { ...DEFAULT_3D_CONFIG };
+    }
+    const base =
+        options.orientation === "portrait"
+            ? { ...DEFAULT_PORTRAIT_CONFIG }
+            : { ...DEFAULT_LANDSCAPE_CONFIG };
 
-  // Adjust frame dimensions based on resolution if provided
-  if (options.resolution) {
-    const aspectRatio = options.resolution.width / options.resolution.height;
-    base.frameWidth = 14.2; // Keep manim's default
-    base.frameHeight = base.frameWidth / aspectRatio;
-  }
+    // Adjust frame dimensions based on resolution if provided
+    if (options.resolution) {
+        const aspectRatio = options.resolution.width / options.resolution.height;
+        base.frameWidth = 14.2; // Keep manim's default
+        base.frameHeight = base.frameWidth / aspectRatio;
+    }
 
-  if (options.contentType) {
-    base.contentType = options.contentType;
-  }
+    if (options.contentType) {
+        base.contentType = options.contentType;
+    }
 
-  return base;
+    return base;
 }

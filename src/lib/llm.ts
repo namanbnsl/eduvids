@@ -15,10 +15,17 @@ import { franc } from "franc";
 // @ts-ignore
 import langs from "langs";
 
+import { withTracing } from "@posthog/ai";
+import { PostHog } from "posthog-node";
+
 interface GoogleModelConfig {
   modelId: string;
   provider: ReturnType<typeof createGoogleProvider>;
 }
+
+const phClient = new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
+  host: process.env.NEXT_PUBLIC_POSTHOG_HOST!,
+});
 
 const createGoogleModel = (modelId: string): GoogleModelConfig => {
   const provider = createGoogleProvider();
@@ -201,7 +208,7 @@ Do not provide any explanation, just the language name.`,
 }
 
 function buildAugmentedSystemPrompt(base: string, language?: string): string {
-  const { markdown } = loadManimReferenceDocs();
+  // const { markdown } = loadManimReferenceDocs();
   let modifiedBase = base;
 
   // If language is not English, comprehensively modify the prompt to allow Text instead of requiring LaTeX
@@ -267,7 +274,7 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
     );
   }
 
-  return `${modifiedBase}\n\n---\nMANIM_SHORT_REF.md (local):\n${markdown}\n\nMANIM_SHORT_REF.json (local):\n---`;
+  return `${modifiedBase}\n\n---\n`;
 }
 
 const truncate = (value: string, max = 2000) => {
@@ -390,10 +397,16 @@ export async function generateManimScript({
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
     const googleModel = createGoogleModel("gemini-3-flash-preview");
+    const model = withTracing(
+      googleModel.provider(googleModel.modelId),
+      phClient,
+      {}
+    );
+
     try {
       const { text } = await generateTextWithTracking(
         {
-          model: googleModel.provider(googleModel.modelId),
+          model: model,
           system: augmentedSystemPrompt,
           prompt: generationPrompt,
           temperature: 0.1,
@@ -761,10 +774,16 @@ OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
     const googleModel = createGoogleModel("gemini-3-flash-preview");
+    const model = withTracing(
+      googleModel.provider(googleModel.modelId),
+      phClient,
+      {}
+    );
+
     try {
       const { text } = await generateTextWithTracking(
         {
-          model: googleModel.provider(googleModel.modelId),
+          model: model,
           system: regenerationSystemPrompt,
           prompt: regenerationPrompt,
           temperature: 0.1,
