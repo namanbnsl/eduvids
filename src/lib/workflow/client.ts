@@ -12,15 +12,23 @@ const getBypassHeaders = (): Record<string, string> => {
 };
 
 export const workflowClient = new Client({
+  headers: process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+    ? {
+        "x-vercel-protection-bypass":
+          process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+      }
+    : undefined,
   token: process.env.QSTASH_TOKEN!,
 });
 
 export const qstashClientWithBypass = new QStashClient({
   token: process.env.QSTASH_TOKEN!,
-  ...(() => {
-    const headers = getBypassHeaders();
-    return Object.keys(headers).length > 0 ? { headers } : {};
-  })(),
+  headers: process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+    ? {
+        "x-vercel-protection-bypass":
+          process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+      }
+    : undefined,
 });
 
 export const getBaseUrl = () => {
