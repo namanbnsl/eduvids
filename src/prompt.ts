@@ -163,10 +163,12 @@ TEMPLATE 3: Bullet Points (MAX 3!)
     self.play(FadeIn(bullets, shift=UP*0.3), run_time=1.0)
 
 TEMPLATE 4: Side-by-Side (text left, diagram right) - BEST for avoiding overlap!
+    # Both elements align to TOP for professional look
     layout = simple_two_column(text_group, diagram_group)
     self.play(FadeIn(layout), run_time=1.2)
 
-TEMPLATE 5: Title + Content Together
+TEMPLATE 5: Title + Content Together (TOP-ALIGNED - content starts below title)
+    # Content aligns to top, not centered (looks more professional)
     layout = simple_title_content("My Title", my_content)
     self.play(FadeIn(layout), run_time=1.2)
 
@@ -177,6 +179,39 @@ TEMPLATE 6: Clear Screen Before New Content
     self.play(FadeOut(scene_content))
     # Now safe to add new content
 
+TEMPLATE 7: Top-Aligned Stack (for multiple items)
+    # Items stack from top, not centered
+    layout = simple_stack(item1, item2, item3)
+    self.play(FadeIn(layout), run_time=1.2)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+📐 ALIGNMENT BEST PRACTICES - PROFESSIONAL LOOK
+═══════════════════════════════════════════════════════════════════════════════
+
+1. TOP ALIGNMENT IS DEFAULT:
+   - Content should start from the top, not float in the center
+   - Use simple_title_content() which aligns content below title
+   - Use simple_two_column() which aligns both columns to top
+
+2. NEVER CENTER DIAGRAMS WITH TEXT BELOW:
+   - BAD: diagram.move_to(ORIGIN) then text.next_to(diagram, DOWN)
+   - GOOD: Use simple_title_content("Title", diagram) or simple_two_column(text, diagram)
+
+3. SIDE-BY-SIDE IS PREFERRED:
+   - Text on LEFT, diagram on RIGHT looks professional
+   - Both elements top-aligned for clean appearance
+   - Example: layout = simple_two_column(bullets, diagram)
+
+4. VERTICAL STACKING RULES:
+   - Title at top (get_title_position())
+   - Content immediately below title (not centered in remaining space)
+   - Use align_to(point, UP) to top-align elements
+
+5. FOR MULTIPLE ELEMENTS:
+   - Use simple_stack() for vertical arrangement
+   - Use simple_two_column() for horizontal arrangement
+   - Elements align to top by default
 
 ═══════════════════════════════════════════════════════════════════════════════
 🚨 OVERLAP PREVENTION - CRITICAL (READ CAREFULLY) 🚨
@@ -221,6 +256,352 @@ OVERLAPPING ELEMENTS IS THE #1 CAUSE OF BAD VIDEOS. FOLLOW THESE RULES STRICTLY:
 ═══════════════════════════════════════════════════════════════════════════════
 
 Make diagrams that LOOK LIKE what they represent. Generic shapes are not enough!
+
+IMPORTANT: All Text() must use font="Open Sans" which is set as DEFAULT_FONT.
+Example: Text("Hello", font_size=FONT_BODY, font=DEFAULT_FONT)
+Or use helper functions like create_label() which handle this automatically.
+
+═══════════════════════════════════════════════════════════════════════════════
+🌟 REALISTIC ILLUSTRATION TEMPLATES (COPY THESE!)
+═══════════════════════════════════════════════════════════════════════════════
+
+SUN (realistic with corona and rays):
+\`\`\`python
+def create_sun(radius=1.0):
+    """Create a realistic sun with glow, corona, and rays."""
+    sun = VGroup()
+    
+    # Outer glow (soft gradient effect)
+    for i in range(5, 0, -1):
+        glow = Circle(
+            radius=radius + i * 0.15,
+            fill_color=YELLOW,
+            fill_opacity=0.08 * (6 - i),
+            stroke_width=0
+        )
+        sun.add(glow)
+    
+    # Main sun body with gradient effect
+    sun_core = Circle(radius=radius, fill_color=YELLOW, fill_opacity=1, stroke_width=0)
+    sun_inner = Circle(radius=radius * 0.7, fill_color=ORANGE, fill_opacity=0.3, stroke_width=0)
+    sun.add(sun_core, sun_inner)
+    
+    # Sun rays (triangular)
+    num_rays = 12
+    for i in range(num_rays):
+        angle = i * TAU / num_rays
+        ray = Polygon(
+            radius * 1.1 * np.array([np.cos(angle - 0.08), np.sin(angle - 0.08), 0]),
+            radius * 1.1 * np.array([np.cos(angle + 0.08), np.sin(angle + 0.08), 0]),
+            radius * 1.5 * np.array([np.cos(angle), np.sin(angle), 0]),
+            fill_color=YELLOW,
+            fill_opacity=0.9,
+            stroke_width=0
+        )
+        sun.add(ray)
+    
+    return sun
+
+# Quick sun (simpler version)
+sun_quick = VGroup(
+    Circle(radius=0.8, fill_color=YELLOW, fill_opacity=1, stroke_width=0),
+    *[Line(ORIGIN, 1.3 * np.array([np.cos(i * TAU/8), np.sin(i * TAU/8), 0]), 
+           stroke_width=4, color=YELLOW) for i in range(8)]
+)
+\`\`\`
+
+MOON (realistic crescent or full):
+\`\`\`python
+def create_moon(phase="crescent", radius=1.0):
+    """Create a realistic moon with craters and shading."""
+    moon = VGroup()
+    
+    if phase == "full":
+        # Full moon with craters
+        moon_body = Circle(radius=radius, fill_color="#E8E8E8", fill_opacity=1, stroke_color=GRAY, stroke_width=1)
+        moon.add(moon_body)
+        
+        # Add craters
+        crater_positions = [(0.3, 0.4, 0.15), (-0.2, -0.3, 0.2), (0.4, -0.2, 0.1), (-0.4, 0.2, 0.12)]
+        for cx, cy, cr in crater_positions:
+            crater = Circle(
+                radius=radius * cr,
+                fill_color="#CCCCCC",
+                fill_opacity=0.6,
+                stroke_color="#AAAAAA",
+                stroke_width=1
+            ).move_to(np.array([cx * radius, cy * radius, 0]))
+            moon.add(crater)
+    else:
+        # Crescent moon
+        outer = Circle(radius=radius, fill_color="#F5F5DC", fill_opacity=1, stroke_width=0)
+        # Create shadow circle offset to create crescent effect
+        shadow = Circle(
+            radius=radius * 0.85,
+            fill_color="#1E1E1E",  # Match background
+            fill_opacity=1,
+            stroke_width=0
+        ).shift(RIGHT * radius * 0.4)
+        moon.add(outer, shadow)
+        
+        # Add subtle glow
+        glow = Circle(radius=radius * 1.15, fill_color="#F5F5DC", fill_opacity=0.1, stroke_width=0)
+        moon.add_to_back(glow)
+    
+    return moon
+
+# Quick crescent moon
+moon_quick = VGroup(
+    Arc(radius=1, angle=PI, fill_color="#F5F5DC", fill_opacity=1, stroke_width=0).rotate(PI/2),
+    Arc(radius=0.7, angle=PI, fill_color="#1E1E1E", fill_opacity=1, stroke_width=0).rotate(PI/2).shift(RIGHT * 0.2)
+)
+\`\`\`
+
+FIREWORKS (with explosion effect):
+\`\`\`python
+def create_firework(center=ORIGIN, radius=2.0, num_sparks=16, colors=None):
+    """Create a firework explosion with colorful sparks."""
+    if colors is None:
+        colors = [RED, YELLOW, ORANGE, PINK, CYAN, GREEN]
+    
+    firework = VGroup()
+    
+    # Central flash
+    flash = Circle(radius=radius * 0.15, fill_color=WHITE, fill_opacity=1, stroke_width=0)
+    firework.add(flash)
+    
+    # Spark trails
+    for i in range(num_sparks):
+        angle = i * TAU / num_sparks + np.random.uniform(-0.1, 0.1)
+        length = radius * np.random.uniform(0.7, 1.0)
+        color = colors[i % len(colors)]
+        
+        # Main spark line
+        end_point = length * np.array([np.cos(angle), np.sin(angle), 0])
+        spark = Line(
+            ORIGIN + 0.2 * end_point / length,  # Start slightly from center
+            end_point,
+            stroke_width=3,
+            color=color
+        )
+        firework.add(spark)
+        
+        # Spark tip (dot)
+        tip = Dot(end_point, radius=0.06, color=color)
+        firework.add(tip)
+        
+        # Secondary smaller sparks
+        for j in range(2):
+            sub_angle = angle + np.random.uniform(-0.3, 0.3)
+            sub_length = length * np.random.uniform(0.3, 0.6)
+            sub_end = sub_length * np.array([np.cos(sub_angle), np.sin(sub_angle), 0])
+            sub_spark = Line(
+                0.3 * end_point,
+                sub_end,
+                stroke_width=1.5,
+                color=color,
+                stroke_opacity=0.7
+            )
+            firework.add(sub_spark)
+    
+    firework.move_to(center)
+    return firework
+
+# Quick firework burst
+firework_quick = VGroup(*[
+    Line(ORIGIN, 1.5 * np.array([np.cos(i * TAU/12), np.sin(i * TAU/12), 0]),
+         stroke_width=3, color=[RED, YELLOW, ORANGE, PINK][i % 4])
+    for i in range(12)
+])
+\`\`\`
+
+STARS (twinkling star shape):
+\`\`\`python
+def create_star(radius=0.5, num_points=5, color=YELLOW, inner_ratio=0.4):
+    """Create a star shape with pointed rays."""
+    points = []
+    for i in range(num_points * 2):
+        angle = i * PI / num_points - PI / 2  # Start from top
+        r = radius if i % 2 == 0 else radius * inner_ratio
+        points.append(r * np.array([np.cos(angle), np.sin(angle), 0]))
+    
+    star = Polygon(*points, fill_color=color, fill_opacity=1, stroke_color=WHITE, stroke_width=1)
+    return star
+
+# Quick 5-point star
+star_quick = Polygon(
+    *[((1 if i % 2 == 0 else 0.4) * np.array([np.cos(i * PI/5 - PI/2), np.sin(i * PI/5 - PI/2), 0])) for i in range(10)],
+    fill_color=YELLOW, fill_opacity=1, stroke_width=1
+)
+\`\`\`
+
+EARTH/PLANET:
+\`\`\`python
+def create_earth(radius=1.0):
+    """Create Earth with continents and atmosphere."""
+    earth = VGroup()
+    
+    # Atmosphere glow
+    atmosphere = Circle(radius=radius * 1.08, fill_color=BLUE, fill_opacity=0.15, stroke_width=0)
+    earth.add(atmosphere)
+    
+    # Ocean base
+    ocean = Circle(radius=radius, fill_color="#1E90FF", fill_opacity=1, stroke_width=0)
+    earth.add(ocean)
+    
+    # Simplified continents (use ellipses)
+    # North America-ish
+    continent1 = Ellipse(width=radius*0.6, height=radius*0.5, fill_color=GREEN, fill_opacity=0.9, stroke_width=0)
+    continent1.shift(UP * radius * 0.3 + LEFT * radius * 0.3)
+    # Europe/Africa-ish
+    continent2 = Ellipse(width=radius*0.4, height=radius*0.8, fill_color=GREEN, fill_opacity=0.9, stroke_width=0)
+    continent2.shift(RIGHT * radius * 0.2)
+    # Australia-ish
+    continent3 = Ellipse(width=radius*0.3, height=radius*0.2, fill_color=GREEN, fill_opacity=0.9, stroke_width=0)
+    continent3.shift(DOWN * radius * 0.4 + RIGHT * radius * 0.4)
+    
+    earth.add(continent1, continent2, continent3)
+    
+    # Ice caps
+    ice_north = Arc(radius=radius, angle=PI*0.4, fill_color=WHITE, fill_opacity=0.9, stroke_width=0)
+    ice_north.rotate(PI*0.3).shift(UP * radius * 0.7)
+    earth.add(ice_north)
+    
+    return earth
+\`\`\`
+
+WATER DROP:
+\`\`\`python
+def create_water_drop(height=1.5, color=BLUE):
+    """Create a realistic water droplet."""
+    drop = VGroup()
+    
+    # Main drop shape using bezier-like construction
+    # Approximate with ellipse + triangle top
+    body = Ellipse(width=height*0.6, height=height*0.7, fill_color=color, fill_opacity=0.8, stroke_width=0)
+    body.shift(DOWN * height * 0.15)
+    
+    # Pointed top
+    top = Polygon(
+        LEFT * height * 0.1,
+        RIGHT * height * 0.1,
+        UP * height * 0.5,
+        fill_color=color, fill_opacity=0.8, stroke_width=0
+    )
+    top.shift(UP * height * 0.1)
+    
+    # Highlight reflection
+    highlight = Ellipse(width=height*0.15, height=height*0.25, fill_color=WHITE, fill_opacity=0.6, stroke_width=0)
+    highlight.shift(UP * height * 0.05 + LEFT * height * 0.1)
+    
+    drop.add(body, top, highlight)
+    return drop
+\`\`\`
+
+LIGHTNING BOLT:
+\`\`\`python
+def create_lightning(height=3.0, color=YELLOW):
+    """Create a jagged lightning bolt."""
+    points = [
+        UP * height * 0.5,
+        UP * height * 0.2 + RIGHT * 0.3,
+        UP * height * 0.25 + LEFT * 0.1,
+        DOWN * height * 0.1 + RIGHT * 0.2,
+        DOWN * height * 0.05 + LEFT * 0.2,
+        DOWN * height * 0.5,
+    ]
+    bolt = Polygon(*points, fill_color=color, fill_opacity=1, stroke_color=WHITE, stroke_width=2)
+    
+    # Add glow
+    glow = bolt.copy()
+    glow.set_fill(color, opacity=0.3)
+    glow.set_stroke(width=0)
+    glow.scale(1.15)
+    
+    return VGroup(glow, bolt)
+\`\`\`
+
+TREE:
+\`\`\`python
+def create_tree(height=2.5):
+    """Create a simple but nice-looking tree."""
+    tree = VGroup()
+    
+    # Trunk
+    trunk = Rectangle(width=height*0.15, height=height*0.35, fill_color="#8B4513", fill_opacity=1, stroke_width=0)
+    trunk.shift(DOWN * height * 0.25)
+    tree.add(trunk)
+    
+    # Foliage layers (3 triangles)
+    for i, (w, h, y) in enumerate([(0.8, 0.4, 0.15), (0.65, 0.35, 0.35), (0.5, 0.3, 0.5)]):
+        layer = Polygon(
+            LEFT * height * w * 0.5,
+            RIGHT * height * w * 0.5,
+            UP * height * h,
+            fill_color=GREEN, fill_opacity=0.9, stroke_width=0
+        )
+        layer.shift(UP * height * y)
+        # Slightly different green shades
+        layer.set_fill(["#228B22", "#32CD32", "#2E8B57"][i], opacity=0.9)
+        tree.add(layer)
+    
+    return tree
+\`\`\`
+
+HEART:
+\`\`\`python
+def create_heart(size=1.0, color=RED):
+    """Create a heart shape."""
+    # Two circles for top curves + triangle for bottom
+    heart = VGroup()
+    
+    left_curve = Circle(radius=size*0.35, fill_color=color, fill_opacity=1, stroke_width=0)
+    left_curve.shift(UP * size * 0.15 + LEFT * size * 0.25)
+    
+    right_curve = Circle(radius=size*0.35, fill_color=color, fill_opacity=1, stroke_width=0)
+    right_curve.shift(UP * size * 0.15 + RIGHT * size * 0.25)
+    
+    bottom = Polygon(
+        LEFT * size * 0.55,
+        RIGHT * size * 0.55,
+        DOWN * size * 0.6,
+        fill_color=color, fill_opacity=1, stroke_width=0
+    )
+    bottom.shift(DOWN * size * 0.05)
+    
+    heart.add(bottom, left_curve, right_curve)
+    return heart
+\`\`\`
+
+CLOUD:
+\`\`\`python
+def create_cloud(width=2.0, color=WHITE):
+    """Create a fluffy cloud."""
+    cloud = VGroup()
+    
+    # Multiple overlapping circles for fluffy effect
+    circles = [
+        (0, 0, 0.4),
+        (-0.35, 0.05, 0.35),
+        (0.35, 0.05, 0.35),
+        (-0.2, 0.2, 0.3),
+        (0.2, 0.2, 0.3),
+        (0, 0.15, 0.35),
+    ]
+    
+    for x, y, r in circles:
+        c = Circle(
+            radius=width * r,
+            fill_color=color,
+            fill_opacity=0.95,
+            stroke_width=0
+        ).shift(np.array([x * width, y * width, 0]))
+        cloud.add(c)
+    
+    return cloud
+\`\`\`
+
+═══════════════════════════════════════════════════════════════════════════════
 
 ATOMS & MOLECULES:
 \`\`\`python

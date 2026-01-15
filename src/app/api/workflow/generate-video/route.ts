@@ -377,23 +377,31 @@ export const { POST } = serve<VideoGenerationPayload>(
       script = await context.run(
         `regenerate-script-after-render-${renderAttempt}`,
         async () => {
-          const regenerated = await regenerateManimScriptWithError({
-            prompt: generationPrompt,
-            voiceoverScript,
-            previousScript: script,
-            error: renderError.message ?? "Unknown render error",
-            errorDetails: renderError,
-            attemptNumber: renderAttempt,
-            attemptHistory: failedAttempts,
-            blockedScripts: Array.from(blockedScripts.values()),
-          });
-          return regenerated.trim();
+          const MAX_REGENERATION_RETRIES = 3;
+          for (let regenAttempt = 0; regenAttempt < MAX_REGENERATION_RETRIES; regenAttempt++) {
+            const regenerated = await regenerateManimScriptWithError({
+              prompt: generationPrompt,
+              voiceoverScript,
+              previousScript: script,
+              error: renderError.message ?? "Unknown render error",
+              errorDetails: renderError,
+              attemptNumber: renderAttempt,
+              attemptHistory: failedAttempts,
+              blockedScripts: Array.from(blockedScripts.values()),
+            });
+            const trimmed = regenerated.trim();
+            if (trimmed) {
+              return trimmed;
+            }
+            console.warn(`⚠️ Regeneration attempt ${regenAttempt + 1} returned empty, retrying...`);
+          }
+          return "";
         }
       );
 
       if (!script) {
         throw new WorkflowNonRetryableError(
-          `Script regeneration returned empty after render failure`
+          `Script regeneration returned empty after render failure (exhausted ${3} retries)`
         );
       }
 

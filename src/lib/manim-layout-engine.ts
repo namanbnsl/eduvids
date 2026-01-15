@@ -179,6 +179,11 @@ MAX_CONTENT_HEIGHT = ${zones.maxContentHeight.toFixed(2)}
 SAFE_SPACING_MIN = ${zones.minSpacing.toFixed(2)}
 SAFE_BOTTOM_ZONE = ${zones.bottomSafeZoneHeight.toFixed(2)}
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# FONT CONFIGURATION - Use Open Sans for all text
+# ═══════════════════════════════════════════════════════════════════════════════
+DEFAULT_FONT = "Open Sans"
+
 # Safe positioning helpers
 def get_title_position():
     """Get safe position for title (top of screen with margin)"""
@@ -612,7 +617,7 @@ export function generateLayoutSetup(
   parts.push(generateSafeZoneConstants(config));
   parts.push(
     [
-      'config.background_color = "#1E1E1E"', // Dark Grey - Standard Dark
+      'config.background_color = "#0F0F12"', // Dark Grey - Standard Dark
       'BRIGHT_TEXT_COLOR = "#F8FAFC"', // Slate 50
       'DARK_TEXT_COLOR = "#020617"', // Slate 950
       'CONTRAST_DARK_PANEL = "#1C2E4A"', // Dark Blue Panel
@@ -829,10 +834,17 @@ def limit_visible_elements(mobjects, max_elements=MAX_ELEMENTS_ON_SCREEN, priori
 # SIMPLE ONE-LINER LAYOUT WRAPPERS
 # ========================================
 
-def simple_title_content(title_text, content_mobject, title_color=WHITE, spacing=None):
+def simple_title_content(title_text, content_mobject, title_color=WHITE, spacing=None, align="top"):
     """
     ONE-LINER: Create title + content layout with guaranteed spacing.
     Use this instead of manually positioning title and content.
+    
+    Args:
+        title_text: Title text
+        content_mobject: Content to display below title
+        title_color: Color of the title
+        spacing: Spacing between title and content
+        align: Alignment mode - "top" (default, content starts below title) or "center"
     
     Example:
         layout = simple_title_content("My Title", my_diagram)
@@ -853,8 +865,9 @@ def simple_title_content(title_text, content_mobject, title_color=WHITE, spacing
     
     # Calculate available space for content
     title_bottom = title.get_bottom()[1]
-    content_top = FRAME_HEIGHT/2 - SAFE_MARGIN_TOP - TITLE_ZONE_HEIGHT - spacing
-    available_height = content_top - (-FRAME_HEIGHT/2 + SAFE_MARGIN_BOTTOM + SAFE_BOTTOM_ZONE)
+    content_top_y = title_bottom - spacing
+    bottom_bound = -FRAME_HEIGHT/2 + SAFE_MARGIN_BOTTOM + SAFE_BOTTOM_ZONE
+    available_height = content_top_y - bottom_bound
     
     # Fit content to available space
     try:
@@ -865,8 +878,16 @@ def simple_title_content(title_text, content_mobject, title_color=WHITE, spacing
     except (AttributeError, ZeroDivisionError):
         pass
     
-    # Position content below title
-    content_mobject.next_to(title, DOWN, buff=spacing)
+    # Position content based on alignment
+    if align == "top":
+        # Top-align: content starts right below title (professional look)
+        content_mobject.next_to(title, DOWN, buff=spacing)
+        # Align content to top of its bounding box
+        content_mobject.align_to(title, UP).shift(DOWN * (title.height + spacing))
+    else:
+        # Center: content is centered in remaining space
+        content_center_y = (content_top_y + bottom_bound) / 2
+        content_mobject.move_to(np.array([0, content_center_y, 0]))
     
     # Final fit check
     group = VGroup(title, content_mobject)
@@ -887,10 +908,16 @@ def simple_two_column(left_mobject, right_mobject, spacing=2.0):
     return create_side_by_side_layout(left_mobject, right_mobject, spacing=spacing)
 
 
-def simple_stack(*mobjects, spacing=1.2):
+def simple_stack(*mobjects, spacing=1.2, align="top"):
     """
     ONE-LINER: Stack mobjects vertically with auto-spacing.
     Automatically fits to screen and prevents overlaps.
+    TOP-ALIGNED by default for professional appearance.
+    
+    Args:
+        *mobjects: Mobjects to stack
+        spacing: Spacing between items
+        align: Alignment - "top" (default) or "center"
     
     Example:
         layout = simple_stack(title, equation, explanation)
@@ -922,8 +949,17 @@ def simple_stack(*mobjects, spacing=1.2):
     group = VGroup(*items)
     group.arrange(DOWN, buff=spacing)
     
-    # Position at content center
-    group.move_to(get_content_center())
+    # Position based on alignment
+    if align == "top":
+        # Top-align: position group so top element is at content top
+        top_y = FRAME_HEIGHT/2 - SAFE_MARGIN_TOP - TITLE_ZONE_HEIGHT - SAFE_SPACING_MIN
+        try:
+            group.align_to(np.array([0, top_y, 0]), UP)
+        except (AttributeError, TypeError):
+            group.move_to(get_content_center())
+    else:
+        # Center align
+        group.move_to(get_content_center())
     
     # Final validation
     ensure_fits_screen(group, safety_margin=0.95)
@@ -1976,6 +2012,7 @@ def create_label(
     style="body",
     is_math=None,
     color=WHITE,
+    font=None,
     **kwargs
 ):
     """
@@ -1986,12 +2023,17 @@ def create_label(
         style: One of "title", "heading", "body", "math", "caption", "label"
         is_math: Force math rendering (True/False), or None for auto-detect
         color: Text color
+        font: Font family (defaults to Open Sans)
         **kwargs: Additional arguments passed to Text or MathTex
     
     Returns:
         A Text or MathTex mobject
     """
     from manim import Text, MathTex
+    
+    # Use Open Sans by default
+    if font is None:
+        font = DEFAULT_FONT
     
     # Determine font size from style
     font_size_map = {
@@ -2017,8 +2059,8 @@ def create_label(
         
         mobj = MathTex(rf"{clean_content}", font_size=font_size, color=color, **kwargs)
     else:
-        # Use Text for plain content - supports all languages
-        mobj = Text(content, font_size=font_size, color=color, **kwargs)
+        # Use Text for plain content with Open Sans font
+        mobj = Text(content, font_size=font_size, color=color, font=font, **kwargs)
     
     # Ensure it fits on screen
     ensure_fits_screen(mobj, safety_margin=0.95)
@@ -2130,17 +2172,20 @@ def create_math(formula, *, font_size=None, color=BLUE, **kwargs):
     return mobj
 
 
-def create_plain_text(text, *, font_size=None, color=WHITE, **kwargs):
+def create_plain_text(text, *, font_size=None, color=WHITE, font=None, **kwargs):
     """
     Convenience function to create plain text (never uses LaTeX).
     Perfect for non-English text, labels, and simple content.
+    Uses Open Sans font by default.
     """
     from manim import Text
     
     if font_size is None:
         font_size = FONT_BODY
+    if font is None:
+        font = DEFAULT_FONT
     
-    mobj = Text(text, font_size=font_size, color=color, **kwargs)
+    mobj = Text(text, font_size=font_size, color=color, font=font, **kwargs)
     ensure_fits_screen(mobj, safety_margin=0.95)
     return mobj
 
@@ -2512,7 +2557,8 @@ def position_in_zone(mobject, zone, alignment="center", padding=0.3, fit_to_zone
 
 
 def create_side_by_side_layout(left_mobject, right_mobject, spacing=2.0, 
-                                left_weight=0.45, right_weight=0.55, center=None):
+                                left_weight=0.45, right_weight=0.55, center=None,
+                                vertical_align="top"):
     """
     Create a side-by-side layout with GENEROUS spacing and no overlaps.
     Perfect for bullet points + diagram layouts.
@@ -2524,6 +2570,7 @@ def create_side_by_side_layout(left_mobject, right_mobject, spacing=2.0,
         left_weight: Proportion of width for left side (0-1)
         right_weight: Proportion of width for right side (0-1)
         center: Target center position (defaults to content center)
+        vertical_align: Vertical alignment - "top" (default), "center", or "bottom"
     
     Returns:
         VGroup containing both mobjects with guaranteed separation
@@ -2560,6 +2607,25 @@ def create_side_by_side_layout(left_mobject, right_mobject, spacing=2.0,
     # Position right mobject with extra clearance
     right_x = total_width / 2 - right_width / 2 - spacing / 4
     right_mobject.move_to(np.array([right_x, 0, 0]))
+    
+    # Apply vertical alignment - TOP alignment is default for professional look
+    if vertical_align == "top":
+        # Align both to the top of the content area
+        top_y = FRAME_HEIGHT/2 - SAFE_MARGIN_TOP - TITLE_ZONE_HEIGHT - SAFE_SPACING_MIN
+        try:
+            left_mobject.align_to(np.array([0, top_y, 0]), UP)
+            right_mobject.align_to(np.array([0, top_y, 0]), UP)
+        except (AttributeError, TypeError):
+            pass
+    elif vertical_align == "bottom":
+        # Align both to the bottom of the content area
+        bottom_y = -FRAME_HEIGHT/2 + SAFE_MARGIN_BOTTOM + SAFE_BOTTOM_ZONE
+        try:
+            left_mobject.align_to(np.array([0, bottom_y, 0]), DOWN)
+            right_mobject.align_to(np.array([0, bottom_y, 0]), DOWN)
+        except (AttributeError, TypeError):
+            pass
+    # else: center alignment - keep default vertical centering
     
     # Ensure minimum spacing - push apart if needed
     actual_gap = right_mobject.get_left()[0] - left_mobject.get_right()[0]

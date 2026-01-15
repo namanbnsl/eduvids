@@ -224,11 +224,12 @@ function buildAugmentedSystemPrompt(base: string, language?: string): string {
     const nonEnglishHeader = `
 ⚠️ CRITICAL - ${langUpper} LANGUAGE DETECTED ⚠️
 This video is in ${language.toUpperCase()}. IMPORTANT RULES:
-1. **USE Text() FOR ALL NON-MATHEMATICAL TEXT**: Text("your text", font_size=FONT_BODY, color=WHITE)
+1. **USE Text() FOR ALL NON-MATHEMATICAL TEXT**: Text("your text", font_size=FONT_BODY, color=WHITE, font=DEFAULT_FONT)
 2. **USE Tex/MathTex ONLY FOR MATH**: MathTex(r"E = mc^2", font_size=FONT_MATH)
-3. **NEVER use create_tex_label, create_text_panel, or create_bullet_item for ${language} text**
-4. **For bullets in ${language}**: Create Text() objects and arrange them manually
-5. **Example correct usage**:
+3. **ALWAYS use font=DEFAULT_FONT (Open Sans)** for consistent, professional typography
+4. **NEVER use create_tex_label, create_text_panel, or create_bullet_item for ${language} text**
+5. **For bullets in ${language}**: Create Text() objects and arrange them manually
+6. **Example correct usage**:
    title = Text("${
      language === "spanish"
        ? "Título"
@@ -237,7 +238,7 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
          : language === "german"
            ? "Titel"
            : "Title"
-   }", font_size=FONT_TITLE, color=WHITE)
+   }", font_size=FONT_TITLE, color=WHITE, font=DEFAULT_FONT)
    body = Text("${
      language === "spanish"
        ? "Contenido"
@@ -246,8 +247,8 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
          : language === "german"
            ? "Inhalt"
            : "Content"
-   }", font_size=FONT_BODY, color=WHITE)
-6. **LaTeX will NOT work for ${language} characters** - it will show garbled text or errors
+   }", font_size=FONT_BODY, color=WHITE, font=DEFAULT_FONT)
+7. **LaTeX will NOT work for ${language} characters** - it will show garbled text or errors
 
 `;
 
@@ -516,11 +517,6 @@ export async function regenerateManimScriptWithError({
   const detectedLanguage = await detectLanguage(voiceoverScript);
   console.log(`Detected language for regeneration: ${detectedLanguage}`);
 
-  const augmentedSystemPrompt = buildAugmentedSystemPrompt(
-    MANIM_SYSTEM_PROMPT,
-    detectedLanguage
-  );
-
   const previousAttemptsSummary = (() => {
     if (!attemptHistory.length) return "";
     const blocks = attemptHistory.map((attempt) => {
@@ -669,7 +665,7 @@ export async function regenerateManimScriptWithError({
 
   // return code;
 
-  const regenerationSystemPrompt = `You are a Manim error-fixing expert. Fix all errors and generate a corrected Manim script.
+  const regenerationSystemPrompt = `You are a Manim error-fixing expert. Fix all errors and generate a corrected Manim script. DO NOT CHANGE THE SCRIPT's INTENDED BEHAVIOR OR THE SEQUENCE OF VISUALS UNLESS NECESSARY TO RESOLVE THE ERROR.
 
 ═══════════════════════════════════════════════════════════════════════════════
 MANDATORY REQUIREMENTS
@@ -693,6 +689,11 @@ FONT SIZES (never exceed these):
 - FONT_MATH = 36
 - FONT_CAPTION = 26
 - FONT_LABEL = 24
+
+FONT FAMILY:
+- DEFAULT_FONT = "Open Sans" (use for all Text() objects)
+- Example: Text("Hello", font_size=FONT_BODY, font=DEFAULT_FONT)
+- Or use create_label() which applies Open Sans automatically
 
 ELEMENT LIMITS:
 - Max 4 visible elements at once
