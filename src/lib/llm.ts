@@ -226,7 +226,7 @@ function buildAugmentedSystemPrompt(base: string, language?: string): string {
 This video is in ${language.toUpperCase()}. IMPORTANT RULES:
 1. **USE Text() FOR ALL NON-MATHEMATICAL TEXT**: Text("your text", font_size=FONT_BODY, color=WHITE, font=DEFAULT_FONT)
 2. **USE Tex/MathTex ONLY FOR MATH**: MathTex(r"E = mc^2", font_size=FONT_MATH)
-3. **ALWAYS use font=DEFAULT_FONT (Open Sans)** for consistent, professional typography
+3. **ALWAYS use font=DEFAULT_FONT (EB Garamond)** for consistent, professional typography
 4. **NEVER use create_tex_label, create_text_panel, or create_bullet_item for ${language} text**
 5. **For bullets in ${language}**: Create Text() objects and arrange them manually
 6. **Example correct usage**:
@@ -691,9 +691,9 @@ FONT SIZES (never exceed these):
 - FONT_LABEL = 24
 
 FONT FAMILY:
-- DEFAULT_FONT = "Open Sans" (use for all Text() objects)
+- DEFAULT_FONT = "EB Garamond" (use for all Text() objects)
 - Example: Text("Hello", font_size=FONT_BODY, font=DEFAULT_FONT)
-- Or use create_label() which applies Open Sans automatically
+- Or use create_label() which applies EB Garamond automatically
 
 ELEMENT LIMITS:
 - Max 4 visible elements at once

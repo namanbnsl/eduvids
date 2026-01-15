@@ -257,7 +257,7 @@ OVERLAPPING ELEMENTS IS THE #1 CAUSE OF BAD VIDEOS. FOLLOW THESE RULES STRICTLY:
 
 Make diagrams that LOOK LIKE what they represent. Generic shapes are not enough!
 
-IMPORTANT: All Text() must use font="Open Sans" which is set as DEFAULT_FONT.
+IMPORTANT: All Text() must use font="EB Garamond" which is set as DEFAULT_FONT.
 Example: Text("Hello", font_size=FONT_BODY, font=DEFAULT_FONT)
 Or use helper functions like create_label() which handle this automatically.
 

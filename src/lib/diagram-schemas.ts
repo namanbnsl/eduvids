@@ -734,13 +734,4 @@ export function generateSchemaComment(
   return `# DIAGRAM_SCHEMA: ${schemaId}\n# PARAMS: ${paramStr}`;
 }
 
-/**
- * Development logging utility
- */
-export const isDevelopment = process.env.NODE_ENV !== "production";
 
-export function logSchema(message: string, data?: unknown): void {
-  if (isDevelopment) {
-    console.log(`[DIAGRAM_SCHEMA] ${message}`, data ?? "");
-  }
-}

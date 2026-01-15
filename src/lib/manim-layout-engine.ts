@@ -196,9 +196,9 @@ SAFE_SPACING_MIN = ${zones.minSpacing.toFixed(2)}
 SAFE_BOTTOM_ZONE = ${zones.bottomSafeZoneHeight.toFixed(2)}
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# FONT CONFIGURATION - Use Open Sans for all text
+# FONT CONFIGURATION - Use EB Garamond for all text
 # ═══════════════════════════════════════════════════════════════════════════════
-DEFAULT_FONT = "Open Sans"
+DEFAULT_FONT = "EB Garamond"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # KERNING FIX CONFIGURATION - ALWAYS APPLY FOR ACCURATE TEXT
@@ -2050,7 +2050,7 @@ def create_text_with_kerning_fix(text, font_size, color=WHITE, font=DEFAULT_FONT
         text: The text content
         font_size: The intended font size
         color: Text color
-        font: Font family (defaults to Open Sans)
+        font: Font family (defaults to EB Garamond)
         **kwargs: Additional arguments passed to Text()
 
     Returns:
@@ -2092,7 +2092,7 @@ def create_label(
         style: One of "title", "heading", "body", "math", "caption", "label"
         is_math: Force math rendering (True/False), or None for auto-detect
         color: Text color
-        font: Font family (defaults to Open Sans)
+        font: Font family (defaults to EB Garamond)
         **kwargs: Additional arguments passed to Text or MathTex
     
     Returns:
@@ -2100,7 +2100,7 @@ def create_label(
     """
     from manim import Text, MathTex
     
-    # Use Open Sans by default
+    # Use EB Garamond by default
     if font is None:
         font = DEFAULT_FONT
     
@@ -2128,7 +2128,7 @@ def create_label(
         
         mobj = MathTex(rf"{clean_content}", font_size=font_size, color=color, **kwargs)
     else:
-        # Use Text for plain content with Open Sans font
+        # Use Text for plain content with EB Garamond font
         mobj = create_text_with_kerning_fix(content, font_size=font_size, color=color, font=font, **kwargs)
     
     # Ensure it fits on screen
@@ -2245,7 +2245,7 @@ def create_plain_text(text, *, font_size=None, color=WHITE, font=None, **kwargs)
     """
     Convenience function to create plain text (never uses LaTeX).
     Perfect for non-English text, labels, and simple content.
-    Uses Open Sans font by default.
+    Uses EB Garamond font by default.
     """
     from manim import Text
     
