@@ -30,7 +30,7 @@
  * - Accurate diagram rendering through schema-based helpers
  */
 
-import { DIAGRAM_SCHEMAS, type DiagramSchema } from "./diagram-schemas";
+// Diagram schema types available in ./diagram-schemas.ts for RAG retrieval
 
 export interface LayoutConfig {
   frameWidth: number;
@@ -197,11 +197,9 @@ DEFAULT_FONT = "EB Garamond"
 # KERNING FIX CONFIGURATION - ALWAYS APPLY FOR ACCURATE TEXT
 # ═══════════════════════════════════════════════════════════════════════════════
 # Manim's text rendering has letter spacing issues at normal font sizes.
-# FIX: Render slightly larger, then scale down for proper kerning.
-# Keep scaling modest to avoid width explosions and random line breaks.
-KERNING_FIX_THRESHOLD = 32    # Apply fix to normal UI font sizes only
-KERNING_FIX_SCALE = 8.0       # Scale up by 3x, then down by ~0.333x
-KERNING_FIX_LOG_ENABLED = True  # Enable development logging
+# FIX: Render at larger size, then scale down for proper kerning.
+KERNING_FIX_THRESHOLD = 32  # Apply fix to font sizes below 32
+KERNING_FIX_SCALE = 8.0       # Scale up by 8x, then down by 1/8 after rendering
 
 # Safe positioning helpers
 def get_title_position():
@@ -3119,17 +3117,12 @@ export function generateDiagramSchemaHelpers(): string {
 # ALWAYS use these instead of raw Manim primitives for the supported diagram types.
 # Add a DIAGRAM_SCHEMA comment block above each helper call for validation.
 
-def _log_diagram(schema_id, message):
-    """Development logging for diagram schemas."""
-    if _DIAGRAM_DEV_MODE:
-        print(f"[DIAGRAM_SCHEMA:{schema_id}] {message}")
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # 2D DIAGRAM HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def create_cartesian_graph(
-    func_expression=lambda x: x**2,
+    func=lambda x: x**2,
     x_range=(-4, 4, 1),
     y_range=(-2, 8, 1),
     color=BLUE,
@@ -3146,7 +3139,7 @@ def create_cartesian_graph(
     Use this instead of manually creating Axes + plot.
     
     Args:
-        func_expression: Python callable (not string). eg: lambda x: x**2, np.sin
+        func: Python callable (lambda or function). eg: lambda x: x**2, np.sin
         x_range: (min, max, step) for x-axis
         y_range: (min, max, step) for y-axis
         color: Graph line color
@@ -3157,7 +3150,7 @@ def create_cartesian_graph(
     Returns:
         VGroup containing axes, graph, and labels
     """
-    _log_diagram("cartesian_graph_v1", f"Creating graph: {func_expression}")
+
     
     # Validate ranges
     if x_range[0] >= x_range[1]:
@@ -3175,8 +3168,7 @@ def create_cartesian_graph(
         axis_config={"include_tip": True, "include_numbers": True},
     )
     
-    # Create function from expression
-    func = func_expression
+    # Plot the function directly
     graph = axes.plot(func, color=color, use_smoothing=True)
     
     elements = [axes, graph]
@@ -3190,7 +3182,7 @@ def create_cartesian_graph(
     group.move_to(get_content_center())
     ensure_fits_screen(group, safety_margin=0.9)
     
-    _log_diagram("cartesian_graph_v1", f"Created successfully, size: {group.width:.2f}x{group.height:.2f}")
+
     return group
 
 
@@ -3218,7 +3210,7 @@ def create_bar_chart(
     Returns:
         VGroup containing the complete bar chart
     """
-    _log_diagram("bar_chart_v1", f"Creating bar chart with {len(values)} bars")
+
     
     # Limit bars to prevent overcrowding
     if len(values) > max_bars:
@@ -3271,7 +3263,7 @@ def create_bar_chart(
     group.move_to(get_content_center())
     ensure_fits_screen(group, safety_margin=0.85)
     
-    _log_diagram("bar_chart_v1", f"Created successfully with {len(values)} bars")
+
     return group
 
 
@@ -3301,7 +3293,7 @@ def create_labeled_triangle(
     Returns:
         VGroup containing the complete labeled triangle
     """
-    _log_diagram("triangle_labeled_v1", f"Creating triangle: {vertices}")
+
     
     # Preset vertex configurations
     presets = {
@@ -3366,7 +3358,7 @@ def create_labeled_triangle(
     group.move_to(get_content_center())
     ensure_fits_screen(group, safety_margin=0.85)
     
-    _log_diagram("triangle_labeled_v1", "Created successfully")
+
     return group
 
 
@@ -3392,7 +3384,7 @@ def create_force_diagram(
     Returns:
         VGroup containing object and force arrows
     """
-    _log_diagram("force_diagram_v1", f"Creating force diagram: {object_shape}")
+
     
     # Create central object
     if object_shape == "circle":
@@ -3451,7 +3443,7 @@ def create_force_diagram(
     group.move_to(get_content_center())
     ensure_fits_screen(group, safety_margin=0.85)
     
-    _log_diagram("force_diagram_v1", f"Created with {len(forces or [])} forces")
+
     return group
 
 
@@ -3476,7 +3468,7 @@ def create_flowchart(
     Returns:
         VGroup containing the flowchart
     """
-    _log_diagram("flowchart_v1", f"Creating flowchart with {len(steps)} steps")
+
     
     # Limit steps to prevent overcrowding
     max_steps = 5
@@ -3543,7 +3535,7 @@ def create_flowchart(
     group.move_to(get_content_center())
     ensure_fits_screen(group, safety_margin=0.85)
     
-    _log_diagram("flowchart_v1", f"Created successfully")
+
     return group
 
 
@@ -3571,7 +3563,7 @@ def create_atom_diagram(
     Returns:
         VGroup containing the atom diagram
     """
-    _log_diagram("atom_shells_v1", f"Creating atom: {element_symbol}")
+
     
     # Default electron configs for common elements
     element_configs = {
@@ -3615,7 +3607,7 @@ def create_atom_diagram(
     group.move_to(get_content_center())
     ensure_fits_screen(group, safety_margin=0.85)
     
-    _log_diagram("atom_shells_v1", f"Created with {len(electron_config)} shells")
+
     return group
 
 
@@ -3646,7 +3638,7 @@ def create_3d_axes_vector(
     Returns:
         VGroup containing axes and vectors
     """
-    _log_diagram("3d_axes_vector_v1", f"Creating 3D axes with {len(vectors)} vectors")
+
     
     from manim import ThreeDAxes, Arrow3D
     
@@ -3695,7 +3687,7 @@ def create_3d_axes_vector(
     
     group = VGroup(*elements)
     
-    _log_diagram("3d_axes_vector_v1", "Created successfully")
+
     return group
 
 
@@ -3710,7 +3702,7 @@ def configure_3d_camera(scene, focus=None, phi=75, theta=-45):
         phi: Polar angle in degrees (default 75)
         theta: Azimuthal angle in degrees (default -45)
     """
-    _log_diagram("camera", f"Configuring 3D camera: phi={phi}, theta={theta}")
+
     
     scene.set_camera_orientation(phi=phi * DEGREES, theta=theta * DEGREES)
     
@@ -3719,8 +3711,6 @@ def configure_3d_camera(scene, focus=None, phi=75, theta=-45):
             scene.move_camera(frame_center=focus.get_center())
         except Exception as e:
             print(f"[VISUAL WARNING] Could not focus camera: {e}")
-    
-    print(f"[3D_CAMERA] Configured: phi={phi}°, theta={theta}°")
 
 
 def orbit_camera_around(scene, target, angle=TAU/4, run_time=4):
@@ -3733,7 +3723,7 @@ def orbit_camera_around(scene, target, angle=TAU/4, run_time=4):
         angle: Total rotation angle (default 90 degrees)
         run_time: Animation duration
     """
-    _log_diagram("camera", f"Orbiting camera: angle={angle}, run_time={run_time}")
+
     
     scene.begin_ambient_camera_rotation(rate=angle / run_time)
     scene.wait(run_time)
@@ -3768,9 +3758,6 @@ def validate_diagram(diagram, schema_id, check_bounds=True, check_density=True):
         if density["action"] != "none":
             print(f"[VISUAL WARNING] {schema_id}: {density['reason']}")
             warnings_issued = True
-    
-    if not warnings_issued:
-        _log_diagram(schema_id, "Validation passed")
     
     return not warnings_issued
 `;

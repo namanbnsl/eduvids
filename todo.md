@@ -1,4 +1,3 @@
-move to 2d scene for last CTA scene
 larger font sizes on shorts: see https://www.youtube.com/watch?v=mwHYuZHvkTc
 create RAG library
 

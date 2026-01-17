@@ -727,7 +727,7 @@ For the following diagram types, you MUST use the provided helper functions
 instead of manually constructing them. These helpers ensure accurate rendering.
 
 AVAILABLE DIAGRAM HELPERS:
-- create_cartesian_graph(func_expression, x_range, y_range, ...) - For function plots
+- create_cartesian_graph(func, x_range, y_range, ...) - For function plots
 - create_bar_chart(values, labels, colors, ...) - For bar charts
 - create_labeled_triangle(vertices, vertex_labels, side_labels, ...) - For geometry
 - create_force_diagram(object_shape, forces, ...) - For physics free body diagrams
@@ -740,7 +740,7 @@ ALWAYS add a DIAGRAM_SCHEMA comment above each helper call:
 \`\`\`python
 # DIAGRAM_SCHEMA: cartesian_graph_v1
 graph = create_cartesian_graph(
-    func_expression="x**2",
+    func=lambda x: x**2,
     x_range=(-4, 4, 1),
     y_range=(0, 16, 2),
     color=BLUE,

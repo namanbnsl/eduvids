@@ -1,0 +1,104 @@
+{
+  "version": "1.0",
+  "description": "Verified diagram examples for RAG retrieval",
+  "examples": [
+    {
+      "schemaId": "cartesian_graph_v1",
+      "slug": "quadratic_basic",
+      "topicTags": ["functions", "quadratic", "parabola", "math"],
+      "description": "Basic quadratic function y = x^2",
+      "codePath": "cartesian_graph/quadratic_basic.py"
+    },
+    {
+      "schemaId": "cartesian_graph_v1",
+      "slug": "sine_wave",
+      "topicTags": ["trigonometry", "sine", "wave", "periodic"],
+      "description": "Sine wave function",
+      "codePath": "cartesian_graph/sine_wave.py"
+    },
+    {
+      "schemaId": "cartesian_graph_v1",
+      "slug": "linear_function",
+      "topicTags": ["linear", "slope", "y-intercept", "algebra"],
+      "description": "Linear function with positive slope",
+      "codePath": "cartesian_graph/linear_function.py"
+    },
+    {
+      "schemaId": "bar_chart_v1",
+      "slug": "simple_comparison",
+      "topicTags": ["statistics", "data", "comparison"],
+      "description": "Simple bar chart comparing values",
+      "codePath": "bar_chart/simple_comparison.py"
+    },
+    {
+      "schemaId": "triangle_labeled_v1",
+      "slug": "right_triangle_pythagorean",
+      "topicTags": ["geometry", "pythagorean", "right triangle"],
+      "description": "Right triangle with Pythagorean theorem labels",
+      "codePath": "triangle/right_triangle_pythagorean.py"
+    },
+    {
+      "schemaId": "triangle_labeled_v1",
+      "slug": "equilateral_angles",
+      "topicTags": ["geometry", "equilateral", "angles"],
+      "description": "Equilateral triangle with angle labels",
+      "codePath": "triangle/equilateral_angles.py"
+    },
+    {
+      "schemaId": "force_diagram_v1",
+      "slug": "object_on_surface",
+      "topicTags": ["physics", "forces", "normal force", "gravity"],
+      "description": "Object on a surface with normal force and weight",
+      "codePath": "force_diagram/object_on_surface.py"
+    },
+    {
+      "schemaId": "force_diagram_v1",
+      "slug": "tension_and_weight",
+      "topicTags": ["physics", "tension", "hanging", "equilibrium"],
+      "description": "Hanging object with tension and weight",
+      "codePath": "force_diagram/tension_and_weight.py"
+    },
+    {
+      "schemaId": "flowchart_v1",
+      "slug": "simple_process",
+      "topicTags": ["process", "algorithm", "steps"],
+      "description": "Simple three-step process flow",
+      "codePath": "flowchart/simple_process.py"
+    },
+    {
+      "schemaId": "flowchart_v1",
+      "slug": "decision_flow",
+      "topicTags": ["decision", "branching", "conditional"],
+      "description": "Process with decision point",
+      "codePath": "flowchart/decision_flow.py"
+    },
+    {
+      "schemaId": "atom_shells_v1",
+      "slug": "carbon_atom",
+      "topicTags": ["chemistry", "carbon", "electron shells"],
+      "description": "Carbon atom with 6 electrons",
+      "codePath": "atom/carbon_atom.py"
+    },
+    {
+      "schemaId": "atom_shells_v1",
+      "slug": "sodium_atom",
+      "topicTags": ["chemistry", "sodium", "valence electron"],
+      "description": "Sodium atom showing valence electron",
+      "codePath": "atom/sodium_atom.py"
+    },
+    {
+      "schemaId": "3d_axes_vector_v1",
+      "slug": "single_vector",
+      "topicTags": ["vectors", "3d", "linear algebra"],
+      "description": "Single 3D vector on coordinate axes",
+      "codePath": "3d_vector/single_vector.py"
+    },
+    {
+      "schemaId": "3d_axes_vector_v1",
+      "slug": "basis_vectors",
+      "topicTags": ["vectors", "basis", "unit vectors", "i j k"],
+      "description": "Unit basis vectors i, j, k",
+      "codePath": "3d_vector/basis_vectors.py"
+    }
+  ]
+}
