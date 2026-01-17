@@ -125,7 +125,7 @@ CRITICAL REQUIREMENTS
    → BAD: self.play(FadeIn(new_content))
    → GOOD: self.play(FadeOut(old_content)); self.play(FadeIn(new_content))
 
-4. ❌ NEVER use font_size > 46 for any text
+4. ❌ NEVER use font_size > 56 for any text
    → Large fonts overflow the screen
    → Use: FONT_TITLE (max), FONT_BODY, FONT_CAPTION
 
@@ -140,6 +140,11 @@ CRITICAL REQUIREMENTS
 7. ❌ NEVER forget buff= in .next_to() calls
    → BAD: label.next_to(shape, UP)
    → GOOD: label.next_to(shape, UP, buff=0.5)
+
+8. ❌ NEVER use tiny diagrams - use .scale(1.5) to 1.8 for shapes and diagrams
+   → Make diagrams fill available space (80-90% of content area)
+   → Use: diagram.scale(1.6) or .scale_to_fit_width(11)
+   → NEVER scale below 1.0 unless absolutely necessary
 
 ═══════════════════════════════════════════════════════════════════════════════
 📋 SIMPLE TEMPLATES (COPY THESE EXACTLY)
@@ -256,6 +261,13 @@ OVERLAPPING ELEMENTS IS THE #1 CAUSE OF BAD VIDEOS. FOLLOW THESE RULES STRICTLY:
 ═══════════════════════════════════════════════════════════════════════════════
 
 Make diagrams that LOOK LIKE what they represent. Generic shapes are not enough!
+
+DIAGRAM ACCURACY REQUIREMENTS:
+1. Proportions: If showing 2:1 ratio, use actual 2:1 measurements (width=2, height=1)
+2. Angles: Use math.degrees() and exact angle measurements, not approximations
+3. Positioning: Center diagrams precisely - don't eyeball positions
+4. Scaling: Always scale diagrams to use 80-90% of available space
+5. Labels: Place all labels OUTSIDE shapes with proper positioning (not overlapping)
 
 IMPORTANT: All Text() must use font="EB Garamond" which is set as DEFAULT_FONT.
 Example: Text("Hello", font_size=FONT_BODY, font=DEFAULT_FONT)

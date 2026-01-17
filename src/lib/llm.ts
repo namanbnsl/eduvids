@@ -680,12 +680,12 @@ SAFE BOUNDARIES:
 - Y: -3.5 to 3.5 (leave 0.5 unit margin top/bottom)
 
 FONT SIZES (never exceed these):
-- FONT_TITLE = 46  (titles only, never larger)
-- FONT_HEADING = 38
-- FONT_BODY = 32
-- FONT_MATH = 36
-- FONT_CAPTION = 26
-- FONT_LABEL = 24
+- FONT_TITLE = 56  (titles only, never larger)
+- FONT_HEADING = 46
+- FONT_BODY = 40
+- FONT_MATH = 44
+- FONT_CAPTION = 32
+- FONT_LABEL = 30
 
 FONT FAMILY:
 - DEFAULT_FONT = "EB Garamond" (use for all Text() objects)

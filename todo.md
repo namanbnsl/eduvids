@@ -1,7 +1,6 @@
-larger font sizes on shorts: see https://www.youtube.com/watch?v=mwHYuZHvkTc
 create RAG library
 
-notification to be triggered on job and not video loaded.
+notification to be triggered on job and not video loaded. tell user they will be notified
 
 authentication, storing chats
 

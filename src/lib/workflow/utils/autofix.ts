@@ -22,7 +22,7 @@ const REQUIRED_IMPORTS = [
   VOICEOVER_SERVICE_IMPORT,
 ];
 
-const ALLOWED_FONT_SIZES = [20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 46];
+const ALLOWED_FONT_SIZES = [20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 50, 52, 54, 56];
 
 const SCENE_CLASS_NAMES = [
   "MyScene",
@@ -455,13 +455,13 @@ function clampScale(script: string): { script: string; applied: string[] } {
   let changed = false;
   const s = script.replace(pattern, (full, num) => {
     const v = parseFloat(num);
-    if (!Number.isFinite(v) || v <= 1.3) return full;
+    if (!Number.isFinite(v) || v <= 1.8) return full;
     changed = true;
-    return `.scale(1.3)`;
+    return `.scale(1.8)`;
   });
 
   if (changed) {
-    applied.push("clamped .scale() values > 1.3 down to 1.3");
+    applied.push("clamped .scale() values > 1.8 down to 1.8");
   }
   return { script: s, applied };
 }
@@ -476,13 +476,13 @@ function clampScaleToFitWidth(script: string): {
   let changed = false;
   const s = script.replace(pattern, (full, num) => {
     const v = parseFloat(num);
-    if (!Number.isFinite(v) || v <= 10.2) return full;
+    if (!Number.isFinite(v) || v <= 11.5) return full;
     changed = true;
-    return `.scale_to_fit_width(10.2)`;
+    return `.scale_to_fit_width(11.5)`;
   });
 
   if (changed) {
-    applied.push("clamped .scale_to_fit_width() values > 10.2 down to 10.2");
+    applied.push("clamped .scale_to_fit_width() values > 11.5 down to 11.5");
   }
   return { script: s, applied };
 }

@@ -201,6 +201,16 @@ DEFAULT_FONT = "EB Garamond"
 KERNING_FIX_THRESHOLD = 32  # Apply fix to font sizes below 32
 KERNING_FIX_SCALE = 8.0       # Scale up by 8x, then down by 1/8 after rendering
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# DIAGRAM SIZING REQUIREMENTS
+# ═══════════════════════════════════════════════════════════════════════════════
+# Diagrams should use 80-90% of available content space
+# ALWAYS scale diagrams using: diagram.scale(1.5 to 1.8) or .scale_to_fit_width(11)
+DIAGRAM_MIN_SCALE = 1.5      # Minimum scale factor for diagrams
+DIAGRAM_MAX_SCALE = 1.8      # Maximum scale factor (prevents overflow)
+DIAGRAM_TARGET_WIDTH = 11.0  # Target width when using scale_to_fit_width()
+# Apply accurate proportions and angles to all diagrams for visual accuracy
+
 # Safe positioning helpers
 def get_title_position():
     """Get safe position for title (top of screen with margin)"""
@@ -439,14 +449,14 @@ export function getRecommendedFontSizes(
           : 1.0;
 
   // Calculate base body size with tighter clamps to prevent width explosions
-  const baseBody = clampFont(
-    Math.round(contentArea * baseScale * contentAdjust),
-    orientation === "portrait" ? 28 : 26,
-    orientation === "portrait" ? 36 : 34
-  );
+   const baseBody = clampFont(
+     Math.round(contentArea * baseScale * contentAdjust),
+     orientation === "portrait" ? 32 : 30,
+     orientation === "portrait" ? 44 : 42
+   );
 
-  // Title: Clear hierarchy, capped to avoid forced line breaks
-  const title = clampFont(Math.round(baseBody * 1.35), baseBody + 4, 46);
+   // Title: Clear hierarchy, capped to avoid forced line breaks
+   const title = clampFont(Math.round(baseBody * 1.35), baseBody + 4, 56);
 
   // Heading: Between title and body
   const heading = clampFont(
