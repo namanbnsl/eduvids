@@ -12,7 +12,7 @@ export function QuickActionCards({
   topics,
   isLoading = false,
 }: QuickActionCardsProps) {
-  const placeholderCount = 2;
+  const placeholderCount = 1;
 
   if (isLoading || !topics || topics.length === 0) {
     return (
@@ -30,17 +30,14 @@ export function QuickActionCards({
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full">
-      {topics.map((topic, index) => (
-        <Button
-          key={index}
-          variant="outline"
-          className="h-12 w-full flex items-center justify-start px-4 rounded-lg border border-border hover:bg-accent hover:text-accent-foreground transition-colors bg-transparent text-sm text-foreground"
-          onClick={() => onCardClick(topic)}
-        >
-          {topic}
-        </Button>
-      ))}
+    <div className="flex justify-center w-full">
+      <Button
+        variant="outline"
+        className="h-12 w-55 px-4 rounded-lg border border-border hover:bg-accent hover:text-accent-foreground transition-colors bg-transparent text-sm text-foreground"
+        onClick={() => onCardClick(topics[0])}
+      >
+        {topics[0]}
+      </Button>
     </div>
   );
 }

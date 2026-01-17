@@ -83,8 +83,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-xl animate-in fade-in duration-500">
       {/* Subtle decorative elements - minimalistic */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-foreground/[0.02] rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-foreground/[0.03] rounded-full blur-3xl" />
+        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-foreground/2 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-foreground/3 rounded-full blur-3xl" />
       </div>
 
       <div className="relative w-full max-w-2xl mx-4">
@@ -195,7 +195,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                     target="_blank"
                     className="flex items-center gap-4 p-4 rounded-xl border border-border bg-background/50 hover:bg-accent/50 transition-colors group"
                   >
-                    <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-foreground/10 flex items-center justify-center">
+                    <div className="shrink-0 w-12 h-12 rounded-lg bg-foreground/10 flex items-center justify-center">
                       <Youtube className="w-6 h-6 text-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -213,7 +213,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                     target="_blank"
                     className="flex items-center gap-4 p-4 rounded-xl border border-border bg-background/50 hover:bg-accent/50 transition-colors group"
                   >
-                    <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-foreground/10 flex items-center justify-center">
+                    <div className="shrink-0 w-12 h-12 rounded-lg bg-foreground/10 flex items-center justify-center">
                       <Twitter className="w-6 h-6 text-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -254,7 +254,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                       onClick={() => handleExampleClick(example.prompt)}
                       className="group relative flex items-center gap-4 p-4 rounded-xl border border-border bg-background/50 hover:bg-accent/50 transition-all duration-200 text-left"
                     >
-                      <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-foreground/10 flex items-center justify-center">
+                      <div className="shrink-0 w-10 h-10 rounded-lg bg-foreground/10 flex items-center justify-center">
                         <Play className="w-4 h-4 text-foreground/70 group-hover:text-foreground transition-colors" />
                       </div>
                       <div className="flex-1 min-w-0">
@@ -296,7 +296,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                     onChange={(e) => setInput(e.target.value)}
                     value={input}
                     placeholder="Describe your video idea here..."
-                    className="min-h-[100px]"
+                    className="min-h-25"
                   />
                   <PromptInputToolbar>
                     <PromptInputTools>
