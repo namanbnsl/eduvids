@@ -22,7 +22,7 @@ export function QuickActionCards({
             key={index}
             className="h-12 w-full flex items-center justify-start px-4 rounded-lg border border-border bg-transparent animate-pulse"
           >
-            <div className="h-4 bg-muted rounded w-3/4 animate-shimmer bg-gradient-to-r from-muted via-muted-foreground/20 to-muted bg-[length:200%_100%]"></div>
+            <div className="h-4 bg-muted rounded w-3/4 animate-shimmer bg-linear-to-r from-muted via-muted-foreground/20 to-muted bg-size-[200%_100%]"></div>
           </div>
         ))}
       </div>

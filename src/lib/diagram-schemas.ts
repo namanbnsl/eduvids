@@ -37,7 +37,6 @@ export interface DiagramSchema {
   manimHelper: string;
   params: Record<string, SchemaParam>;
   cameraStyle: CameraStyle;
-  validatorFunction?: string;
 }
 
 /**
@@ -58,10 +57,11 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
     manimHelper: "create_cartesian_graph",
     cameraStyle: "2d-static",
     params: {
-      func_expression: {
+      func: {
         type: "string",
-        description: "Python lambda expression for the function (e.g., 'x**2')",
-        default: "x**2",
+        description:
+          "Python lambda expression for the function (e.g., lambda x: x**2)",
+        default: "lambda x: x**2",
         required: true,
       },
       x_range: {
@@ -96,7 +96,6 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: "y",
       },
     },
-    validatorFunction: "validate_cartesian_graph",
   },
 
   {
@@ -135,7 +134,6 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: true,
       },
     },
-    validatorFunction: "validate_bar_chart",
   },
 
   {
@@ -150,7 +148,8 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
       "pythagorean",
       "trigonometry",
     ],
-    description: "Triangle with vertex labels, side labels, and optional angles",
+    description:
+      "Triangle with vertex labels, side labels, and optional angles",
     manimHelper: "create_labeled_triangle",
     cameraStyle: "2d-static",
     params: {
@@ -167,8 +166,7 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
       },
       side_labels: {
         type: "list",
-        description:
-          "Labels for sides [AB, BC, CA] or null elements to skip",
+        description: "Labels for sides [AB, BC, CA] or null elements to skip",
         default: null,
       },
       show_angles: {
@@ -193,14 +191,20 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: 0.2,
       },
     },
-    validatorFunction: "validate_labeled_triangle",
   },
 
   {
     id: "force_diagram_v1",
     name: "Force Diagram",
     dimension: "2d",
-    topicTags: ["physics", "forces", "mechanics", "newton", "vectors", "free body"],
+    topicTags: [
+      "physics",
+      "forces",
+      "mechanics",
+      "newton",
+      "vectors",
+      "free body",
+    ],
     description: "Object with force arrows showing direction and magnitude",
     manimHelper: "create_force_diagram",
     cameraStyle: "2d-static",
@@ -228,14 +232,20 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: false,
       },
     },
-    validatorFunction: "validate_force_diagram",
   },
 
   {
     id: "mapping_diagram_v1",
     name: "Mapping Diagram",
     dimension: "2d",
-    topicTags: ["functions", "mapping", "domain", "codomain", "relations", "sets"],
+    topicTags: [
+      "functions",
+      "mapping",
+      "domain",
+      "codomain",
+      "relations",
+      "sets",
+    ],
     description: "Two sets (domain/codomain) with arrows showing mappings",
     manimHelper: "create_mapping_diagram",
     cameraStyle: "2d-static",
@@ -279,14 +289,20 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: "RED",
       },
     },
-    validatorFunction: "validate_mapping_diagram",
   },
 
   {
     id: "flowchart_v1",
     name: "Flowchart",
     dimension: "2d",
-    topicTags: ["process", "algorithm", "steps", "flow", "decision", "programming"],
+    topicTags: [
+      "process",
+      "algorithm",
+      "steps",
+      "flow",
+      "decision",
+      "programming",
+    ],
     description: "Process flowchart with boxes and arrows",
     manimHelper: "create_flowchart",
     cameraStyle: "2d-static",
@@ -320,14 +336,20 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: 0.8,
       },
     },
-    validatorFunction: "validate_flowchart",
   },
 
   {
     id: "atom_shells_v1",
     name: "Atom with Electron Shells",
     dimension: "2d",
-    topicTags: ["chemistry", "atom", "electrons", "shells", "orbitals", "physics"],
+    topicTags: [
+      "chemistry",
+      "atom",
+      "electrons",
+      "shells",
+      "orbitals",
+      "physics",
+    ],
     description: "Bohr model atom with nucleus and electron shells",
     manimHelper: "create_atom_diagram",
     cameraStyle: "2d-static",
@@ -339,7 +361,8 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
       },
       electron_config: {
         type: "list",
-        description: "Electrons per shell as [2, 8, 8, ...] or auto from element",
+        description:
+          "Electrons per shell as [2, 8, 8, ...] or auto from element",
         default: null,
       },
       show_nucleus_details: {
@@ -363,7 +386,6 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: null,
       },
     },
-    validatorFunction: "validate_atom_diagram",
   },
 
   {
@@ -398,7 +420,6 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: null,
       },
     },
-    validatorFunction: "validate_number_line",
   },
 
   {
@@ -422,8 +443,7 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
       },
       region_labels: {
         type: "list",
-        description:
-          "Labels for regions (A only, B only, intersection, etc.)",
+        description: "Labels for regions (A only, B only, intersection, etc.)",
         default: null,
       },
       colors: {
@@ -437,7 +457,6 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: 0.3,
       },
     },
-    validatorFunction: "validate_venn_diagram",
   },
 
   {
@@ -467,7 +486,6 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: true,
       },
     },
-    validatorFunction: "validate_circuit",
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -510,7 +528,6 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: false,
       },
     },
-    validatorFunction: "validate_3d_axes_vector",
   },
 
   {
@@ -550,7 +567,6 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: "blue_to_red",
       },
     },
-    validatorFunction: "validate_surface_plot",
   },
 
   {
@@ -588,7 +604,6 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: 0.3,
       },
     },
-    validatorFunction: "validate_unit_cube",
   },
 
   {
@@ -629,7 +644,6 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: true,
       },
     },
-    validatorFunction: "validate_3d_shape",
   },
 
   {
@@ -664,7 +678,6 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: 0.5,
       },
     },
-    validatorFunction: "validate_plane_intersection",
   },
 ];
 
@@ -691,9 +704,7 @@ export function getSchemasByTopic(topics: string[]): DiagramSchema[] {
   const lowerTopics = topics.map((t) => t.toLowerCase());
   return DIAGRAM_SCHEMAS.filter((schema) =>
     schema.topicTags.some((tag) =>
-      lowerTopics.some(
-        (topic) => tag.includes(topic) || topic.includes(tag)
-      )
+      lowerTopics.some((topic) => tag.includes(topic) || topic.includes(tag))
     )
   );
 }
@@ -733,5 +744,3 @@ export function generateSchemaComment(
     .join(", ");
   return `# DIAGRAM_SCHEMA: ${schemaId}\n# PARAMS: ${paramStr}`;
 }
-
-
