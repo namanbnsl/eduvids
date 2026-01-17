@@ -16,7 +16,6 @@ import {
   Smartphone,
   ChevronRight,
   ChevronLeft,
-  Sparkles,
   Play,
   Youtube,
   Twitter,

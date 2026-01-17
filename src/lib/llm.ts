@@ -1,7 +1,5 @@
 import { MANIM_SYSTEM_PROMPT, VOICEOVER_SYSTEM_PROMPT } from "@/prompt";
 import { generateText, LanguageModel } from "ai";
-import fs from "fs";
-import path from "path";
 import {
   createGoogleProvider,
   reportSuccess,
@@ -9,10 +7,10 @@ import {
 } from "./google-provider";
 import { selectGroqModel, GROQ_MODEL_IDS } from "./groq-provider";
 import { RenderLogEntry, ValidationStage } from "@/lib/types";
-import { cerebras } from "@ai-sdk/cerebras";
 
 import { franc } from "franc";
-// @ts-ignore
+
+// @ts-expect-error langs has no types
 import langs from "langs";
 
 import { withTracing } from "@posthog/ai";
@@ -114,8 +112,6 @@ interface ManimReferenceDocs {
   json: unknown;
 }
 
-let cachedManimDocs: ManimReferenceDocs | null = null;
-
 export async function detectLanguage(text: string): Promise<string> {
   try {
     if (!text || text.trim().length < 3) return "english";
@@ -136,42 +132,6 @@ export async function detectLanguage(text: string): Promise<string> {
   } catch (err) {
     console.error("Language detection failed:", err);
     return "english";
-  }
-}
-
-/**
- * Detects the language of the given text using LLM.
- * Falls back to 'english' if detection fails.
- */
-async function detectLanguageWithLLM(text: string): Promise<string> {
-  try {
-    const googleModel = createGoogleModel(
-      "gemini-2.5-flash-lite-preview-09-2025"
-    );
-
-    // Truncate text to avoid excessive token usage (first 500 chars should be enough)
-    const sampleText = text.slice(0, 500);
-
-    const { text: response } = await generateTextWithTracking(
-      {
-        model: googleModel.provider(googleModel.modelId),
-        system: `You are a language detection expert. Analyze the given text and identify its primary language. 
-Respond with ONLY ONE lowercase language name from this list: english, spanish, french, german, italian, portuguese, russian, chinese, japanese, korean, hindi, arabic.
-If the text is in multiple languages, return the dominant one. If you cannot determine the language with confidence, return "english".
-Do not provide any explanation, just the language name.`,
-        prompt: `Detect the language of this text:\n\n${sampleText}`,
-        temperature: 0,
-      },
-      googleModel,
-      30_000 // 30 second timeout for language detection (simpler task)
-    );
-
-    const detectedLang = response.trim().toLowerCase();
-
-    return detectedLang;
-  } catch (error) {
-    console.error("Language detection failed:", error);
-    return "english"; // Default fallback
   }
 }
 

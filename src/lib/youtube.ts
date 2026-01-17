@@ -1,18 +1,18 @@
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import { Readable } from "node:stream";
-import { generateYoutubeDescription, generateYoutubeTitle } from "@/lib/llm";
+// import { generateYoutubeDescription, generateYoutubeTitle } from "@/lib/llm";
 import type { VideoVariant } from "./types";
 
 export type YouTubePrivacyStatus = "public" | "unlisted" | "private";
 
 export interface YouTubeUploadRequest {
   videoUrl: string;
-  prompt: string;
+  // prompt: string;
   title: string;
   description?: string;
   tags?: string[];
-  voiceoverScript?: string;
+  // voiceoverScript?: string;
   privacyStatus?: YouTubePrivacyStatus;
   thumbnailDataUrl?: string;
   variant?: VideoVariant;
@@ -38,11 +38,11 @@ function getOAuth2Client(): OAuth2Client {
 
 export async function uploadToYouTube({
   videoUrl,
-  prompt,
+  // prompt,
   title,
   description,
   tags,
-  voiceoverScript,
+  // voiceoverScript,
   privacyStatus,
 }: YouTubeUploadRequest): Promise<{
   videoId: string;
