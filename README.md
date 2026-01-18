@@ -16,7 +16,7 @@
 ## 🚀 Using the Online Version
 
 1. Open [eduvids](https://eduvids.vercel.app).
-2. Enter any topic you’d like explained as a video, or press **Video** and enter the same. (you can also generate vertical youtube shorts)
+2. Enter any topic you'd like explained as a video, or press **Video** and enter the same. (you can also generate vertical YouTube Shorts)
 3. Wait while the servers render your video. (You can switch tabs, but don’t close it.)
 4. Once ready, the video will appear on the page, and you’ll get a notification.
 

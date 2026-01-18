@@ -17,7 +17,7 @@ export function getVectorIndex(): Index<VectorMetadata> {
 
     if (!url || !token) {
       throw new Error(
-        "Missing UPSTASH_VECTOR_REST_URL or UPSTASH_VECTOR_REST_TOKEN environment variables"
+        "Missing UPSTASH_VECTOR_REST_URL or UPSTASH_VECTOR_REST_TOKEN environment variables",
       );
     }
 
@@ -36,6 +36,12 @@ export interface UpsertOptions {
 }
 
 export async function upsertDocuments(options: UpsertOptions): Promise<void> {
+  if (options.docs.length !== options.embeddings.length) {
+    throw new Error(
+      `Embeddings length (${options.embeddings.length}) does not match docs length (${options.docs.length})`,
+    );
+  }
+
   const index = getVectorIndex();
 
   const vectors = options.docs.map((doc, i) => ({
@@ -63,7 +69,7 @@ export interface QueryOptions {
 }
 
 export async function queryVectors(
-  options: QueryOptions
+  options: QueryOptions,
 ): Promise<VectorSearchResult[]> {
   const index = getVectorIndex();
 
@@ -82,7 +88,7 @@ export async function queryVectors(
 }
 
 export async function fetchDocumentById(
-  id: string
+  id: string,
 ): Promise<{ id: string; metadata: RagMetadata } | null> {
   const index = getVectorIndex();
   const result = await index.fetch([id], { includeMetadata: true });

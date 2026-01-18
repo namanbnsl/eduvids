@@ -16,7 +16,7 @@ eduvids is ideal when users want:
 - Visual explanations instead of text
 - Quick learning through videos or YouTube Shorts
 - Help understanding complex/tough topics.
-- Explanations that feel like a teacher explaining on a board. User can keep asking questions and it is personalised to them.
+- Explanations that feel like a teacher explaining on a board. Users can keep asking questions and it is personalised to them.
 
 ---
 
