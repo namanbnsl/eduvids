@@ -29,7 +29,6 @@ import {
   getIndexInfo,
   deleteAllDocuments,
 } from "../src/lib/rag/client";
-import { cacheDocText } from "../src/lib/rag/retrieve";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -78,11 +77,6 @@ async function main() {
   if (docs.length === 0) {
     console.error("❌ No documents built. Check your docs directory.");
     process.exit(1);
-  }
-
-  // Cache document texts for retrieval
-  for (const doc of docs) {
-    cacheDocText(doc.id, doc.text);
   }
 
   // Generate embeddings

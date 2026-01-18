@@ -9,17 +9,18 @@
 
 - 🌐 Try it here (no sign-in required): [https://eduvids.vercel.app](https://eduvids.vercel.app)
 - ▶️ Watch community creations: [eduvids on YouTube](https://www.youtube.com/channel/UCws8TdWGs-Fo4UsBay3GtFA)
+- X: [https://x.com/eduvidsai](https://x.com/eduvidsai)
 
 ---
 
 ## 🚀 Using the Online Version
 
 1. Open [eduvids](https://eduvids.vercel.app).
-2. Enter any topic you’d like explained as a video, or press **Video** and enter the same.
+2. Enter any topic you’d like explained as a video, or press **Video** and enter the same. (you can also generate vertical youtube shorts)
 3. Wait while the servers render your video. (You can switch tabs, but don’t close it.)
 4. Once ready, the video will appear on the page, and you’ll get a notification.
 
-💡 **Tip:** If you accidentally close the tab or want to revisit your video, check the [eduvids YouTube Channel](https://www.youtube.com/@eduvids-ai)—your video will be uploaded there automatically.
+💡 **Tip:** If you accidentally close the tab or want to revisit your video, check the [eduvids YouTube Channel](https://www.youtube.com/@eduvids-ai)—your video will be uploaded there automatically. Links to all videos will also be available on the [eduvids X account](https://x.com/eduvidsai)
 
 ---
 
@@ -81,3 +82,7 @@ node helper/get_google_refresh_token.mjs
 ```
 
 4. Edit your `YOUTUBE_PRIVACY_STATUS` in `.env` based on what you want as the visibility for your videos `(public | unlisted | private)`. Default is `public`.
+
+## 📺 Setting up automatic X uploads (optional)
+
+1. Visit the X developer API console and fill in the required values in `.env`

@@ -29,6 +29,9 @@ export interface RagMetadata {
   sourcePath: string;
   slug?: string;
   version: string;
+
+  // Document content (stored in vector DB for retrieval)
+  text?: string;
 }
 
 export interface RagDoc {
@@ -55,5 +58,5 @@ export interface RagResult {
 export interface VectorSearchResult {
   id: string;
   score: number;
-  metadata: RagMetadata;
+  metadata: RagMetadata & { text?: string };
 }

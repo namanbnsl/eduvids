@@ -25,7 +25,7 @@ export type {
 } from "./types";
 
 // Retrieval (main API)
-export { getRagContext, formatRagContext, cacheDocText } from "./retrieve";
+export { getRagContext, formatRagContext } from "./retrieve";
 
 // Intent inference
 export { inferQueryIntent, shouldIncludeDoc } from "./intent";

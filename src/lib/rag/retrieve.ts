@@ -12,17 +12,6 @@ import { generateEmbedding } from "./embeddings";
 import { inferQueryIntent, shouldIncludeDoc } from "./intent";
 import { RETRIEVAL_CONFIG } from "./constants";
 
-// In-memory document text cache (populated during indexing)
-const docTextCache = new Map<string, string>();
-
-export function cacheDocText(id: string, text: string): void {
-  docTextCache.set(id, text);
-}
-
-export function getCachedDocText(id: string): string | undefined {
-  return docTextCache.get(id);
-}
-
 function dedupeBySchema(
   results: VectorSearchResult[],
   maxPerSchema: number
@@ -76,10 +65,10 @@ export async function getRagContext(
     1
   ).slice(0, RETRIEVAL_CONFIG.maxSchemas);
 
-  // Step 6: Build result docs with cached text
+  // Step 6: Build result docs with text from metadata
   const buildDoc = (r: VectorSearchResult): RagDoc => ({
     id: r.id,
-    text: getCachedDocText(r.id) ?? "",
+    text: r.metadata.text ?? "",
     metadata: r.metadata,
   });
 

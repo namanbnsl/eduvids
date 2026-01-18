@@ -41,7 +41,10 @@ export async function upsertDocuments(options: UpsertOptions): Promise<void> {
   const vectors = options.docs.map((doc, i) => ({
     id: doc.id,
     vector: options.embeddings[i],
-    metadata: doc.metadata as VectorMetadata,
+    metadata: {
+      ...doc.metadata,
+      text: doc.text, // Store document text in metadata for retrieval
+    } as VectorMetadata,
   }));
 
   // Upstash has batch limits, so we chunk
