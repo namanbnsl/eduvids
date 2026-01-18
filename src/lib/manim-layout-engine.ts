@@ -134,12 +134,12 @@ export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
   }
   bottomSafeZoneHeight = Math.max(
     bottomSafeZoneHeight,
-    frameHeight * (portrait ? 0.08 : 0.06)
+    frameHeight * (portrait ? 0.08 : 0.06),
   );
 
   bottomMargin = Math.max(
     bottomMargin,
-    bottomSafeZoneHeight + safeMargin * (portrait ? 0.4 : 0.3)
+    bottomSafeZoneHeight + safeMargin * (portrait ? 0.4 : 0.3),
   );
   topMargin = Math.max(topMargin, safeMargin * (portrait ? 1.4 : 1.15));
 
@@ -149,11 +149,11 @@ export function calculateSafeZones(config: LayoutConfig): SafeZoneConfig {
   // Calculate usable content area with improved spacing
   const maxContentWidth = Math.max(
     frameWidth - leftMargin - rightMargin,
-    Number.EPSILON
+    Number.EPSILON,
   );
   const maxContentHeight = Math.max(
     frameHeight - topMargin - bottomMargin - titleHeight,
-    Number.EPSILON
+    Number.EPSILON,
   );
 
   return {
@@ -198,7 +198,7 @@ DEFAULT_FONT = "EB Garamond"
 # ═══════════════════════════════════════════════════════════════════════════════
 # Manim's text rendering has letter spacing issues at normal font sizes.
 # FIX: Render at larger size, then scale down for proper kerning.
-KERNING_FIX_THRESHOLD = 32  # Apply fix to font sizes below 32
+KERNING_FIX_THRESHOLD = 9999  # Apply fix to everything
 KERNING_FIX_SCALE = 8.0       # Scale up by 8x, then down by 1/8 after rendering
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -425,14 +425,14 @@ def clear_scene(scene, run_time=0.6):
  * Simplified font size recommendations with consistent typography hierarchy
  */
 export function getRecommendedFontSizes(
-  config: LayoutConfig
+  config: LayoutConfig,
 ): Record<string, number> {
   const { orientation, contentType } = config;
   const zones = calculateSafeZones(config);
 
   // Calculate base size from content area
   const contentArea = Math.sqrt(
-    Math.max(zones.maxContentWidth * zones.maxContentHeight, 1)
+    Math.max(zones.maxContentWidth * zones.maxContentHeight, 1),
   );
 
   // Softened scaling to avoid oversized text that triggers reflow
@@ -449,41 +449,41 @@ export function getRecommendedFontSizes(
           : 1.0;
 
   // Calculate base body size with tighter clamps to prevent width explosions
-   const baseBody = clampFont(
-     Math.round(contentArea * baseScale * contentAdjust),
-     orientation === "portrait" ? 32 : 30,
-     orientation === "portrait" ? 44 : 42
-   );
+  const baseBody = clampFont(
+    Math.round(contentArea * baseScale * contentAdjust),
+    orientation === "portrait" ? 32 : 30,
+    orientation === "portrait" ? 44 : 42,
+  );
 
-   // Title: Clear hierarchy, capped to avoid forced line breaks
-   const title = clampFont(Math.round(baseBody * 1.35), baseBody + 4, 56);
+  // Title: Clear hierarchy, capped to avoid forced line breaks
+  const title = clampFont(Math.round(baseBody * 1.35), baseBody + 4, 56);
 
   // Heading: Between title and body
   const heading = clampFont(
     Math.round(baseBody * 1.18),
     baseBody + 2,
-    title - 2
+    title - 2,
   );
 
   // Math: Slightly larger for readability but constrained
   const math = clampFont(
     Math.round(baseBody * (contentType === "math" ? 1.06 : 1.0)),
     baseBody - 1,
-    baseBody + 6
+    baseBody + 6,
   );
 
   // Caption: Smaller but legible
   const caption = clampFont(
     Math.round(baseBody * 0.82),
     orientation === "portrait" ? 22 : 20,
-    baseBody - 2
+    baseBody - 2,
   );
 
   // Label: Compact for annotations
   const label = clampFont(
     Math.round(baseBody * 0.72),
     orientation === "portrait" ? 18 : 16,
-    caption - 1
+    caption - 1,
   );
 
   return {
@@ -629,7 +629,7 @@ export function detectContentType(script: string): LayoutConfig["contentType"] {
  */
 export function generateLayoutSetup(
   config: LayoutConfig,
-  includeHelpers: boolean = true
+  includeHelpers: boolean = true,
 ): string {
   const parts: string[] = [];
   const fonts = getRecommendedFontSizes(config);
@@ -658,7 +658,7 @@ export function generateLayoutSetup(
       "Rectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
       "RoundedRectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
       "SurroundingRectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
-    ].join("\n")
+    ].join("\n"),
   );
   parts.push(
     [
@@ -671,7 +671,7 @@ export function generateLayoutSetup(
       `FONT_CAPTION = ${fonts.caption}`,
       `FONT_LABEL = ${fonts.label}`,
       "",
-    ].join("\n")
+    ].join("\n"),
   );
   parts.push(`
 
@@ -2990,13 +2990,13 @@ export function getTextWrappingGuidelines(config: LayoutConfig): string {
   return `# Text Wrapping Guidelines
 # Maximum recommended characters per line (approximate):
 # - Title (${fonts.title}pt): ~${Math.floor(
-    zones.maxContentWidth / (fonts.title * 0.6)
+    zones.maxContentWidth / (fonts.title * 0.6),
   )} chars
 # - Body (${fonts.body}pt): ~${Math.floor(
-    zones.maxContentWidth / (fonts.body * 0.6)
+    zones.maxContentWidth / (fonts.body * 0.6),
   )} chars
 # - Caption (${fonts.caption}pt): ~${Math.floor(
-    zones.maxContentWidth / (fonts.caption * 0.6)
+    zones.maxContentWidth / (fonts.caption * 0.6),
   )} chars
 
 def wrap_text(text, font_size=48, max_width=10, max_lines=None):
@@ -3802,12 +3802,12 @@ export function getCompleteLayoutCode(config: LayoutConfig): string {
   parts.push("# 4. Use validate_position() to check bounds");
   parts.push("# 5. For 3D scenes:");
   parts.push(
-    "#    - Use create_3d_text_label() for ALL text (ensures camera-facing + background)"
+    "#    - Use create_3d_text_label() for ALL text (ensures camera-facing + background)",
   );
   parts.push("#    - Use create_3d_labeled_object() to label 3D objects");
   parts.push("#    - Use set_camera_for_3d_scene() to frame 3D content");
   parts.push(
-    "#    - Use set_camera_for_2d_view() for text-heavy scenes like CTAs"
+    "#    - Use set_camera_for_2d_view() for text-heavy scenes like CTAs",
   );
   parts.push("# 6. DIAGRAM SCHEMAS (use for accurate diagrams):");
   parts.push("#    - create_cartesian_graph() for function plots");
