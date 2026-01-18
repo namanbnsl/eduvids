@@ -38,10 +38,8 @@ export const { POST } = serve<YouTubeUploadPayload>(
     const youtubeResult = await context.run("upload-to-youtube", async () => {
       return uploadToYouTube({
         videoUrl,
-        // prompt,
         title: title ?? prompt.slice(0, 100),
         description,
-        // voiceoverScript,
         tags,
         variant,
         thumbnailDataUrl: undefined,
@@ -87,5 +85,5 @@ export const { POST } = serve<YouTubeUploadPayload>(
         });
       }
     },
-  }
+  },
 );

@@ -37,7 +37,6 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
     const batchNum = Math.floor(i / BATCH_SIZE) + 1;
     const totalBatches = Math.ceil(texts.length / BATCH_SIZE);
 
-    let lastError: unknown;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         const provider = createGoogleProvider();
@@ -49,7 +48,6 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
         console.log(`   Batch ${batchNum}/${totalBatches} complete`);
         break;
       } catch (err) {
-        lastError = err;
         const isRateLimit =
           err instanceof Error &&
           (err.message.includes("429") || err.message.includes("quota"));
@@ -57,7 +55,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
         if (isRateLimit && attempt < MAX_RETRIES - 1) {
           const backoffMs = Math.pow(2, attempt + 1) * 10000; // 20s, 40s, 80s
           console.warn(
-            `   Rate limited, waiting ${backoffMs / 1000}s before retry...`
+            `   Rate limited, waiting ${backoffMs / 1000}s before retry...`,
           );
           await sleep(backoffMs);
         } else {

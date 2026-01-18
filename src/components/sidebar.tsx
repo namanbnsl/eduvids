@@ -4,11 +4,11 @@ import { cn } from "@/lib/utils";
 import {
   MessageSquare,
   Plus,
-  Settings,
+  // Settings,
   Trash2,
   Menu,
-  X,
-  Sparkles,
+  // X,
+  // Sparkles,
   ChevronLeft,
   ChevronRight,
   Youtube,
@@ -62,23 +62,23 @@ export function Sidebar({
         className={cn(
           "fixed lg:relative inset-y-0 left-0 z-50 flex flex-col bg-sidebar border-r border-sidebar-border transition-all duration-300 ease-in-out",
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
-          isCollapsed ? "w-20 lg:w-20" : "w-80 lg:w-80"
+          isCollapsed ? "w-20 lg:w-20" : "w-80 lg:w-80",
         )}
       >
         {/* Header */}
         <div
           className={cn(
             "flex items-center h-16 px-4 border-b border-sidebar-border shrink-0",
-            isCollapsed ? "justify-center" : "justify-between"
+            isCollapsed ? "justify-center" : "justify-between",
           )}
         >
           {!isCollapsed && (
             <div className="flex items-center gap-2.5 min-w-0">
-              <img
+              {/* <img
                 src="/favicon.png"
                 alt="eduvids logo"
                 className="w-7 h-7 rounded-md"
-              />
+              /> */}
               <span className="font-bold text-xl text-sidebar-foreground truncate tracking-tight">
                 eduvids
               </span>
@@ -147,7 +147,7 @@ export function Sidebar({
                         "group flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm cursor-pointer transition-colors",
                         currentChatId === chat.id
                           ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                       )}
                       onClick={() => onSelectChat(chat.id)}
                       title={chat.title}
@@ -178,7 +178,7 @@ export function Sidebar({
                     "flex items-center justify-center rounded-lg p-2.5 transition-colors w-full cursor-pointer",
                     currentChatId === chat.id
                       ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                   )}
                   onClick={() => onSelectChat(chat.id)}
                   title={chat.title}

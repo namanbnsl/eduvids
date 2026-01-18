@@ -108,11 +108,6 @@ const logRetry = (
   );
 };
 
-interface ManimReferenceDocs {
-  markdown: string;
-  json: unknown;
-}
-
 export async function detectLanguage(text: string): Promise<string> {
   try {
     if (!text || text.trim().length < 3) return "english";

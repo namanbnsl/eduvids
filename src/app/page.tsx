@@ -39,7 +39,7 @@ import type {
 
 // Helpers
 const isGenerateVideoToolPart = (
-  part: ChatMessagePart
+  part: ChatMessagePart,
 ): part is Extract<GenerateVideoToolUIPart, { type: "tool-generate_video" }> =>
   part.type === "tool-generate_video";
 
@@ -49,11 +49,10 @@ export default function ChatPage() {
   const [generationMode, setGenerationMode] = useState<
     "video" | "short" | null
   >(null);
-  const [isDark, setIsDark] = useState(false);
   const [topics, setTopics] = useState<string[]>([]);
   const [isLoadingTopics, setIsLoadingTopics] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // const [sidebarOpen, setSidebarOpen] = useState(false);
+  // const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const { messages, status, sendMessage } = useChat<ChatMessage>();
   const hasMessages = messages.length > 0;
@@ -61,7 +60,7 @@ export default function ChatPage() {
 
   const handleOnboardingComplete = (
     message: string | null,
-    mode: "video" | "short" | null
+    mode: "video" | "short" | null,
   ) => {
     completeOnboarding();
     if (message) {
@@ -71,7 +70,7 @@ export default function ChatPage() {
           body: {
             forceVariant: mode,
           },
-        }
+        },
       );
     }
   };
@@ -110,7 +109,7 @@ export default function ChatPage() {
         body: {
           forceVariant: generationMode,
         },
-      }
+      },
     );
 
     setInput("");
@@ -122,27 +121,10 @@ export default function ChatPage() {
       return;
     }
 
-    // Sync theme state
-    const isDarkMode = document.documentElement.classList.contains("dark");
-    setIsDark(isDarkMode);
-
     generateTopics()
       .then(setTopics)
       .finally(() => setIsLoadingTopics(false));
   }, []);
-
-  const toggleTheme = () => {
-    const newIsDark = !isDark;
-    setIsDark(newIsDark);
-
-    if (newIsDark) {
-      document.documentElement.classList.add("dark");
-      window.localStorage.setItem("theme", "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      window.localStorage.setItem("theme", "light");
-    }
-  };
 
   return (
     <div className="relative flex h-svh bg-background">
@@ -327,7 +309,7 @@ export default function ChatPage() {
                             <PromptInputButton
                               onClick={() =>
                                 setGenerationMode((mode) =>
-                                  mode === "video" ? null : "video"
+                                  mode === "video" ? null : "video",
                                 )
                               }
                               variant={
@@ -342,7 +324,7 @@ export default function ChatPage() {
                             <PromptInputButton
                               onClick={() =>
                                 setGenerationMode((mode) =>
-                                  mode === "short" ? null : "short"
+                                  mode === "short" ? null : "short",
                                 )
                               }
                               variant={

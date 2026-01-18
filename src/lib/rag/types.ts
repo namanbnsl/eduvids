@@ -58,5 +58,5 @@ export interface RagResult {
 export interface VectorSearchResult {
   id: string;
   score: number;
-  metadata: RagMetadata & { text?: string };
+  metadata: RagMetadata;
 }
