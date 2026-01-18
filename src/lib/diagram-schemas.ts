@@ -37,7 +37,6 @@ export interface DiagramSchema {
   manimHelper: string;
   params: Record<string, SchemaParam>;
   cameraStyle: CameraStyle;
-  validatorFunction?: string;
 }
 
 /**
@@ -58,10 +57,11 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
     manimHelper: "create_cartesian_graph",
     cameraStyle: "2d-static",
     params: {
-      func_expression: {
+      func: {
         type: "string",
-        description: "Python lambda expression for the function (e.g., 'x**2')",
-        default: "x**2",
+        description:
+          "Python lambda expression for the function (e.g., lambda x: x**2)",
+        default: "lambda x: x**2",
         required: true,
       },
       x_range: {
@@ -96,7 +96,6 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: "y",
       },
     },
-    validatorFunction: "validate_cartesian_graph",
   },
 
   {
@@ -135,7 +134,6 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: true,
       },
     },
-    validatorFunction: "validate_bar_chart",
   },
 
   {
@@ -150,7 +148,8 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
       "pythagorean",
       "trigonometry",
     ],
-    description: "Triangle with vertex labels, side labels, and optional angles",
+    description:
+      "Triangle with vertex labels, side labels, and optional angles",
     manimHelper: "create_labeled_triangle",
     cameraStyle: "2d-static",
     params: {
@@ -167,8 +166,7 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
       },
       side_labels: {
         type: "list",
-        description:
-          "Labels for sides [AB, BC, CA] or null elements to skip",
+        description: "Labels for sides [AB, BC, CA] or null elements to skip",
         default: null,
       },
       show_angles: {
@@ -193,14 +191,20 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: 0.2,
       },
     },
-    validatorFunction: "validate_labeled_triangle",
   },
 
   {
     id: "force_diagram_v1",
     name: "Force Diagram",
     dimension: "2d",
-    topicTags: ["physics", "forces", "mechanics", "newton", "vectors", "free body"],
+    topicTags: [
+      "physics",
+      "forces",
+      "mechanics",
+      "newton",
+      "vectors",
+      "free body",
+    ],
     description: "Object with force arrows showing direction and magnitude",
     manimHelper: "create_force_diagram",
     cameraStyle: "2d-static",
@@ -228,65 +232,20 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: false,
       },
     },
-    validatorFunction: "validate_force_diagram",
-  },
-
-  {
-    id: "mapping_diagram_v1",
-    name: "Mapping Diagram",
-    dimension: "2d",
-    topicTags: ["functions", "mapping", "domain", "codomain", "relations", "sets"],
-    description: "Two sets (domain/codomain) with arrows showing mappings",
-    manimHelper: "create_mapping_diagram",
-    cameraStyle: "2d-static",
-    params: {
-      domain_elements: {
-        type: "list",
-        description: "Elements in the domain set",
-        required: true,
-      },
-      codomain_elements: {
-        type: "list",
-        description: "Elements in the codomain set",
-        required: true,
-      },
-      mappings: {
-        type: "list",
-        description:
-          "List of mappings as [[domain_index, codomain_index], ...]",
-        required: true,
-      },
-      domain_label: {
-        type: "string",
-        description: "Label for domain set",
-        default: "Domain",
-      },
-      codomain_label: {
-        type: "string",
-        description: "Label for codomain set",
-        default: "Codomain",
-      },
-      domain_color: {
-        type: "enum",
-        description: "Color for domain ellipse",
-        enumValues: ["BLUE", "GREEN", "PURPLE", "TEAL"],
-        default: "BLUE",
-      },
-      codomain_color: {
-        type: "enum",
-        description: "Color for codomain ellipse",
-        enumValues: ["RED", "ORANGE", "YELLOW", "PINK"],
-        default: "RED",
-      },
-    },
-    validatorFunction: "validate_mapping_diagram",
   },
 
   {
     id: "flowchart_v1",
     name: "Flowchart",
     dimension: "2d",
-    topicTags: ["process", "algorithm", "steps", "flow", "decision", "programming"],
+    topicTags: [
+      "process",
+      "algorithm",
+      "steps",
+      "flow",
+      "decision",
+      "programming",
+    ],
     description: "Process flowchart with boxes and arrows",
     manimHelper: "create_flowchart",
     cameraStyle: "2d-static",
@@ -320,14 +279,20 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: 0.8,
       },
     },
-    validatorFunction: "validate_flowchart",
   },
 
   {
     id: "atom_shells_v1",
     name: "Atom with Electron Shells",
     dimension: "2d",
-    topicTags: ["chemistry", "atom", "electrons", "shells", "orbitals", "physics"],
+    topicTags: [
+      "chemistry",
+      "atom",
+      "electrons",
+      "shells",
+      "orbitals",
+      "physics",
+    ],
     description: "Bohr model atom with nucleus and electron shells",
     manimHelper: "create_atom_diagram",
     cameraStyle: "2d-static",
@@ -339,7 +304,8 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
       },
       electron_config: {
         type: "list",
-        description: "Electrons per shell as [2, 8, 8, ...] or auto from element",
+        description:
+          "Electrons per shell as [2, 8, 8, ...] or auto from element",
         default: null,
       },
       show_nucleus_details: {
@@ -363,111 +329,6 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: null,
       },
     },
-    validatorFunction: "validate_atom_diagram",
-  },
-
-  {
-    id: "number_line_v1",
-    name: "Number Line",
-    dimension: "2d",
-    topicTags: ["math", "numbers", "integers", "real", "intervals"],
-    description: "Number line with optional points and intervals marked",
-    manimHelper: "create_number_line_diagram",
-    cameraStyle: "2d-static",
-    params: {
-      x_range: {
-        type: "list",
-        description: "Range as [min, max, step]",
-        default: [-5, 5, 1],
-      },
-      include_numbers: {
-        type: "boolean",
-        description: "Show tick labels",
-        default: true,
-      },
-      marked_points: {
-        type: "list",
-        description:
-          "Points to mark as [{value: number, label?: string, color?: string}]",
-        default: null,
-      },
-      intervals: {
-        type: "list",
-        description:
-          "Intervals to highlight as [{start: number, end: number, color?: string}]",
-        default: null,
-      },
-    },
-    validatorFunction: "validate_number_line",
-  },
-
-  {
-    id: "venn_diagram_v1",
-    name: "Venn Diagram",
-    dimension: "2d",
-    topicTags: ["sets", "logic", "probability", "intersection", "union"],
-    description: "Venn diagram with 2 or 3 overlapping circles",
-    manimHelper: "create_venn_diagram",
-    cameraStyle: "2d-static",
-    params: {
-      num_sets: {
-        type: "number",
-        description: "Number of sets (2 or 3)",
-        default: 2,
-      },
-      set_labels: {
-        type: "list",
-        description: "Labels for each set",
-        default: ["A", "B"],
-      },
-      region_labels: {
-        type: "list",
-        description:
-          "Labels for regions (A only, B only, intersection, etc.)",
-        default: null,
-      },
-      colors: {
-        type: "list",
-        description: "Colors for each set",
-        default: null,
-      },
-      fill_opacity: {
-        type: "number",
-        description: "Fill opacity for circles",
-        default: 0.3,
-      },
-    },
-    validatorFunction: "validate_venn_diagram",
-  },
-
-  {
-    id: "circuit_basic_v1",
-    name: "Basic Circuit",
-    dimension: "2d",
-    topicTags: ["physics", "electricity", "circuit", "resistor", "voltage"],
-    description: "Simple electrical circuit with basic components",
-    manimHelper: "create_basic_circuit",
-    cameraStyle: "2d-static",
-    params: {
-      components: {
-        type: "list",
-        description:
-          "List of components as [{type: 'battery'|'resistor'|'bulb'|'switch', label?: string}]",
-        required: true,
-      },
-      layout: {
-        type: "enum",
-        description: "Circuit layout",
-        enumValues: ["series", "parallel", "custom"],
-        default: "series",
-      },
-      show_current: {
-        type: "boolean",
-        description: "Show current direction arrows",
-        default: true,
-      },
-    },
-    validatorFunction: "validate_circuit",
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -510,161 +371,6 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
         default: false,
       },
     },
-    validatorFunction: "validate_3d_axes_vector",
-  },
-
-  {
-    id: "surface_plot_v1",
-    name: "3D Surface Plot",
-    dimension: "3d",
-    topicTags: ["calculus", "3d", "surface", "multivariable", "function"],
-    description: "3D surface visualization of a function z = f(x, y)",
-    manimHelper: "create_surface_plot",
-    cameraStyle: "3d-orbit",
-    params: {
-      func_expression: {
-        type: "string",
-        description:
-          "Python expression for z = f(x, y), e.g., 'np.sin(x) * np.cos(y)'",
-        required: true,
-      },
-      x_range: {
-        type: "list",
-        description: "X-axis range [min, max]",
-        default: [-2, 2],
-      },
-      y_range: {
-        type: "list",
-        description: "Y-axis range [min, max]",
-        default: [-2, 2],
-      },
-      resolution: {
-        type: "number",
-        description: "Surface resolution (higher = smoother)",
-        default: 24,
-      },
-      colorscale: {
-        type: "enum",
-        description: "Color gradient for surface",
-        enumValues: ["blue_to_red", "green_to_yellow", "purple_to_orange"],
-        default: "blue_to_red",
-      },
-    },
-    validatorFunction: "validate_surface_plot",
-  },
-
-  {
-    id: "unit_cube_v1",
-    name: "Unit Cube",
-    dimension: "3d",
-    topicTags: ["geometry", "3d", "cube", "volume", "coordinates"],
-    description: "3D cube with optional vertex/edge labels",
-    manimHelper: "create_unit_cube",
-    cameraStyle: "3d-static",
-    params: {
-      side_length: {
-        type: "number",
-        description: "Length of cube side",
-        default: 2,
-      },
-      show_axes: {
-        type: "boolean",
-        description: "Show coordinate axes",
-        default: true,
-      },
-      vertex_labels: {
-        type: "boolean",
-        description: "Show vertex coordinate labels",
-        default: false,
-      },
-      face_colors: {
-        type: "list",
-        description: "Colors for each face (6 colors)",
-        default: null,
-      },
-      fill_opacity: {
-        type: "number",
-        description: "Face fill opacity",
-        default: 0.3,
-      },
-    },
-    validatorFunction: "validate_unit_cube",
-  },
-
-  {
-    id: "3d_shape_v1",
-    name: "3D Geometric Shape",
-    dimension: "3d",
-    topicTags: ["geometry", "3d", "sphere", "cylinder", "cone", "prism"],
-    description: "Common 3D geometric shapes (sphere, cylinder, cone, etc.)",
-    manimHelper: "create_3d_shape",
-    cameraStyle: "3d-static",
-    params: {
-      shape_type: {
-        type: "enum",
-        description: "Type of 3D shape",
-        enumValues: ["sphere", "cylinder", "cone", "prism", "pyramid", "torus"],
-        required: true,
-      },
-      dimensions: {
-        type: "list",
-        description:
-          "Shape dimensions (varies by type): sphere [radius], cylinder [radius, height], etc.",
-        required: true,
-      },
-      color: {
-        type: "enum",
-        description: "Shape color",
-        enumValues: ["BLUE", "RED", "GREEN", "YELLOW", "PURPLE", "TEAL"],
-        default: "BLUE",
-      },
-      fill_opacity: {
-        type: "number",
-        description: "Fill opacity",
-        default: 0.7,
-      },
-      show_wireframe: {
-        type: "boolean",
-        description: "Show wireframe edges",
-        default: true,
-      },
-    },
-    validatorFunction: "validate_3d_shape",
-  },
-
-  {
-    id: "plane_intersection_v1",
-    name: "Plane Intersection",
-    dimension: "3d",
-    topicTags: ["geometry", "3d", "planes", "linear algebra", "intersection"],
-    description: "Two or more planes showing their line of intersection",
-    manimHelper: "create_plane_intersection",
-    cameraStyle: "3d-orbit",
-    params: {
-      planes: {
-        type: "list",
-        description:
-          "List of planes as [{normal: [a,b,c], d: number, color?: string, label?: string}]",
-        required: true,
-      },
-      show_intersection_line: {
-        type: "boolean",
-        description: "Highlight the line of intersection",
-        default: true,
-      },
-      intersection_color: {
-        type: "enum",
-        description: "Color for intersection line",
-        enumValues: ["YELLOW", "WHITE", "RED"],
-        default: "YELLOW",
-      },
-      plane_opacity: {
-        type: "number",
-        description: "Opacity of plane surfaces",
-        default: 0.5,
-      },
-    },
-    validatorFunction: "validate_plane_intersection",
   },
 ];
 
@@ -679,7 +385,7 @@ export function getSchemaById(id: string): DiagramSchema | undefined {
  * Get schemas by dimension
  */
 export function getSchemasByDimension(
-  dimension: DiagramDimension
+  dimension: DiagramDimension,
 ): DiagramSchema[] {
   return DIAGRAM_SCHEMAS.filter((s) => s.dimension === dimension);
 }
@@ -691,10 +397,8 @@ export function getSchemasByTopic(topics: string[]): DiagramSchema[] {
   const lowerTopics = topics.map((t) => t.toLowerCase());
   return DIAGRAM_SCHEMAS.filter((schema) =>
     schema.topicTags.some((tag) =>
-      lowerTopics.some(
-        (topic) => tag.includes(topic) || topic.includes(tag)
-      )
-    )
+      lowerTopics.some((topic) => tag.includes(topic) || topic.includes(tag)),
+    ),
   );
 }
 
@@ -726,12 +430,10 @@ export function schemaNeedsOrbit(schemaId: string): boolean {
  */
 export function generateSchemaComment(
   schemaId: string,
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
 ): string {
   const paramStr = Object.entries(params)
     .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
     .join(", ");
   return `# DIAGRAM_SCHEMA: ${schemaId}\n# PARAMS: ${paramStr}`;
 }
-
-

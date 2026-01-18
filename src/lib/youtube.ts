@@ -1,18 +1,15 @@
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import { Readable } from "node:stream";
-import { generateYoutubeDescription, generateYoutubeTitle } from "@/lib/llm";
 import type { VideoVariant } from "./types";
 
 export type YouTubePrivacyStatus = "public" | "unlisted" | "private";
 
 export interface YouTubeUploadRequest {
   videoUrl: string;
-  prompt: string;
   title: string;
   description?: string;
   tags?: string[];
-  voiceoverScript?: string;
   privacyStatus?: YouTubePrivacyStatus;
   thumbnailDataUrl?: string;
   variant?: VideoVariant;
@@ -25,7 +22,7 @@ function getOAuth2Client(): OAuth2Client {
 
   if (!clientId || !clientSecret || !refreshToken) {
     throw new Error(
-      "Missing Google OAuth env vars: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN"
+      "Missing Google OAuth env vars: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN",
     );
   }
 
@@ -38,11 +35,9 @@ function getOAuth2Client(): OAuth2Client {
 
 export async function uploadToYouTube({
   videoUrl,
-  prompt,
   title,
   description,
   tags,
-  voiceoverScript,
   privacyStatus,
 }: YouTubeUploadRequest): Promise<{
   videoId: string;
@@ -60,7 +55,7 @@ export async function uploadToYouTube({
   const res = await fetch(videoUrl);
   if (!res.ok) {
     throw new Error(
-      `Failed to fetch video from UploadThing URL: ${res.status} ${res.statusText}`
+      `Failed to fetch video from UploadThing URL: ${res.status} ${res.statusText}`,
     );
   }
 

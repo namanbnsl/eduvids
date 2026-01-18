@@ -2,7 +2,12 @@ import { serve } from "@upstash/workflow/nextjs";
 
 import { uploadToYouTube } from "@/lib/youtube";
 import { jobStore } from "@/lib/job-store";
-import { workflowClient, getBaseUrl, qstashClientWithBypass, getTriggerHeaders } from "@/lib/workflow/client";
+import {
+  workflowClient,
+  getBaseUrl,
+  qstashClientWithBypass,
+  getTriggerHeaders,
+} from "@/lib/workflow/client";
 
 import type { VideoVariant } from "@/lib/workflow/types";
 
@@ -11,7 +16,6 @@ type YouTubeUploadPayload = {
   title?: string;
   description?: string;
   prompt: string;
-  voiceoverScript?: string;
   jobId?: string;
   userId: string;
   variant?: VideoVariant;
@@ -19,15 +23,8 @@ type YouTubeUploadPayload = {
 
 export const { POST } = serve<YouTubeUploadPayload>(
   async (context) => {
-    const {
-      videoUrl,
-      title,
-      description,
-      prompt,
-      voiceoverScript,
-      jobId,
-      variant,
-    } = context.requestPayload;
+    const { videoUrl, title, description, prompt, jobId, variant } =
+      context.requestPayload;
 
     const isShort = variant === "short";
     const tags = [
@@ -41,10 +38,8 @@ export const { POST } = serve<YouTubeUploadPayload>(
     const youtubeResult = await context.run("upload-to-youtube", async () => {
       return uploadToYouTube({
         videoUrl,
-        prompt,
         title: title ?? prompt.slice(0, 100),
         description,
-        voiceoverScript,
         tags,
         variant,
         thumbnailDataUrl: undefined,
@@ -90,5 +85,5 @@ export const { POST } = serve<YouTubeUploadPayload>(
         });
       }
     },
-  }
+  },
 );

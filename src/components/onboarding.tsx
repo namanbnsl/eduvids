@@ -16,7 +16,6 @@ import {
   Smartphone,
   ChevronRight,
   ChevronLeft,
-  Sparkles,
   Play,
   Youtube,
   Twitter,
@@ -84,8 +83,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-xl animate-in fade-in duration-500">
       {/* Subtle decorative elements - minimalistic */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-foreground/[0.02] rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-foreground/[0.03] rounded-full blur-3xl" />
+        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-foreground/2 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-foreground/3 rounded-full blur-3xl" />
       </div>
 
       <div className="relative w-full max-w-2xl mx-4">
@@ -131,10 +130,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                 </h1>
                 <p className="text-lg text-muted-foreground mb-8 max-w-md mx-auto">
                   Create stunning educational videos with AI. Just describe what
-                  you want to explain, and we'll generate it for you.
+                  you want to explain, and we&apos;ll generate it for you.
                 </p>
                 <Button onClick={handleNext} size="lg" className="gap-2">
-                  See what's possible
+                  See what&apos;s possible
                   <ChevronRight className="w-4 h-4" />
                 </Button>
               </div>
@@ -145,10 +144,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 pt-6">
                 <div className="text-center mb-4">
                   <h2 className="text-2xl font-semibold mb-2">
-                    Here's what we can create
+                    Here&apos;s what we can create
                   </h2>
                   <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                    Einstein's Relativity Explained: From E=mc² to Gravitational
+                    Einstein&apos;s Relativity Explained: From E=mc² to Gravitational
                     Lensing
                   </p>
                 </div>
@@ -196,7 +195,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                     target="_blank"
                     className="flex items-center gap-4 p-4 rounded-xl border border-border bg-background/50 hover:bg-accent/50 transition-colors group"
                   >
-                    <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-foreground/10 flex items-center justify-center">
+                    <div className="shrink-0 w-12 h-12 rounded-lg bg-foreground/10 flex items-center justify-center">
                       <Youtube className="w-6 h-6 text-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -214,7 +213,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                     target="_blank"
                     className="flex items-center gap-4 p-4 rounded-xl border border-border bg-background/50 hover:bg-accent/50 transition-colors group"
                   >
-                    <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-foreground/10 flex items-center justify-center">
+                    <div className="shrink-0 w-12 h-12 rounded-lg bg-foreground/10 flex items-center justify-center">
                       <Twitter className="w-6 h-6 text-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -255,7 +254,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                       onClick={() => handleExampleClick(example.prompt)}
                       className="group relative flex items-center gap-4 p-4 rounded-xl border border-border bg-background/50 hover:bg-accent/50 transition-all duration-200 text-left"
                     >
-                      <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-foreground/10 flex items-center justify-center">
+                      <div className="shrink-0 w-10 h-10 rounded-lg bg-foreground/10 flex items-center justify-center">
                         <Play className="w-4 h-4 text-foreground/70 group-hover:text-foreground transition-colors" />
                       </div>
                       <div className="flex-1 min-w-0">
@@ -288,7 +287,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                     Create your first video
                   </h2>
                   <p className="text-muted-foreground">
-                    Describe what you want to explain and we'll generate a video
+                    Describe what you want to explain and we&apos;ll generate a video
                   </p>
                 </div>
 
@@ -297,7 +296,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                     onChange={(e) => setInput(e.target.value)}
                     value={input}
                     placeholder="Describe your video idea here..."
-                    className="min-h-[100px]"
+                    className="min-h-25"
                   />
                   <PromptInputToolbar>
                     <PromptInputTools>
