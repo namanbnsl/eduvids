@@ -28,6 +28,12 @@ These examples serve as:
 |--------|-----------------|----------|
 | `3d_axes_vector_v1` | `create_3d_axes_vector()` | single vector, basis vectors |
 
+### Illustrations
+
+| Schema | Examples |
+|--------|----------|
+| `illustration_v1` | sun, moon, star, earth, tree, cloud, water_drop, lightning, heart, firework, cell |
+
 ## Usage Pattern
 
 Every diagram example follows this pattern:
@@ -87,9 +93,21 @@ docs/diagrams/
 ├── atom/
 │   ├── carbon_atom.py
 │   └── sodium_atom.py
-└── 3d_vector/
-    ├── single_vector.py
-    └── basis_vectors.py
+├── 3d_vector/
+│   ├── single_vector.py
+│   └── basis_vectors.py
+└── illustrations/
+    ├── sun.py
+    ├── moon.py
+    ├── star.py
+    ├── earth.py
+    ├── tree.py
+    ├── cloud.py
+    ├── water_drop.py
+    ├── lightning.py
+    ├── heart.py
+    ├── firework.py
+    └── cell.py
 ```
 
 ## Adding New Examples

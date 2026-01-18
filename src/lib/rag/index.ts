@@ -1,15 +1,16 @@
 /**
- * RAG Module - Main exports for diagram retrieval augmented generation
+ * RAG Module - Semantic retrieval for diagram examples and schemas
  *
- * This module provides smart retrieval of diagram examples, schemas, and
- * Manim helper documentation based on user prompts.
+ * This module provides smart retrieval of diagram examples and schema docs
+ * based on the user's video topic. The full system prompt is always included
+ * separately - RAG only adds topic-specific illustrations.
  *
  * Usage:
  *   import { getRagContext, formatRagContext } from "@/lib/rag";
  *
  *   const context = await getRagContext("Why does carbon form allotropes?");
  *   const contextString = formatRagContext(context);
- *   // Inject contextString into LLM prompt
+ *   // Append contextString to the system prompt
  */
 
 // Types
@@ -19,7 +20,6 @@ export type {
   RagMetadata,
   RagResult,
   RagDomain,
-  RagTier,
   QueryIntent,
   VectorSearchResult,
 } from "./types";
@@ -31,12 +31,7 @@ export { getRagContext, formatRagContext, cacheDocText } from "./retrieve";
 export { inferQueryIntent, shouldIncludeDoc } from "./intent";
 
 // Document building (for indexing)
-export {
-  buildAllDocs,
-  buildExampleDocs,
-  buildSchemaDocs,
-  buildPromptSectionDocs,
-} from "./build-docs";
+export { buildAllDocs, buildExampleDocs, buildSchemaDocs } from "./build-docs";
 
 // Embeddings
 export { generateEmbedding, generateEmbeddings } from "./embeddings";
@@ -51,9 +46,4 @@ export {
 } from "./client";
 
 // Constants
-export {
-  RAG_VERSION,
-  CORE_SECTION_KEYS,
-  RETRIEVAL_CONFIG,
-  KEYWORDS_3D,
-} from "./constants";
+export { RAG_VERSION, RETRIEVAL_CONFIG, KEYWORDS_3D } from "./constants";

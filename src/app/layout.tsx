@@ -4,6 +4,7 @@ import { Lexend } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 
+// @ts-expect-error
 import "./globals.css";
 
 const defaultFont = Lexend({

@@ -99,6 +99,83 @@
       "topicTags": ["vectors", "basis", "unit vectors", "i j k"],
       "description": "Unit basis vectors i, j, k",
       "codePath": "3d_vector/basis_vectors.py"
+    },
+    {
+      "schemaId": "illustration_v1",
+      "slug": "sun",
+      "topicTags": ["astronomy", "sun", "solar", "space", "star", "light", "day", "weather"],
+      "description": "Realistic sun with glow, corona, and rays",
+      "codePath": "illustrations/sun.py"
+    },
+    {
+      "schemaId": "illustration_v1",
+      "slug": "moon",
+      "topicTags": ["astronomy", "moon", "lunar", "space", "night", "crescent", "phases"],
+      "description": "Realistic moon with crescent or full phase, craters and shading",
+      "codePath": "illustrations/moon.py"
+    },
+    {
+      "schemaId": "illustration_v1",
+      "slug": "star",
+      "topicTags": ["astronomy", "star", "space", "night", "sky", "decoration"],
+      "description": "Twinkling star shape with pointed rays",
+      "codePath": "illustrations/star.py"
+    },
+    {
+      "schemaId": "illustration_v1",
+      "slug": "earth",
+      "topicTags": ["astronomy", "earth", "planet", "geography", "space", "globe", "world"],
+      "description": "Earth planet with continents, oceans, and atmosphere",
+      "codePath": "illustrations/earth.py"
+    },
+    {
+      "schemaId": "illustration_v1",
+      "slug": "tree",
+      "topicTags": ["nature", "tree", "plant", "forest", "environment", "biology", "ecology"],
+      "description": "Simple but nice-looking tree with trunk and layered foliage",
+      "codePath": "illustrations/tree.py"
+    },
+    {
+      "schemaId": "illustration_v1",
+      "slug": "cloud",
+      "topicTags": ["weather", "cloud", "sky", "nature", "atmosphere", "rain"],
+      "description": "Fluffy cloud made of overlapping circles",
+      "codePath": "illustrations/cloud.py"
+    },
+    {
+      "schemaId": "illustration_v1",
+      "slug": "water_drop",
+      "topicTags": ["water", "liquid", "rain", "drop", "nature", "chemistry", "physics"],
+      "description": "Realistic water droplet with highlight reflection",
+      "codePath": "illustrations/water_drop.py"
+    },
+    {
+      "schemaId": "illustration_v1",
+      "slug": "lightning",
+      "topicTags": ["weather", "lightning", "electricity", "storm", "thunder", "energy", "power"],
+      "description": "Jagged lightning bolt with glow effect",
+      "codePath": "illustrations/lightning.py"
+    },
+    {
+      "schemaId": "illustration_v1",
+      "slug": "heart",
+      "topicTags": ["love", "heart", "emotion", "health", "biology", "cardiology", "valentine"],
+      "description": "Heart shape using circles and triangle",
+      "codePath": "illustrations/heart.py"
+    },
+    {
+      "schemaId": "illustration_v1",
+      "slug": "firework",
+      "topicTags": ["celebration", "firework", "explosion", "festival", "party", "light", "event"],
+      "description": "Firework explosion with colorful sparks",
+      "codePath": "illustrations/firework.py"
+    },
+    {
+      "schemaId": "illustration_v1",
+      "slug": "cell",
+      "topicTags": ["biology", "cell", "organelle", "nucleus", "mitochondria", "life", "microscopy"],
+      "description": "Biological cell with organelles including nucleus, mitochondria, and ribosomes",
+      "codePath": "illustrations/cell.py"
     }
   ]
 }

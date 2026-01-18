@@ -1,14 +1,18 @@
 /**
- * Retrieve - Tiered retrieval with semantic search and metadata filtering
+ * Retrieve - Semantic search for relevant diagram examples and schemas
+ *
+ * Returns the most relevant examples and schemas based on the user's prompt.
+ * The full system prompt is always included separately - RAG only adds
+ * topic-specific illustrations and schema docs.
  */
 
 import type { RagDoc, RagResult, VectorSearchResult } from "./types";
 import { queryVectors } from "./client";
 import { generateEmbedding } from "./embeddings";
 import { inferQueryIntent, shouldIncludeDoc } from "./intent";
-import { CORE_SECTION_KEYS, RETRIEVAL_CONFIG } from "./constants";
+import { RETRIEVAL_CONFIG } from "./constants";
 
-// In-memory document text cache (populated during indexing or fetched)
+// In-memory document text cache (populated during indexing)
 const docTextCache = new Map<string, string>();
 
 export function cacheDocText(id: string, text: string): void {
@@ -19,16 +23,6 @@ export function getCachedDocText(id: string): string | undefined {
   return docTextCache.get(id);
 }
 
-async function fetchDocText(id: string): Promise<string> {
-  const cached = getCachedDocText(id);
-  if (cached) return cached;
-
-  // For now, return empty - in production, you'd store text in metadata or separate store
-  return "";
-}
-
-// Limits no. of examples per schema id (eg. create_cartesian_graph)
-// maxPerSchema = 2; [A, A, A, B, B, C] -> [A, A, B, B, C]
 function dedupeBySchema(
   results: VectorSearchResult[],
   maxPerSchema: number
@@ -53,21 +47,21 @@ export async function getRagContext(
   userPrompt: string,
   debug = false
 ): Promise<RagResult> {
-  // Step 1: Infer query intent (check for 3D requirement)
+  // Step 1: Infer query intent (only for 3D filtering)
   const intent = inferQueryIntent(userPrompt);
 
   // Step 2: Generate embedding for the query
   const queryEmbedding = await generateEmbedding(userPrompt);
 
-  // Step 3: Query for examples and schemas
-  const exampleSchemaResults = await queryVectors({
+  // Step 3: Query vector store
+  const searchResults = await queryVectors({
     embedding: queryEmbedding,
     topK: RETRIEVAL_CONFIG.topK,
     includeMetadata: true,
   });
 
-  // Step 4: Filter results
-  const filteredResults = exampleSchemaResults.filter((r) =>
+  // Step 4: Filter results (only 3D exclusion)
+  const filteredResults = searchResults.filter((r) =>
     shouldIncludeDoc(intent, r.metadata.domain, r.metadata.dimension)
   );
 
@@ -82,47 +76,18 @@ export async function getRagContext(
     1
   ).slice(0, RETRIEVAL_CONFIG.maxSchemas);
 
-  // For prompt sections, get core ones always + topic-specific
-  const promptResults = filteredResults.filter(
-    (r) => r.metadata.docType === "prompt_section"
-  );
-
-  const coreSectionResults = promptResults.filter(
-    (r) =>
-      r.metadata.tier === "core" ||
-      (r.metadata.sectionKey &&
-        CORE_SECTION_KEYS.includes(r.metadata.sectionKey))
-  );
-
-  const topicSectionResults = promptResults
-    .filter(
-      (r) =>
-        r.metadata.tier === "topic" &&
-        r.metadata.sectionKey &&
-        !CORE_SECTION_KEYS.includes(r.metadata.sectionKey)
-    )
-    .slice(0, RETRIEVAL_CONFIG.maxTopicSections);
-
-  // Step 6: Build result docs
-  const buildDoc = async (r: VectorSearchResult): Promise<RagDoc> => ({
+  // Step 6: Build result docs with cached text
+  const buildDoc = (r: VectorSearchResult): RagDoc => ({
     id: r.id,
-    text: await fetchDocText(r.id),
+    text: getCachedDocText(r.id) ?? "",
     metadata: r.metadata,
   });
 
-  const [coreSections, schemaDocs, exampleDocs, topicPromptDocs] =
-    await Promise.all([
-      Promise.all(coreSectionResults.map(buildDoc)),
-      Promise.all(schemaResults.map(buildDoc)),
-      Promise.all(exampleResults.map(buildDoc)),
-      Promise.all(topicSectionResults.map(buildDoc)),
-    ]);
-
   const result: RagResult = {
-    coreSections,
-    schemaDocs,
-    exampleDocs,
-    topicPromptDocs,
+    coreSections: [], // No longer used - system prompt is separate
+    schemaDocs: schemaResults.map(buildDoc),
+    exampleDocs: exampleResults.map(buildDoc),
+    topicPromptDocs: [], // No longer used
   };
 
   if (debug) {
@@ -138,48 +103,39 @@ export async function getRagContext(
 export function formatRagContext(result: RagResult): string {
   const sections: string[] = [];
 
-  // Core sections (would need actual text - this is a placeholder)
-  if (result.coreSections.length > 0) {
-    sections.push("=== RAG: CORE MANIM RULES ===");
-    sections.push(
-      `(${result.coreSections.length} core sections: ${result.coreSections.map((d) => d.metadata.sectionKey).join(", ")})`
-    );
-  }
-
-  // Schema docs
+  // Schema docs - show relevant diagram helpers
   if (result.schemaDocs.length > 0) {
-    sections.push("\n=== RAG: RELEVANT DIAGRAM SCHEMAS ===");
+    sections.push("═══════════════════════════════════════════════════════════════════════════════");
+    sections.push("RELEVANT DIAGRAM SCHEMAS FOR THIS TOPIC");
+    sections.push("═══════════════════════════════════════════════════════════════════════════════");
+    sections.push("");
     for (const doc of result.schemaDocs) {
-      sections.push(`\n[Schema: ${doc.metadata.schemaId}]`);
-      sections.push(`Helper: ${doc.metadata.manimHelper}()`);
       if (doc.text) {
         sections.push(doc.text);
+        sections.push("");
       }
     }
   }
 
-  // Example docs
+  // Example docs - show verified code examples
   if (result.exampleDocs.length > 0) {
-    sections.push("\n=== RAG: VERIFIED EXAMPLES (COPY PATTERNS) ===");
+    sections.push("═══════════════════════════════════════════════════════════════════════════════");
+    sections.push("VERIFIED EXAMPLES - COPY THESE PATTERNS");
+    sections.push("═══════════════════════════════════════════════════════════════════════════════");
+    sections.push("");
     for (const doc of result.exampleDocs) {
-      sections.push(`\n[Example: ${doc.metadata.slug}]`);
-      sections.push(`Schema: ${doc.metadata.schemaId}`);
+      sections.push(`# Example: ${doc.metadata.slug ?? doc.id}`);
+      sections.push(`# Schema: ${doc.metadata.schemaId}`);
       if (doc.text) {
-        sections.push("```python");
-        sections.push(doc.text);
-        sections.push("```");
+        // Extract just the code part if it contains the full text
+        const codeMatch = doc.text.match(/Code:\n([\s\S]+)$/);
+        if (codeMatch) {
+          sections.push(codeMatch[1].trim());
+        } else {
+          sections.push(doc.text);
+        }
       }
-    }
-  }
-
-  // Topic prompt docs
-  if (result.topicPromptDocs.length > 0) {
-    sections.push("\n=== RAG: TOPIC-SPECIFIC HELPERS ===");
-    for (const doc of result.topicPromptDocs) {
-      sections.push(`\n[${doc.metadata.sectionKey}]`);
-      if (doc.text) {
-        sections.push(doc.text);
-      }
+      sections.push("");
     }
   }
 

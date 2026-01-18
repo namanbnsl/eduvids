@@ -1,18 +1,15 @@
 /**
- * Build Documents - Transforms source files into RagDoc objects for indexing
+ * Build Documents - Creates RagDoc objects from diagram examples and schemas
+ *
+ * These docs are indexed in Upstash Vector for semantic retrieval.
+ * The system prompt is NOT indexed - it's always included in full.
  */
 
 import * as fs from "fs";
 import * as path from "path";
 import { DIAGRAM_SCHEMAS } from "../diagram-schemas";
-import { MANIM_SYSTEM_PROMPT } from "../../prompt";
 import type { RagDoc, RagDomain } from "./types";
-import {
-  RAG_VERSION,
-  PROMPT_SECTIONS,
-  SCHEMA_DOMAIN_MAP,
-  type PromptSection,
-} from "./constants";
+import { RAG_VERSION, SCHEMA_DOMAIN_MAP } from "./constants";
 
 interface CatalogExample {
   schemaId: string;
@@ -33,62 +30,28 @@ function inferDomainFromTags(tags: string[]): RagDomain {
 
   if (
     lowerTags.some((t) =>
-      [
-        "chemistry",
-        "atom",
-        "electron",
-        "molecule",
-        "carbon",
-        "sodium",
-        "element",
-      ].includes(t)
+      ["chemistry", "atom", "electron", "molecule", "carbon", "sodium", "element"].includes(t)
     )
   ) {
     return "chemistry";
   }
   if (
     lowerTags.some((t) =>
-      [
-        "physics",
-        "force",
-        "gravity",
-        "tension",
-        "newton",
-        "mechanics",
-      ].includes(t)
+      ["physics", "force", "gravity", "tension", "newton", "mechanics"].includes(t)
     )
   ) {
     return "physics";
   }
   if (
     lowerTags.some((t) =>
-      [
-        "math",
-        "geometry",
-        "algebra",
-        "calculus",
-        "function",
-        "graph",
-        "triangle",
-      ].includes(t)
+      ["math", "geometry", "algebra", "calculus", "function", "graph", "triangle"].includes(t)
     )
   ) {
     return "math";
   }
   if (
     lowerTags.some((t) =>
-      [
-        "flowchart",
-        "algorithm",
-        "process",
-        "decision",
-        "code",
-        "python",
-        "programming",
-        "computer science",
-        "java",
-        "javascript",
-      ].includes(t)
+      ["flowchart", "algorithm", "process", "decision", "code"].includes(t)
     )
   ) {
     return "cs";
@@ -132,7 +95,7 @@ export function buildExampleDocs(docsDir: string): RagDoc[] {
     const schema = DIAGRAM_SCHEMAS.find((s) => s.id === example.schemaId);
     const dimension = schema?.dimension ?? "2d";
 
-    // Build searchable text
+    // Build searchable text - description + tags for semantic matching
     const searchText = [
       `Example: ${example.description}`,
       `Schema: ${example.schemaId}`,
@@ -180,8 +143,8 @@ export function buildSchemaDocs(): RagDoc[] {
       .map(([name, param]) => {
         const required = param.required ? " (required)" : "";
         const defaultVal =
-          param.default !== undefined ? ` [default: ${param.default}]` : "";
-        return `  - ${name}: ${param.type}${required}${defaultVal} - ${param.description}`;
+          param.default !== undefined ? ` [default: ${JSON.stringify(param.default)}]` : "";
+        return `  - ${name}: ${param.type}${required}${defaultVal}\n    ${param.description}`;
       })
       .join("\n");
 
@@ -219,70 +182,12 @@ export function buildSchemaDocs(): RagDoc[] {
   return docs;
 }
 
-function extractPromptSection(
-  prompt: string,
-  section: PromptSection
-): string | null {
-  const startIdx = prompt.indexOf(section.startMarker);
-  if (startIdx === -1) {
-    return null;
-  }
-
-  let endIdx: number;
-  if (section.endMarker) {
-    endIdx = prompt.indexOf(section.endMarker, startIdx);
-    if (endIdx === -1) {
-      endIdx = prompt.length;
-    }
-  } else {
-    // Find the next section divider (═══)
-    const nextDivider = prompt.indexOf(
-      "═══════════════════════════════════════════════════════════════════════════════",
-      startIdx + section.startMarker.length
-    );
-    endIdx = nextDivider === -1 ? prompt.length : nextDivider;
-  }
-
-  return prompt.slice(startIdx, endIdx).trim();
-}
-
-export function buildPromptSectionDocs(): RagDoc[] {
-  const docs: RagDoc[] = [];
-
-  for (const section of PROMPT_SECTIONS) {
-    const content = extractPromptSection(MANIM_SYSTEM_PROMPT, section);
-
-    if (!content) {
-      console.warn(`Could not extract prompt section: ${section.key}`);
-      continue;
-    }
-
-    docs.push({
-      id: `prompt:${section.key}`,
-      text: content,
-      metadata: {
-        docType: "prompt_section",
-        topicTags: section.topicTags,
-        domain: section.domain,
-        sectionKey: section.key,
-        tier: section.tier,
-        sourcePath: "src/prompt.ts",
-        version: RAG_VERSION,
-      },
-    });
-  }
-
-  return docs;
-}
-
 export function buildAllDocs(docsDir: string): RagDoc[] {
   const exampleDocs = buildExampleDocs(docsDir);
   const schemaDocs = buildSchemaDocs();
-  const promptDocs = buildPromptSectionDocs();
 
   console.log(`Built ${exampleDocs.length} example docs`);
   console.log(`Built ${schemaDocs.length} schema docs`);
-  console.log(`Built ${promptDocs.length} prompt section docs`);
 
-  return [...exampleDocs, ...schemaDocs, ...promptDocs];
+  return [...exampleDocs, ...schemaDocs];
 }

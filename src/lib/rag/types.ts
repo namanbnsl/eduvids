@@ -2,9 +2,7 @@
  * RAG Types - Document models and metadata schemas for Upstash Vector
  */
 
-import { DiagramDimension } from "@/lib/diagram-schemas";
-
-export type RagDocType = "example" | "schema" | "prompt_section";
+export type RagDocType = "example" | "schema";
 export type RagDomain =
   | "chemistry"
   | "physics"
@@ -12,26 +10,22 @@ export type RagDomain =
   | "cs"
   | "bio"
   | "general";
-export type RagTier = "core" | "topic";
+export type DiagramDimension = "2d" | "3d";
 
 export interface RagMetadata {
   docType: RagDocType;
 
-  // Topical routing
+  // Topical routing (used by embeddings)
   topicTags: string[];
   domain?: RagDomain;
 
-  // Diagram-specific fields
+  // Diagram fields
   schemaId?: string;
   diagramType?: string;
   dimension?: DiagramDimension;
   manimHelper?: string;
 
-  // Prompt-section specific
-  sectionKey?: string;
-  tier?: RagTier;
-
-  // Provenance / debugging
+  // Provenance
   sourcePath: string;
   slug?: string;
   version: string;
@@ -45,14 +39,13 @@ export interface RagDoc {
 
 export interface QueryIntent {
   allow3d: boolean;
-  // includeSchemaIds?: string[];
 }
 
 export interface RagResult {
-  coreSections: RagDoc[];
+  coreSections: RagDoc[]; // Kept for API compatibility, always empty
   schemaDocs: RagDoc[];
   exampleDocs: RagDoc[];
-  topicPromptDocs: RagDoc[];
+  topicPromptDocs: RagDoc[]; // Kept for API compatibility, always empty
   debug?: {
     intent: QueryIntent;
     hits: Array<{ id: string; score: number }>;

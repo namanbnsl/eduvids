@@ -1,12 +1,19 @@
 #!/usr/bin/env tsx
+
 /**
  * RAG Indexing Script
  *
- * Builds documents from diagram examples, schemas, and prompt sections,
+ * Builds documents from diagram examples and schemas,
  * generates embeddings, and upserts to Upstash Vector.
  *
  * Usage:
- *   bun tsx scripts/index-rag.ts
+ *   bun run rag:index        # Index all documents
+ *   bun run rag:reset        # Reset and re-index
+ *
+ * Environment variables required:
+ *   - UPSTASH_VECTOR_REST_URL
+ *   - UPSTASH_VECTOR_REST_TOKEN
+ *   - GOOGLE_GENERATIVE_AI_API_KEY (or GOOGLE_GENERATIVE_AI_API_KEY_1)
  */
 
 import * as path from "path";
@@ -31,17 +38,25 @@ async function main() {
   console.log("🚀 Starting RAG indexing...\n");
 
   // Check environment
-  const requiredEnvVars = [
-    "UPSTASH_VECTOR_REST_URL",
-    "UPSTASH_VECTOR_REST_TOKEN",
-    "GOOGLE_GENERATIVE_AI_API_KEY",
-  ];
+  if (
+    !process.env.UPSTASH_VECTOR_REST_URL ||
+    !process.env.UPSTASH_VECTOR_REST_TOKEN
+  ) {
+    console.error(
+      "❌ Missing UPSTASH_VECTOR_REST_URL or UPSTASH_VECTOR_REST_TOKEN",
+    );
+    process.exit(1);
+  }
 
-  for (const envVar of requiredEnvVars) {
-    if (!process.env[envVar]) {
-      console.error(`❌ Missing required environment variable: ${envVar}`);
-      process.exit(1);
-    }
+  // Check for Google API key (supports both naming conventions)
+  const hasGoogleKey =
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY_1;
+  if (!hasGoogleKey) {
+    console.error(
+      "❌ Missing GOOGLE_GENERATIVE_AI_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY_1",
+    );
+    process.exit(1);
   }
 
   // Get docs directory
@@ -79,7 +94,7 @@ async function main() {
   const embeddingTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
   console.log(
-    `   Generated ${embeddings.length} embeddings in ${embeddingTime}s`
+    `   Generated ${embeddings.length} embeddings in ${embeddingTime}s`,
   );
   console.log(`   Embedding dimension: ${embeddings[0]?.length ?? "unknown"}`);
 
@@ -103,7 +118,7 @@ async function main() {
       acc[d.metadata.docType] = (acc[d.metadata.docType] ?? 0) + 1;
       return acc;
     },
-    {} as Record<string, number>
+    {} as Record<string, number>,
   );
   for (const [type, count] of Object.entries(byType)) {
     console.log(`   ${type}: ${count}`);

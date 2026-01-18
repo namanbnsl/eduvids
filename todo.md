@@ -1,6 +1,4 @@
-investigate topic based docs
-add illustrations to RAG library
-reduce system prompt
+reduce system prompt (RAG now handles topic-specific examples)
 
 better voiceover syncing with text appearing on screen (see runtimes)
 

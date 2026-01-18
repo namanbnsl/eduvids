@@ -7,6 +7,7 @@ import {
 } from "./google-provider";
 import { selectGroqModel, GROQ_MODEL_IDS } from "./groq-provider";
 import { RenderLogEntry, ValidationStage } from "@/lib/types";
+import { getRagContext, formatRagContext } from "./rag";
 
 import { franc } from "franc";
 
@@ -35,7 +36,7 @@ async function generateTextWithTracking<
 >(
   config: T & { model: LanguageModel },
   googleConfig?: GoogleModelConfig,
-  timeoutMs: number = LLM_CALL_TIMEOUT_MS
+  timeoutMs: number = LLM_CALL_TIMEOUT_MS,
 ): Promise<Awaited<ReturnType<typeof generateText>>> {
   const { controller, cleanup } = createTimeoutController(timeoutMs);
 
@@ -93,7 +94,7 @@ const logRetry = (
   fnName: string,
   attempt: number,
   error: unknown,
-  delayMs?: number
+  delayMs?: number,
 ) => {
   const errorMsg = error instanceof Error ? error.message : String(error);
   console.warn(
@@ -103,7 +104,7 @@ const logRetry = (
       delayMs
         ? ` - retrying in ${Math.round(delayMs / 1000)}s`
         : " - no more retries"
-    }`
+    }`,
   );
 };
 
@@ -145,13 +146,13 @@ function buildAugmentedSystemPrompt(base: string, language?: string): string {
     // 1. Replace the main LaTeX requirement line
     modifiedBase = modifiedBase.replace(
       /- \*\*ALL ON-SCREEN TEXT MUST BE LATEX\*\*: Use Tex\/MathTex via the provided helpers \(create_tex_label, create_text_panel\)\. NEVER use Text, MarkupText, or Paragraph directly\./g,
-      `- **FOR ${langUpper} TEXT, USE Text() INSTEAD OF LATEX**: LaTeX does not properly support ${language} characters. For all non-mathematical text, use the Text() class directly: Text("your text", font_size=FONT_BODY, color=WHITE). ONLY use Tex/MathTex for mathematical formulas and equations. Never use create_tex_label for ${language} text.`
+      `- **FOR ${langUpper} TEXT, USE Text() INSTEAD OF LATEX**: LaTeX does not properly support ${language} characters. For all non-mathematical text, use the Text() class directly: Text("your text", font_size=FONT_BODY, color=WHITE). ONLY use Tex/MathTex for mathematical formulas and equations. Never use create_tex_label for ${language} text.`,
     );
 
     // 2. Modify all create_tex_label references to suggest Text() for non-English
     modifiedBase = modifiedBase.replace(
       /create_tex_label\(/g,
-      `Text(  # For ${language}, use Text() instead of create_tex_label(`
+      `Text(  # For ${language}, use Text() instead of create_tex_label(`,
     );
 
     // 3. Add a prominent section at the beginning about non-English text handling
@@ -191,13 +192,13 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
     // 4. Modify bullet point creation instructions
     modifiedBase = modifiedBase.replace(
       /\*\*RECOMMENDED:\*\* Use the \\`create_bullet_list\\` helper function for safe, consistent bullet points/g,
-      `**FOR ${langUpper}**: DO NOT use create_bullet_list - it uses LaTeX which doesn't support ${language}. Instead, create Text() objects and arrange them vertically`
+      `**FOR ${langUpper}**: DO NOT use create_bullet_list - it uses LaTeX which doesn't support ${language}. Instead, create Text() objects and arrange them vertically`,
     );
 
     // 5. Update text panel instructions
     modifiedBase = modifiedBase.replace(
       /create_text_panel\(/g,
-      `# For ${language}, manually create Text() + Rectangle instead of create_text_panel(`
+      `# For ${language}, manually create Text() + Rectangle instead of create_text_panel(`,
     );
   }
 
@@ -323,10 +324,31 @@ export async function generateManimScript({
   const detectedLanguage = await detectLanguage(voiceoverScript);
   console.log(`Detected language: ${detectedLanguage}`);
 
-  const augmentedSystemPrompt = buildAugmentedSystemPrompt(
+  // Get relevant examples and schemas via RAG
+  let ragContext = "";
+  try {
+    const ragResult = await getRagContext(prompt);
+    ragContext = formatRagContext(ragResult);
+    if (ragContext) {
+      console.log(
+        `RAG retrieved: ${ragResult.exampleDocs.length} examples, ${ragResult.schemaDocs.length} schemas`,
+      );
+    }
+  } catch (err) {
+    console.warn("RAG retrieval failed, continuing without examples:", err);
+  }
+
+  // Build system prompt with language adjustments
+  let augmentedSystemPrompt = buildAugmentedSystemPrompt(
     MANIM_SYSTEM_PROMPT,
-    detectedLanguage
+    detectedLanguage,
   );
+
+  // Append RAG context (relevant examples and schemas)
+  if (ragContext) {
+    augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${ragContext}`;
+  }
+
   const generationPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration with purposeful, step-by-step visuals that directly reinforce each narrated idea while staying on the same core topic:`;
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
@@ -334,7 +356,7 @@ export async function generateManimScript({
     const model = withTracing(
       googleModel.provider(googleModel.modelId),
       phClient,
-      { posthogProperties: { $ai_session_id: sessionId } }
+      { posthogProperties: { $ai_session_id: sessionId } },
     );
 
     try {
@@ -345,7 +367,7 @@ export async function generateManimScript({
           prompt: generationPrompt,
           temperature: 0.1,
         },
-        googleModel
+        googleModel,
       );
 
       const code = text
@@ -376,7 +398,7 @@ export async function generateManimScript({
       prompt: generationPrompt,
       temperature: 0.1,
     },
-    flashModel
+    flashModel,
   );
   const code = flashText
     .replace(/```python?\n?/g, "")
@@ -506,17 +528,17 @@ export async function regenerateManimScriptWithError({
     }
     if (errorDetails.stderr && errorDetails.stderr.trim().length > 0) {
       parts.push(
-        `STDERR (truncated to 2k chars):\n${errorDetails.stderr.slice(0, 2000)}`
+        `STDERR (truncated to 2k chars):\n${errorDetails.stderr.slice(0, 2000)}`,
       );
     }
     if (errorDetails.stdout && errorDetails.stdout.trim().length > 0) {
       parts.push(
-        `STDOUT (truncated to 2k chars):\n${errorDetails.stdout.slice(0, 2000)}`
+        `STDOUT (truncated to 2k chars):\n${errorDetails.stdout.slice(0, 2000)}`,
       );
     }
     if (errorDetails.stack && errorDetails.stack.trim().length > 0) {
       parts.push(
-        `Stack (truncated to 2k chars):\n${errorDetails.stack.slice(0, 2000)}`
+        `Stack (truncated to 2k chars):\n${errorDetails.stack.slice(0, 2000)}`,
       );
     }
     if (errorDetails.message && errorDetails.message.trim().length > 0) {
@@ -538,13 +560,13 @@ export async function regenerateManimScriptWithError({
         blockedScripts.map((script) => {
           const trimmed = script.trim();
           return [trimmed, truncate(trimmed, 6000)];
-        })
-      ).values()
+        }),
+      ).values(),
     );
     if (!unique.length) return "";
     const blocks = unique
       .map(
-        (script, idx) => `--- Failed Script Variant #${idx + 1} ---\n${script}`
+        (script, idx) => `--- Failed Script Variant #${idx + 1} ---\n${script}`,
       )
       .join("\n\n");
     return `\nThe following script variants are known to fail. You must not reuse them verbatim or with superficial edits. Study them to understand and avoid the mistakes:\n${blocks}\n`;
@@ -704,6 +726,31 @@ HELPER FUNCTIONS (these are available, use them)
 
 OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
 
+  // Get relevant examples and schemas via RAG
+  let ragContext = "";
+  try {
+    const ragResult = await getRagContext(prompt);
+    ragContext = formatRagContext(ragResult);
+    if (ragContext) {
+      console.log(
+        `RAG retrieved: ${ragResult.exampleDocs.length} examples, ${ragResult.schemaDocs.length} schemas`,
+      );
+    }
+  } catch (err) {
+    console.warn("RAG retrieval failed, continuing without examples:", err);
+  }
+
+  // Build system prompt with language adjustments
+  let augmentedSystemPrompt = buildAugmentedSystemPrompt(
+    regenerationSystemPrompt,
+    detectedLanguage,
+  );
+
+  // Append RAG context (relevant examples and schemas)
+  if (ragContext) {
+    augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${ragContext}`;
+  }
+
   // const { text } = await generateText({
   //   model: cerebras("zai-glm-4.7"),
   //   system: regenerationSystemPrompt,
@@ -721,18 +768,18 @@ OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
     const model = withTracing(
       googleModel.provider(googleModel.modelId),
       phClient,
-      { posthogProperties: { $ai_session_id: sessionId } }
+      { posthogProperties: { $ai_session_id: sessionId } },
     );
 
     try {
       const { text } = await generateTextWithTracking(
         {
           model: model,
-          system: regenerationSystemPrompt,
+          system: augmentedSystemPrompt,
           prompt: regenerationPrompt,
           temperature: 0.1,
         },
-        googleModel
+        googleModel,
       );
 
       const code = text
@@ -763,7 +810,7 @@ OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
       prompt: regenerationPrompt,
       temperature: 0.1,
     },
-    flashModel
+    flashModel,
   );
   const code = flashText
     .replace(/```python?\n?/g, "")
