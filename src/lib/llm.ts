@@ -304,7 +304,7 @@ export async function generateVoiceoverScript({
     }),
     system: systemPrompt,
     prompt: composedPrompt,
-    temperature: 0.7,
+    temperature: 0.5,
   });
 
   return text.trim();
@@ -360,7 +360,7 @@ export async function generateManimScript({
           model: model,
           system: augmentedSystemPrompt,
           prompt: generationPrompt,
-          temperature: 0.1,
+          temperature: 1,
         },
         googleModel,
       );
@@ -391,7 +391,7 @@ export async function generateManimScript({
       }),
       system: augmentedSystemPrompt,
       prompt: generationPrompt,
-      temperature: 0.1,
+      temperature: 1,
     },
     flashModel,
   );
@@ -772,7 +772,7 @@ OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
           model: model,
           system: augmentedSystemPrompt,
           prompt: regenerationPrompt,
-          temperature: 0.1,
+          temperature: 1,
         },
         googleModel,
       );
@@ -803,7 +803,7 @@ OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
       }),
       system: regenerationSystemPrompt,
       prompt: regenerationPrompt,
-      temperature: 0.1,
+      temperature: 1,
     },
     flashModel,
   );
