@@ -25,8 +25,7 @@ Typical flow:
 1. User enters a topic or question
 2. eduvids generates an educational video
 3. The video explains concepts step by step using visuals
-4. The finished video are automatically uploaded to YouTube and X/Twitter for future use. (https://youtube.com/@eduvids-ai, https://x.com/eduvidsai)
-
+4. The finished videos are automatically uploaded to YouTube and X/Twitter for future use. (https://youtube.com/@eduvids-ai, https://x.com/eduvidsai)
 No video editing or technical skills are required.
 
 ---
