@@ -691,6 +691,182 @@ def normalize_math_mobject(math_mobject, max_width_ratio=0.65, max_height_ratio=
 
 
 # ========================================
+# VOICEOVER SYNC HELPERS (CRITICAL FOR TIMING)
+# ========================================
+
+def rt_from_tracker(tracker, fraction=0.35, min_rt=0.6, max_rt=2.2):
+    """
+    Compute a sensible animation run_time from the voiceover duration.
+    
+    Args:
+        tracker: The voiceover tracker from the context manager
+        fraction: What fraction of the voiceover duration to use (0.0-1.0)
+        min_rt: Minimum run_time to return
+        max_rt: Maximum run_time to return
+    
+    Returns:
+        float: A clamped run_time value
+    """
+    try:
+        d = float(getattr(tracker, "duration", 2.0))
+    except Exception:
+        d = 2.0
+    return max(min_rt, min(max_rt, d * fraction))
+
+
+def wait_for_voiceover(tracker, start_time, scene, buffer=0.08):
+    """
+    Ensures the current voiceover block lasts approximately tracker.duration.
+    Call this at the END of every voiceover block.
+    
+    Args:
+        tracker: The voiceover tracker from the context manager
+        start_time: The time captured with t0 = self.time at block start
+        scene: The scene instance (self)
+        buffer: Small tail pause so the last visual beat can land before next line
+    """
+    try:
+        d = float(getattr(tracker, "duration", 0.0))
+    except Exception:
+        d = 0.0
+    elapsed = float(scene.time - start_time)
+    remaining = max(0.0, d - elapsed - buffer)
+    if remaining > 0:
+        scene.wait(remaining)
+    if buffer > 0:
+        scene.wait(buffer)
+
+
+# ========================================
+# FUN BACKGROUND HELPERS (VIBRANT VISUALS)
+# ========================================
+
+def create_gradient_background(colors=None, opacity=1.0):
+    """
+    Create a full-screen gradient rectangle background.
+    
+    Args:
+        colors: List of hex colors for gradient (top to bottom)
+        opacity: Fill opacity
+    
+    Returns:
+        FullScreenRectangle with gradient fill
+    """
+    if colors is None:
+        colors = ["#0B1020", "#0F0F12", "#2B0A3D"]  # Navy -> charcoal -> plum
+    bg = FullScreenRectangle(stroke_width=0)
+    bg.set_fill(color=colors, opacity=opacity)
+    bg.set_z_index(-100)
+    return bg
+
+
+def create_particle_field(n=40, color=WHITE, opacity=0.08, seed=42):
+    """
+    Create a subtle particle field for visual interest.
+    
+    Args:
+        n: Number of particles
+        color: Particle color
+        opacity: Base opacity (will be randomized)
+        seed: Random seed for reproducibility
+    
+    Returns:
+        VGroup of Dot mobjects
+    """
+    import random
+    random.seed(seed)
+    dots = []
+    for _ in range(n):
+        x = random.uniform(-FRAME_WIDTH/2 + 0.5, FRAME_WIDTH/2 - 0.5)
+        y = random.uniform(-FRAME_HEIGHT/2 + 0.5, FRAME_HEIGHT/2 - 0.5)
+        r = random.uniform(0.015, 0.04)
+        d = Dot(point=[x, y, 0], radius=r, color=color)
+        d.set_opacity(opacity * random.uniform(0.4, 1.0))
+        d.set_z_index(-90)
+        dots.append(d)
+    return VGroup(*dots)
+
+# ========================================
+# ACCENT / FLOURISH HELPERS
+# ========================================
+
+def create_gradient_underline(mobject, colors=None, buff=0.15, stroke_width=5):
+    """
+    Create a colorful gradient underline for titles and headings.
+    
+    Args:
+        mobject: The mobject to underline
+        colors: Tuple of colors for gradient (default: ORANGE -> PINK)
+        buff: Spacing below the mobject
+        stroke_width: Thickness of the line
+    
+    Returns:
+        Line mobject with gradient stroke
+    """
+    if colors is None:
+        colors = (ORANGE, PINK)
+    underline = Line(mobject.get_left(), mobject.get_right())
+    underline.next_to(mobject, DOWN, buff=buff)
+    underline.set_stroke(color=list(colors), width=stroke_width)
+    return underline
+
+
+def create_safe_glow(mobject, color=YELLOW, layers=3, base_width=8, opacity=0.10):
+    """
+    Add a subtle glow effect around a mobject.
+    Falls back gracefully if copy fails for complex mobjects.
+    
+    Args:
+        mobject: The mobject to add glow around
+        color: Glow color
+        layers: Number of glow layers (more = softer)
+        base_width: Starting stroke width
+        opacity: Base opacity for glow
+    
+    Returns:
+        VGroup of glow layers (add BEFORE the original mobject)
+    """
+    glows = VGroup()
+    for i in range(layers):
+        try:
+            g = mobject.copy()
+            g.set_fill(opacity=0)
+            g.set_stroke(color=color, width=base_width + i * 5, opacity=opacity / (i + 1))
+            g.set_z_index(getattr(mobject, "z_index", 0) - 1)
+            glows.add(g)
+        except Exception:
+            break
+    return glows
+
+
+def create_warm_panel(mobject, color=ORANGE, opacity=0.12, buff=0.3, corner_radius=0.2):
+    """
+    Create a warm semi-transparent panel behind content for visual emphasis.
+    
+    Args:
+        mobject: The mobject to create panel behind
+        color: Panel color (warm colors work best)
+        opacity: Fill opacity
+        buff: Padding around the mobject
+        corner_radius: Rounded corner radius
+    
+    Returns:
+        RoundedRectangle panel (add BEFORE the content mobject)
+    """
+    panel = RoundedRectangle(
+        width=mobject.width + buff * 2,
+        height=mobject.height + buff * 2,
+        corner_radius=corner_radius,
+        fill_color=color,
+        fill_opacity=opacity,
+        stroke_width=0
+    )
+    panel.move_to(mobject.get_center())
+    panel.set_z_index(getattr(mobject, "z_index", 0) - 1)
+    return panel
+
+
+# ========================================
 # CHARACTER LIMITS FOR READABLE TEXT
 # ========================================
 CHAR_LIMIT_TITLE = 25      # Max chars per line for titles

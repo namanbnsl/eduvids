@@ -93,9 +93,10 @@ class MyScene(VoiceoverScene):
         # Your animation code goes here
         # Use voiceover blocks for narration:
         with self.voiceover(text="Your narration text here") as tracker:
-            # Animations that play during this narration
-            self.play(...)
-            self.wait(0.5)
+            t0 = self.time
+            # Animations should fit within tracker.duration
+            self.play(..., run_time=rt_from_tracker(tracker, fraction=0.35))
+            wait_for_voiceover(tracker, t0, self, buffer=0.08)
 
 ═══════════════════════════════════════════════════════════════════════════════
 CRITICAL REQUIREMENTS
@@ -307,6 +308,15 @@ Layout Helpers:
 - ensure_no_overlap(mobject_a, mobject_b, min_gap=1.0): Push apart if overlapping
 - limit_visible_elements(mobjects, max=5): Cap elements to prevent crowding
 
+Voiceover Sync Helpers (MUST USE FOR EVERY VOICEOVER BLOCK):
+- rt_from_tracker(tracker, fraction=0.35, min_rt=0.6, max_rt=2.2): Get animation run_time from voiceover duration
+- wait_for_voiceover(tracker, t0, scene, buffer=0.08): Wait for remaining voiceover time
+
+Visual Style Helpers (USE FOR ENGAGING VIDEOS):
+- add_fun_background(scene, variant="sunset"): Add gradient + particle background (variants: "sunset", "ocean", "candy")
+- create_gradient_underline(mobject, colors=(ORANGE, PINK)): Colorful underline for titles
+- create_safe_glow(mobject, color=YELLOW, layers=3): Subtle glow effect around elements
+
 Font Size Constants (use these, not hardcoded values):
 - FONT_TITLE, FONT_HEADING, FONT_BODY, FONT_MATH, FONT_CAPTION, FONT_LABEL
 
@@ -339,26 +349,77 @@ LAYOUT CONTRACT
 - ALWAYS use create_side_by_side_layout() when mixing text and diagrams
 
 ═══════════════════════════════════════════════════════════════════════════════
+VOICEOVER SYNC CONTRACT (CRITICAL - READ CAREFULLY)
+═══════════════════════════════════════════════════════════════════════════════
+
+Animations MUST sync with voiceover narration. Follow this pattern for EVERY voiceover block:
+
+1. Set t0 = self.time immediately after entering the voiceover block
+2. Derive animation run_time using rt_from_tracker(tracker, fraction=0.3-0.5)
+3. End EVERY voiceover block with wait_for_voiceover(tracker, t0, self, buffer=0.08)
+
+EXAMPLE:
+    with self.voiceover(text="Let's explore this concept") as tracker:
+        t0 = self.time
+        self.play(FadeIn(diagram), run_time=rt_from_tracker(tracker, fraction=0.4))
+        self.play(Indicate(key_element, color=YELLOW), run_time=rt_from_tracker(tracker, fraction=0.2))
+        wait_for_voiceover(tracker, t0, self, buffer=0.08)
+
+RULES:
+- NEVER use fixed self.wait(0.5) inside voiceover blocks - use wait_for_voiceover instead
+- If tracker.duration < 1.2s: use a single quick animation (FadeIn/Write), no extras
+- If tracker.duration > 3.5s: use 2-3 micro-animations paced across the line
+- If you need many animations for one narration line, SPLIT the narration into multiple shorter lines
+
+═══════════════════════════════════════════════════════════════════════════════
 ANIMATION STYLE
 ═══════════════════════════════════════════════════════════════════════════════
 
-- Never add objects without animation (no raw self.add for content)
+- Never add objects without animation (no raw self.add for content, except backgrounds)
 - Use smooth entrances: Write(), Create(), FadeIn(shift=UP*0.3)
 - For bullet lists: LaggedStart(FadeIn(item, shift=RIGHT*0.5), lag_ratio=0.3)
-- Keep run_time between 0.8-1.5 seconds (not too fast!)
-- Add self.wait(0.5) after major reveals
+- Derive run_time from tracker.duration using rt_from_tracker() - NOT fixed values
 - Clear previous content: self.play(FadeOut(old_group))
 
 ═══════════════════════════════════════════════════════════════════════════════
-COLOR PALETTE (dark background #1E1E1E)
+VISUAL STYLE (VIBRANT & ENGAGING)
 ═══════════════════════════════════════════════════════════════════════════════
 
-- Main text: WHITE
-- Math formulas: BLUE or CYAN  
-- Emphasis/highlights: YELLOW (use sparingly)
-- Success: GREEN, Error: RED
-- Diagram fills: use fill_opacity=0.3-0.7 for shapes
-- Use only: WHITE, BLUE, CYAN, TEAL, GREEN, YELLOW, ORANGE, RED, PINK, PURPLE, GRAY
+Videos should be FUN, COLORFUL, and ENGAGING - not sterile or boring!
+   
+1. USE WARM ACCENTS for visual interest:
+   - Titles: Add gradient underlines → underline = create_gradient_underline(title)
+   - Key elements: Add subtle glow → glow = create_safe_glow(element, color=YELLOW)
+   - Highlights: Use Indicate/Circumscribe with ORANGE or YELLOW
+   - Callout panels: Use warm semi-transparent backgrounds
+
+2. ADD FLOURISHES sparingly (1-2 per major concept):
+   - Indicate pulses on key terms
+   - Brief color emphasis animations
+   - Gradient underlines for titles
+
+3. COLOR USAGE:
+   - Main text: WHITE
+   - Math formulas: BLUE or CYAN
+   - Emphasis/highlights: YELLOW or ORANGE (for Indicate, Circumscribe)
+   - Warm accents: ORANGE, PINK, MAGENTA for underlines, panels, flourishes
+   - Success: GREEN, Error: RED
+   - Diagram fills: use fill_opacity=0.3-0.7 for depth
+   - Available colors: WHITE, BLUE, CYAN, TEAL, GREEN, YELLOW, ORANGE, RED, PINK, PURPLE, MAGENTA, INDIGO, VIOLET, GRAY
+
+5. EXAMPLE SETUP:
+   def construct(self):
+       ${VOICEOVER_SERVICE_SETTER}
+       
+       # Add vibrant background first
+       bg = add_fun_background(self, variant="sunset")
+       
+       with self.voiceover(text="Welcome to our lesson!") as tracker:
+           t0 = self.time
+           title = create_title("Understanding Gravity")
+           underline = create_gradient_underline(title, colors=(ORANGE, PINK))
+           self.play(Write(title), Create(underline), run_time=rt_from_tracker(tracker, 0.5))
+           wait_for_voiceover(tracker, t0, self)
 
 ═══════════════════════════════════════════════════════════════════════════════
 ERROR PREVENTION (CRITICAL)
