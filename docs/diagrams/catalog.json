@@ -45,6 +45,13 @@
       "codePath": "triangle/equilateral_angles.py"
     },
     {
+      "schemaId": "triangle_labeled_v1",
+      "slug": "obtuse_triangle_angles",
+      "topicTags": ["geometry", "obtuse", "angles", "interior angle"],
+      "description": "Obtuse triangle with all angles labeled - demonstrates interior angle fix",
+      "codePath": "triangle/obtuse_triangle_angles.py"
+    },
+    {
       "schemaId": "force_diagram_v1",
       "slug": "object_on_surface",
       "topicTags": ["physics", "forces", "normal force", "gravity"],
@@ -176,6 +183,55 @@
       "topicTags": ["biology", "cell", "organelle", "nucleus", "mitochondria", "life", "microscopy"],
       "description": "Biological cell with organelles including nucleus, mitochondria, and ribosomes",
       "codePath": "illustrations/cell.py"
+    },
+    {
+      "schemaId": "code_block_v1",
+      "slug": "python_function",
+      "topicTags": ["programming", "python", "function", "cs", "code"],
+      "description": "Python function example with syntax highlighting",
+      "codePath": "code_block/python_function.py"
+    },
+    {
+      "schemaId": "code_block_v1",
+      "slug": "javascript_loop",
+      "topicTags": ["programming", "javascript", "loop", "iteration", "cs"],
+      "description": "JavaScript loop example with syntax highlighting",
+      "codePath": "code_block/javascript_loop.py"
+    },
+    {
+      "schemaId": "circle_geometry_v1",
+      "slug": "inscribed_angle",
+      "topicTags": ["geometry", "circle", "inscribed angle", "central angle", "circle theorem"],
+      "description": "Inscribed angle theorem - angle at circumference is half the central angle",
+      "codePath": "circle_geometry/inscribed_angle.py"
+    },
+    {
+      "schemaId": "circle_geometry_v1",
+      "slug": "chord_and_tangent",
+      "topicTags": ["geometry", "circle", "chord", "tangent", "radius"],
+      "description": "Circle with chord and tangent line",
+      "codePath": "circle_geometry/chord_and_tangent.py"
+    },
+    {
+      "schemaId": "triangle_congruence_v1",
+      "slug": "sss_congruence",
+      "topicTags": ["geometry", "triangle", "congruence", "SSS", "proof"],
+      "description": "SSS (Side-Side-Side) congruence - all three sides equal",
+      "codePath": "triangle_congruence/sss_congruence.py"
+    },
+    {
+      "schemaId": "triangle_congruence_v1",
+      "slug": "sas_congruence",
+      "topicTags": ["geometry", "triangle", "congruence", "SAS", "proof"],
+      "description": "SAS (Side-Angle-Side) congruence - two sides and included angle equal",
+      "codePath": "triangle_congruence/sas_congruence.py"
+    },
+    {
+      "schemaId": "triangle_congruence_v1",
+      "slug": "similar_triangles",
+      "topicTags": ["geometry", "triangle", "similarity", "proportions", "AA"],
+      "description": "Similar triangles with matching angle marks",
+      "codePath": "triangle_congruence/similar_triangles.py"
     }
   ]
 }

@@ -3304,6 +3304,115 @@ export function generateDiagramSchemaHelpers(): string {
 # Add a DIAGRAM_SCHEMA comment block above each helper call for validation.
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# ANGLE CALCULATION UTILITY - FIXES REFLEX ANGLE BUG
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _angle_ccw_between(v1, v2):
+    """
+    Compute the counterclockwise angle from vector v1 to v2 in the XY plane.
+    Returns angle in [0, 2*PI) radians.
+    Used to determine if we need other_angle=True in Manim's Angle class.
+    """
+    x1, y1 = float(v1[0]), float(v1[1])
+    x2, y2 = float(v2[0]), float(v2[1])
+    dot = x1*x2 + y1*y2
+    cross_z = x1*y2 - y1*x2  # 2D cross product z-component
+    # signed angle in (-pi, pi]
+    signed = np.arctan2(cross_z, dot)
+    # convert to [0, 2pi)
+    return signed % TAU
+
+
+def _get_interior_angle_flag(vertex, p1, p2):
+    """
+    Determine if we need other_angle=True to draw the interior (smaller) angle.
+    Returns True if the CCW sweep is greater than PI (meaning we should use clockwise).
+    """
+    v1 = p1 - vertex
+    v2 = p2 - vertex
+    # Skip if vectors are too small
+    if np.linalg.norm(v1) < 1e-6 or np.linalg.norm(v2) < 1e-6:
+        return False
+    ccw = _angle_ccw_between(v1, v2)
+    # If CCW angle > PI, we need to go the other way for the smaller arc
+    return ccw > (PI + 1e-6)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONGRUENCE MARK PRIMITIVES - FOR TRIANGLE CONGRUENCE/SIMILARITY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _tick_mark_on_segment(p1, p2, n=1, size=0.12, color=YELLOW):
+    """
+    Create tick marks on a segment to indicate equal lengths.
+    
+    Args:
+        p1, p2: Endpoints of the segment (numpy arrays)
+        n: Number of ticks (1, 2, or 3 typically)
+        size: Length of each tick mark
+        color: Color of the ticks
+    
+    Returns:
+        VGroup of tick marks centered on the segment
+    """
+    midpoint = (p1 + p2) / 2
+    direction = p2 - p1
+    length = np.linalg.norm(direction)
+    if length < 1e-6:
+        return VGroup()
+    
+    # Perpendicular direction
+    perp = np.array([-direction[1], direction[0], 0])
+    perp = perp / np.linalg.norm(perp) * size
+    
+    ticks = VGroup()
+    spacing = 0.1
+    offsets = [(i - (n-1)/2) * spacing for i in range(n)]
+    
+    unit_dir = direction / length
+    for offset in offsets:
+        tick_center = midpoint + unit_dir * offset
+        tick = Line(tick_center - perp/2, tick_center + perp/2, color=color, stroke_width=2)
+        ticks.add(tick)
+    
+    return ticks
+
+
+def _angle_mark(vertex, p1, p2, n=1, radius=0.35, color=YELLOW):
+    """
+    Create angle arc marks (single, double, triple) to indicate equal angles.
+    USES INTERIOR ANGLE FIX to avoid reflex angles.
+    
+    Args:
+        vertex: The vertex point of the angle
+        p1, p2: Points on the two rays from vertex
+        n: Number of arcs (1, 2, or 3)
+        radius: Base radius for the arc
+        color: Color of the arcs
+    
+    Returns:
+        VGroup of angle arcs
+    """
+    arcs = VGroup()
+    use_other = _get_interior_angle_flag(vertex, p1, p2)
+    
+    for i in range(n):
+        arc_radius = radius + i * 0.1
+        try:
+            arc = Angle(
+                Line(vertex, p1),
+                Line(vertex, p2),
+                radius=arc_radius,
+                color=color,
+                other_angle=use_other,
+            )
+            arcs.add(arc)
+        except Exception as e:
+            print(f"[VISUAL WARNING] Could not create angle mark: {e}")
+    
+    return arcs
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # 2D DIAGRAM HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -3518,23 +3627,29 @@ def create_labeled_triangle(
                 label_mob.next_to(midpoint, direction, buff=0.3)
                 elements.append(label_mob)
     
-    # Add angle arcs
+    # Add angle arcs - USES INTERIOR ANGLE FIX to avoid reflex angles
     if show_angles:
         for i in range(3):
             try:
                 p1 = pts[(i - 1) % 3]
                 vertex = pts[i]
                 p2 = pts[(i + 1) % 3]
+                
+                # Use the interior angle fix to ensure we draw the smaller angle
+                use_other = _get_interior_angle_flag(vertex, p1, p2)
+                
                 angle = Angle(
                     Line(vertex, p1),
                     Line(vertex, p2),
                     radius=0.4,
                     color=YELLOW,
+                    other_angle=use_other,
                 )
                 elements.append(angle)
                 
                 if angle_labels and i < len(angle_labels) and angle_labels[i]:
                     angle_label = create_text_with_kerning_fix(angle_labels[i], font_size=FONT_LABEL, color=YELLOW)
+                    # Position label at the midpoint of the arc, slightly outward from vertex
                     angle_label.move_to(angle.point_from_proportion(0.5) + (vertex - angle.point_from_proportion(0.5)) * -0.5)
                     elements.append(angle_label)
             except Exception as e:
@@ -3917,6 +4032,402 @@ def orbit_camera_around(scene, target, angle=TAU/4, run_time=4):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# CODE BLOCK HELPER - FOR PROGRAMMING/CS EDUCATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def create_code_block(
+    code_str,
+    language="python",
+    style="monokai",
+    max_width=10.0,
+    max_height=5.0,
+    tab_width=4,
+    font_size=18,
+):
+    """
+    DIAGRAM_SCHEMA: code_block_v1
+    
+    Create a syntax-highlighted code block for programming education.
+    
+    Args:
+        code_str: The source code as a string
+        language: Programming language ("python", "javascript", "java", "c", etc.)
+        style: Syntax highlighting style ("monokai", "native", "vs", "friendly")
+        max_width: Maximum width of the code block
+        max_height: Maximum height of the code block
+        tab_width: Number of spaces per tab
+        font_size: Font size for code
+    
+    Returns:
+        VGroup containing the styled code block
+    """
+    try:
+        code_mobject = Code(
+            code=code_str,
+            language=language,
+            tab_width=tab_width,
+            font_size=font_size,
+            background="window",
+            style=style,
+        )
+    except Exception:
+        # Fallback without style if it fails
+        try:
+            code_mobject = Code(
+                code=code_str,
+                language=language,
+                tab_width=tab_width,
+                font_size=font_size,
+                background="window",
+            )
+        except Exception as e:
+            # Final fallback - plain text
+            print(f"[VISUAL WARNING] Code block fallback to plain text: {e}")
+            code_mobject = Text(code_str, font="Courier New", font_size=font_size)
+    
+    # Ensure it fits within bounds
+    if code_mobject.width > max_width:
+        code_mobject.scale(max_width / code_mobject.width)
+    if code_mobject.height > max_height:
+        code_mobject.scale(max_height / code_mobject.height)
+    
+    group = VGroup(code_mobject)
+    group.move_to(get_content_center())
+    ensure_fits_screen(group, safety_margin=0.9)
+    
+    return group
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CIRCLE GEOMETRY HELPER - FOR CIRCLE THEOREMS AND PROOFS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def create_circle_geometry(
+    radius=2.0,
+    center=ORIGIN,
+    points_on_circle=None,
+    point_labels=None,
+    chords=None,
+    radii=None,
+    tangent_at=None,
+    central_angle=None,
+    inscribed_angle=None,
+    color=BLUE,
+    fill_opacity=0.1,
+):
+    """
+    DIAGRAM_SCHEMA: circle_geometry_v1
+    
+    Create a circle with points, chords, radii, tangents, and angle annotations.
+    Useful for circle theorem visualizations.
+    
+    Args:
+        radius: Circle radius
+        center: Center point as array [x, y, 0] or ORIGIN
+        points_on_circle: List of angles in degrees where to place points on circle
+        point_labels: Labels for points (same length as points_on_circle)
+        chords: List of [i, j, label?] to draw chords between point indices
+        radii: List of point indices to draw radii to
+        tangent_at: List of point indices where to draw tangent lines
+        central_angle: [i, j, label?] to show angle at center between radii i and j
+        inscribed_angle: [a, b, c, label?] to show angle at point b subtending arc a-c
+        color: Circle stroke color
+        fill_opacity: Circle fill opacity
+    
+    Returns:
+        VGroup containing the complete circle geometry diagram
+    """
+    center = np.array(center) if not isinstance(center, np.ndarray) else center
+    elements = []
+    
+    # Create circle
+    circle = Circle(radius=radius, color=color, fill_opacity=fill_opacity)
+    circle.move_to(center)
+    elements.append(circle)
+    
+    # Place points on circle
+    point_positions = []
+    if points_on_circle:
+        for i, angle_deg in enumerate(points_on_circle):
+            angle_rad = angle_deg * DEGREES
+            pos = center + radius * np.array([np.cos(angle_rad), np.sin(angle_rad), 0])
+            point_positions.append(pos)
+            
+            # Add dot at point
+            dot = Dot(pos, color=WHITE, radius=0.08)
+            elements.append(dot)
+            
+            # Add label if provided
+            if point_labels and i < len(point_labels) and point_labels[i]:
+                # Position label outside the circle
+                outward = (pos - center) / radius
+                label = create_text_with_kerning_fix(point_labels[i], font_size=FONT_LABEL, color=WHITE)
+                label.next_to(pos, outward, buff=0.2)
+                elements.append(label)
+    
+    # Draw center point
+    center_dot = Dot(center, color=YELLOW, radius=0.06)
+    elements.append(center_dot)
+    
+    # Draw chords
+    if chords and len(point_positions) >= 2:
+        for chord_spec in chords:
+            i, j = chord_spec[0], chord_spec[1]
+            chord_label = chord_spec[2] if len(chord_spec) > 2 else None
+            
+            if i < len(point_positions) and j < len(point_positions):
+                chord_line = Line(point_positions[i], point_positions[j], color=YELLOW)
+                elements.append(chord_line)
+                
+                if chord_label:
+                    mid = (point_positions[i] + point_positions[j]) / 2
+                    lbl = create_text_with_kerning_fix(chord_label, font_size=FONT_CAPTION, color=YELLOW)
+                    # Place label perpendicular to chord
+                    chord_dir = point_positions[j] - point_positions[i]
+                    perp = np.array([-chord_dir[1], chord_dir[0], 0])
+                    perp = perp / np.linalg.norm(perp) if np.linalg.norm(perp) > 0 else UP
+                    lbl.next_to(mid, perp, buff=0.2)
+                    elements.append(lbl)
+    
+    # Draw radii
+    if radii and point_positions:
+        for i in radii:
+            if i < len(point_positions):
+                radius_line = Line(center, point_positions[i], color=GREEN)
+                elements.append(radius_line)
+    
+    # Draw tangent lines
+    if tangent_at and point_positions:
+        for i in tangent_at:
+            if i < len(point_positions):
+                pos = point_positions[i]
+                # Tangent is perpendicular to radius
+                radial = pos - center
+                tangent_dir = np.array([-radial[1], radial[0], 0])
+                tangent_dir = tangent_dir / np.linalg.norm(tangent_dir) * radius
+                tangent_line = Line(pos - tangent_dir * 0.7, pos + tangent_dir * 0.7, color=ORANGE)
+                elements.append(tangent_line)
+    
+    # Draw central angle
+    if central_angle and len(point_positions) >= 2:
+        i, j = central_angle[0], central_angle[1]
+        angle_label = central_angle[2] if len(central_angle) > 2 else None
+        
+        if i < len(point_positions) and j < len(point_positions):
+            # Use the interior angle fix
+            use_other = _get_interior_angle_flag(center, point_positions[i], point_positions[j])
+            
+            arc = Angle(
+                Line(center, point_positions[i]),
+                Line(center, point_positions[j]),
+                radius=0.5,
+                color=RED,
+                other_angle=use_other,
+            )
+            elements.append(arc)
+            
+            if angle_label:
+                arc_lbl = create_text_with_kerning_fix(angle_label, font_size=FONT_LABEL, color=RED)
+                arc_lbl.move_to(arc.point_from_proportion(0.5) + (center - arc.point_from_proportion(0.5)) * -0.4)
+                elements.append(arc_lbl)
+    
+    # Draw inscribed angle
+    if inscribed_angle and len(point_positions) >= 3:
+        a, b, c = inscribed_angle[0], inscribed_angle[1], inscribed_angle[2]
+        angle_label = inscribed_angle[3] if len(inscribed_angle) > 3 else None
+        
+        if all(idx < len(point_positions) for idx in [a, b, c]):
+            vertex = point_positions[b]
+            p1 = point_positions[a]
+            p2 = point_positions[c]
+            
+            # Draw the chord lines forming the angle
+            line1 = Line(vertex, p1, color=TEAL, stroke_opacity=0.5)
+            line2 = Line(vertex, p2, color=TEAL, stroke_opacity=0.5)
+            elements.extend([line1, line2])
+            
+            # Use the interior angle fix
+            use_other = _get_interior_angle_flag(vertex, p1, p2)
+            
+            arc = Angle(
+                Line(vertex, p1),
+                Line(vertex, p2),
+                radius=0.35,
+                color=TEAL,
+                other_angle=use_other,
+            )
+            elements.append(arc)
+            
+            if angle_label:
+                arc_lbl = create_text_with_kerning_fix(angle_label, font_size=FONT_LABEL, color=TEAL)
+                arc_lbl.move_to(arc.point_from_proportion(0.5) + (vertex - arc.point_from_proportion(0.5)) * -0.5)
+                elements.append(arc_lbl)
+    
+    group = VGroup(*elements)
+    group.move_to(get_content_center())
+    ensure_fits_screen(group, safety_margin=0.85)
+    
+    return group
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TRIANGLE CONGRUENCE/SIMILARITY HELPER
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def create_triangle_congruence(
+    mode="SSS",
+    tri1_vertices=None,
+    tri2_vertices=None,
+    labels1=["A", "B", "C"],
+    labels2=["D", "E", "F"],
+    side_marks=None,
+    angle_marks=None,
+    show_proportions=False,
+    proportion_labels=None,
+    color1=BLUE,
+    color2=GREEN,
+    fill_opacity=0.2,
+):
+    """
+    DIAGRAM_SCHEMA: triangle_congruence_v1
+    
+    Create a diagram showing triangle congruence or similarity with matching marks.
+    
+    Args:
+        mode: "SSS", "SAS", "ASA", "AAS", "SIMILAR"
+        tri1_vertices: Vertices for first triangle as [[x,y], [x,y], [x,y]] or preset
+        tri2_vertices: Vertices for second triangle or preset
+        labels1, labels2: Vertex labels for each triangle
+        side_marks: List of tuples [(side1_idx, side2_idx, tick_count), ...] for matching sides
+                    side_idx is 0=AB, 1=BC, 2=CA
+        angle_marks: List of tuples [(vertex1_idx, vertex2_idx, arc_count), ...] for matching angles
+        show_proportions: Whether to show proportion labels (for similarity)
+        proportion_labels: List of proportion strings ["AB:DE = 2:1", ...]
+        color1, color2: Colors for each triangle
+        fill_opacity: Fill opacity for triangles
+    
+    Returns:
+        VGroup containing both triangles with congruence/similarity marks
+    """
+    # Default triangles positioned side by side
+    if tri1_vertices is None:
+        tri1_vertices = [[-4.5, -1, 0], [-2.5, -1, 0], [-3.5, 1, 0]]
+    if tri2_vertices is None:
+        tri2_vertices = [[1.5, -1, 0], [3.5, -1, 0], [2.5, 1, 0]]
+    
+    pts1 = [np.array(v) if len(v) == 3 else np.array([v[0], v[1], 0]) for v in tri1_vertices]
+    pts2 = [np.array(v) if len(v) == 3 else np.array([v[0], v[1], 0]) for v in tri2_vertices]
+    
+    elements = []
+    
+    # Create triangles
+    tri1 = Polygon(*pts1, color=color1, fill_opacity=fill_opacity, stroke_width=3)
+    tri2 = Polygon(*pts2, color=color2, fill_opacity=fill_opacity, stroke_width=3)
+    elements.extend([tri1, tri2])
+    
+    # Add vertex labels
+    label_dirs = [DOWN + LEFT, DOWN + RIGHT, UP]
+    for i, (pt, label) in enumerate(zip(pts1, labels1)):
+        if label:
+            lbl = create_text_with_kerning_fix(label, font_size=FONT_LABEL, color=WHITE)
+            lbl.next_to(pt, label_dirs[i % 3], buff=0.25)
+            elements.append(lbl)
+    
+    for i, (pt, label) in enumerate(zip(pts2, labels2)):
+        if label:
+            lbl = create_text_with_kerning_fix(label, font_size=FONT_LABEL, color=WHITE)
+            lbl.next_to(pt, label_dirs[i % 3], buff=0.25)
+            elements.append(lbl)
+    
+    # Default marks based on mode
+    if side_marks is None and angle_marks is None:
+        if mode == "SSS":
+            side_marks = [(0, 0, 1), (1, 1, 2), (2, 2, 3)]
+            angle_marks = []
+        elif mode == "SAS":
+            side_marks = [(0, 0, 1), (2, 2, 2)]
+            angle_marks = [(0, 0, 1)]  # Included angle at vertex 0
+        elif mode == "ASA":
+            side_marks = [(0, 0, 1)]
+            angle_marks = [(0, 0, 1), (1, 1, 2)]
+        elif mode == "AAS":
+            side_marks = [(1, 1, 1)]
+            angle_marks = [(0, 0, 1), (1, 1, 2)]
+        elif mode == "SIMILAR":
+            angle_marks = [(0, 0, 1), (1, 1, 2), (2, 2, 3)]
+            side_marks = []
+    
+    # Add side tick marks
+    sides1 = [(0, 1), (1, 2), (2, 0)]
+    sides2 = [(0, 1), (1, 2), (2, 0)]
+    
+    if side_marks:
+        for mark_spec in side_marks:
+            s1_idx, s2_idx, tick_count = mark_spec[0], mark_spec[1], mark_spec[2] if len(mark_spec) > 2 else 1
+            
+            # Marks on triangle 1
+            if s1_idx < 3:
+                i, j = sides1[s1_idx]
+                ticks1 = _tick_mark_on_segment(pts1[i], pts1[j], n=tick_count, color=color1)
+                elements.append(ticks1)
+            
+            # Marks on triangle 2
+            if s2_idx < 3:
+                i, j = sides2[s2_idx]
+                ticks2 = _tick_mark_on_segment(pts2[i], pts2[j], n=tick_count, color=color2)
+                elements.append(ticks2)
+    
+    # Add angle marks
+    if angle_marks:
+        for mark_spec in angle_marks:
+            v1_idx, v2_idx, arc_count = mark_spec[0], mark_spec[1], mark_spec[2] if len(mark_spec) > 2 else 1
+            
+            # Angle marks on triangle 1
+            if v1_idx < 3:
+                vertex = pts1[v1_idx]
+                p1 = pts1[(v1_idx - 1) % 3]
+                p2 = pts1[(v1_idx + 1) % 3]
+                arcs1 = _angle_mark(vertex, p1, p2, n=arc_count, color=color1)
+                elements.append(arcs1)
+            
+            # Angle marks on triangle 2
+            if v2_idx < 3:
+                vertex = pts2[v2_idx]
+                p1 = pts2[(v2_idx - 1) % 3]
+                p2 = pts2[(v2_idx + 1) % 3]
+                arcs2 = _angle_mark(vertex, p1, p2, n=arc_count, color=color2)
+                elements.append(arcs2)
+    
+    # Add proportion labels for similarity
+    if show_proportions and proportion_labels:
+        prop_group = VGroup()
+        for i, prop in enumerate(proportion_labels[:3]):  # Max 3 proportions
+            prop_text = create_text_with_kerning_fix(prop, font_size=FONT_CAPTION, color=WHITE)
+            prop_group.add(prop_text)
+        prop_group.arrange(DOWN, buff=0.3)
+        prop_group.next_to(VGroup(tri1, tri2), DOWN, buff=0.8)
+        elements.append(prop_group)
+    
+    # Add congruence/similarity symbol between triangles
+    if mode == "SIMILAR":
+        symbol = MathTex(r"\\sim", font_size=FONT_HEADING, color=WHITE)
+    else:
+        symbol = MathTex(r"\\cong", font_size=FONT_HEADING, color=WHITE)
+    
+    # Position symbol between triangles
+    mid_x = (pts1[0][0] + pts1[1][0] + pts2[0][0] + pts2[1][0]) / 4
+    mid_y = (pts1[2][1] + pts2[2][1]) / 2
+    symbol.move_to([mid_x + 0.5, mid_y - 0.5, 0])
+    elements.append(symbol)
+    
+    group = VGroup(*elements)
+    group.move_to(get_content_center())
+    ensure_fits_screen(group, safety_margin=0.85)
+    
+    return group
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # DIAGRAM VALIDATORS
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -3993,6 +4504,9 @@ export function getCompleteLayoutCode(config: LayoutConfig): string {
   parts.push("#    - create_flowchart() for processes");
   parts.push("#    - create_atom_diagram() for chemistry");
   parts.push("#    - create_3d_axes_vector() for 3D vectors");
+  parts.push("#    - create_code_block() for programming code");
+  parts.push("#    - create_circle_geometry() for circle theorems");
+  parts.push("#    - create_triangle_congruence() for congruence/similarity");
   parts.push("# ========================================\n");
 
   return parts.join("\n");

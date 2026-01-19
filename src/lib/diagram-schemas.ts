@@ -331,6 +331,207 @@ export const DIAGRAM_SCHEMAS: DiagramSchema[] = [
     },
   },
 
+  {
+    id: "code_block_v1",
+    name: "Code Block",
+    dimension: "2d",
+    topicTags: [
+      "programming",
+      "code",
+      "python",
+      "javascript",
+      "java",
+      "cs",
+      "algorithms",
+      "syntax",
+      "computer science",
+    ],
+    description:
+      "Syntax-highlighted code block for programming education",
+    manimHelper: "create_code_block",
+    cameraStyle: "2d-static",
+    params: {
+      code_str: {
+        type: "string",
+        description: "The source code as a string",
+        required: true,
+      },
+      language: {
+        type: "enum",
+        description: "Programming language",
+        enumValues: ["python", "javascript", "java", "c", "cpp", "typescript", "html", "css"],
+        default: "python",
+      },
+      style: {
+        type: "enum",
+        description: "Syntax highlighting style",
+        enumValues: ["monokai", "native", "vs", "friendly"],
+        default: "monokai",
+      },
+      max_width: {
+        type: "number",
+        description: "Maximum width of the code block",
+        default: 10.0,
+      },
+      max_height: {
+        type: "number",
+        description: "Maximum height of the code block",
+        default: 5.0,
+      },
+      font_size: {
+        type: "number",
+        description: "Font size for code",
+        default: 18,
+      },
+    },
+  },
+
+  {
+    id: "circle_geometry_v1",
+    name: "Circle Geometry",
+    dimension: "2d",
+    topicTags: [
+      "geometry",
+      "circle",
+      "chord",
+      "radius",
+      "tangent",
+      "inscribed angle",
+      "central angle",
+      "arc",
+      "circle theorem",
+    ],
+    description:
+      "Circle with points, chords, radii, tangents, and angle annotations for circle theorem visualizations",
+    manimHelper: "create_circle_geometry",
+    cameraStyle: "2d-static",
+    params: {
+      radius: {
+        type: "number",
+        description: "Circle radius",
+        default: 2.0,
+      },
+      points_on_circle: {
+        type: "list",
+        description: "List of angles in degrees where to place points on circle",
+        default: null,
+      },
+      point_labels: {
+        type: "list",
+        description: "Labels for points (same length as points_on_circle)",
+        default: null,
+      },
+      chords: {
+        type: "list",
+        description: "List of [i, j, label?] to draw chords between point indices",
+        default: null,
+      },
+      radii: {
+        type: "list",
+        description: "List of point indices to draw radii to",
+        default: null,
+      },
+      tangent_at: {
+        type: "list",
+        description: "List of point indices where to draw tangent lines",
+        default: null,
+      },
+      central_angle: {
+        type: "list",
+        description: "[i, j, label?] to show angle at center between radii i and j",
+        default: null,
+      },
+      inscribed_angle: {
+        type: "list",
+        description: "[a, b, c, label?] to show angle at point b subtending arc a-c",
+        default: null,
+      },
+      color: {
+        type: "enum",
+        description: "Circle stroke color",
+        enumValues: ["BLUE", "WHITE", "GREEN", "YELLOW"],
+        default: "BLUE",
+      },
+    },
+  },
+
+  {
+    id: "triangle_congruence_v1",
+    name: "Triangle Congruence/Similarity",
+    dimension: "2d",
+    topicTags: [
+      "geometry",
+      "triangle",
+      "congruence",
+      "similarity",
+      "SSS",
+      "SAS",
+      "ASA",
+      "AAS",
+      "proof",
+    ],
+    description:
+      "Two triangles with congruence/similarity marks showing SSS, SAS, ASA, AAS, or Similar relationships",
+    manimHelper: "create_triangle_congruence",
+    cameraStyle: "2d-static",
+    params: {
+      mode: {
+        type: "enum",
+        description: "Congruence/similarity type",
+        enumValues: ["SSS", "SAS", "ASA", "AAS", "SIMILAR"],
+        default: "SSS",
+        required: true,
+      },
+      tri1_vertices: {
+        type: "list",
+        description: "Vertices for first triangle as [[x,y], [x,y], [x,y]]",
+        default: null,
+      },
+      tri2_vertices: {
+        type: "list",
+        description: "Vertices for second triangle",
+        default: null,
+      },
+      labels1: {
+        type: "list",
+        description: "Vertex labels for first triangle",
+        default: ["A", "B", "C"],
+      },
+      labels2: {
+        type: "list",
+        description: "Vertex labels for second triangle",
+        default: ["D", "E", "F"],
+      },
+      side_marks: {
+        type: "list",
+        description: "List of tuples [(side1_idx, side2_idx, tick_count), ...] for matching sides",
+        default: null,
+      },
+      angle_marks: {
+        type: "list",
+        description: "List of tuples [(vertex1_idx, vertex2_idx, arc_count), ...] for matching angles",
+        default: null,
+      },
+      show_proportions: {
+        type: "boolean",
+        description: "Whether to show proportion labels (for similarity)",
+        default: false,
+      },
+      color1: {
+        type: "enum",
+        description: "Color for first triangle",
+        enumValues: ["BLUE", "WHITE", "GREEN", "YELLOW", "RED"],
+        default: "BLUE",
+      },
+      color2: {
+        type: "enum",
+        description: "Color for second triangle",
+        enumValues: ["BLUE", "WHITE", "GREEN", "YELLOW", "RED"],
+        default: "GREEN",
+      },
+    },
+  },
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 3D DIAGRAMS
   // ═══════════════════════════════════════════════════════════════════════════

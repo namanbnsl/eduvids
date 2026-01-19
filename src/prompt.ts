@@ -313,7 +313,6 @@ Voiceover Sync Helpers (MUST USE FOR EVERY VOICEOVER BLOCK):
 - wait_for_voiceover(tracker, t0, scene, buffer=0.08): Wait for remaining voiceover time
 
 Visual Style Helpers (USE FOR ENGAGING VIDEOS):
-- add_fun_background(scene, variant="sunset"): Add gradient + particle background (variants: "sunset", "ocean", "candy")
 - create_gradient_underline(mobject, colors=(ORANGE, PINK)): Colorful underline for titles
 - create_safe_glow(mobject, color=YELLOW, layers=3): Subtle glow effect around elements
 
@@ -410,9 +409,6 @@ Videos should be FUN, COLORFUL, and ENGAGING - not sterile or boring!
 5. EXAMPLE SETUP:
    def construct(self):
        ${VOICEOVER_SERVICE_SETTER}
-       
-       # Add vibrant background first
-       bg = add_fun_background(self, variant="sunset")
        
        with self.voiceover(text="Welcome to our lesson!") as tracker:
            t0 = self.time

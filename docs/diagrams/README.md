@@ -17,10 +17,13 @@ These examples serve as:
 |--------|-----------------|----------|
 | `cartesian_graph_v1` | `create_cartesian_graph()` | quadratic, sine wave, linear |
 | `bar_chart_v1` | `create_bar_chart()` | simple comparison |
-| `triangle_labeled_v1` | `create_labeled_triangle()` | pythagorean, equilateral |
+| `triangle_labeled_v1` | `create_labeled_triangle()` | pythagorean, equilateral, obtuse angles |
 | `force_diagram_v1` | `create_force_diagram()` | object on surface, tension |
 | `flowchart_v1` | `create_flowchart()` | simple process, decision flow |
 | `atom_shells_v1` | `create_atom_diagram()` | carbon, sodium |
+| `code_block_v1` | `create_code_block()` | python function, javascript loop |
+| `circle_geometry_v1` | `create_circle_geometry()` | inscribed angle, chord and tangent |
+| `triangle_congruence_v1` | `create_triangle_congruence()` | SSS, SAS, similar triangles |
 
 ### 3D Diagrams
 
@@ -83,7 +86,8 @@ docs/diagrams/
 │   └── simple_comparison.py
 ├── triangle/
 │   ├── right_triangle_pythagorean.py
-│   └── equilateral_angles.py
+│   ├── equilateral_angles.py
+│   └── obtuse_triangle_angles.py
 ├── force_diagram/
 │   ├── object_on_surface.py
 │   └── tension_and_weight.py
@@ -96,6 +100,16 @@ docs/diagrams/
 ├── 3d_vector/
 │   ├── single_vector.py
 │   └── basis_vectors.py
+├── code_block/
+│   ├── python_function.py
+│   └── javascript_loop.py
+├── circle_geometry/
+│   ├── inscribed_angle.py
+│   └── chord_and_tangent.py
+├── triangle_congruence/
+│   ├── sss_congruence.py
+│   ├── sas_congruence.py
+│   └── similar_triangles.py
 └── illustrations/
     ├── sun.py
     ├── moon.py

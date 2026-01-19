@@ -53,4 +53,7 @@ export const SCHEMA_DOMAIN_MAP: Record<string, RagDomain> = {
   unit_cube_v1: "math",
   "3d_shape_v1": "math",
   plane_intersection_v1: "math",
+  code_block_v1: "cs",
+  circle_geometry_v1: "math",
+  triangle_congruence_v1: "math",
 };
