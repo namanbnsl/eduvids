@@ -148,22 +148,32 @@ const LogoWithToggle = () => {
 };
 
 const AppSidebar = () => {
+  const { state } = useSidebar();
+  const isCollapsed = state === "collapsed";
+
   return (
     <ShadcnSidebar collapsible="icon" className="border-r-0">
       <SidebarHeader className="p-3 gap-3">
         <LogoWithToggle />
 
-        <Button
-          asChild
-          className="w-full justify-start gap-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
-        >
-          <Link href="/">
-            <Plus className="size-4" />
-            <span className="group-data-[collapsible=icon]:hidden">
-              New Chat
-            </span>
-          </Link>
-        </Button>
+        <HoverCard openDelay={5} closeDelay={5}>
+          <HoverCardTrigger>
+            <Button
+              asChild
+              className="w-full justify-start gap-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+            >
+              <Link href="/">
+                <Plus className="size-4" />
+                <span className="group-data-[collapsible=icon]:hidden">
+                  New Chat
+                </span>
+              </Link>
+            </Button>
+          </HoverCardTrigger>
+          <HoverCardContent side="right" className="text-xs w-fit">
+            Start a New Chat
+          </HoverCardContent>
+        </HoverCard>
       </SidebarHeader>
 
       <SidebarContent className="px-2">
@@ -171,28 +181,30 @@ const AppSidebar = () => {
           <SidebarGroupLabel className="px-2 text-xs text-muted-foreground">
             Recent Chats
           </SidebarGroupLabel>
-          <SidebarGroupContent className="overflow-y-auto [scrollbar-width:thin] [scrollbar-color:hsl(var(--muted))_transparent]">
-            <SidebarMenu className="gap-2">
-              {dummyChats.length === 0 ? (
-                <div className="px-2 py-8 text-center text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
-                  <MessageSquare className="size-8 mx-auto mb-2 opacity-50" />
-                  <p>No chats yet</p>
-                  <p className="text-xs">Start a new chat to get going</p>
-                </div>
-              ) : (
-                dummyChats.map((chat) => (
-                  <SidebarMenuItem key={chat.id}>
-                    <SidebarMenuButton asChild tooltip={chat.title}>
-                      <Link href={`/chat/${chat.id}`}>
-                        <MessageSquare className="size-4" />
-                        <span className="truncate">{chat.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))
-              )}
-            </SidebarMenu>
-          </SidebarGroupContent>
+          {!isCollapsed && (
+            <SidebarGroupContent className="overflow-y-auto [scrollbar-width:thin] [scrollbar-color:hsl(var(--muted))_transparent]">
+              <SidebarMenu className="gap-2">
+                {dummyChats.length === 0 ? (
+                  <div className="px-2 py-8 text-center text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
+                    <MessageSquare className="size-8 mx-auto mb-2 opacity-50" />
+                    <p>No chats yet</p>
+                    <p className="text-xs">Start a new chat to get going</p>
+                  </div>
+                ) : (
+                  dummyChats.map((chat) => (
+                    <SidebarMenuItem key={chat.id}>
+                      <SidebarMenuButton asChild tooltip={chat.title}>
+                        <Link href={`/chat/${chat.id}`}>
+                          <MessageSquare className="size-4" />
+                          <span className="truncate">{chat.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))
+                )}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          )}
         </SidebarGroup>
       </SidebarContent>
 
@@ -203,7 +215,7 @@ const AppSidebar = () => {
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip="GitHub" size="sm">
               <a
-                href="https://github.com"
+                href="https://github.com/namanbnsl/eduvids"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -215,7 +227,7 @@ const AppSidebar = () => {
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip="Twitter" size="sm">
               <a
-                href="https://twitter.com"
+                href="https://x.com/eduvidsai"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -227,7 +239,7 @@ const AppSidebar = () => {
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip="YouTube" size="sm">
               <a
-                href="https://youtube.com"
+                href="https://youtube.com/@eduvids-ai"
                 target="_blank"
                 rel="noopener noreferrer"
               >

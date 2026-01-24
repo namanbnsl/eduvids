@@ -4,7 +4,7 @@ import { Github, Youtube, Twitter } from "lucide-react";
 
 import Link from "next/link";
 import Image from "next/image";
-import { SignInButton, SignUpButton } from "@clerk/nextjs";
+import { SignUpButton } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 
 const Navbar = () => {
