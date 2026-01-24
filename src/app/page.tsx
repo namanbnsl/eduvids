@@ -130,9 +130,10 @@ export default function ChatPage() {
     <div className="relative flex h-svh bg-background">
       {/* Onboarding for first-time visitors */}
       {isFirstVisit && <Onboarding onComplete={handleOnboardingComplete} />}
+
       <SignedIn>
         <Sidebar
-          isOpen={sidebarOpen}
+          isOpen={true}
           onClose={() => setSidebarOpen(false)}
           isCollapsed={sidebarCollapsed}
           onCollapsedChange={setSidebarCollapsed}
@@ -143,9 +144,6 @@ export default function ChatPage() {
         />
       </SignedIn>
       <div className="flex-1 flex flex-col overflow-hidden">
-        <SignedOut>
-          <Navbar />
-        </SignedOut>
         {/* Main content area */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {hasMessages ? (

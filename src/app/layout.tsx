@@ -1,13 +1,16 @@
 import type { Metadata, Viewport } from "next";
 import { Lexend } from "next/font/google";
 
-import { ClerkProvider } from "@clerk/nextjs";
+import { ClerkProvider, SignedOut } from "@clerk/nextjs";
 
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 
 import "./globals.css";
 import ConvexClientProvider from "@/components/providers/ConvexClientProvider";
+import Navbar from "@/components/navbar";
+
+import { shadcn } from "@clerk/themes";
 
 const defaultFont = Lexend({
   subsets: ["latin"],
@@ -36,10 +39,17 @@ export default function RootLayout({
       <Analytics />
       <SpeedInsights />
       <body
-        className={`${defaultFont.className} antialiased min-h-screen text-foreground dark`}
+        className={`${defaultFont.className} antialiased min-h-screen text-foreground dark md:overflow-hidden lg:overflow-hidden`}
       >
-        <ClerkProvider>
-          <ConvexClientProvider>{children}</ConvexClientProvider>
+        <ClerkProvider appearance={{ theme: shadcn }}>
+          <ConvexClientProvider>
+            <div className="overflow-hidden">
+              <SignedOut>
+                <Navbar />
+              </SignedOut>
+              {children}
+            </div>
+          </ConvexClientProvider>
         </ClerkProvider>
       </body>
     </html>
