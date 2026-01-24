@@ -1,10 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import { Lexend } from "next/font/google";
 
+import { ClerkProvider } from "@clerk/nextjs";
+
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 
 import "./globals.css";
+import ConvexClientProvider from "@/components/providers/ConvexClientProvider";
 
 const defaultFont = Lexend({
   subsets: ["latin"],
@@ -35,7 +38,9 @@ export default function RootLayout({
       <body
         className={`${defaultFont.className} antialiased min-h-screen text-foreground dark`}
       >
-        {children}
+        <ClerkProvider>
+          <ConvexClientProvider>{children}</ConvexClientProvider>
+        </ClerkProvider>
       </body>
     </html>
   );

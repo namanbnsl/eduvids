@@ -9,8 +9,6 @@ import { useChat } from "@ai-sdk/react";
 import { useFirstVisit } from "@/lib/use-first-visit";
 
 // Components
-import Link from "next/link";
-import Image from "next/image";
 import { Message, MessageAvatar, MessageContent } from "@/components/message";
 import {
   PromptInput,
@@ -24,11 +22,10 @@ import { Conversation, ConversationContent } from "@/components/conversation";
 import { VideoPlayer } from "@/components/video-player";
 import { QuickActionCards } from "@/components/quick-action-cards";
 import { StyledResponse } from "@/components/ui/styled-response";
-// import { Sidebar } from "@/components/sidebar";
 import { Onboarding } from "@/components/onboarding";
 
 // Icons
-import { Github, Youtube, Monitor, Smartphone, Twitter } from "lucide-react";
+import { Monitor, Smartphone } from "lucide-react";
 
 // Types
 import type {
@@ -36,6 +33,9 @@ import type {
   ChatMessagePart,
   GenerateVideoToolUIPart,
 } from "@/lib/types";
+import { SignedIn, SignedOut } from "@clerk/nextjs";
+import { Sidebar } from "@/components/sidebar";
+import Navbar from "@/components/navbar";
 
 // Helpers
 const isGenerateVideoToolPart = (
@@ -51,8 +51,8 @@ export default function ChatPage() {
   >(null);
   const [topics, setTopics] = useState<string[]>([]);
   const [isLoadingTopics, setIsLoadingTopics] = useState(true);
-  // const [sidebarOpen, setSidebarOpen] = useState(false);
-  // const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const { messages, status, sendMessage } = useChat<ChatMessage>();
   const hasMessages = messages.length > 0;
@@ -130,62 +130,22 @@ export default function ChatPage() {
     <div className="relative flex h-svh bg-background">
       {/* Onboarding for first-time visitors */}
       {isFirstVisit && <Onboarding onComplete={handleOnboardingComplete} />}
-      {/* <Sidebar
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        isCollapsed={sidebarCollapsed}
-        onCollapsedChange={setSidebarCollapsed}
-        chatHistory={[]}
-        onNewChat={() => {}}
-        onSelectChat={() => {}}
-        onDeleteChat={() => {}}
-      /> */}
+      <SignedIn>
+        <Sidebar
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          isCollapsed={sidebarCollapsed}
+          onCollapsedChange={setSidebarCollapsed}
+          chatHistory={[]}
+          onNewChat={() => {}}
+          onSelectChat={() => {}}
+          onDeleteChat={() => {}}
+        />
+      </SignedIn>
       <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex justify-between items-center px-6 py-4 border-b border-border/50 bg-background/50 backdrop-blur-sm">
-          <Link href={"/"}>
-            <div className="flex items-center gap-1 min-w-0">
-              <Image
-                src="/favicon.png"
-                alt="eduvids logo"
-                width={36}
-                height={36}
-              />
-              <span className="font-semibold text-foreground truncate text-md">
-                eduvids
-              </span>
-            </div>
-          </Link>
-          <div className="flex gap-2 items-center">
-            <Link
-              target="_blank"
-              href="https://www.youtube.com/@eduvids-ai"
-              aria-label="YouTube"
-            >
-              <button className="p-2 rounded-lg text-foreground/70 hover:bg-accent/50 hover:text-foreground transition-colors cursor-pointer">
-                <Youtube className="size-5" />
-              </button>
-            </Link>
-            <Link
-              target="_blank"
-              href="https://www.x.com/eduvidsai"
-              aria-label="X"
-            >
-              <button className="p-2 rounded-lg text-foreground/70 hover:bg-accent/50 hover:text-foreground transition-colors cursor-pointer">
-                <Twitter className="size-5" />
-              </button>
-            </Link>
-            <Link
-              target="_blank"
-              href="https://github.com/namanbnsl/eduvids"
-              aria-label="GitHub"
-            >
-              <button className="p-2 rounded-lg text-foreground/70 hover:bg-accent/50 hover:text-foreground transition-colors cursor-pointer">
-                <Github className="size-5" />
-              </button>
-            </Link>
-            <div className="w-px h-6 bg-border/30" />
-          </div>
-        </div>
+        <SignedOut>
+          <Navbar />
+        </SignedOut>
         {/* Main content area */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {hasMessages ? (
