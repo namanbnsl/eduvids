@@ -153,8 +153,29 @@
 }
 
 .animate-shimmer {
-  animation: shimmer 2s ease-in-out infinite;
+	animation: shimmer 2s ease-in-out infinite;
 }
+
+::-webkit-scrollbar-track {
+	background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--border);
+	border-radius: 4px;
+	transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--muted-foreground);
+}
+
+/* Firefox Scrollbar */
+* {
+	scrollbar-color: var(--border) var(--background);
+	scrollbar-width: auto;
+}
+
 /* 
 .dark {
   --background: oklch(0.24 0.015 255);

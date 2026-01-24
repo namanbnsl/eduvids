@@ -9,16 +9,10 @@ export function ScrollArea({
   children: React.ReactNode;
 }) {
   return (
-    <div
-      className={cn(
-        "relative overflow-hidden",
-        className
-      )}
-    >
-      <div className="h-full w-full overflow-y-auto [scrollbar-width:thin] [scrollbar-color:theme(colors.zinc.400)_transparent]">
+    <div className={cn("relative overflow-hidden", className)}>
+      <div className="h-full w-full overflow-y-auto [scrollbar-width:thin] [scrollbar-color:hsl(var(--muted))_transparent] hover:[scrollbar-color:hsl(var(--muted-foreground)/50%)_transparent]">
         {children}
       </div>
     </div>
   );
 }
-
