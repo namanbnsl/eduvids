@@ -143,8 +143,10 @@ export default function ChatPage() {
         parts: [{ type: "text", text: trimmed }],
       });
 
-      // Redirect to the chat page
-      router.push(`/chat/${chatId}`);
+      // Redirect to the chat page with pending message to trigger LLM
+      router.push(
+        `/chat/${chatId}?pending=${encodeURIComponent(trimmed)}&mode=${generationMode || ""}`
+      );
     } else {
       // For unauthenticated users, just send the message without persisting
       sendMessage(

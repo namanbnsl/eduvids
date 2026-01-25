@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState, use } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState, use, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
@@ -41,17 +41,19 @@ interface ChatPageContentProps {
 
 function ChatPageContent({ chatId }: ChatPageContentProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [input, setInput] = useState("");
   const [generationMode, setGenerationMode] = useState<
     "video" | "short" | null
   >(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const hasSentPendingMessage = useRef(false);
 
   const chat = useQuery(api.chats.get, { id: chatId });
   const storedMessages = useQuery(api.messages.list, { chatId });
   const createMessage = useMutation(api.messages.create);
 
-  const { messages, status, sendMessage, setMessages } =
+  const { messages, status, sendMessage, setMessages, regenerate } =
     useChat<ChatMessage>({
       id: chatId,
       onFinish: async ({ message }) => {
@@ -90,6 +92,30 @@ function ChatPageContent({ chatId }: ChatPageContentProps) {
       router.push("/");
     }
   }, [chat, router]);
+
+  // Handle pending message from new chat creation
+  useEffect(() => {
+    if (isInitialized && !hasSentPendingMessage.current) {
+      const pendingMessage = searchParams.get("pending");
+      const mode = searchParams.get("mode");
+
+      if (pendingMessage) {
+        hasSentPendingMessage.current = true;
+        const forceVariant =
+          mode === "video" || mode === "short" ? mode : null;
+
+        // Use regenerate instead of sendMessage - message is already in state from Convex
+        regenerate({
+          body: {
+            forceVariant,
+          },
+        });
+
+        // Clean up URL
+        router.replace(`/chat/${chatId}`);
+      }
+    }
+  }, [isInitialized, searchParams, regenerate, router, chatId]);
 
   const handleGenerationModeToggle = (mode: "video" | "short") => {
     const videoPrefix = "Generate a video of ";

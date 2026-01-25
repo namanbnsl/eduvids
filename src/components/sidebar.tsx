@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Plus,
   MessageSquare,
@@ -108,10 +108,18 @@ const ChatList = () => {
   const removeChat = useMutation(api.chats.remove);
   const pathname = usePathname();
 
+  const router = useRouter();
+
   const handleDelete = async (e: React.MouseEvent, chatId: Id<"chats">) => {
     e.preventDefault();
     e.stopPropagation();
+
+    const isCurrentChat = pathname === `/chat/${chatId}`;
     await removeChat({ id: chatId });
+
+    if (isCurrentChat) {
+      router.push("/");
+    }
   };
 
   if (chats === undefined) {
@@ -152,9 +160,9 @@ const ChatList = () => {
               </Link>
             </SidebarMenuButton>
             <Button
-              variant="ghost"
+              variant="destructive"
               size="icon"
-              className="absolute right-1 top-1/2 -translate-y-1/2 size-6 opacity-0 group-hover/item:opacity-100 transition-opacity"
+              className="absolute right-1 top-1/2 -translate-y-1/2 size-6 opacity-0 group-hover/item:opacity-100 transition-opacity cursor-pointer"
               onClick={(e) => handleDelete(e, chat._id)}
             >
               <Trash2 className="size-3" />
