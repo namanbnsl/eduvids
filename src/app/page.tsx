@@ -7,6 +7,9 @@ import { generateTopics } from "@/lib/actions/generate-topics";
 import { useEffect, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useFirstVisit } from "@/lib/use-first-visit";
+import { useRouter } from "next/navigation";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 
 // Components
 import { Message, MessageAvatar, MessageContent } from "@/components/message";
@@ -33,12 +36,12 @@ import type {
   ChatMessagePart,
   GenerateVideoToolUIPart,
 } from "@/lib/types";
-import { SignedIn, SignedOut } from "@clerk/nextjs";
+import { SignedIn, SignedOut, useAuth } from "@clerk/nextjs";
 import { SidebarLayout } from "@/components/sidebar";
 
 // Helpers
 const isGenerateVideoToolPart = (
-  part: ChatMessagePart,
+  part: ChatMessagePart
 ): part is Extract<GenerateVideoToolUIPart, { type: "tool-generate_video" }> =>
   part.type === "tool-generate_video";
 
@@ -50,25 +53,52 @@ export default function ChatPage() {
   >(null);
   const [topics, setTopics] = useState<string[]>([]);
   const [isLoadingTopics, setIsLoadingTopics] = useState(true);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  const router = useRouter();
+  const { isSignedIn } = useAuth();
+  const createChat = useMutation(api.chats.create);
+  const createMessage = useMutation(api.messages.create);
 
   const { messages, status, sendMessage } = useChat<ChatMessage>();
   const hasMessages = messages.length > 0;
   const { isFirstVisit, completeOnboarding } = useFirstVisit();
 
-  const handleOnboardingComplete = (
+  const handleOnboardingComplete = async (
     message: string | null,
-    mode: "video" | "short" | null,
+    mode: "video" | "short" | null
   ) => {
     completeOnboarding();
     if (message) {
-      sendMessage(
-        { text: message },
-        {
-          body: {
-            forceVariant: mode,
-          },
-        },
-      );
+      if (isSignedIn) {
+        // Create chat and redirect
+        const title =
+          message.length > 50 ? message.slice(0, 50) + "..." : message;
+        const chatId = await createChat({ title });
+
+        // Save user message
+        await createMessage({
+          chatId,
+          role: "user",
+          content: message,
+          parts: [{ type: "text", text: message }],
+        });
+
+        router.push(`/chat/${chatId}`);
+      } else {
+        sendMessage(
+          { text: message },
+          {
+            body: {
+              forceVariant: mode,
+            },
+          }
+        );
+      }
     }
   };
 
@@ -94,23 +124,41 @@ export default function ChatPage() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const trimmed = input.trim();
     if (!trimmed) return;
 
-    sendMessage(
-      { text: trimmed },
-      {
-        body: {
-          forceVariant: generationMode,
-        },
-      },
-    );
+    if (isSignedIn) {
+      // Create a new chat for authenticated users
+      const title = trimmed.length > 50 ? trimmed.slice(0, 50) + "..." : trimmed;
+      const chatId = await createChat({ title });
 
-    setInput("");
-    setGenerationMode(null);
+      // Save user message
+      await createMessage({
+        chatId,
+        role: "user",
+        content: trimmed,
+        parts: [{ type: "text", text: trimmed }],
+      });
+
+      // Redirect to the chat page
+      router.push(`/chat/${chatId}`);
+    } else {
+      // For unauthenticated users, just send the message without persisting
+      sendMessage(
+        { text: trimmed },
+        {
+          body: {
+            forceVariant: generationMode,
+          },
+        }
+      );
+
+      setInput("");
+      setGenerationMode(null);
+    }
   };
 
   useEffect(() => {
@@ -242,7 +290,7 @@ export default function ChatPage() {
                         <PromptInputButton
                           onClick={() =>
                             setGenerationMode((mode) =>
-                              mode === "video" ? null : "video",
+                              mode === "video" ? null : "video"
                             )
                           }
                           variant={
@@ -255,7 +303,7 @@ export default function ChatPage() {
                         <PromptInputButton
                           onClick={() =>
                             setGenerationMode((mode) =>
-                              mode === "short" ? null : "short",
+                              mode === "short" ? null : "short"
                             )
                           }
                           variant={
@@ -297,6 +345,14 @@ export default function ChatPage() {
     </div>
   );
 
+  if (!isMounted) {
+    return (
+      <div className="relative flex h-full bg-background">
+        <div className="flex-1 flex flex-col overflow-auto">{mainContent}</div>
+      </div>
+    );
+  }
+
   return (
     <>
       {/* Onboarding for first-time visitors */}
@@ -307,7 +363,9 @@ export default function ChatPage() {
       </SignedIn>
 
       <SignedOut>
-        <div className="relative flex h-svh bg-background">{mainContent}</div>
+        <div className="relative flex h-full bg-background">
+          <div className="flex-1 flex flex-col overflow-auto">{mainContent}</div>
+        </div>
       </SignedOut>
     </>
   );

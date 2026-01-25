@@ -43,11 +43,11 @@ export default function RootLayout({
       >
         <ClerkProvider appearance={{ theme: shadcn }}>
           <ConvexClientProvider>
-            <div className="overflow-hidden">
+            <div className="flex flex-col h-svh overflow-hidden">
               <SignedOut>
                 <Navbar />
               </SignedOut>
-              {children}
+              <div className="flex-1 overflow-hidden">{children}</div>
             </div>
           </ConvexClientProvider>
         </ClerkProvider>
