@@ -8,6 +8,7 @@ import { Analytics } from "@vercel/analytics/next";
 
 import "./globals.css";
 import ConvexClientProvider from "@/components/providers/ConvexClientProvider";
+import { PostHogUserIdentifier } from "@/components/providers/PostHogUserIdentifier";
 import Navbar from "@/components/navbar";
 
 import { shadcn } from "@clerk/themes";
@@ -43,6 +44,7 @@ export default function RootLayout({
       >
         <ClerkProvider appearance={{ theme: shadcn }}>
           <ConvexClientProvider>
+            <PostHogUserIdentifier />
             <div className="flex flex-col h-svh overflow-hidden">
               <SignedOut>
                 <Navbar />

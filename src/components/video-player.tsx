@@ -584,7 +584,11 @@ export function VideoPlayer({
       <video
         ref={videoRef}
         src={videoUrl}
-        className="w-full max-w-3xl rounded-lg border shadow"
+        className={
+          currentVariant === "short"
+            ? "w-full max-w-xs rounded-lg border shadow aspect-[9/16]"
+            : "w-full max-w-3xl rounded-lg border shadow"
+        }
         controls
         playsInline
         poster=""
