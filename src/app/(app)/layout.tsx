@@ -12,9 +12,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </SignedIn>
 
       <SignedOut>
-        <div className="flex flex-col h-full">
+        <div className="relative flex flex-col h-full bg-background">
           <Navbar />
-          <div className="flex-1 overflow-hidden">{children}</div>
+          <div className="flex-1 flex flex-col overflow-auto">{children}</div>
         </div>
       </SignedOut>
     </>
