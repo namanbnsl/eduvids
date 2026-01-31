@@ -59,7 +59,7 @@ type VideoJob = {
 interface JobStore {
   create(
     description: string,
-    options?: { variant?: VideoVariant }
+    options?: { variant?: VideoVariant; userId?: string }
   ): Promise<VideoJob>;
   get(id: string): Promise<VideoJob | undefined>;
   setProgress(

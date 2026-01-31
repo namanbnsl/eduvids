@@ -34,7 +34,7 @@ class KVJobStore implements JobStore {
 
   async create(
     description: string,
-    options?: { variant?: VideoVariant }
+    options?: { variant?: VideoVariant; userId?: string }
   ): Promise<VideoJob> {
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -51,6 +51,7 @@ class KVJobStore implements JobStore {
     };
     const jobWithLog = this.appendProgressLog(job, now);
     await kv.set(this.key(id), jobWithLog, { ex: this.ttlSeconds });
+
     return jobWithLog;
   }
 
@@ -90,6 +91,7 @@ class KVJobStore implements JobStore {
     };
     const updatedWithLog = this.appendProgressLog(updated);
     await kv.set(this.key(id), updatedWithLog, { ex: this.ttlSeconds });
+
     return updatedWithLog;
   }
 
@@ -105,6 +107,7 @@ class KVJobStore implements JobStore {
     };
     const updatedWithLog = this.appendProgressLog(updated);
     await kv.set(this.key(id), updatedWithLog, { ex: this.ttlSeconds });
+
     return updatedWithLog;
   }
 
@@ -138,6 +141,7 @@ class KVJobStore implements JobStore {
     }
 
     await kv.set(this.key(id), updated, { ex: this.ttlSeconds });
+
     return updated;
   }
 

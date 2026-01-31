@@ -22,9 +22,21 @@ interface GoogleModelConfig {
   provider: ReturnType<typeof createGoogleProvider>;
 }
 
-const phClient = new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
-  host: process.env.NEXT_PUBLIC_POSTHOG_HOST!,
-});
+const isDev = process.env.NODE_ENV !== "production";
+
+// Only initialize PostHog in production
+const phClient = isDev
+  ? null
+  : new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
+      host: process.env.NEXT_PUBLIC_POSTHOG_HOST!,
+    });
+
+// Wrapper that skips tracing in development
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function maybeWithTracing(model: any, options: Parameters<typeof withTracing>[2]) {
+  if (!phClient) return model;
+  return withTracing(model, phClient, options);
+}
 
 const createGoogleModel = (modelId: string): GoogleModelConfig => {
   const provider = createGoogleProvider();
@@ -299,7 +311,7 @@ export async function generateVoiceoverScript({
   const model = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
 
   const { text } = await generateText({
-    model: withTracing(model, phClient, {
+    model: maybeWithTracing(model, {
       posthogProperties: { $ai_session_id: sessionId },
     }),
     system: systemPrompt,
@@ -348,9 +360,8 @@ export async function generateManimScript({
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
     const googleModel = createGoogleModel("gemini-3-flash-preview");
-    const model = withTracing(
+    const model = maybeWithTracing(
       googleModel.provider(googleModel.modelId),
-      phClient,
       { posthogProperties: { $ai_session_id: sessionId } },
     );
 
@@ -386,7 +397,7 @@ export async function generateManimScript({
   const flashModel = createGoogleModel("gemini-2.5-flash");
   const { text: flashText } = await generateTextWithTracking(
     {
-      model: withTracing(flashModel.provider(flashModel.modelId), phClient, {
+      model: maybeWithTracing(flashModel.provider(flashModel.modelId), {
         posthogProperties: { $ai_session_id: sessionId },
       }),
       system: augmentedSystemPrompt,
@@ -426,7 +437,7 @@ export async function generateYoutubeTitle({
   const systemPrompt =
     "You are a creative writer crafting clear, informative YouTube titles for educational videos. Keep it under 80 characters, avoid clickbait phrasing, and respond with only the final title—no quotes or extra text. Angled brackets are not allowed. Don't talk about the video duration since you don't know it.";
   const { text } = await generateText({
-    model: withTracing(model, phClient, {
+    model: maybeWithTracing(model, {
       posthogProperties: { $ai_session_id: sessionId },
     }),
     system: systemPrompt,
@@ -447,7 +458,7 @@ export async function generateYoutubeDescription({
   const systemPrompt =
     "You are a content strategist who writes concise, informative YouTube descriptions for educational videos. Summaries should explain what the video covers, avoid emojis, hashtags, and marketing language, and respond only with plain text. Angled brackets are not allowed. Don't talk about the video duration since you don't know it.";
   const { text } = await generateText({
-    model: withTracing(model, phClient, {
+    model: maybeWithTracing(model, {
       posthogProperties: { $ai_session_id: sessionId },
     }),
     system: systemPrompt,
@@ -760,9 +771,8 @@ OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
     const googleModel = createGoogleModel("gemini-3-flash-preview");
-    const model = withTracing(
+    const model = maybeWithTracing(
       googleModel.provider(googleModel.modelId),
-      phClient,
       { posthogProperties: { $ai_session_id: sessionId } },
     );
 
@@ -798,7 +808,7 @@ OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
   const flashModel = createGoogleModel("gemini-2.5-flash");
   const { text: flashText } = await generateTextWithTracking(
     {
-      model: withTracing(flashModel.provider(flashModel.modelId), phClient, {
+      model: maybeWithTracing(flashModel.provider(flashModel.modelId), {
         posthogProperties: { $ai_session_id: sessionId },
       }),
       system: regenerationSystemPrompt,

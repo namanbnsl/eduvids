@@ -70,7 +70,7 @@ const LogoWithToggle = () => {
             </button>
           </HoverCardTrigger>
           <HoverCardContent side="right" className="text-xs w-fit">
-            Expand Sidebar
+            Expand Sidebar (Ctrl + B)
           </HoverCardContent>
         </HoverCard>
       ) : (
@@ -90,11 +90,11 @@ const LogoWithToggle = () => {
                 className="size-8 shrink-0 cursor-w-resize"
               >
                 <PanelLeftClose className="size-4 " />
-                <span className="sr-only">Collapse Sidebar</span>
+                <span className="sr-only">Collapse Sidebar (Ctrl + B)</span>
               </Button>
             </HoverCardTrigger>
             <HoverCardContent side="right" className="text-xs w-fit">
-              Collapse Sidebar
+              Collapse Sidebar (Ctrl + B)
             </HoverCardContent>
           </HoverCard>
         </>

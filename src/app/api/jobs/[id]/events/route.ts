@@ -12,51 +12,55 @@ export async function GET(
 
   const encoder = new TextEncoder();
 
+  let intervalId: ReturnType<typeof setInterval> | null = null;
+  let closed = false;
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      // Send initial retry hint
       controller.enqueue(encoder.encode(`retry: 3000\n\n`));
 
-      let closed = false;
       const send = async () => {
         if (closed) return;
-        const job = await jobStore.get(id);
-        if (!job) {
-          controller.enqueue(encoder.encode(`event: error\n`));
+        try {
+          const job = await jobStore.get(id);
+          if (closed) return;
+
+          if (!job) {
+            controller.enqueue(encoder.encode(`event: error\n`));
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ error: "Job not found" })}\n\n`
+              )
+            );
+            controller.close();
+            closed = true;
+            return;
+          }
+
+          controller.enqueue(encoder.encode(`event: progress\n`));
           controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ error: "Job not found" })}\n\n`
-            )
+            encoder.encode(`data: ${JSON.stringify(job)}\n\n`)
           );
-          controller.close();
-          closed = true;
-          return;
-        }
 
-        controller.enqueue(encoder.encode(`event: progress\n`));
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(job)}\n\n`));
-
-        if (job.status === "ready" || job.status === "error") {
-          controller.close();
-          closed = true;
+          if (job.status === "ready" || job.status === "error") {
+            controller.close();
+            closed = true;
+          }
+        } catch {
+          if (!closed) {
+            closed = true;
+          }
         }
       };
 
-      // Kick off immediately, then poll every 2s
       await send();
-      const interval = setInterval(send, 2000);
-
-      const abort = () => {
-        if (!closed) controller.close();
-        clearInterval(interval);
-        closed = true;
-      };
-
-      // Best-effort close when client disconnects
-      const requestGlobal = globalThis as {
-        request?: { signal?: AbortSignal };
-      };
-      requestGlobal.request?.signal?.addEventListener("abort", abort);
+      if (!closed) {
+        intervalId = setInterval(send, 2000);
+      }
+    },
+    cancel() {
+      closed = true;
+      if (intervalId) clearInterval(intervalId);
     },
   });
 

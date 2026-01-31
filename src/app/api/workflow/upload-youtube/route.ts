@@ -2,6 +2,7 @@ import { serve } from "@upstash/workflow/nextjs";
 
 import { uploadToYouTube } from "@/lib/youtube";
 import { jobStore } from "@/lib/job-store";
+import { getConvexClient, api } from "@/lib/convex-server";
 import {
   workflowClient,
   getBaseUrl,
@@ -10,6 +11,8 @@ import {
 } from "@/lib/workflow/client";
 
 import type { VideoVariant } from "@/lib/workflow/types";
+
+export const runtime = "nodejs";
 
 type YouTubeUploadPayload = {
   videoUrl: string;
@@ -67,6 +70,25 @@ export const { POST } = serve<YouTubeUploadPayload>(
           youtubeError: undefined,
         });
       });
+
+      const { userId } = context.requestPayload;
+      if (userId) {
+        await context.run("save-to-convex", async () => {
+          try {
+            await getConvexClient().mutation(api.videos.saveCompleted, {
+              jobId,
+              userId,
+              description: prompt,
+              variant: variant ?? "video",
+              videoUrl,
+              youtubeUrl: youtubeResult.watchUrl,
+              youtubeVideoId: youtubeResult.videoId,
+            });
+          } catch (err) {
+            console.error("[workflow] Failed to save video to Convex:", err);
+          }
+        });
+      }
     }
 
     return { success: true, ...youtubeResult };

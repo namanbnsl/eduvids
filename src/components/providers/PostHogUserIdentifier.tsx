@@ -9,6 +9,10 @@ export function PostHogUserIdentifier() {
   const { user } = useUser();
 
   useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      return;
+    }
+
     if (isSignedIn && userId && user && !posthog._isIdentified()) {
       posthog.identify(userId, {
         email: user.primaryEmailAddress?.emailAddress,
