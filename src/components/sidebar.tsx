@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -107,32 +107,78 @@ const ChatList = () => {
   const chats = useQuery(api.chats.list);
   const removeChat = useMutation(api.chats.remove);
   const pathname = usePathname();
-
   const router = useRouter();
+  const [, startTransition] = useTransition();
 
-  const handleDelete = async (e: React.MouseEvent, chatId: Id<"chats">) => {
-    e.preventDefault();
-    e.stopPropagation();
+  // Optimistic state for deleted chat IDs
+  const [deletingIds, setDeletingIds] = useState<Set<Id<"chats">>>(new Set());
 
-    const isCurrentChat = pathname === `/chat/${chatId}`;
-    await removeChat({ id: chatId });
-
-    if (isCurrentChat) {
-      router.push("/");
+  // Cache last known chats to avoid skeleton on re-navigation
+  const [cachedChats, setCachedChats] = useState(chats);
+  useEffect(() => {
+    if (chats !== undefined) {
+      setCachedChats(chats);
     }
-  };
+  }, [chats]);
 
-  if (chats === undefined) {
+  const handleDelete = useCallback(
+    (e: React.MouseEvent, chatId: Id<"chats">) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const isCurrentChat = pathname === `/chat/${chatId}`;
+
+      // Optimistically mark as deleted
+      setDeletingIds((prev) => new Set(prev).add(chatId));
+
+      // Navigate away immediately if on this chat
+      if (isCurrentChat) {
+        startTransition(() => {
+          router.push("/");
+        });
+      }
+
+      // Run mutation in background (don't await)
+      removeChat({ id: chatId })
+        .catch(() => {
+          // Rollback on error
+          setDeletingIds((prev) => {
+            const next = new Set(prev);
+            next.delete(chatId);
+            return next;
+          });
+        })
+        .finally(() => {
+          // Clean up after mutation completes (success or Convex subscription updates)
+          setDeletingIds((prev) => {
+            const next = new Set(prev);
+            next.delete(chatId);
+            return next;
+          });
+        });
+    },
+    [pathname, removeChat, router]
+  );
+
+  // Use cached chats if current query is loading (prevents skeleton on navigation)
+  const displayChats = chats ?? cachedChats;
+
+  if (displayChats === undefined) {
     return (
       <div className="space-y-2 px-2">
-        {[...Array(5)].map((_, i) => (
+        {[...Array(3)].map((_, i) => (
           <Skeleton key={i} className="h-8 w-full" />
         ))}
       </div>
     );
   }
 
-  if (chats.length === 0) {
+  // Filter out optimistically deleted chats
+  const visibleChats = displayChats.filter(
+    (chat) => !deletingIds.has(chat._id)
+  );
+
+  if (visibleChats.length === 0) {
     return (
       <div className="px-2 py-8 text-center text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
         <MessageSquare className="size-8 mx-auto mb-2 opacity-50" />
@@ -144,7 +190,7 @@ const ChatList = () => {
 
   return (
     <SidebarMenu className="gap-1">
-      {chats.map((chat) => {
+      {visibleChats.map((chat) => {
         const isActive = pathname === `/chat/${chat._id}`;
         return (
           <SidebarMenuItem key={chat._id} className="group/item relative">
@@ -347,15 +393,14 @@ const SidebarLayoutContent = ({ children }: SidebarLayoutProps) => {
 const SIDEBAR_STORAGE_KEY = "sidebar_collapsed";
 
 const SidebarLayout = ({ children }: SidebarLayoutProps) => {
+  // Start with default open=true, hydrate from localStorage without blocking render
   const [open, setOpen] = useState(true);
-  const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
     if (stored !== null) {
       setOpen(stored !== "true");
     }
-    setIsHydrated(true);
   }, []);
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -363,10 +408,7 @@ const SidebarLayout = ({ children }: SidebarLayoutProps) => {
     localStorage.setItem(SIDEBAR_STORAGE_KEY, String(!newOpen));
   };
 
-  if (!isHydrated) {
-    return null;
-  }
-
+  // Render immediately - no hydration gate
   return (
     <SidebarProvider open={open} onOpenChange={handleOpenChange}>
       <AppSidebar />

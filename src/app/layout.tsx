@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Lexend } from "next/font/google";
 
-import { ClerkProvider, SignedOut } from "@clerk/nextjs";
+import { ClerkProvider } from "@clerk/nextjs";
 
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
@@ -9,7 +9,6 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import ConvexClientProvider from "@/components/providers/ConvexClientProvider";
 import { PostHogUserIdentifier } from "@/components/providers/PostHogUserIdentifier";
-import Navbar from "@/components/navbar";
 
 import { shadcn } from "@clerk/themes";
 
@@ -46,9 +45,6 @@ export default function RootLayout({
           <ConvexClientProvider>
             <PostHogUserIdentifier />
             <div className="flex flex-col h-svh overflow-hidden">
-              <SignedOut>
-                <Navbar />
-              </SignedOut>
               <div className="flex-1 overflow-hidden">{children}</div>
             </div>
           </ConvexClientProvider>

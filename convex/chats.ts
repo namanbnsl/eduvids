@@ -102,3 +102,38 @@ export const remove = mutation({
     await ctx.db.delete(args.id);
   },
 });
+
+export const createWithFirstMessage = mutation({
+  args: {
+    title: v.string(),
+    content: v.string(),
+    parts: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Unauthenticated");
+    }
+
+    const now = Date.now();
+
+    // Create chat
+    const chatId = await ctx.db.insert("chats", {
+      userId: identity.subject,
+      title: args.title,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Create first message
+    await ctx.db.insert("messages", {
+      chatId,
+      role: "user",
+      content: args.content,
+      parts: args.parts ?? [{ type: "text", text: args.content }],
+      createdAt: now,
+    });
+
+    return chatId;
+  },
+});
