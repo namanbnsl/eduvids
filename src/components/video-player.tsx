@@ -10,11 +10,13 @@ import type {
   VideoJob,
   VideoVariant,
   YoutubeStatus,
+  WebSource,
 } from "@/lib/types";
 
 // Components
 import { VideoProgressCard } from "@/components/ui/video-progress-card";
 import { SubscribePrompt } from "@/components/subscribe-prompt";
+import { Sources } from "@/components/sources";
 
 // Icons
 import { Monitor, Smartphone, Youtube } from "lucide-react";
@@ -116,6 +118,8 @@ export function VideoPlayer({
   const [displayProgress, setDisplayProgress] = useState<number>(0);
   // Track when we should fire a browser notification after the UI has updated
   const [notifyWhenPlayable, setNotifyWhenPlayable] = useState<boolean>(false);
+  // Web sources from Tavily search
+  const [sources, setSources] = useState<WebSource[]>([]);
 
   useEffect(() => {
     if (initialVariant) {
@@ -164,6 +168,7 @@ export function VideoPlayer({
           | "youtubeError"
           | "variant"
           | "progressLog"
+          | "sources"
         > & { jobId?: string })
       | null => {
       if (!job || typeof job !== "object") return null;
@@ -198,6 +203,7 @@ export function VideoPlayer({
         | "youtubeError"
         | "variant"
         | "progressLog"
+        | "sources"
       > & {
         jobId?: string;
       } = {
@@ -251,6 +257,32 @@ export function VideoPlayer({
         }
       }
 
+      // Parse sources array
+      if (Array.isArray(value.sources)) {
+        const sanitizedSources = value.sources
+          .map((source) => {
+            if (!source || typeof source !== "object") return null;
+            const raw = source as Record<string, unknown>;
+            if (
+              typeof raw.title !== "string" ||
+              typeof raw.url !== "string" ||
+              typeof raw.content !== "string"
+            ) {
+              return null;
+            }
+            return {
+              title: raw.title,
+              url: raw.url,
+              content: raw.content,
+              score: typeof raw.score === "number" ? raw.score : 0,
+            } as WebSource;
+          })
+          .filter((s): s is WebSource => Boolean(s));
+        if (sanitizedSources.length) {
+          normalized.sources = sanitizedSources;
+        }
+      }
+
       return normalized;
     },
     []
@@ -287,6 +319,10 @@ export function VideoPlayer({
       setYoutubeStatus(parsed.youtubeStatus);
       setYoutubeUrl(parsed.youtubeUrl);
       setYoutubeError(parsed.youtubeError);
+      if (parsed.sources && parsed.sources.length > 0) {
+        console.log("[VideoPlayer] Setting sources:", parsed.sources.length);
+        setSources(parsed.sources);
+      }
       if (parsed.status === "ready" && parsed.videoUrl) {
         setVideoUrl(parsed.videoUrl);
         setJobStatus("ready");
@@ -574,6 +610,11 @@ export function VideoPlayer({
           stepLabel={stageTitle}
           progress={displayProgress}
         />
+        {sources.length > 0 ? (
+          <Sources sources={sources} className="mt-2" />
+        ) : (
+          <p className="text-xs text-muted-foreground">No sources yet...</p>
+        )}
         <SubscribePrompt />
       </div>
     );
@@ -596,6 +637,9 @@ export function VideoPlayer({
       >
         Sorry, your browser does not support embedded videos.
       </video>
+      {sources.length > 0 && (
+        <Sources sources={sources} className="mt-2" />
+      )}
       {youtubeUrl && (
         <a
           href={youtubeUrl}

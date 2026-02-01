@@ -35,6 +35,13 @@ type JobProgressEntry = {
   at: string;
 };
 
+type WebSource = {
+  title: string;
+  url: string;
+  content: string;
+  score: number;
+};
+
 type VideoJob = {
   id: string;
   description: string;
@@ -51,6 +58,8 @@ type VideoJob = {
   youtubeUrl?: string;
   youtubeVideoId?: string;
   youtubeError?: string;
+  // Web sources from Tavily search
+  sources?: WebSource[];
   createdAt: string;
   updatedAt: string;
 };
@@ -77,6 +86,7 @@ interface JobStore {
       youtubeError?: string;
     }
   ): Promise<VideoJob | undefined>;
+  setSources(id: string, sources: WebSource[]): Promise<VideoJob | undefined>;
 }
 
 type ValidationStage =
@@ -142,4 +152,5 @@ export type {
   HeuristicOptions,
   HeuristicSeverity,
   JobProgressEntry,
+  WebSource,
 };

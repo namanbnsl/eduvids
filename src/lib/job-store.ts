@@ -6,6 +6,7 @@ import {
   VideoJob,
   VideoVariant,
   YoutubeStatus,
+  WebSource,
 } from "@/lib/types";
 
 class KVJobStore implements JobStore {
@@ -142,6 +143,21 @@ class KVJobStore implements JobStore {
 
     await kv.set(this.key(id), updated, { ex: this.ttlSeconds });
 
+    return updated;
+  }
+
+  async setSources(
+    id: string,
+    sources: WebSource[]
+  ): Promise<VideoJob | undefined> {
+    const job = await this.get(id);
+    if (!job) return undefined;
+    const updated: VideoJob = {
+      ...job,
+      sources,
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(this.key(id), updated, { ex: this.ttlSeconds });
     return updated;
   }
 

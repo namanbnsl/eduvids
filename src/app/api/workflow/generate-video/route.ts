@@ -11,6 +11,11 @@ import {
 import { renderManimVideo } from "@/lib/e2b";
 import { uploadVideo } from "@/lib/uploadthing";
 import { jobStore } from "@/lib/job-store";
+import {
+  searchForTopic,
+  formatSourcesForPrompt,
+  type TavilySource,
+} from "@/lib/tavily";
 
 import {
   runHeuristicChecks,
@@ -96,6 +101,43 @@ export const { POST } = serve<VideoGenerationPayload>(
       } generation for prompt: "${prompt}"`
     );
 
+    // Step 0: Search for information via Tavily (use original prompt, not augmented)
+    const searchResult = await context.run("search-web-sources", async () => {
+      if (jobId) {
+        await updateJobProgress(jobId, {
+          progress: 2,
+          step: "Researching topic",
+          details: "Searching the web",
+        });
+      }
+      const result = await searchForTopic(prompt);
+      console.log(
+        `🔍 Tavily search completed: ${result.sources.length} sources found`
+      );
+      return result;
+    });
+
+    // Store sources in job for UI display
+    let sources: TavilySource[] = [];
+    if (searchResult.sources.length > 0) {
+      sources = searchResult.sources;
+      if (jobId) {
+        await context.run("store-sources", async () => {
+          console.log(`📚 Storing ${sources.length} sources for job ${jobId}`);
+          await jobStore.setSources(jobId, sources);
+        });
+      }
+      console.log(`🔍 Found ${sources.length} web sources for topic`);
+    } else {
+      console.log(`⚠️ No sources found from Tavily search`);
+    }
+
+    // Augment prompt with web research if available
+    const researchContext = formatSourcesForPrompt(sources);
+    const augmentedPrompt = researchContext
+      ? `${generationPrompt}\n\n${researchContext}`
+      : generationPrompt;
+
     // Step 1: Generate voiceover script
     const voiceoverScript = await context.run(
       "generate-voiceover-script",
@@ -106,7 +148,7 @@ export const { POST } = serve<VideoGenerationPayload>(
           details: "Writing script",
         });
         return generateVoiceoverScript({
-          prompt: generationPrompt,
+          prompt: augmentedPrompt,
           sessionId: chatId,
         });
       }
