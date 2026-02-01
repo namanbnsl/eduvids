@@ -434,14 +434,26 @@ export async function generateYoutubeTitle({
 }: ManimScriptRequest) {
   const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
 
-  const systemPrompt =
-    "You are a creative writer crafting clear, informative YouTube titles for educational videos. Keep it under 80 characters, avoid clickbait phrasing, and respond with only the final title—no quotes or extra text. Angled brackets are not allowed. Don't talk about the video duration since you don't know it.";
+  const systemPrompt = `You are a YouTube title expert who writes highly clickable, engaging titles for educational math and science videos. Your titles should:
+- Create curiosity and intrigue while staying truthful to the content
+- Use power words that grab attention (e.g., "Why", "How", "The Secret", "Finally Explained", "Mind-Blowing")
+- Make viewers feel like they'll miss out if they don't click
+- Keep it under 80 characters
+- Respond with only the final title—no quotes or extra text
+- Angled brackets are not allowed
+- Don't mention video duration
+
+Examples of great titles:
+- "Why Nobody Can Solve This Simple Math Problem"
+- "The Equation That Stumped Einstein"
+- "This One Trick Makes Calculus Click Instantly"
+- "I Finally Understand Quantum Physics (And You Will Too)"`;
   const { text } = await generateText({
     model: maybeWithTracing(model, {
       posthogProperties: { $ai_session_id: sessionId },
     }),
     system: systemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite an informative YouTube title that clearly states the main topic or insight of the video, highlights the primary takeaway, avoids sensational language, and stays under 80 characters:`,
+    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite an irresistible YouTube title that sparks curiosity, promises value, and makes viewers NEED to click. Use emotional hooks, create a knowledge gap, or pose an intriguing question. Stay under 80 characters:`,
     temperature: 0.5,
   });
 
@@ -455,14 +467,27 @@ export async function generateYoutubeDescription({
 }: ManimScriptRequest) {
   const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
 
-  const systemPrompt =
-    "You are a content strategist who writes concise, informative YouTube descriptions for educational videos. Summaries should explain what the video covers, avoid emojis, hashtags, and marketing language, and respond only with plain text. Angled brackets are not allowed. Don't talk about the video duration since you don't know it.";
+  const systemPrompt = `You are a YouTube description expert who writes engaging, click-worthy descriptions for educational math and science videos. Your descriptions should:
+- Start with a compelling hook in the first line (this shows in search results!)
+- Create excitement about what viewers will learn
+- Use conversational, enthusiastic language
+- Include a subtle call-to-action encouraging likes/subscribes
+- Keep it 2-4 short paragraphs
+- Respond only with plain text
+- Angled brackets, emojis, and hashtags are not allowed
+- Don't mention video duration
+
+Structure:
+1. Hook line that makes them want to watch
+2. What mind-blowing thing they'll understand
+3. Why this matters or how it connects to bigger ideas
+4. Soft CTA (e.g., "If this clicked for you, you'll love our other videos!")`;
   const { text } = await generateText({
     model: maybeWithTracing(model, {
       posthogProperties: { $ai_session_id: sessionId },
     }),
     system: systemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite a YouTube description that briefly introduces the topic, outlines the main concepts viewers will learn, references any notable examples or tools, stays concise, and does not copy the voiceover script verbatim:`,
+    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite an engaging YouTube description that hooks viewers immediately, builds excitement about the concepts, and makes them eager to watch. Be conversational and enthusiastic without being cheesy:`,
     temperature: 0.5,
   });
 

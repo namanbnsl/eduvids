@@ -7,7 +7,6 @@ edit script on the go
 search for information allowed.
 
 youtube:
-make youtube titles more enaging and interesting
 https://chatgpt.com/share/697df0ef-f074-800c-909a-e7044d35aea3
 
 manim:
