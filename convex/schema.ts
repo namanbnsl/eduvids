@@ -24,6 +24,7 @@ export default defineSchema({
   videos: defineTable({
     jobId: v.string(),
     userId: v.optional(v.string()),
+    chatId: v.optional(v.string()),
     description: v.string(),
     variant: v.union(v.literal("video"), v.literal("short")),
     status: v.union(
@@ -33,6 +34,25 @@ export default defineSchema({
     ),
     videoUrl: v.optional(v.string()),
     error: v.optional(v.string()),
+    // Voiceover approval fields
+    voiceoverDraft: v.optional(v.string()),
+    voiceoverApproved: v.optional(v.string()),
+    voiceoverStatus: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("approved")
+      )
+    ),
+    voiceoverUpdatedAt: v.optional(v.number()),
+    voiceoverApprovedAt: v.optional(v.number()),
+    renderContinuationTriggeredAt: v.optional(v.number()),
+    // Web sources from research
+    sources: v.optional(v.array(v.object({
+      title: v.string(),
+      url: v.string(),
+      content: v.string(),
+      score: v.number(),
+    }))),
     youtubeStatus: v.optional(
       v.union(
         v.literal("pending"),

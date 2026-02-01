@@ -9,12 +9,14 @@ import type {
   JobStatus,
   VideoJob,
   VideoVariant,
+  VoiceoverStatus,
   YoutubeStatus,
   WebSource,
 } from "@/lib/types";
 
 // Components
 import { VideoProgressCard } from "@/components/ui/video-progress-card";
+import { VoiceoverApprovalCard } from "@/components/voiceover-approval-card";
 import { SubscribePrompt } from "@/components/subscribe-prompt";
 import { Sources } from "@/components/sources";
 
@@ -120,6 +122,11 @@ export function VideoPlayer({
   const [notifyWhenPlayable, setNotifyWhenPlayable] = useState<boolean>(false);
   // Web sources from Tavily search
   const [sources, setSources] = useState<WebSource[]>([]);
+  // Voiceover approval state
+  const [voiceoverDraft, setVoiceoverDraft] = useState<string | undefined>();
+  const [voiceoverStatus, setVoiceoverStatus] = useState<
+    VoiceoverStatus | undefined
+  >();
 
   useEffect(() => {
     if (initialVariant) {
@@ -169,6 +176,8 @@ export function VideoPlayer({
           | "variant"
           | "progressLog"
           | "sources"
+          | "voiceoverDraft"
+          | "voiceoverStatus"
         > & { jobId?: string })
       | null => {
       if (!job || typeof job !== "object") return null;
@@ -190,6 +199,13 @@ export function VideoPlayer({
       const rawVariant = value.variant;
       const variant: VideoVariant = rawVariant === "short" ? "short" : "video";
 
+      const rawVoiceoverStatus = value.voiceoverStatus;
+      const voiceoverStatusValue: VoiceoverStatus | undefined =
+        typeof rawVoiceoverStatus === "string" &&
+        (rawVoiceoverStatus === "pending" || rawVoiceoverStatus === "approved")
+          ? (rawVoiceoverStatus as VoiceoverStatus)
+          : undefined;
+
       const normalized: Pick<
         VideoJob,
         | "progress"
@@ -204,6 +220,8 @@ export function VideoPlayer({
         | "variant"
         | "progressLog"
         | "sources"
+        | "voiceoverDraft"
+        | "voiceoverStatus"
       > & {
         jobId?: string;
       } = {
@@ -223,6 +241,11 @@ export function VideoPlayer({
             ? value.youtubeError
             : undefined,
         variant,
+        voiceoverDraft:
+          typeof value.voiceoverDraft === "string"
+            ? value.voiceoverDraft
+            : undefined,
+        voiceoverStatus: voiceoverStatusValue,
         jobId:
           typeof value.jobId === "string"
             ? value.jobId
@@ -322,6 +345,13 @@ export function VideoPlayer({
       if (parsed.sources && parsed.sources.length > 0) {
         console.log("[VideoPlayer] Setting sources:", parsed.sources.length);
         setSources(parsed.sources);
+      }
+      // Update voiceover state
+      if (parsed.voiceoverDraft !== undefined) {
+        setVoiceoverDraft(parsed.voiceoverDraft);
+      }
+      if (parsed.voiceoverStatus !== undefined) {
+        setVoiceoverStatus(parsed.voiceoverStatus);
       }
       if (parsed.status === "ready" && parsed.videoUrl) {
         setVideoUrl(parsed.videoUrl);
@@ -586,6 +616,12 @@ export function VideoPlayer({
     );
   }
 
+  // Check if we're waiting for voiceover approval
+  const isAwaitingVoiceoverApproval =
+    voiceoverDraft &&
+    voiceoverStatus === "pending" &&
+    step?.toLowerCase().includes("awaiting voiceover approval");
+
   if (jobStatus !== "ready" || !videoUrl) {
     return (
       <div className="space-y-4">
@@ -602,14 +638,27 @@ export function VideoPlayer({
             </div>
           )}
         </div>
-        <VideoProgressCard
-          title={`Generating your ${
-            currentVariant == "short" ? "Short" : "Video"
-          }`}
-          subtitle={stageSubtitle}
-          stepLabel={stageTitle}
-          progress={displayProgress}
-        />
+
+        {isAwaitingVoiceoverApproval ? (
+          <VoiceoverApprovalCard
+            jobId={jobId}
+            voiceoverDraft={voiceoverDraft}
+            voiceoverStatus={voiceoverStatus}
+            onApproved={() => {
+              setVoiceoverStatus("approved");
+            }}
+          />
+        ) : (
+          <VideoProgressCard
+            title={`Generating your ${
+              currentVariant == "short" ? "Short" : "Video"
+            }`}
+            subtitle={stageSubtitle}
+            stepLabel={stageTitle}
+            progress={displayProgress}
+          />
+        )}
+
         {sources.length > 0 ? (
           <Sources sources={sources} className="mt-2" />
         ) : (

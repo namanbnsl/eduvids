@@ -27,6 +27,7 @@ type GenerateVideoToolUIPart = ToolUIPart<AppTools>;
 type JobStatus = "generating" | "ready" | "error";
 type YoutubeStatus = "pending" | "uploaded" | "failed";
 type VideoVariant = "video" | "short";
+type VoiceoverStatus = "pending" | "approved";
 
 type JobProgressEntry = {
   progress?: number;
@@ -53,6 +54,12 @@ type VideoJob = {
   progress?: number;
   step?: string;
   details?: string;
+  // Voiceover approval fields
+  voiceoverDraft?: string;
+  voiceoverApproved?: string;
+  voiceoverStatus?: VoiceoverStatus;
+  voiceoverUpdatedAt?: string;
+  voiceoverApprovedAt?: string;
   youtubeStatus?: YoutubeStatus;
   progressLog?: JobProgressEntry[];
   youtubeUrl?: string;
@@ -87,6 +94,10 @@ interface JobStore {
     }
   ): Promise<VideoJob | undefined>;
   setSources(id: string, sources: WebSource[]): Promise<VideoJob | undefined>;
+  setVoiceoverPending(
+    id: string,
+    voiceoverDraft: string
+  ): Promise<VideoJob | undefined>;
 }
 
 type ValidationStage =
@@ -142,6 +153,7 @@ export type {
   JobStatus,
   YoutubeStatus,
   VideoVariant,
+  VoiceoverStatus,
   VideoJob,
   JobStore,
   ValidationStage,

@@ -161,6 +161,25 @@ class KVJobStore implements JobStore {
     return updated;
   }
 
+  async setVoiceoverPending(
+    id: string,
+    voiceoverDraft: string
+  ): Promise<VideoJob | undefined> {
+    const job = await this.get(id);
+    if (!job) return undefined;
+    const now = new Date().toISOString();
+    const updated: VideoJob = {
+      ...job,
+      voiceoverDraft,
+      voiceoverStatus: "pending",
+      voiceoverUpdatedAt: now,
+      updatedAt: now,
+    };
+    const updatedWithLog = this.appendProgressLog(updated);
+    await kv.set(this.key(id), updatedWithLog, { ex: this.ttlSeconds });
+    return updatedWithLog;
+  }
+
   private key(id: string) {
     return `job:${id}`;
   }

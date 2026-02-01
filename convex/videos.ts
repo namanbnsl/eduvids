@@ -16,6 +16,7 @@ export const create = mutation({
   args: {
     jobId: v.string(),
     userId: v.optional(v.string()),
+    chatId: v.optional(v.string()),
     description: v.string(),
     variant: v.union(v.literal("video"), v.literal("short")),
   },
@@ -34,6 +35,7 @@ export const create = mutation({
     const id = await ctx.db.insert("videos", {
       jobId: args.jobId,
       userId: args.userId,
+      chatId: args.chatId,
       description: args.description,
       variant: args.variant,
       status: "generating",
@@ -182,5 +184,125 @@ export const saveCompleted = mutation({
     });
 
     return id;
+  },
+});
+
+export const setVoiceoverDraft = mutation({
+  args: {
+    jobId: v.string(),
+    voiceoverDraft: v.string(),
+    sources: v.optional(
+      v.array(
+        v.object({
+          title: v.string(),
+          url: v.string(),
+          content: v.string(),
+          score: v.number(),
+        })
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    const video = await ctx.db
+      .query("videos")
+      .withIndex("by_jobId", (q) => q.eq("jobId", args.jobId))
+      .first();
+
+    if (!video) {
+      return null;
+    }
+
+    const update: Record<string, unknown> = {
+      voiceoverDraft: args.voiceoverDraft,
+      voiceoverStatus: "pending",
+      voiceoverUpdatedAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    if (args.sources !== undefined) {
+      update.sources = args.sources;
+    }
+
+    await ctx.db.patch(video._id, update);
+    return video._id;
+  },
+});
+
+export const updateVoiceoverDraft = mutation({
+  args: {
+    jobId: v.string(),
+    voiceoverDraft: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const video = await ctx.db
+      .query("videos")
+      .withIndex("by_jobId", (q) => q.eq("jobId", args.jobId))
+      .first();
+
+    if (!video) {
+      return null;
+    }
+
+    if (video.voiceoverStatus === "approved") {
+      throw new Error("Cannot edit voiceover after approval");
+    }
+
+    await ctx.db.patch(video._id, {
+      voiceoverDraft: args.voiceoverDraft,
+      voiceoverUpdatedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    return video._id;
+  },
+});
+
+export const approveVoiceover = mutation({
+  args: {
+    jobId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const video = await ctx.db
+      .query("videos")
+      .withIndex("by_jobId", (q) => q.eq("jobId", args.jobId))
+      .first();
+
+    if (!video) {
+      return { success: false, error: "Video not found" };
+    }
+
+    if (!video.voiceoverDraft) {
+      return { success: false, error: "No voiceover draft to approve" };
+    }
+
+    if (video.voiceoverStatus === "approved") {
+      return {
+        success: true,
+        shouldTrigger: false,
+        voiceoverApproved: video.voiceoverApproved,
+      };
+    }
+
+    const now = Date.now();
+    const shouldTrigger = !video.renderContinuationTriggeredAt;
+
+    await ctx.db.patch(video._id, {
+      voiceoverApproved: video.voiceoverDraft,
+      voiceoverStatus: "approved",
+      voiceoverApprovedAt: now,
+      renderContinuationTriggeredAt: shouldTrigger ? now : undefined,
+      updatedAt: now,
+    });
+
+    return {
+      success: true,
+      shouldTrigger,
+      voiceoverApproved: video.voiceoverDraft,
+      chatId: video.chatId,
+      userId: video.userId,
+      description: video.description,
+      variant: video.variant,
+      sources: video.sources,
+    };
   },
 });

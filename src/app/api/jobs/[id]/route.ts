@@ -37,10 +37,20 @@ export async function GET(
         variant: convexVideo.variant,
         videoUrl: convexVideo.videoUrl,
         error: convexVideo.error,
+        voiceoverDraft: convexVideo.voiceoverDraft,
+        voiceoverApproved: convexVideo.voiceoverApproved,
+        voiceoverStatus: convexVideo.voiceoverStatus,
+        voiceoverUpdatedAt: convexVideo.voiceoverUpdatedAt
+          ? new Date(convexVideo.voiceoverUpdatedAt).toISOString()
+          : undefined,
+        voiceoverApprovedAt: convexVideo.voiceoverApprovedAt
+          ? new Date(convexVideo.voiceoverApprovedAt).toISOString()
+          : undefined,
         youtubeStatus: convexVideo.youtubeStatus,
         youtubeUrl: convexVideo.youtubeUrl,
         youtubeVideoId: convexVideo.youtubeVideoId,
         youtubeError: convexVideo.youtubeError,
+        sources: convexVideo.sources,
         progress: convexVideo.status === "ready" ? 100 : 0,
         step: convexVideo.status === "ready" ? "completed" : convexVideo.status,
         createdAt: new Date(convexVideo.createdAt).toISOString(),

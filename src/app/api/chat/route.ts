@@ -3,7 +3,14 @@ import { SYSTEM_PROMPT } from "@/prompt";
 import { z } from "zod";
 import { jobStore } from "@/lib/job-store";
 import { GROQ_MODEL_IDS, selectGroqModel } from "@/lib/groq-provider";
-import { workflowClient, getBaseUrl, getTriggerHeaders } from "@/lib/workflow/client";
+import {
+  workflowClient,
+  getBaseUrl,
+  getTriggerHeaders,
+} from "@/lib/workflow/client";
+import { getConvexClient, api } from "@/lib/convex-server";
+
+export const runtime = "nodejs";
 
 export const maxDuration = 120;
 
@@ -42,13 +49,13 @@ export async function POST(req: Request) {
           description: z
             .string()
             .describe(
-              "A clear description of the animation or video to create"
+              "A clear description of the animation or video to create",
             ),
           variant: z
             .enum(["video", "short"])
             .optional()
             .describe(
-              "Specify 'short' to generate a vertical short, or 'video' for horizontal video."
+              "Specify 'short' to generate a vertical short, or 'video' for horizontal video.",
             ),
         }),
         execute: async ({ description, variant }) => {
@@ -79,6 +86,22 @@ export async function POST(req: Request) {
             variant: inferredVariant,
           });
 
+          const chatId = Date.now().toString();
+
+          // Also create in Convex for persistence
+          try {
+            const convexClient = getConvexClient();
+            await convexClient.mutation(api.videos.create, {
+              jobId: job.id,
+              userId: "anonymous",
+              chatId,
+              description,
+              variant: inferredVariant,
+            });
+          } catch (err) {
+            console.error("Failed to create Convex video record:", err);
+          }
+
           // Dispatch background job to Upstash Workflow
           await workflowClient.trigger({
             headers: getTriggerHeaders(),
@@ -86,7 +109,7 @@ export async function POST(req: Request) {
             body: {
               prompt: description,
               userId: "anonymous",
-              chatId: Date.now().toString(),
+              chatId,
               jobId: job.id,
               variant: inferredVariant,
             },
