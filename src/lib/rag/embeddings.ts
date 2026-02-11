@@ -1,18 +1,17 @@
-/**
- * Embeddings - Generate embeddings using Google text-embedding-004
- *
- * Uses the same key rotation system as the rest of the app.
- */
-
 import { createGoogleProvider } from "../google-provider";
 import { embed, embedMany } from "ai";
 
-const EMBEDDING_MODEL = "text-embedding-004";
+const EMBEDDING_MODEL = "gemini-embedding-001";
 
 export async function generateEmbedding(text: string): Promise<number[]> {
   const provider = createGoogleProvider();
   const { embedding } = await embed({
-    model: provider.textEmbeddingModel(EMBEDDING_MODEL),
+    model: provider.embedding("gemini-embedding-001"),
+    providerOptions: {
+      google: {
+        outputDimensionality: 1536,
+      },
+    },
     value: text,
   });
 
@@ -41,7 +40,12 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
       try {
         const provider = createGoogleProvider();
         const { embeddings } = await embedMany({
-          model: provider.textEmbeddingModel(EMBEDDING_MODEL),
+          model: provider.embedding(EMBEDDING_MODEL),
+          providerOptions: {
+            google: {
+              outputDimensionality: 1536,
+            },
+          },
           values: batch,
         });
         allEmbeddings.push(...embeddings);

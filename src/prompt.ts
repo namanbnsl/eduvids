@@ -270,7 +270,7 @@ DIAGRAM ACCURACY REQUIREMENTS:
 4. Scaling: Always scale diagrams to use 80-90% of available space
 5. Labels: Place all labels OUTSIDE shapes with proper positioning (not overlapping)
 
-IMPORTANT: All Text() must use font="EB Garamond" which is set as DEFAULT_FONT.
+IMPORTANT: All Text() must use font="Latin Modern Roman" which is set as DEFAULT_FONT.
 Example: Text("Hello", font_size=FONT_BODY, font=DEFAULT_FONT)
 Or use helper functions like create_label() which handle this automatically.
 

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \" export NODE_OPTIONS=--network-family-autoselection-attempt-timeout=1000 \" \"next dev --turbopack\" \"npx @upstash/qstash-cli dev\" \"convex dev\"",
+    "dev": "export NODE_OPTIONS=--network-family-autoselection-attempt-timeout=1000 && concurrently \"next dev --turbopack\" \"npx @upstash/qstash-cli dev\" \"convex dev\"",
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",

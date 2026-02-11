@@ -33,7 +33,10 @@ const phClient = isDev
 
 // Wrapper that skips tracing in development
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function maybeWithTracing(model: any, options: Parameters<typeof withTracing>[2]) {
+function maybeWithTracing(
+  model: any,
+  options: Parameters<typeof withTracing>[2],
+) {
   if (!phClient) return model;
   return withTracing(model, phClient, options);
 }
@@ -168,7 +171,7 @@ function buildAugmentedSystemPrompt(base: string, language?: string): string {
 This video is in ${language.toUpperCase()}. IMPORTANT RULES:
 1. **USE Text() FOR ALL NON-MATHEMATICAL TEXT**: Text("your text", font_size=FONT_BODY, color=WHITE, font=DEFAULT_FONT)
 2. **USE Tex/MathTex ONLY FOR MATH**: MathTex(r"E = mc^2", font_size=FONT_MATH)
-3. **ALWAYS use font=DEFAULT_FONT (EB Garamond)** for consistent, professional typography
+3. **ALWAYS use font=DEFAULT_FONT (Latin Modern Roman)** for consistent, professional typography
 4. **NEVER use create_tex_label, create_text_panel, or create_bullet_item for ${language} text**
 5. **For bullets in ${language}**: Create Text() objects and arrange them manually
 6. **Example correct usage**:
@@ -360,10 +363,9 @@ export async function generateManimScript({
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
     const googleModel = createGoogleModel("gemini-3-flash-preview");
-    const model = maybeWithTracing(
-      googleModel.provider(googleModel.modelId),
-      { posthogProperties: { $ai_session_id: sessionId } },
-    );
+    const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
+      posthogProperties: { $ai_session_id: sessionId },
+    });
 
     try {
       const { text } = await generateTextWithTracking(
@@ -701,9 +703,9 @@ FONT SIZES (never exceed these):
 - FONT_LABEL = 30
 
 FONT FAMILY:
-- DEFAULT_FONT = "EB Garamond" (use for all Text() objects)
+- DEFAULT_FONT = "Latin Modern Roman" (use for all Text() objects)
 - Example: Text("Hello", font_size=FONT_BODY, font=DEFAULT_FONT)
-- Or use create_label() which applies EB Garamond automatically
+- Or use create_label() which applies Latin Modern Roman automatically
 
 ELEMENT LIMITS:
 - Max 4 visible elements at once
@@ -796,10 +798,9 @@ OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
     const googleModel = createGoogleModel("gemini-3-flash-preview");
-    const model = maybeWithTracing(
-      googleModel.provider(googleModel.modelId),
-      { posthogProperties: { $ai_session_id: sessionId } },
-    );
+    const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
+      posthogProperties: { $ai_session_id: sessionId },
+    });
 
     try {
       const { text } = await generateTextWithTracking(

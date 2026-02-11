@@ -60,10 +60,8 @@ e2b template build --name manim-ffmpeg-latex-voiceover-watermark
 
 ```bash
 # Start the development server
+export NODE_OPTIONS=--network-family-autoselection-attempt-timeout=1000
 npm run dev
-
-# Start the upstash workflows dev server
-npx @upstash/qstash-cli dev
 ```
 
 10. Visit [http://localhost:3000](http://localhost:3000) and start using the app.
