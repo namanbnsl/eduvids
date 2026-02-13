@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, use, useRef } from "react";
+import dynamic from "next/dynamic";
 import { useChat } from "@ai-sdk/react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
@@ -17,7 +18,6 @@ import {
   PromptInputButton,
 } from "@/components/prompt-input";
 import { Conversation, ConversationContent } from "@/components/conversation";
-import { VideoPlayer } from "@/components/video-player";
 import { StyledResponse } from "@/components/ui/styled-response";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -28,6 +28,14 @@ import type {
   ChatMessagePart,
   GenerateVideoToolUIPart,
 } from "@/lib/types";
+
+const VideoPlayer = dynamic(
+  () => import("@/components/video-player").then((mod) => mod.VideoPlayer),
+  {
+    ssr: false,
+    loading: () => <div>Loading video...</div>,
+  }
+);
 
 const isGenerateVideoToolPart = (
   part: ChatMessagePart

@@ -8,6 +8,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useFirstVisit } from "@/lib/use-first-visit";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 
@@ -22,10 +23,8 @@ import {
   PromptInputButton,
 } from "@/components/prompt-input";
 import { Conversation, ConversationContent } from "@/components/conversation";
-import { VideoPlayer } from "@/components/video-player";
 import { QuickActionCards } from "@/components/quick-action-cards";
 import { StyledResponse } from "@/components/ui/styled-response";
-import { Onboarding } from "@/components/onboarding";
 
 // Icons
 import { Monitor, Smartphone } from "lucide-react";
@@ -37,6 +36,19 @@ import type {
   GenerateVideoToolUIPart,
 } from "@/lib/types";
 import { useAuth } from "@clerk/nextjs";
+
+const VideoPlayer = dynamic(
+  () => import("@/components/video-player").then((mod) => mod.VideoPlayer),
+  {
+    ssr: false,
+    loading: () => <div>Loading video...</div>,
+  }
+);
+
+const Onboarding = dynamic(
+  () => import("@/components/onboarding").then((mod) => mod.Onboarding),
+  { ssr: false }
+);
 
 // Helpers
 const isGenerateVideoToolPart = (

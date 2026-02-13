@@ -11,5 +11,4 @@ manim: <br />
 ability to edit videos <br />
 <br />
 
-use openai codex login for codex models for users
 serach for image illustrations online and then upload to sandbox for usage

@@ -81,3 +81,4 @@ e2b template build --name manim-ffmpeg-latex-voiceover-watermark
 - Do not hallucinate layout engine functions.
 - Do not to commit to git unless specified.
 - Do not delete and remove anything unless given permission to run the command.
+- You may run linting and type checking scripts

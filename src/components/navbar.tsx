@@ -1,5 +1,3 @@
-"use client";
-
 import { Github, Youtube, Twitter } from "lucide-react";
 
 import Link from "next/link";

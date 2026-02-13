@@ -1,5 +1,3 @@
-"use client";
-
 import { SignedIn, SignedOut } from "@clerk/nextjs";
 import { SidebarLayout } from "@/components/sidebar";
 import Navbar from "@/components/navbar";
