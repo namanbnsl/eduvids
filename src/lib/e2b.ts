@@ -178,7 +178,7 @@ class ManimValidationError extends Error {
       stderr?: string;
       exitCode?: number;
       logs?: RenderLogEntry[];
-    } = {}
+    } = {},
   ) {
     super(message);
     this.name = "ManimValidationError";
@@ -250,7 +250,7 @@ const movingCameraSceneDeclared = (source: string) =>
   /class\s+MyScene\s*\(\s*MovingCameraScene/.test(source);
 
 const runHeuristicChecks = (
-  source: string
+  source: string,
 ): {
   errors: ValidationWarning[];
   warnings: ValidationWarning[];
@@ -286,7 +286,7 @@ const truncateOutput = (value: string | undefined | null) => {
   if (normalized.length <= MAX_COMMAND_OUTPUT_CHARS) return normalized;
   return `${normalized.slice(
     0,
-    MAX_COMMAND_OUTPUT_CHARS
+    MAX_COMMAND_OUTPUT_CHARS,
   )}\n... output truncated (${
     normalized.length - MAX_COMMAND_OUTPUT_CHARS
   } more chars)`;
@@ -430,7 +430,7 @@ export async function renderManimVideo({
   const reportProgress = async (
     stage: RenderLifecycleStage,
     message: string,
-    sandboxId?: string
+    sandboxId?: string,
   ) => {
     if (!onProgress) return;
     try {
@@ -446,7 +446,7 @@ export async function renderManimVideo({
   };
 
   const pushLog = (
-    entry: Omit<RenderLogEntry, "timestamp"> & { timestamp?: string }
+    entry: Omit<RenderLogEntry, "timestamp"> & { timestamp?: string },
   ) => {
     const timestamp = entry.timestamp ?? new Date().toISOString();
     renderLogs.push({ ...entry, timestamp });
@@ -466,7 +466,7 @@ export async function renderManimVideo({
     throw new ManimValidationError(
       "Manim script is empty. Please provide a scene before rendering.",
       "input",
-      { logs: [...renderLogs] }
+      { logs: [...renderLogs] },
     );
   }
   if (!hasExpectedSceneClass(normalizedScript)) {
@@ -478,7 +478,7 @@ export async function renderManimVideo({
     throw new ManimValidationError(
       "Manim script must declare `class MyScene` before rendering. Rename your scene or adjust the renderer to match.",
       "input",
-      { logs: [...renderLogs] }
+      { logs: [...renderLogs] },
     );
   }
   const heuristicResult = runHeuristicChecks(normalizedScript);
@@ -494,7 +494,7 @@ export async function renderManimVideo({
     throw new ManimValidationError(
       `Heuristic validation failed:\n${summary}`,
       "heuristic",
-      { logs: [...renderLogs] }
+      { logs: [...renderLogs] },
     );
   }
 
@@ -539,7 +539,7 @@ export async function renderManimVideo({
             stdout?: boolean;
             stderr?: boolean;
           };
-    } = {}
+    } = {},
   ) => {
     if (!sandbox) {
       throw new Error("Sandbox not initialised before running command");
@@ -685,7 +685,7 @@ export async function renderManimVideo({
     if (existingSandboxId) {
       await reportProgress(
         "sandbox",
-        "Connecting to existing rendering sandbox"
+        "Connecting to existing rendering sandbox",
       );
       sandbox = await Sandbox.connect(existingSandboxId, {
         timeoutMs: 3_600_000, // 60 minutes
@@ -709,7 +709,7 @@ export async function renderManimVideo({
           envs: {
             ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
           },
-        }
+        },
       );
       console.log("E2B sandbox created successfully", {
         sandboxId: sandbox.sandboxId,
@@ -750,7 +750,7 @@ export async function renderManimVideo({
       const lines = enhancedScript.split("\n");
       const lastImportIdx = lines.findLastIndex(
         (line) =>
-          line.trim().startsWith("import ") || line.trim().startsWith("from ")
+          line.trim().startsWith("import ") || line.trim().startsWith("from "),
       );
 
       if (lastImportIdx >= 0) {
@@ -803,7 +803,7 @@ export async function renderManimVideo({
     if (plugins.includes("manim_ml")) {
       await reportProgress(
         "plugin-installation",
-        "Installing optional manim-ml plugin"
+        "Installing optional manim-ml plugin",
       );
       await runCommandOrThrow("pip install manim-ml", {
         description: "Plugin installation (manim-ml)",
@@ -850,10 +850,9 @@ export async function renderManimVideo({
       mediaDir,
       "--disable_caching",
       "--format=mp4",
-      "-ql",
-      // "-qm",
-      // "--fps",
-      // 15,
+      "-qm",
+      "--fps",
+      "15",
     ];
     if (resolution) {
       safeWidth = Math.max(1, Math.round(resolution.width));
@@ -883,16 +882,16 @@ export async function renderManimVideo({
     if (safeWidth && safeHeight) {
       qualityCandidates.push(`custom_quality_${safeWidth}x${safeHeight}`);
     }
-    qualityCandidates.push("480p15", "low_quality");
+    qualityCandidates.push("720p15", "medium_quality", "480p15", "low_quality");
 
     const candidatePaths = Array.from(
       new Set([
         ...qualityCandidates.map(
           (quality) =>
-            `${baseVideosDir}/${moduleName}/${quality}/${sceneName}.mp4`
+            `${baseVideosDir}/${moduleName}/${quality}/${sceneName}.mp4`,
         ),
         `${baseVideosDir}/${moduleName}/${sceneName}.mp4`,
-      ])
+      ]),
     );
 
     if (!sandbox) {
@@ -900,7 +899,7 @@ export async function renderManimVideo({
       throw new ManimValidationError(
         "Sandbox is unavailable while locating the rendered video.",
         "render",
-        { logs: [...renderLogs] }
+        { logs: [...renderLogs] },
       );
     }
 
@@ -914,7 +913,7 @@ export async function renderManimVideo({
           `path = r"${candidate}"`,
           "print('1' if os.path.isfile(path) else '', end='')",
           "PY",
-        ].join("\n")
+        ].join("\n"),
       );
       if ((existsCheck.stdout ?? "").trim() === "1") {
         videoPath = candidate;
@@ -935,7 +934,7 @@ export async function renderManimVideo({
           "            print(os.path.join(root, target))",
           "            break",
           "PY",
-        ].join("\n")
+        ].join("\n"),
       );
       const locatedPath = (searchResult.stdout ?? "").trim();
       if (locatedPath) {
@@ -953,7 +952,7 @@ export async function renderManimVideo({
       throw new ManimValidationError(
         `Unable to locate MyScene.mp4 under ${baseVideosDir}/${moduleName}.`,
         "render",
-        { logs: [...renderLogs] }
+        { logs: [...renderLogs] },
       );
     }
 
@@ -977,7 +976,7 @@ export async function renderManimVideo({
         stage: "video-validation",
         timeoutMs: 180_000,
         hint: "The rendered video appears to be corrupted.",
-      }
+      },
     );
     const duration = parseFloat((probe.stdout || "").trim());
     console.log("ffprobe duration:", duration);
@@ -992,7 +991,7 @@ export async function renderManimVideo({
       throw new ManimValidationError(
         `Rendered video has invalid duration: ${duration}s — aborting upload`,
         "video-validation",
-        { logs: [...renderLogs] }
+        { logs: [...renderLogs] },
       );
     }
 
@@ -1003,7 +1002,7 @@ export async function renderManimVideo({
         stage: "video-validation",
         timeoutMs: 180_000,
         hint: "Unable to read rendered video dimensions.",
-      }
+      },
     );
     const dimensionOutput = (probeDimensions.stdout || "").trim();
     let videoWidth: number | undefined;
@@ -1054,7 +1053,7 @@ export async function renderManimVideo({
         stage: "video-validation",
         timeoutMs: 180_000,
         hint: "The sped-up video appears to be corrupted.",
-      }
+      },
     );
     const speedUpDuration = parseFloat((probeSpeedUp.stdout || "").trim());
     if (!speedUpDuration || speedUpDuration <= 0) {
@@ -1062,7 +1061,7 @@ export async function renderManimVideo({
       throw new ManimValidationError(
         `Sped-up video has invalid duration: ${speedUpDuration}s — aborting upload`,
         "video-validation",
-        { logs: [...renderLogs] }
+        { logs: [...renderLogs] },
       );
     }
 
@@ -1091,7 +1090,7 @@ export async function renderManimVideo({
 
       await reportProgress(
         "watermark-validation",
-        "Validating watermarked video"
+        "Validating watermarked video",
       );
       const probeWm = await runCommandOrThrow(
         `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${watermarkedPath}`,
@@ -1100,7 +1099,7 @@ export async function renderManimVideo({
           stage: "watermark-validation",
           timeoutMs: 180_000,
           hint: "The watermarked video appears to be corrupted.",
-        }
+        },
       );
       const wmDuration = parseFloat((probeWm.stdout || "").trim());
       if (!wmDuration || wmDuration <= 0) {
@@ -1108,7 +1107,7 @@ export async function renderManimVideo({
         throw new ManimValidationError(
           `Watermarked video has invalid duration: ${wmDuration}s — aborting upload`,
           "watermark-validation",
-          { logs: [...renderLogs] }
+          { logs: [...renderLogs] },
         );
       }
 
@@ -1125,14 +1124,14 @@ export async function renderManimVideo({
       throw new ManimValidationError(
         "Downloaded watermarked video is empty; aborting upload",
         "download",
-        { logs: [...renderLogs] }
+        { logs: [...renderLogs] },
       );
     }
     const fileBytes = Buffer.from(fileBytesArray);
     const base64 = fileBytes.toString("base64");
     const dataUrl = `data:video/mp4;base64,${base64}`;
     console.log(
-      `Prepared base64 data URL for upload (length: ${base64.length} chars)`
+      `Prepared base64 data URL for upload (length: ${base64.length} chars)`,
     );
     pushLog({
       level: "info",
@@ -1202,7 +1201,7 @@ export async function renderManimVideo({
           exitCode,
           stderr,
           stdout,
-        }
+        },
       );
       detailedError.name = err.name;
       detailedError.stack = err.stack;

@@ -640,24 +640,37 @@ export function generateLayoutSetup(
   parts.push(generateSafeZoneConstants(config));
   parts.push(
     [
-      'config.background_color = "#0F0F12"', // Dark Grey - Standard Dark
+      'config.background_color = "#060B1A"', // Deep navy
       'BRIGHT_TEXT_COLOR = "#F8FAFC"', // Slate 50
       'DARK_TEXT_COLOR = "#020617"', // Slate 950
       'CONTRAST_DARK_PANEL = "#1C2E4A"', // Dark Blue Panel
       'CONTRAST_LIGHT_PANEL = "#F1F5F9"', // Slate 100
+      'ACCENT_PRIMARY = "#38BDF8"', // Sky 400
+      'ACCENT_SECONDARY = "#F59E0B"', // Amber 500
+      'ACCENT_TERTIARY = "#22D3EE"', // Cyan 400
+      'ACCENT_POSITIVE = "#22C55E"', // Green 500
+      'ACCENT_NEGATIVE = "#F43F5E"', // Rose 500
       "MIN_CONTRAST_RATIO = 5.5", // Increased for better readability
       "MIN_PANEL_FILL_OPACITY = 0.95",
       "DEFAULT_PANEL_PADDING = 0.5",
       'BRIGHT_TEXT_ALTERNATIVES = [BRIGHT_TEXT_COLOR, "#F1F5F9", "#E2E8F0"]',
+      "Text.set_default(color=BRIGHT_TEXT_COLOR, font=DEFAULT_FONT)",
+      "MathTex.set_default(color=BRIGHT_TEXT_COLOR)",
       "Paragraph.set_default(color=BRIGHT_TEXT_COLOR)",
       "MarkupText.set_default(color=BRIGHT_TEXT_COLOR)",
       "BulletedList.set_default(color=BRIGHT_TEXT_COLOR)",
       "myTemplate = TexTemplate()",
       'myTemplate.preamble += "\\\\usepackage{lmodern}"',
       "Tex.set_default(tex_template=myTemplate)",
-      "Rectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
-      "RoundedRectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
-      "SurroundingRectangle.set_default(fill_opacity=0, stroke_color=BRIGHT_TEXT_COLOR, stroke_width=2)",
+      "Tex.set_default(color=BRIGHT_TEXT_COLOR)",
+      "Line.set_default(stroke_color=ACCENT_PRIMARY, stroke_width=4)",
+      "Arrow.set_default(color=ACCENT_SECONDARY, stroke_width=5, buff=0.08, max_tip_length_to_length_ratio=0.18)",
+      "Dot.set_default(color=ACCENT_NEGATIVE, radius=0.08)",
+      "Circle.set_default(stroke_color=ACCENT_PRIMARY, stroke_width=3, fill_color=ACCENT_PRIMARY, fill_opacity=0.08)",
+      "Square.set_default(stroke_color=ACCENT_PRIMARY, stroke_width=3, fill_color=ACCENT_PRIMARY, fill_opacity=0.08)",
+      "Rectangle.set_default(fill_opacity=0.08, fill_color=ACCENT_TERTIARY, stroke_color=ACCENT_PRIMARY, stroke_width=3)",
+      "RoundedRectangle.set_default(fill_opacity=0.1, fill_color=ACCENT_TERTIARY, stroke_color=ACCENT_PRIMARY, stroke_width=3)",
+      "SurroundingRectangle.set_default(fill_opacity=0.08, fill_color=ACCENT_TERTIARY, stroke_color=ACCENT_PRIMARY, stroke_width=3)",
     ].join("\n"),
   );
   parts.push(
@@ -753,10 +766,36 @@ def create_gradient_background(colors=None, opacity=1.0):
         FullScreenRectangle with gradient fill
     """
     if colors is None:
-        colors = ["#0B1020", "#0F0F12", "#2B0A3D"]  # Navy -> charcoal -> plum
+        colors = ["#050816", "#0A1023", "#111C3A"]  # Deep navy gradient
     bg = FullScreenRectangle(stroke_width=0)
     bg.set_fill(color=colors, opacity=opacity)
     bg.set_z_index(-100)
+    return bg
+
+
+def apply_scene_theme(scene, with_grid=False):
+    """
+    Apply a polished baseline visual style.
+    """
+    bg = create_gradient_background()
+    scene.add(bg)
+    if with_grid:
+        grid = NumberPlane(
+            x_range=[-7, 7, 1],
+            y_range=[-4, 4, 1],
+            background_line_style={
+                "stroke_color": ACCENT_PRIMARY,
+                "stroke_opacity": 0.1,
+                "stroke_width": 1,
+            },
+            faded_line_style={
+                "stroke_color": ACCENT_PRIMARY,
+                "stroke_opacity": 0.05,
+                "stroke_width": 1,
+            },
+        )
+        grid.set_z_index(-90)
+        scene.add(grid)
     return bg
 
 

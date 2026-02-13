@@ -2,7 +2,7 @@ import { serve } from "@upstash/workflow/nextjs";
 
 import { generateVoiceoverScript } from "@/lib/llm";
 import { jobStore } from "@/lib/job-store";
-import { searchForTopic, formatSourcesForPrompt } from "@/lib/tavily";
+import { searchForTopic, formatWebResearchForPrompt } from "@/lib/tavily";
 import { updateJobProgress } from "@/lib/workflow/utils/progress";
 import { qstashClientWithBypass } from "@/lib/workflow/client";
 import { getConvexClient, api } from "@/lib/convex-server";
@@ -49,8 +49,13 @@ export const { POST } = serve<VideoGenerationPayload>(
       return result;
     });
 
-    // Store sources in job for UI display
-    const sources = searchResult.sources;
+    // Store concise sources in job for UI display (avoid persisting large rawContent blobs)
+    const sources = searchResult.sources.map(({ title, url, content, score }) => ({
+      title,
+      url,
+      content,
+      score,
+    }));
     if (sources.length > 0) {
       if (jobId) {
         await context.run("store-sources", async () => {
@@ -64,7 +69,7 @@ export const { POST } = serve<VideoGenerationPayload>(
     }
 
     // Augment prompt with web research if available
-    const researchContext = formatSourcesForPrompt(sources);
+    const researchContext = formatWebResearchForPrompt(searchResult);
     const augmentedPrompt = researchContext
       ? `${generationPrompt}\n\n${researchContext}`
       : generationPrompt;

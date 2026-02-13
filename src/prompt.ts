@@ -107,6 +107,9 @@ CRITICAL REQUIREMENTS
 3. VOICEOVER SERVICE MUST BE SET - call ${VOICEOVER_SERVICE_SETTER} at start of construct()
 4. USE VOICEOVER BLOCKS - wrap animations in "with self.voiceover(text=...) as tracker:"
 5. MATCH NARRATION TO SCRIPT - the text in voiceover blocks should follow the voiceover script
+6. START EACH SCENE WITH THEME BASELINE - call apply_scene_theme(self) once near the top of construct()
+7. USE DELIBERATE MOTION - prefer Create/Write/FadeIn with clear staging and avoid instant jumps
+8. KEEP A CONSISTENT COLOR SYSTEM - use BRIGHT_TEXT_COLOR + ACCENT_PRIMARY/SECONDARY/TERTIARY for emphasis
 
 ═══════════════════════════════════════════════════════════════════════════════
 🚫 THINGS YOU MUST NEVER DO (MEMORIZE THIS LIST)
