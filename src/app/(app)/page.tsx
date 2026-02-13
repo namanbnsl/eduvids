@@ -181,10 +181,18 @@ export default function HomePage() {
     <>
       {isFirstVisit && <Onboarding onComplete={handleOnboardingComplete} />}
 
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="relative flex-1 flex flex-col overflow-hidden">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(1200px_500px_at_30%_0%,color-mix(in_oklch,var(--foreground)_8%,transparent),transparent_62%),radial-gradient(1000px_420px_at_85%_100%,color-mix(in_oklch,var(--accent)_70%,transparent),transparent_70%)]" />
+          <div className="absolute inset-0 opacity-[0.18] [background-image:linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [background-size:40px_40px]" />
+        </div>
+
         {hasMessages ? (
           <>
-            <div className="flex-1 overflow-y-auto animate-in fade-in duration-500">
+            <div className="flex-1 overflow-y-auto animate-in fade-in duration-300">
               <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4">
                 <Conversation>
                   <ConversationContent>
@@ -232,15 +240,15 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4 animate-in slide-in-from-bottom-4 fade-in duration-500">
-              <PromptInput onSubmit={handleSubmit}>
+            <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4 animate-in slide-in-from-bottom-4 fade-in duration-300">
+              <PromptInput onSubmit={handleSubmit} data-onboarding="composer">
                 <PromptInputTextarea
                   onChange={(e) => setInput(e.target.value)}
                   value={input}
                   placeholder="Choose a mode and describe the video you want to generate"
                 />
                 <PromptInputToolbar>
-                  <PromptInputTools>
+                  <PromptInputTools data-onboarding="mode-buttons">
                     <div className="inline-flex">
                       <div className="inline-flex gap-1">
                         <PromptInputButton
@@ -264,7 +272,11 @@ export default function HomePage() {
                       </div>
                     </div>
                   </PromptInputTools>
-                  <PromptInputSubmit disabled={!input} status={status} />
+                  <PromptInputSubmit
+                    disabled={!input}
+                    status={status}
+                    data-onboarding="submit"
+                  />
                 </PromptInputToolbar>
               </PromptInput>
               <p className="mt-2 text-center text-xs text-muted-foreground">
@@ -275,23 +287,29 @@ export default function HomePage() {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center px-4 animate-in fade-in duration-700">
-            <div className="w-full max-w-5xl animate-in slide-in-from-bottom-4 duration-700">
-              <div className="text-center mb-8 animate-in fade-in slide-in-from-top-2 duration-700">
-                <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-2 leading-tight">
+          <div className="flex-1 flex flex-col items-center justify-center px-4 py-10 animate-in fade-in duration-350">
+            <div className="w-full max-w-5xl animate-in slide-in-from-bottom-4 duration-350">
+              <div className="text-center mb-8 animate-in fade-in slide-in-from-top-2 duration-350">
+                <h1
+                  data-onboarding="hero-title"
+                  className="mx-auto max-w-3xl text-4xl font-semibold leading-tight tracking-tight text-foreground md:text-6xl"
+                >
                   Generate Your Own Video
                 </h1>
+                <p className="mx-auto mt-3 max-w-2xl text-sm text-muted-foreground md:text-base">
+                  Type one clear concept, choose a format, and publish a polished educational video in minutes.
+                </p>
               </div>
 
-              <div className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-700 delay-100">
-                <PromptInput onSubmit={handleSubmit}>
+              <div className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-350 delay-75">
+                <PromptInput onSubmit={handleSubmit} data-onboarding="composer">
                   <PromptInputTextarea
                     onChange={(e) => setInput(e.target.value)}
                     value={input}
                     placeholder="Describe your video idea here..."
                   />
                   <PromptInputToolbar>
-                    <PromptInputTools>
+                    <PromptInputTools data-onboarding="mode-buttons">
                       <div className="inline-flex">
                         <div className="inline-flex gap-1">
                           <PromptInputButton
@@ -323,12 +341,16 @@ export default function HomePage() {
                         </div>
                       </div>
                     </PromptInputTools>
-                    <PromptInputSubmit disabled={!input} status={status} />
+                    <PromptInputSubmit
+                      disabled={!input}
+                      status={status}
+                      data-onboarding="submit"
+                    />
                   </PromptInputToolbar>
                 </PromptInput>
               </div>
 
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-700 delay-200">
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-350 delay-150">
                 <QuickActionCards
                   onCardClick={(text) => {
                     const videoPrefix = "Generate a video of ";
@@ -344,6 +366,7 @@ export default function HomePage() {
                   }}
                   topics={topics}
                   isLoading={isLoadingTopics}
+                  onboardingId="topic-suggestion"
                 />
               </div>
             </div>
