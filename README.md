@@ -60,7 +60,6 @@ e2b template build --name manim-ffmpeg-latex-voiceover-watermark
 
 ```bash
 # Start the development server
-export NODE_OPTIONS=--network-family-autoselection-attempt-timeout=1000
 npm run dev
 ```
 
