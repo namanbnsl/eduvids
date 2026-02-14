@@ -264,15 +264,17 @@ export async function generateVoiceoverScript({
   const composedPrompt = [
     `User request: ${prompt}`,
     `Use the language that is asked for and output text in that script`,
-    "Directive: Cover every essential idea from the request in sequence, adding extra BODY lines when needed so no core step is skipped.",
+    "Directive: Cover every essential idea from the request in sequence, adding as many explanatory lines as needed so no core step is skipped.",
     "Directive: Keep the narration purely educational—no jokes, sound effects, or entertainment filler.",
     "Directive: Focus on a single clearly defined topic drawn from the user request—do not introduce unrelated hooks, metaphors, or tangents.",
     "Directive: Start with an engaging hook that immediately connects to the topic and states the learning objective; avoid vague rhetorical questions that are never answered.",
-    "Directive: Develop each BODY line with concrete explanations, definitions, or reasoning so the listener learns how and why—not just what.",
+    "Directive: Develop each explanation with concrete definitions, reasoning, and worked steps so the listener learns how and why—not just what.",
     "Directive: Ensure the worked example and reflection lines explicitly reference the same core concept and build on prior steps.",
     "Directive: Maintain smooth flow by referencing prior steps and previewing what comes next.",
+    "Directive: Do NOT force a fixed section template. Write a natural teaching flow that would help a complete beginner understand the topic end-to-end.",
+    "Directive: Explain enough detail to be truly educational: define terms, show why steps are valid, and include concrete examples or counterexamples when useful.",
     "Directive: When you mention an acronym, initialism, or all-caps mnemonic, write ONLY the phonetic pronunciation in lowercase without showing the uppercase form or parentheses, so TTS reads it naturally once (e.g., write 'soah caah toa' instead of 'SOH CAH TOA', write 'dee en ay' instead of 'DNA'). For well-known acronyms that TTS handles correctly (like 'NASA' or 'FBI'), you may use the standard form.",
-    "Draft the narration segments:",
+    "Draft the narration voiceover:",
   ].join("\n\n");
 
   // for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
@@ -311,7 +313,7 @@ export async function generateVoiceoverScript({
   // );
   // return proText.trim();
 
-  const model = selectGroqModel(GROQ_MODEL_IDS.kimiInstruct);
+  const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
 
   const { text } = await generateText({
     model: maybeWithTracing(model, {
@@ -359,7 +361,21 @@ export async function generateManimScript({
     augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${ragContext}`;
   }
 
-  const generationPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration with purposeful, step-by-step visuals that directly reinforce each narrated idea while staying on the same core topic:`;
+  const generationPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration with purposeful, step-by-step visuals that directly reinforce each narrated idea while staying on the same core topic.
+
+Geometry and diagram accuracy requirements (always apply when relevant):
+- Angle arcs must represent the intended angle region exactly (interior/reflex/acute/obtuse) and labels must match the highlighted region.
+- Shared edges or touching polygons should have zero visual gap unless separation is explicitly requested.
+- Adjacent or congruent shapes must preserve stated relationships (equal side lengths, equal angles, parallel/perpendicular markers).
+- Place measurement labels outside shapes with clear pointers when needed; avoid ambiguous label placement.
+- If a diagram could be ambiguous, add visual cues (ticks, right-angle markers, color-coded corresponding parts) before explaining conclusions.
+
+Before finalizing each diagram, verify by code that positions and geometry reflect the narrated claim (not just approximate visuals).
+
+3D quality and readability requirements:
+- If the concept is inherently spatial, use real 3D constructs (e.g., ThreeDAxes, surfaces, Arrow3D) instead of flattening to 2D.
+- Compose camera motion deliberately (stable orientation changes and purposeful reveals), not random spinning.
+- For portrait shorts, prioritize legibility over density: keep fewer objects on screen and use large text constants only.`;
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
     const googleModel = createGoogleModel("gemini-3-flash-preview");

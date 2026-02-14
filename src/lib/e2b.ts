@@ -850,9 +850,7 @@ export async function renderManimVideo({
       mediaDir,
       "--disable_caching",
       "--format=mp4",
-      "-qm",
-      "--fps",
-      "15",
+      "-ql",
     ];
     if (resolution) {
       safeWidth = Math.max(1, Math.round(resolution.width));
