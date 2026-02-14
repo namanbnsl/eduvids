@@ -849,6 +849,4 @@ OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
     .trim();
 
   return code;
-
-  return code;
 }

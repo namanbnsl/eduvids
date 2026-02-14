@@ -42,17 +42,17 @@ const VideoPlayer = dynamic(
   {
     ssr: false,
     loading: () => <div>Loading video...</div>,
-  }
+  },
 );
 
 const Onboarding = dynamic(
   () => import("@/components/onboarding").then((mod) => mod.Onboarding),
-  { ssr: false }
+  { ssr: false },
 );
 
 // Helpers
 const isGenerateVideoToolPart = (
-  part: ChatMessagePart
+  part: ChatMessagePart,
 ): part is Extract<GenerateVideoToolUIPart, { type: "tool-generate_video" }> =>
   part.type === "tool-generate_video";
 
@@ -76,7 +76,7 @@ export default function HomePage() {
 
   const handleOnboardingComplete = async (
     message: string | null,
-    mode: "video" | "short" | null
+    mode: "video" | "short" | null,
   ) => {
     completeOnboarding();
     if (message) {
@@ -94,7 +94,7 @@ export default function HomePage() {
         // Navigate immediately after getting chatId
         startTransition(() => {
           router.push(
-            `/chat/${chatId}?pending=${encodeURIComponent(message)}&mode=${mode || ""}`
+            `/chat/${chatId}?pending=${encodeURIComponent(message)}&mode=${mode || ""}`,
           );
         });
       } else {
@@ -104,7 +104,7 @@ export default function HomePage() {
             body: {
               forceVariant: mode,
             },
-          }
+          },
         );
       }
     }
@@ -137,7 +137,8 @@ export default function HomePage() {
     if (!trimmed) return;
 
     if (isSignedIn) {
-      const title = trimmed.length > 50 ? trimmed.slice(0, 50) + "..." : trimmed;
+      const title =
+        trimmed.length > 50 ? trimmed.slice(0, 50) + "..." : trimmed;
 
       // Single mutation creates chat + first message
       const chatId = await createChatWithMessage({
@@ -149,7 +150,7 @@ export default function HomePage() {
       // Navigate immediately
       startTransition(() => {
         router.push(
-          `/chat/${chatId}?pending=${encodeURIComponent(trimmed)}&mode=${generationMode || ""}`
+          `/chat/${chatId}?pending=${encodeURIComponent(trimmed)}&mode=${generationMode || ""}`,
         );
       });
     } else {
@@ -159,7 +160,7 @@ export default function HomePage() {
           body: {
             forceVariant: generationMode,
           },
-        }
+        },
       );
 
       setInput("");
@@ -221,9 +222,13 @@ export default function HomePage() {
                                     </div>
                                   );
                                 case "output-error":
-                                  return <div key={i}>Something went wrong</div>;
+                                  return (
+                                    <div key={i}>Something went wrong</div>
+                                  );
                                 default:
-                                  return <div key={i}>Something went wrong</div>;
+                                  return (
+                                    <div key={i}>Something went wrong</div>
+                                  );
                               }
                             }
                             return null;
@@ -248,8 +253,8 @@ export default function HomePage() {
                   placeholder="Choose a mode and describe the video you want to generate"
                 />
                 <PromptInputToolbar>
-                  <PromptInputTools data-onboarding="mode-buttons">
-                    <div className="inline-flex">
+                  <PromptInputTools>
+                    <div className="inline-flex" data-onboarding="mode-buttons">
                       <div className="inline-flex gap-1">
                         <PromptInputButton
                           onClick={() => handleGenerationModeToggle("video")}
@@ -272,17 +277,15 @@ export default function HomePage() {
                       </div>
                     </div>
                   </PromptInputTools>
-                  <PromptInputSubmit
-                    disabled={!input}
-                    status={status}
-                    data-onboarding="submit"
-                  />
+                  <div data-onboarding="submit">
+                    <PromptInputSubmit disabled={!input} status={status} />
+                  </div>
                 </PromptInputToolbar>
               </PromptInput>
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 Please avoid sharing personal data—everything submitted here
                 will be automatically uploaded publicly to the community YouTube
-                channel.
+                channel and X account.
               </p>
             </div>
           </>
@@ -297,7 +300,8 @@ export default function HomePage() {
                   Generate Your Own Video
                 </h1>
                 <p className="mx-auto mt-3 max-w-2xl text-sm text-muted-foreground md:text-base">
-                  Type one clear concept, choose a format, and publish a polished educational video in minutes.
+                  Type one clear concept, choose a format, and publish a
+                  polished educational video in minutes.
                 </p>
               </div>
 
@@ -309,13 +313,16 @@ export default function HomePage() {
                     placeholder="Describe your video idea here..."
                   />
                   <PromptInputToolbar>
-                    <PromptInputTools data-onboarding="mode-buttons">
-                      <div className="inline-flex">
+                    <PromptInputTools>
+                      <div
+                        className="inline-flex"
+                        data-onboarding="mode-buttons"
+                      >
                         <div className="inline-flex gap-1">
                           <PromptInputButton
                             onClick={() =>
                               setGenerationMode((mode) =>
-                                mode === "video" ? null : "video"
+                                mode === "video" ? null : "video",
                               )
                             }
                             variant={
@@ -328,7 +335,7 @@ export default function HomePage() {
                           <PromptInputButton
                             onClick={() =>
                               setGenerationMode((mode) =>
-                                mode === "short" ? null : "short"
+                                mode === "short" ? null : "short",
                               )
                             }
                             variant={
@@ -341,16 +348,17 @@ export default function HomePage() {
                         </div>
                       </div>
                     </PromptInputTools>
-                    <PromptInputSubmit
-                      disabled={!input}
-                      status={status}
-                      data-onboarding="submit"
-                    />
+                    <div data-onboarding="submit">
+                      <PromptInputSubmit disabled={!input} status={status} />
+                    </div>
                   </PromptInputToolbar>
                 </PromptInput>
               </div>
 
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-350 delay-150">
+              <div
+                className="animate-in fade-in slide-in-from-bottom-2 duration-350 delay-150"
+                data-onboarding="topic-suggestion"
+              >
                 <QuickActionCards
                   onCardClick={(text) => {
                     const videoPrefix = "Generate a video of ";
@@ -366,7 +374,6 @@ export default function HomePage() {
                   }}
                   topics={topics}
                   isLoading={isLoadingTopics}
-                  onboardingId="topic-suggestion"
                 />
               </div>
             </div>

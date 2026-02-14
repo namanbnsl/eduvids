@@ -5,14 +5,12 @@ interface QuickActionCardsProps {
   onCardClick: (text: string) => void;
   topics?: string[];
   isLoading?: boolean;
-  onboardingId?: string;
 }
 
 export function QuickActionCards({
   onCardClick,
   topics,
   isLoading = false,
-  onboardingId,
 }: QuickActionCardsProps) {
   const placeholderCount = 1;
 
@@ -34,7 +32,6 @@ export function QuickActionCards({
   return (
     <div className="flex justify-center w-full">
       <Button
-        data-onboarding={onboardingId}
         variant="outline"
         className="h-12 w-64 rounded-full border border-border/70 bg-card/70 px-5 text-sm text-foreground shadow-[0_10px_35px_-25px_color-mix(in_oklch,var(--foreground)_55%,transparent)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent/70"
         onClick={() => onCardClick(topics[0])}

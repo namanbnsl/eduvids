@@ -3,7 +3,6 @@ notification to be triggered on job and not video loaded. tell user they will be
 <br />
 
 backend: <br />
-add userId column values to videos <br />
 create stack of all pending questions so videos are always eventually generated.
 <br />
 

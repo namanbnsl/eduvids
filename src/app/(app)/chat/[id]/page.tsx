@@ -34,11 +34,11 @@ const VideoPlayer = dynamic(
   {
     ssr: false,
     loading: () => <div>Loading video...</div>,
-  }
+  },
 );
 
 const isGenerateVideoToolPart = (
-  part: ChatMessagePart
+  part: ChatMessagePart,
 ): part is Extract<GenerateVideoToolUIPart, { type: "tool-generate_video" }> =>
   part.type === "tool-generate_video";
 
@@ -77,7 +77,7 @@ function ChatPageContent({ chatId }: ChatPageContentProps) {
       id: chatId,
       onFinish: async ({ message }) => {
         const textParts = message.parts?.filter(
-          (p): p is { type: "text"; text: string } => p.type === "text"
+          (p): p is { type: "text"; text: string } => p.type === "text",
         );
         const textContent = textParts?.map((p) => p.text).join("") || "";
 
@@ -120,8 +120,7 @@ function ChatPageContent({ chatId }: ChatPageContentProps) {
 
       if (pendingMessage) {
         hasSentPendingMessage.current = true;
-        const forceVariant =
-          mode === "video" || mode === "short" ? mode : null;
+        const forceVariant = mode === "video" || mode === "short" ? mode : null;
 
         regenerate({
           body: {
@@ -171,7 +170,7 @@ function ChatPageContent({ chatId }: ChatPageContentProps) {
         body: {
           forceVariant: generationMode,
         },
-      }
+      },
     );
 
     // Persist to Convex in background - don't await
@@ -283,18 +282,14 @@ function ChatPageContent({ chatId }: ChatPageContentProps) {
                 <div className="inline-flex gap-1">
                   <PromptInputButton
                     onClick={() => handleGenerationModeToggle("video")}
-                    variant={
-                      generationMode === "video" ? "default" : "outline"
-                    }
+                    variant={generationMode === "video" ? "default" : "outline"}
                   >
                     <Monitor className="size-4" />
                     Video
                   </PromptInputButton>
                   <PromptInputButton
                     onClick={() => handleGenerationModeToggle("short")}
-                    variant={
-                      generationMode === "short" ? "default" : "outline"
-                    }
+                    variant={generationMode === "short" ? "default" : "outline"}
                   >
                     <Smartphone className="size-4" />
                     Short
@@ -307,7 +302,8 @@ function ChatPageContent({ chatId }: ChatPageContentProps) {
         </PromptInput>
         <p className="mt-2 text-center text-xs text-muted-foreground">
           Please avoid sharing personal data—everything submitted here will be
-          automatically uploaded publicly to the community YouTube channel.
+          automatically uploaded publicly to the community YouTube channel and X
+          account.
         </p>
       </div>
     </div>
