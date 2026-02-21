@@ -7,7 +7,7 @@
 
 **eduvids** lets you create educational videos using just text prompts.
 
-- 🌐 Try it here (no sign-in required): [https://eduvids.vercel.app](https://eduvids.vercel.app)
+- 🌐 Try it here (no sign-in required): [https://eduvids.app](https://eduvids.app)
 - ▶️ Watch community creations: [eduvids on YouTube](https://www.youtube.com/channel/UCws8TdWGs-Fo4UsBay3GtFA)
 - X: [https://x.com/eduvidsai](https://x.com/eduvidsai)
 
@@ -15,7 +15,7 @@
 
 ## 🚀 Using the Online Version
 
-1. Open [eduvids](https://eduvids.vercel.app).
+1. Open [eduvids](https://eduvids.app).
 2. Enter any topic you'd like explained as a video, or press **Video** and enter the same. (you can also generate vertical YouTube Shorts)
 3. Wait while the servers render your video. (You can switch tabs, but don’t close it.)
 4. Once ready, the video will appear on the page, and you’ll get a notification.
@@ -83,3 +83,4 @@ node helper/get_google_refresh_token.mjs
 ## 📺 Setting up automatic X uploads (optional)
 
 1. Visit the X developer API console and fill in the required values in `.env`
+
