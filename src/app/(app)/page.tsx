@@ -23,7 +23,6 @@ import {
   PromptInputButton,
 } from "@/components/prompt-input";
 import { Conversation, ConversationContent } from "@/components/conversation";
-import { QuickActionCards } from "@/components/quick-action-cards";
 import { StyledResponse } from "@/components/ui/styled-response";
 
 // Icons
@@ -42,6 +41,17 @@ const VideoPlayer = dynamic(
   {
     ssr: false,
     loading: () => <div>Loading video...</div>,
+  },
+);
+
+const QuickActionCards = dynamic(
+  () => import("@/components/quick-action-cards").then((mod) => mod.QuickActionCards),
+  {
+    loading: () => (
+      <div className="flex justify-center w-full">
+        <div className="h-12 w-64 animate-pulse rounded-full border border-border/70 bg-card/60" />
+      </div>
+    ),
   },
 );
 
@@ -173,9 +183,30 @@ export default function HomePage() {
       return;
     }
 
-    generateTopics()
-      .then(setTopics)
-      .finally(() => setIsLoadingTopics(false));
+    const idleHandle = window.requestIdleCallback?.(
+      () => {
+        generateTopics()
+          .then(setTopics)
+          .finally(() => setIsLoadingTopics(false));
+      },
+      { timeout: 1200 },
+    );
+
+    if (!window.requestIdleCallback) {
+      const timeoutHandle = window.setTimeout(() => {
+        generateTopics()
+          .then(setTopics)
+          .finally(() => setIsLoadingTopics(false));
+      }, 250);
+
+      return () => window.clearTimeout(timeoutHandle);
+    }
+
+    return () => {
+      if (idleHandle !== undefined) {
+        window.cancelIdleCallback?.(idleHandle);
+      }
+    };
   }, []);
 
   return (
@@ -193,7 +224,7 @@ export default function HomePage() {
 
         {hasMessages ? (
           <>
-            <div className="flex-1 overflow-y-auto animate-in fade-in duration-300">
+            <div className="flex-1 overflow-y-auto">
               <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4">
                 <Conversation>
                   <ConversationContent>
@@ -245,7 +276,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4 animate-in slide-in-from-bottom-4 fade-in duration-300">
+            <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4">
               <PromptInput onSubmit={handleSubmit} data-onboarding="composer">
                 <PromptInputTextarea
                   onChange={(e) => setInput(e.target.value)}
@@ -290,9 +321,9 @@ export default function HomePage() {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center px-4 py-10 animate-in fade-in duration-350">
-            <div className="w-full max-w-5xl animate-in slide-in-from-bottom-4 duration-350">
-              <div className="text-center mb-8 animate-in fade-in slide-in-from-top-2 duration-350">
+          <div className="flex-1 flex flex-col items-center justify-center px-4 py-10">
+            <div className="w-full max-w-5xl">
+              <div className="mb-8 text-center">
                 <h1
                   data-onboarding="hero-title"
                   className="mx-auto max-w-3xl text-4xl font-semibold leading-tight tracking-tight text-foreground md:text-6xl"
@@ -305,7 +336,7 @@ export default function HomePage() {
                 </p>
               </div>
 
-              <div className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-350 delay-75">
+              <div className="mb-8">
                 <PromptInput onSubmit={handleSubmit} data-onboarding="composer">
                   <PromptInputTextarea
                     onChange={(e) => setInput(e.target.value)}
@@ -355,10 +386,7 @@ export default function HomePage() {
                 </PromptInput>
               </div>
 
-              <div
-                className="animate-in fade-in slide-in-from-bottom-2 duration-350 delay-150"
-                data-onboarding="topic-suggestion"
-              >
+              <div data-onboarding="topic-suggestion">
                 <QuickActionCards
                   onCardClick={(text) => {
                     const videoPrefix = "Generate a video of ";

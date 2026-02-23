@@ -10,6 +10,7 @@ import { PostHogUserIdentifier } from "@/components/providers/PostHogUserIdentif
 import { shadcn } from "@clerk/themes";
 
 const defaultFont = Lexend({
+  display: "optional",
   subsets: ["latin"],
 });
 

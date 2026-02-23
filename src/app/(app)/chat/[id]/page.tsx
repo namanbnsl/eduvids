@@ -221,7 +221,7 @@ function ChatPageContent({ chatId }: ChatPageContentProps) {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto animate-in fade-in duration-500">
+      <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4">
           <Conversation>
             <ConversationContent>
@@ -269,7 +269,7 @@ function ChatPageContent({ chatId }: ChatPageContentProps) {
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4 animate-in slide-in-from-bottom-4 fade-in duration-500">
+      <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4">
         <PromptInput onSubmit={handleSubmit}>
           <PromptInputTextarea
             onChange={(e) => setInput(e.target.value)}

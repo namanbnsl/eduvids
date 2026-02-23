@@ -121,6 +121,16 @@ const ChatList = () => {
     }
   }, [chats]);
 
+  useEffect(() => {
+    if (!chats || chats.length === 0) {
+      return;
+    }
+
+    chats.slice(0, 6).forEach((chat) => {
+      router.prefetch(`/chat/${chat._id}`);
+    });
+  }, [chats, router]);
+
   const handleDelete = useCallback(
     (e: React.MouseEvent, chatId: Id<"chats">) => {
       e.preventDefault();
@@ -200,7 +210,10 @@ const ChatList = () => {
               isActive={isActive}
               className={cn("pr-8", isActive && "bg-sidebar-accent")}
             >
-              <Link href={`/chat/${chat._id}`}>
+              <Link
+                href={`/chat/${chat._id}`}
+                onMouseEnter={() => router.prefetch(`/chat/${chat._id}`)}
+              >
                 <MessageSquare className="size-4 shrink-0" />
                 <span className="truncate">{chat.title}</span>
               </Link>
