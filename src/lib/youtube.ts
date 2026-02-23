@@ -71,7 +71,7 @@ export async function uploadToYouTube({
         title: title,
         description:
           description +
-          `\n\nGenerate your own videos for free at https://eduvids.vercel.app`,
+          `\n\nGenerate your own videos for free at https://eduvids.app`,
         tags,
         categoryId: "27",
       },

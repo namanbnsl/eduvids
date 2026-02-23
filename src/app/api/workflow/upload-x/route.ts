@@ -20,7 +20,7 @@ export const { POST } = serve<XUploadPayload>(
       });
 
       await twitterClient.v2.tweet({
-        text: `${title} \n \n \n Generated for free at https://eduvids.vercel.app ${videoUrl}`,
+        text: `${title} \n \n \n Generated for free at https://eduvids.app ${videoUrl}`,
       });
     });
 
@@ -29,5 +29,5 @@ export const { POST } = serve<XUploadPayload>(
   {
     retries: 2,
     qstashClient: qstashClientWithBypass,
-  }
+  },
 );
