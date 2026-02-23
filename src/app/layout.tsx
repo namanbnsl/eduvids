@@ -74,17 +74,9 @@ export const metadata: Metadata = {
     title: "eduvids | AI Educational Video Generator",
     description:
       "Create accurate educational videos from text prompts for math, science, and more.",
-    images: [
-      {
-        url: "/favicon.png",
-        width: 512,
-        height: 512,
-        alt: "eduvids",
-      },
-    ],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "eduvids | AI Educational Video Generator",
     description:
       "Create accurate educational videos from text prompts for math, science, and more.",
