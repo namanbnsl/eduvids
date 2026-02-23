@@ -45,10 +45,10 @@ const VideoPlayer = dynamic(
   },
 );
 
-const Onboarding = dynamic(
-  () => import("@/components/onboarding").then((mod) => mod.Onboarding),
-  { ssr: false },
-);
+// const Onboarding = dynamic(
+//   () => import("@/components/onboarding").then((mod) => mod.Onboarding),
+//   { ssr: false },
+// );
 
 // Helpers
 const isGenerateVideoToolPart = (
@@ -180,7 +180,7 @@ export default function HomePage() {
 
   return (
     <>
-      {isFirstVisit && <Onboarding onComplete={handleOnboardingComplete} />}
+      {/* {isFirstVisit && <Onboarding onComplete={handleOnboardingComplete} />} */}
 
       <div className="relative flex-1 flex flex-col overflow-hidden">
         <div
