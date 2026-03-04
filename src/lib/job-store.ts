@@ -6,7 +6,6 @@ import {
   VideoJob,
   VideoVariant,
   YoutubeStatus,
-  WebSource,
 } from "@/lib/types";
 
 class KVJobStore implements JobStore {
@@ -35,7 +34,7 @@ class KVJobStore implements JobStore {
 
   async create(
     description: string,
-    options?: { variant?: VideoVariant; userId?: string }
+    options?: { variant?: VideoVariant }
   ): Promise<VideoJob> {
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -144,40 +143,6 @@ class KVJobStore implements JobStore {
     await kv.set(this.key(id), updated, { ex: this.ttlSeconds });
 
     return updated;
-  }
-
-  async setSources(
-    id: string,
-    sources: WebSource[]
-  ): Promise<VideoJob | undefined> {
-    const job = await this.get(id);
-    if (!job) return undefined;
-    const updated: VideoJob = {
-      ...job,
-      sources,
-      updatedAt: new Date().toISOString(),
-    };
-    await kv.set(this.key(id), updated, { ex: this.ttlSeconds });
-    return updated;
-  }
-
-  async setVoiceoverPending(
-    id: string,
-    voiceoverDraft: string
-  ): Promise<VideoJob | undefined> {
-    const job = await this.get(id);
-    if (!job) return undefined;
-    const now = new Date().toISOString();
-    const updated: VideoJob = {
-      ...job,
-      voiceoverDraft,
-      voiceoverStatus: "pending",
-      voiceoverUpdatedAt: now,
-      updatedAt: now,
-    };
-    const updatedWithLog = this.appendProgressLog(updated);
-    await kv.set(this.key(id), updatedWithLog, { ex: this.ttlSeconds });
-    return updatedWithLog;
   }
 
   private key(id: string) {

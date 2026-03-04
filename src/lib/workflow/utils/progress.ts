@@ -11,7 +11,6 @@ const RENDER_STAGE_PROGRESS: Partial<
   Record<RenderLifecycleStage, { progress: number; step: string }>
 > = {
   sandbox: { progress: 46, step: "Preparing environment" },
-  "layout-injection": { progress: 48, step: "Setting up" },
   prepare: { progress: 50, step: "Uploading" },
   syntax: { progress: 52, step: "Checking" },
   "ast-guard": { progress: 54, step: "Validating" },

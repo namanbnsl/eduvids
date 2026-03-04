@@ -10,7 +10,7 @@ import {
   getTriggerHeaders,
 } from "@/lib/workflow/client";
 
-import type { VideoVariant } from "@/lib/workflow/types";
+import type { VideoVariant } from "@/lib/types";
 
 export const runtime = "nodejs";
 

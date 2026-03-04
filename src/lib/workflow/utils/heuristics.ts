@@ -1,7 +1,5 @@
 import { VOICEOVER_SERVICE_IMPORT, VOICEOVER_SERVICE_SETTER } from "@/prompt";
 
-export { autoFixManimScript, type AutoFixResult } from "./autofix";
-
 export type HeuristicSeverity = "critical" | "noncode" | "fixable";
 
 export type HeuristicIssue = {

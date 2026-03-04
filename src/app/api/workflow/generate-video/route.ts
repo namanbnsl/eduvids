@@ -1,16 +1,84 @@
 import { serve } from "@upstash/workflow/nextjs";
+import { WorkflowNonRetryableError } from "@upstash/workflow";
 
-import { generateVoiceoverScript } from "@/lib/llm";
+import {
+  generateVoiceoverScript,
+  generateManimScript,
+  regenerateManimScriptWithError,
+  generateYoutubeDescription,
+  generateYoutubeTitle,
+  type ManimGenerationAttempt,
+  type ManimGenerationErrorDetails,
+} from "@/lib/llm";
+import { renderManimVideo } from "@/lib/e2b";
+import { uploadVideo } from "@/lib/uploadthing";
 import { jobStore } from "@/lib/job-store";
-import { searchForTopic, formatWebResearchForPrompt } from "@/lib/tavily";
-import { updateJobProgress } from "@/lib/workflow/utils/progress";
-import { qstashClientWithBypass } from "@/lib/workflow/client";
-import { getConvexClient, api } from "@/lib/convex-server";
 
-import type { VideoGenerationPayload } from "@/lib/workflow/types";
+import {
+  runHeuristicChecks,
+  validateRequiredElements,
+} from "@/lib/workflow/utils/heuristics";
+import { autoFixManimScript } from "@/lib/workflow/utils/autofix";
+import {
+  updateJobProgress,
+  stageToJobUpdate,
+} from "@/lib/workflow/utils/progress";
+import {
+  workflowClient,
+  getBaseUrl,
+  qstashClientWithBypass,
+  getTriggerHeaders,
+} from "@/lib/workflow/client";
+import type { ValidationStage, RenderLogEntry } from "@/lib/types";
+
+type VideoGenerationPayload = {
+  prompt: string;
+  userId: string;
+  chatId: string;
+  jobId?: string;
+  variant?: "video" | "short";
+};
+
+const MAX_SCRIPT_FIX_ATTEMPTS = 3;
+const MAX_RENDER_ATTEMPTS = 3;
+const ATTEMPT_HISTORY_LIMIT = 3;
+
+const clampDetail = (value?: string, limit = 2000): string | undefined => {
+  if (!value) return undefined;
+  return value.length > limit ? value.slice(0, limit) : value;
+};
+
+const extractRenderError = (err: unknown): ManimGenerationErrorDetails => {
+  const baseError = err instanceof Error ? err : new Error(String(err));
+  const renderError = baseError as Error & {
+    stderr?: string;
+    stdout?: string;
+    exitCode?: number;
+    stage?: ValidationStage;
+    hint?: string;
+    logs?: RenderLogEntry[];
+  };
+
+  return {
+    message: renderError.message || "Unknown render error",
+    stack: clampDetail(renderError.stack),
+    stderr: clampDetail(renderError.stderr),
+    stdout: clampDetail(renderError.stdout),
+    exitCode: renderError.exitCode,
+    stage: renderError.stage,
+    hint: renderError.hint,
+    logs: renderError.logs?.slice(-50),
+  };
+};
+
+const fingerprintScript = (code: string) =>
+  code
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join("\n");
 
 export const runtime = "nodejs";
-
 
 export const { POST } = serve<VideoGenerationPayload>(
   async (context) => {
@@ -22,60 +90,22 @@ export const { POST } = serve<VideoGenerationPayload>(
       variant: rawVariant,
     } = context.requestPayload;
 
+    if (!jobId) {
+      throw new WorkflowNonRetryableError("Missing jobId in workflow payload");
+    }
+
     const variant = rawVariant === "short" ? "short" : "video";
     const generationPrompt =
       variant === "short"
-        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. The layout system automatically provides larger font constants optimized for portrait (FONT_TITLE=56, FONT_HEADING=46, FONT_BODY=40, FONT_CAPTION=34, FONT_LABEL=32) - always use these constants instead of hardcoded sizes. Split copy across multiple lines for readability, keep visual groups within the safe content area, and leave proper clearance between arrows, labels, and nearby objects using the auto-calculated margins.`
+        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Use large readable typography and keep visual groups well spaced.`
         : prompt;
 
     console.log(
       `🎬 Starting ${
         variant === "short" ? "vertical short" : "full video"
-      } generation for prompt: "${prompt}"`,
+      } generation for prompt: "${prompt}"`
     );
 
-    // Step 0: Search for information via Tavily (use original prompt, not augmented)
-    const searchResult = await context.run("search-web-sources", async () => {
-      if (jobId) {
-        await updateJobProgress(jobId, {
-          progress: 2,
-          step: "Researching topic",
-          details: "Searching the web",
-        });
-      }
-      const result = await searchForTopic(prompt);
-      console.log(
-        `🔍 Tavily search completed: ${result.sources.length} sources found`,
-      );
-      return result;
-    });
-
-    // Store concise sources in job for UI display (avoid persisting large rawContent blobs)
-    const sources = searchResult.sources.map(({ title, url, content, score }) => ({
-      title,
-      url,
-      content,
-      score,
-    }));
-    if (sources.length > 0) {
-      if (jobId) {
-        await context.run("store-sources", async () => {
-          console.log(`📚 Storing ${sources.length} sources for job ${jobId}`);
-          await jobStore.setSources(jobId, sources);
-        });
-      }
-      console.log(`🔍 Found ${sources.length} web sources for topic`);
-    } else {
-      console.log(`⚠️ No sources found from Tavily search`);
-    }
-
-    // Augment prompt with web research if available
-    const researchContext = formatWebResearchForPrompt(searchResult);
-    const augmentedPrompt = researchContext
-      ? `${generationPrompt}\n\n${researchContext}`
-      : generationPrompt;
-
-    // Step 1: Generate voiceover script
     const voiceoverScript = await context.run(
       "generate-voiceover-script",
       async () => {
@@ -85,54 +115,370 @@ export const { POST } = serve<VideoGenerationPayload>(
           details: "Writing script",
         });
         return generateVoiceoverScript({
-          prompt: augmentedPrompt,
+          prompt: generationPrompt,
           sessionId: chatId,
         });
-      },
+      }
     );
 
     console.log("✅ Voiceover script generated", {
       length: voiceoverScript.length,
     });
 
-    // Step 2: Store voiceover draft and wait for user approval
-    await context.run("store-voiceover-for-approval", async () => {
-      if (jobId) {
-        // Store in KV for immediate access
-        await jobStore.setVoiceoverPending(jobId, voiceoverScript);
-
-        // Store in Convex for persistence (survives KV TTL and page reloads)
-        try {
-          const convexClient = getConvexClient();
-          await convexClient.mutation(api.videos.setVoiceoverDraft, {
-            jobId,
-            voiceoverDraft: voiceoverScript,
-            sources: sources.length > 0 ? sources : undefined,
-          });
-        } catch (err) {
-          console.error("Failed to store voiceover in Convex:", err);
-        }
-
+    let script = await context.run(
+      "generate-initial-manim-script",
+      async () => {
         await updateJobProgress(jobId, {
-          progress: 10,
-          step: "Awaiting voiceover approval",
-          details: "Review and approve the voiceover to continue",
+          progress: 18,
+          step: "Writing scenes",
+          details: "Creating",
+        });
+        return generateManimScript({
+          prompt: generationPrompt,
+          voiceoverScript,
+          sessionId: chatId,
         });
       }
+    );
+
+    console.log("✅ Initial Manim script generated", {
+      length: script.length,
     });
 
-    // Return - the workflow will be continued by the approve endpoint via /api/workflow/continue-video
-    console.log("⏸️ Workflow paused - waiting for voiceover approval");
+    const autoFixResult = await context.run("autofix-script", async () => {
+      await updateJobProgress(jobId, {
+        progress: 24,
+        step: "Scenes ready",
+        details: "Code ready",
+      });
+      await updateJobProgress(jobId, {
+        progress: 30,
+        step: "Checking scenes",
+        details: "Auto-fixing & validating",
+      });
+      return autoFixManimScript(script);
+    });
+
+    if (autoFixResult.appliedFixes.length > 0) {
+      console.log(
+        `🔧 Auto-fix applied ${autoFixResult.appliedFixes.length} fixes:`,
+        autoFixResult.appliedFixes
+      );
+      script = autoFixResult.script;
+    }
+
+    const preValidation = await context.run("pre-validate-script", async () => {
+      return validateRequiredElements(script);
+    });
+
+    if (!preValidation.ok && !preValidation.autoFixable) {
+      throw new WorkflowNonRetryableError(
+        `Script failed pre-validation: ${preValidation.error}`
+      );
+    }
+
+    const seenScripts = new Set<string>();
+    seenScripts.add(fingerprintScript(script));
+
+    let needsLLMFix =
+      !autoFixResult.ok && autoFixResult.unfixableReasons.length > 0;
+
+    for (
+      let fixAttempt = 1;
+      fixAttempt <= MAX_SCRIPT_FIX_ATTEMPTS && needsLLMFix;
+      fixAttempt++
+    ) {
+      const validation = await context.run(
+        `validate-script-${fixAttempt}`,
+        async () => {
+          return runHeuristicChecks(script);
+        }
+      );
+
+      if (validation.ok) {
+        console.log(`✅ Script passed validation on attempt ${fixAttempt}`);
+        needsLLMFix = false;
+        break;
+      }
+
+      console.log(
+        `⚠️ Validation failed on attempt ${fixAttempt}: ${validation.error}`
+      );
+
+      script = await context.run(`fix-script-${fixAttempt}`, async () => {
+        await updateJobProgress(jobId, {
+          progress: 32 + fixAttempt * 2,
+          step: "Fixing issues",
+          details: `Attempt ${fixAttempt}`,
+        });
+        const fixed = await regenerateManimScriptWithError({
+          prompt: generationPrompt,
+          voiceoverScript,
+          previousScript: script,
+          error: validation.error ?? "Validation failed",
+          errorDetails: { message: validation.error ?? "Validation failed" },
+          attemptNumber: fixAttempt,
+          attemptHistory: [],
+          blockedScripts: [],
+          sessionId: chatId,
+        });
+        return fixed.trim();
+      });
+
+      if (!script) {
+        throw new WorkflowNonRetryableError(
+          `Script fix returned empty on attempt ${fixAttempt}`
+        );
+      }
+
+      const fingerprint = fingerprintScript(script);
+      if (seenScripts.has(fingerprint)) {
+        console.warn(`⚠️ Detected duplicate script, breaking fix loop`);
+        break;
+      }
+      seenScripts.add(fingerprint);
+    }
+
+    let uploadUrl: string | undefined;
+    let renderAttempts = 0;
+    const failedAttempts: ManimGenerationAttempt[] = [];
+    const blockedScripts = new Map<string, string>();
+
+    for (
+      let renderAttempt = 1;
+      renderAttempt <= MAX_RENDER_ATTEMPTS;
+      renderAttempt++
+    ) {
+      const renderResult = await context.run(
+        `render-attempt-${renderAttempt}`,
+        async () => {
+          try {
+            await updateJobProgress(jobId, {
+              progress: 42 + (renderAttempt - 1) * 15,
+              step: "Rendering video",
+              details: "Starting render",
+            });
+            const usesManimML = script.includes("manim_ml");
+
+            const result = await renderManimVideo({
+              script,
+              prompt,
+              applyWatermark: true,
+              renderOptions:
+                variant === "short"
+                  ? {
+                      orientation: "portrait",
+                      resolution: { width: 720, height: 1280 },
+                    }
+                  : undefined,
+              plugins: usesManimML ? ["manim-ml"] : [],
+              onProgress: async ({ stage, message }) => {
+                const mapping = stageToJobUpdate(stage);
+                await updateJobProgress(jobId, {
+                  progress: mapping.progress,
+                  step: mapping.step,
+                  details: message,
+                });
+              },
+            });
+
+            if (
+              !result ||
+              typeof result.videoPath !== "string" ||
+              !result.videoPath.startsWith("data:video/mp4;base64,")
+            ) {
+              throw new Error("Render did not produce a valid video");
+            }
+
+            await updateJobProgress(jobId, {
+              progress: 88,
+              step: "Saving video",
+              details: "Uploading",
+            });
+
+            const url = await uploadVideo({
+              videoPath: result.videoPath,
+              userId,
+            });
+
+            return {
+              success: true as const,
+              uploadUrl: url,
+              warnings: result.warnings ?? [],
+            };
+          } catch (err) {
+            return {
+              success: false as const,
+              error: extractRenderError(err),
+            };
+          }
+        }
+      );
+
+      if (renderResult.success) {
+        uploadUrl = renderResult.uploadUrl;
+        renderAttempts = renderAttempt;
+        console.log(`✅ Render succeeded on attempt ${renderAttempt}`);
+        break;
+      }
+
+      const renderError = renderResult.error;
+      console.error(`❌ Render attempt ${renderAttempt} failed:`, {
+        message: renderError.message,
+        stage: renderError.stage,
+        exitCode: renderError.exitCode,
+      });
+
+      failedAttempts.push({
+        attemptNumber: renderAttempt,
+        script,
+        error: renderError,
+        sessionId: chatId,
+      });
+
+      if (failedAttempts.length > ATTEMPT_HISTORY_LIMIT) {
+        failedAttempts.splice(0, failedAttempts.length - ATTEMPT_HISTORY_LIMIT);
+      }
+
+      if (renderAttempt === MAX_RENDER_ATTEMPTS) {
+        break;
+      }
+
+      script = await context.run(
+        `regenerate-script-after-render-${renderAttempt}`,
+        async () => {
+          await updateJobProgress(jobId, {
+            progress: 66,
+            step: "Retrying render",
+            details: "Regenerating script",
+          });
+          const MAX_REGENERATION_RETRIES = 3;
+          for (
+            let regenAttempt = 0;
+            regenAttempt < MAX_REGENERATION_RETRIES;
+            regenAttempt++
+          ) {
+            const regenerated = await regenerateManimScriptWithError({
+              prompt: generationPrompt,
+              voiceoverScript,
+              previousScript: script,
+              error: renderError.message ?? "Unknown render error",
+              errorDetails: renderError,
+              attemptNumber: renderAttempt,
+              attemptHistory: failedAttempts,
+              blockedScripts: Array.from(blockedScripts.values()),
+              sessionId: chatId,
+            });
+            const trimmed = regenerated.trim();
+            if (trimmed) {
+              return trimmed;
+            }
+            console.warn(
+              `⚠️ Regeneration attempt ${regenAttempt + 1} returned empty, retrying...`
+            );
+          }
+          return "";
+        }
+      );
+
+      if (!script) {
+        throw new WorkflowNonRetryableError(
+          `Script regeneration returned empty after render failure (exhausted ${3} retries)`
+        );
+      }
+
+      const fingerprint = fingerprintScript(script);
+      blockedScripts.set(fingerprint, script);
+
+      const revalidation = await context.run(
+        `revalidate-script-${renderAttempt}`,
+        async () => {
+          return runHeuristicChecks(script);
+        }
+      );
+
+      if (!revalidation.ok) {
+        console.warn(
+          `⚠️ Regenerated script failed validation: ${revalidation.error}`
+        );
+      }
+    }
+
+    if (!uploadUrl) {
+      throw new WorkflowNonRetryableError(
+        `Render failed after ${MAX_RENDER_ATTEMPTS} attempts. Last error: ${
+          failedAttempts[failedAttempts.length - 1]?.error.message ?? "Unknown"
+        }`
+      );
+    }
+
+    const metadata = await context.run("generate-youtube-metadata", async () => {
+      await updateJobProgress(jobId, {
+        progress: 90,
+        step: "Video saved",
+        details: "Done",
+      });
+      let title: string | undefined;
+      let description: string | undefined;
+
+      try {
+        title = await generateYoutubeTitle({
+          prompt,
+          voiceoverScript,
+          sessionId: chatId,
+        });
+      } catch (error) {
+        console.warn("Failed to generate YouTube title:", error);
+      }
+
+      try {
+        description = await generateYoutubeDescription({
+          prompt,
+          voiceoverScript,
+          sessionId: chatId,
+        });
+      } catch (error) {
+        console.warn("Failed to generate YouTube description:", error);
+      }
+
+      return { title: title?.trim(), description: description?.trim() };
+    });
+
+    await context.run("finalize-and-trigger-youtube-upload", async () => {
+      await updateJobProgress(jobId, {
+        progress: 95,
+        step: "Finishing up",
+        details: "Wrapping up",
+      });
+      await jobStore.setReady(jobId, uploadUrl!);
+      await jobStore.setYoutubeStatus(jobId, { youtubeStatus: "pending" });
+
+      await workflowClient.trigger({
+        headers: getTriggerHeaders(),
+        url: `${getBaseUrl()}/api/workflow/upload-youtube`,
+        body: {
+          videoUrl: uploadUrl,
+          title: metadata.title,
+          description: metadata.description,
+          prompt,
+          voiceoverScript,
+          jobId,
+          userId,
+          variant,
+        },
+      });
+    });
+
     return {
       success: true,
-      stage: "awaiting_voiceover_approval",
-      jobId,
+      videoUrl: uploadUrl,
       prompt,
       userId,
       chatId,
-      variant,
+      generatedAt: new Date().toISOString(),
       voiceoverLength: voiceoverScript.length,
-      message: "Voiceover generated and awaiting user approval",
+      renderAttempts,
+      retriedAfterError: renderAttempts > 1,
     };
   },
   {
@@ -143,11 +489,8 @@ export const { POST } = serve<VideoGenerationPayload>(
       console.error("Workflow failed:", { failStatus, failResponse });
 
       if (jobId) {
-        await jobStore.setError(
-          jobId,
-          "Video generation failed. Please try again.",
-        );
+        await jobStore.setError(jobId, "Video generation failed. Please try again.");
       }
     },
-  },
+  }
 );

@@ -30,35 +30,12 @@ export default defineSchema({
     status: v.union(
       v.literal("generating"),
       v.literal("ready"),
-      v.literal("error")
+      v.literal("error"),
     ),
     videoUrl: v.optional(v.string()),
     error: v.optional(v.string()),
-    // Voiceover approval fields
-    voiceoverDraft: v.optional(v.string()),
-    voiceoverApproved: v.optional(v.string()),
-    voiceoverStatus: v.optional(
-      v.union(
-        v.literal("pending"),
-        v.literal("approved")
-      )
-    ),
-    voiceoverUpdatedAt: v.optional(v.number()),
-    voiceoverApprovedAt: v.optional(v.number()),
-    renderContinuationTriggeredAt: v.optional(v.number()),
-    // Web sources from research
-    sources: v.optional(v.array(v.object({
-      title: v.string(),
-      url: v.string(),
-      content: v.string(),
-      score: v.number(),
-    }))),
     youtubeStatus: v.optional(
-      v.union(
-        v.literal("pending"),
-        v.literal("uploaded"),
-        v.literal("failed")
-      )
+      v.union(v.literal("pending"), v.literal("uploaded"), v.literal("failed")),
     ),
     youtubeUrl: v.optional(v.string()),
     youtubeVideoId: v.optional(v.string()),

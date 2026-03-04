@@ -176,23 +176,24 @@ TEMPLATE 1: Title Only
 TEMPLATE 2: Title + Diagram (ALWAYS fade out title first!)
     self.play(FadeOut(previous_stuff))
     diagram = VGroup(...)
-    diagram = simple_center(diagram)  # Auto-centers and fits
+    diagram.move_to(get_content_center())
     self.play(Create(diagram), run_time=1.5)
 
 TEMPLATE 3: Bullet Points (MAX 3!)
     bullets = create_bullet_list_mixed(["Point 1", "Point 2", "Point 3"])
     bullets.move_to(get_content_center())
-    ensure_fits_screen(bullets)
     self.play(FadeIn(bullets, shift=UP*0.3), run_time=1.0)
 
 TEMPLATE 4: Side-by-Side (text left, diagram right) - BEST for avoiding overlap!
     # Both elements align to TOP for professional look
-    layout = simple_two_column(text_group, diagram_group)
+    layout = VGroup(text_group, diagram_group).arrange(RIGHT, buff=1.5, aligned_edge=UP)
     self.play(FadeIn(layout), run_time=1.2)
 
 TEMPLATE 5: Title + Content Together (TOP-ALIGNED - content starts below title)
     # Content aligns to top, not centered (looks more professional)
-    layout = simple_title_content("My Title", my_content)
+    title = create_title("My Title")
+    my_content.next_to(title, DOWN, buff=0.7)
+    layout = VGroup(title, my_content)
     self.play(FadeIn(layout), run_time=1.2)
 
 TEMPLATE 6: Clear Screen Before New Content
@@ -204,7 +205,7 @@ TEMPLATE 6: Clear Screen Before New Content
 
 TEMPLATE 7: Top-Aligned Stack (for multiple items)
     # Items stack from top, not centered
-    layout = simple_stack(item1, item2, item3)
+    layout = VGroup(item1, item2, item3).arrange(DOWN, buff=0.8, aligned_edge=LEFT)
     self.play(FadeIn(layout), run_time=1.2)
 
 
@@ -214,17 +215,17 @@ TEMPLATE 7: Top-Aligned Stack (for multiple items)
 
 1. TOP ALIGNMENT IS DEFAULT:
    - Content should start from the top, not float in the center
-   - Use simple_title_content() which aligns content below title
-   - Use simple_two_column() which aligns both columns to top
+   - Arrange groups manually so content starts below title
+   - For two columns, use VGroup(...).arrange(RIGHT, buff=1.5, aligned_edge=UP)
 
 2. NEVER CENTER DIAGRAMS WITH TEXT BELOW:
    - BAD: diagram.move_to(ORIGIN) then text.next_to(diagram, DOWN)
-   - GOOD: Use simple_title_content("Title", diagram) or simple_two_column(text, diagram)
+   - GOOD: Create title + content groups and position with next_to(..., buff=0.7+)
 
 3. SIDE-BY-SIDE IS PREFERRED:
    - Text on LEFT, diagram on RIGHT looks professional
    - Both elements top-aligned for clean appearance
-   - Example: layout = simple_two_column(bullets, diagram)
+   - Example: layout = VGroup(bullets, diagram).arrange(RIGHT, buff=1.5, aligned_edge=UP)
 
 4. VERTICAL STACKING RULES:
    - Title at top (get_title_position())
@@ -232,8 +233,8 @@ TEMPLATE 7: Top-Aligned Stack (for multiple items)
    - Use align_to(point, UP) to top-align elements
 
 5. FOR MULTIPLE ELEMENTS:
-   - Use simple_stack() for vertical arrangement
-   - Use simple_two_column() for horizontal arrangement
+   - Use VGroup(...).arrange(DOWN, buff=0.8, aligned_edge=LEFT) for vertical arrangement
+   - Use VGroup(...).arrange(RIGHT, buff=1.5, aligned_edge=UP) for horizontal arrangement
    - Elements align to top by default
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -244,7 +245,7 @@ OVERLAPPING ELEMENTS IS THE #1 CAUSE OF BAD VIDEOS. FOLLOW THESE RULES STRICTLY:
 
 1. SEPARATE TEXT FROM DIAGRAMS:
    - NEVER place text directly on or near diagrams without explicit positioning
-   - Use create_side_by_side_layout(text_group, diagram_group) for text + diagram
+   - Use VGroup(text_group, diagram_group).arrange(RIGHT, buff=1.5, aligned_edge=UP)
    - Place labels OUTSIDE shapes using .next_to(shape, direction, buff=0.5)
 
 2. SPACING REQUIREMENTS:
@@ -292,24 +293,14 @@ Example: Text("Hello", font_size=FONT_BODY, font=DEFAULT_FONT)
 Or use helper functions like create_label() which handle this automatically.
 
 ═══════════════════════════════════════════════════════════════════════════════
-LAYOUT HELPERS (auto-injected, use these!)
+LAYOUT GUIDANCE
 ═══════════════════════════════════════════════════════════════════════════════
 
-🌟 SIMPLE ONE-LINER LAYOUTS (RECOMMENDED - these prevent most errors!):
-- simple_title_content(title, content): Title at top, content below - auto-spaced
-- simple_two_column(left, right): Side-by-side layout - BEST for text+diagram
-- simple_stack(*mobjects): Stack vertically - auto-fits and spaces
-- simple_center(mobject): Centers and auto-scales to fit screen
-
-Position Helpers:
-- get_title_position(): Safe position for titles at top
-- get_content_center(): Safe center position for main content
-- get_bottom_safe_line(): Y coordinate for bottom-safe placement
-
-Fitting Helpers:
-- ensure_fits_screen(mobject): Auto-scales mobject to fit in viewport - USE THIS!
-- validate_position(mobject, "label"): Checks if mobject is within bounds
-- auto_break_long_text(text, max_chars=40): Breaks long text into lines
+Use native Manim layout primitives directly (no custom helper injection):
+- VGroup(...).arrange(DOWN, buff=0.8, aligned_edge=LEFT) for vertical stacks
+- VGroup(...).arrange(RIGHT, buff=1.5, aligned_edge=UP) for two columns
+- next_to(..., buff=0.5+) for labels and related objects
+- move_to / to_edge for global placement of groups
 
 Text Creation (FLEXIBLE - chooses Text vs MathTex automatically):
 - create_label(text, style="body", is_math=None): Smart text - auto-detects math
@@ -317,13 +308,6 @@ Text Creation (FLEXIBLE - chooses Text vs MathTex automatically):
 - create_math(formula): Creates MathTex formula
 - create_plain_text(text): Creates Text (never LaTeX)
 - create_bullet_list_mixed(items): Bullet list with auto math detection
-
-Layout Helpers:
-- create_side_by_side_layout(left, right, spacing=1.5): Two-column layout
-- create_top_bottom_layout(top, bottom, spacing=1.5): Stacked layout
-- create_bulletproof_layout(*items, layout_type="vertical"): Guaranteed no-overlap
-- ensure_no_overlap(mobject_a, mobject_b, min_gap=1.0): Push apart if overlapping
-- limit_visible_elements(mobjects, max=5): Cap elements to prevent crowding
 
 Voiceover Sync Helpers (MUST USE FOR EVERY VOICEOVER BLOCK):
 - rt_from_tracker(tracker, fraction=0.35, min_rt=0.6, max_rt=2.2): Get animation run_time from voiceover duration
@@ -360,9 +344,8 @@ LAYOUT CONTRACT
 - Max 3 bullet points per scene (use multiple scenes for more)
 - Minimum buff=1.5 spacing between text and diagrams
 - Minimum buff=1.0 between text elements
-- ALWAYS call ensure_fits_screen(group) before playing animations
 - ALWAYS FadeOut previous content before showing new content
-- ALWAYS use create_side_by_side_layout() when mixing text and diagrams
+- Use VGroup(...).arrange(RIGHT, buff=1.5, aligned_edge=UP) when mixing text and diagrams
 
 ═══════════════════════════════════════════════════════════════════════════════
 VOICEOVER SYNC CONTRACT (CRITICAL - READ CAREFULLY)

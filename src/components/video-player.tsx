@@ -9,16 +9,12 @@ import type {
   JobStatus,
   VideoJob,
   VideoVariant,
-  VoiceoverStatus,
   YoutubeStatus,
-  WebSource,
 } from "@/lib/types";
 
 // Components
 import { VideoProgressCard } from "@/components/ui/video-progress-card";
-import { VoiceoverApprovalCard } from "@/components/voiceover-approval-card";
 import { SubscribePrompt } from "@/components/subscribe-prompt";
-import { Sources } from "@/components/sources";
 
 // Icons
 import { Monitor, Smartphone, Youtube } from "lucide-react";
@@ -35,7 +31,6 @@ const STEP_TITLES: Record<string, string> = {
   "script ready for render": "Script Ready for Render",
   "preparing render environment": "Preparing Render Environment",
   "provisioning sandbox": "Provisioning Sandbox",
-  "injecting layout helpers": "Injecting Layout Helpers",
   "uploading script to sandbox": "Uploading Script to Sandbox",
   "running syntax check": "Running Syntax Check",
   "enforcing safety guards": "Enforcing Safety Guards",
@@ -120,14 +115,6 @@ export function VideoPlayer({
   const [displayProgress, setDisplayProgress] = useState<number>(0);
   // Track when we should fire a browser notification after the UI has updated
   const [notifyWhenPlayable, setNotifyWhenPlayable] = useState<boolean>(false);
-  // Web sources from Tavily search
-  const [sources, setSources] = useState<WebSource[]>([]);
-  // Voiceover approval state
-  const [voiceoverDraft, setVoiceoverDraft] = useState<string | undefined>();
-  const [voiceoverStatus, setVoiceoverStatus] = useState<
-    VoiceoverStatus | undefined
-  >();
-
   useEffect(() => {
     if (initialVariant) {
       setCurrentVariant(initialVariant);
@@ -175,9 +162,6 @@ export function VideoPlayer({
           | "youtubeError"
           | "variant"
           | "progressLog"
-          | "sources"
-          | "voiceoverDraft"
-          | "voiceoverStatus"
         > & { jobId?: string })
       | null => {
       if (!job || typeof job !== "object") return null;
@@ -199,13 +183,6 @@ export function VideoPlayer({
       const rawVariant = value.variant;
       const variant: VideoVariant = rawVariant === "short" ? "short" : "video";
 
-      const rawVoiceoverStatus = value.voiceoverStatus;
-      const voiceoverStatusValue: VoiceoverStatus | undefined =
-        typeof rawVoiceoverStatus === "string" &&
-        (rawVoiceoverStatus === "pending" || rawVoiceoverStatus === "approved")
-          ? (rawVoiceoverStatus as VoiceoverStatus)
-          : undefined;
-
       const normalized: Pick<
         VideoJob,
         | "progress"
@@ -219,9 +196,6 @@ export function VideoPlayer({
         | "youtubeError"
         | "variant"
         | "progressLog"
-        | "sources"
-        | "voiceoverDraft"
-        | "voiceoverStatus"
       > & {
         jobId?: string;
       } = {
@@ -241,11 +215,6 @@ export function VideoPlayer({
             ? value.youtubeError
             : undefined,
         variant,
-        voiceoverDraft:
-          typeof value.voiceoverDraft === "string"
-            ? value.voiceoverDraft
-            : undefined,
-        voiceoverStatus: voiceoverStatusValue,
         jobId:
           typeof value.jobId === "string"
             ? value.jobId
@@ -277,32 +246,6 @@ export function VideoPlayer({
           .filter((entry): entry is JobProgressEntry => Boolean(entry));
         if (sanitizedLog.length) {
           normalized.progressLog = sanitizedLog;
-        }
-      }
-
-      // Parse sources array
-      if (Array.isArray(value.sources)) {
-        const sanitizedSources = value.sources
-          .map((source) => {
-            if (!source || typeof source !== "object") return null;
-            const raw = source as Record<string, unknown>;
-            if (
-              typeof raw.title !== "string" ||
-              typeof raw.url !== "string" ||
-              typeof raw.content !== "string"
-            ) {
-              return null;
-            }
-            return {
-              title: raw.title,
-              url: raw.url,
-              content: raw.content,
-              score: typeof raw.score === "number" ? raw.score : 0,
-            } as WebSource;
-          })
-          .filter((s): s is WebSource => Boolean(s));
-        if (sanitizedSources.length) {
-          normalized.sources = sanitizedSources;
         }
       }
 
@@ -342,17 +285,6 @@ export function VideoPlayer({
       setYoutubeStatus(parsed.youtubeStatus);
       setYoutubeUrl(parsed.youtubeUrl);
       setYoutubeError(parsed.youtubeError);
-      if (parsed.sources && parsed.sources.length > 0) {
-        console.log("[VideoPlayer] Setting sources:", parsed.sources.length);
-        setSources(parsed.sources);
-      }
-      // Update voiceover state
-      if (parsed.voiceoverDraft !== undefined) {
-        setVoiceoverDraft(parsed.voiceoverDraft);
-      }
-      if (parsed.voiceoverStatus !== undefined) {
-        setVoiceoverStatus(parsed.voiceoverStatus);
-      }
       if (parsed.status === "ready" && parsed.videoUrl) {
         setVideoUrl(parsed.videoUrl);
         setJobStatus("ready");
@@ -616,12 +548,6 @@ export function VideoPlayer({
     );
   }
 
-  // Check if we're waiting for voiceover approval
-  const isAwaitingVoiceoverApproval =
-    voiceoverDraft &&
-    voiceoverStatus === "pending" &&
-    step?.toLowerCase().includes("awaiting voiceover approval");
-
   if (jobStatus !== "ready" || !videoUrl) {
     return (
       <div className="space-y-4">
@@ -639,31 +565,12 @@ export function VideoPlayer({
           )}
         </div>
 
-        {isAwaitingVoiceoverApproval ? (
-          <VoiceoverApprovalCard
-            jobId={jobId}
-            voiceoverDraft={voiceoverDraft}
-            voiceoverStatus={voiceoverStatus}
-            onApproved={() => {
-              setVoiceoverStatus("approved");
-            }}
-          />
-        ) : (
-          <VideoProgressCard
-            title={`Generating your ${
-              currentVariant == "short" ? "Short" : "Video"
-            }`}
-            subtitle={stageSubtitle}
-            stepLabel={stageTitle}
-            progress={displayProgress}
-          />
-        )}
-
-        {sources.length > 0 ? (
-          <Sources sources={sources} className="mt-2" />
-        ) : (
-          <p className="text-xs text-muted-foreground">No sources yet...</p>
-        )}
+        <VideoProgressCard
+          title={`Generating your ${currentVariant == "short" ? "Short" : "Video"}`}
+          subtitle={stageSubtitle}
+          stepLabel={stageTitle}
+          progress={displayProgress}
+        />
         <SubscribePrompt />
       </div>
     );
@@ -686,9 +593,6 @@ export function VideoPlayer({
       >
         Sorry, your browser does not support embedded videos.
       </video>
-      {sources.length > 0 && (
-        <Sources sources={sources} className="mt-2" />
-      )}
       {youtubeUrl && (
         <a
           href={youtubeUrl}

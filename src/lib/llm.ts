@@ -7,7 +7,6 @@ import {
 } from "./google-provider";
 import { selectGroqModel, GROQ_MODEL_IDS } from "./groq-provider";
 import { RenderLogEntry, ValidationStage } from "@/lib/types";
-import { getRagContext, formatRagContext } from "./rag";
 
 import { franc } from "franc";
 
@@ -32,13 +31,9 @@ const phClient = isDev
     });
 
 // Wrapper that skips tracing in development
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function maybeWithTracing(
-  model: any,
-  options: Parameters<typeof withTracing>[2],
-) {
+function maybeWithTracing<T>(model: T, options: Parameters<typeof withTracing>[2]): T {
   if (!phClient) return model;
-  return withTracing(model, phClient, options);
+  return withTracing(model as never, phClient, options) as T;
 }
 
 const createGoogleModel = (modelId: string): GoogleModelConfig => {
@@ -233,10 +228,6 @@ export interface ManimScriptRequest {
   sessionId: string;
 }
 
-export interface ManimScript {
-  code: string;
-}
-
 export interface ManimGenerationErrorDetails {
   message?: string;
   stack?: string;
@@ -277,42 +268,6 @@ export async function generateVoiceoverScript({
     "Draft the narration voiceover:",
   ].join("\n\n");
 
-  // for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-  //   const googleModel = createGoogleModel("gemini-2.5-flash-preview-09-2025");
-  //   try {
-  //     const { text } = await generateTextWithTracking(
-  //       {
-  //         model: googleModel.provider(googleModel.modelId),
-  //         system: systemPrompt,
-  //         prompt: composedPrompt,
-  //       },
-  //       googleModel
-  //     );
-
-  //     return text.trim();
-  //   } catch (err) {
-  //     if (attempt === GEMINI_MAX_RETRIES) {
-  //       logRetry("generateVoiceoverScript", attempt, err);
-  //       break;
-  //     }
-  //     const delayMs = randomDelayMs();
-  //     logRetry("generateVoiceoverScript", attempt, err, delayMs);
-  //     await sleep(delayMs);
-  //   }
-  // }
-
-  // // Fallback to Gemini 2.5 Pro if Gemini Flash fails after retries
-  // const proModel = createGoogleModel("gemini-3-flash-preview");
-  // const { text: proText } = await generateTextWithTracking(
-  //   {
-  //     model: proModel.provider(proModel.modelId),
-  //     system: systemPrompt,
-  //     prompt: composedPrompt,
-  //   },
-  //   proModel
-  // );
-  // return proText.trim();
-
   const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
 
   const { text } = await generateText({
@@ -336,30 +291,11 @@ export async function generateManimScript({
   const detectedLanguage = await detectLanguage(voiceoverScript);
   console.log(`Detected language: ${detectedLanguage}`);
 
-  // Get relevant examples and schemas via RAG
-  let ragContext = "";
-  try {
-    const ragResult = await getRagContext(prompt);
-    ragContext = formatRagContext(ragResult);
-    if (ragContext) {
-      console.log(
-        `RAG retrieved: ${ragResult.exampleDocs.length} examples, ${ragResult.schemaDocs.length} schemas`,
-      );
-    }
-  } catch (err) {
-    console.warn("RAG retrieval failed, continuing without examples:", err);
-  }
-
   // Build system prompt with language adjustments
-  let augmentedSystemPrompt = buildAugmentedSystemPrompt(
+  const augmentedSystemPrompt = buildAugmentedSystemPrompt(
     MANIM_SYSTEM_PROMPT,
     detectedLanguage,
   );
-
-  // Append RAG context (relevant examples and schemas)
-  if (ragContext) {
-    augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${ragContext}`;
-  }
 
   const generationPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration with purposeful, step-by-step visuals that directly reinforce each narrated idea while staying on the same core topic.
 
@@ -429,20 +365,6 @@ Before finalizing each diagram, verify by code that positions and geometry refle
     .replace(/```\n?/g, "")
     .trim();
   return code;
-
-  // const { text } = await generateText({
-  //   model: cerebras("zai-glm-4.7"),
-  //   system: augmentedSystemPrompt,
-  //   prompt: generationPrompt,
-  //   temperature: 0.1,
-  // });
-
-  // const code = text
-  //   .replace(/```python?\n?/g, "")
-  //   .replace(/```\n?/g, "")
-  //   .trim();
-
-  // return code;
 }
 
 export async function generateYoutubeTitle({
@@ -645,54 +567,6 @@ export async function regenerateManimScriptWithError({
 
   const regenerationPrompt = promptSections.join("\n\n");
 
-  // for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-  //   const googleModel = createGoogleModel("gemini-3-flash-preview");
-  //   try {
-  //     const { text } = await generateTextWithTracking(
-  //       {
-  //         model: googleModel.provider(googleModel.modelId),
-  //         system: augmentedSystemPrompt,
-  //         prompt: regenerationPrompt,
-  //         temperature: 0.1,
-  //       },
-  //       googleModel
-  //     );
-
-  //     const code = text
-  //       .replace(/```python?\n?/g, "")
-  //       .replace(/```\n?/g, "")
-  //       .trim();
-
-  //     return code;
-  //   } catch (err) {
-  //     if (attempt === GEMINI_MAX_RETRIES) {
-  //       logRetry("regenerateManimScriptWithError", attempt, err);
-  //       break;
-  //     }
-  //     const delayMs = randomDelayMs();
-  //     logRetry("regenerateManimScriptWithError", attempt, err, delayMs);
-  //     await sleep(delayMs);
-  //   }
-  // }
-
-  // // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
-  // const flashModel = createGoogleModel("gemini-2.5-flash");
-  // const { text: flashText } = await generateTextWithTracking(
-  //   {
-  //     model: flashModel.provider(flashModel.modelId),
-  //     system: augmentedSystemPrompt,
-  //     prompt: regenerationPrompt,
-  //     temperature: 0.1,
-  //   },
-  //   flashModel
-  // );
-  // const code = flashText
-  //   .replace(/```python?\n?/g, "")
-  //   .replace(/```\n?/g, "")
-  //   .trim();
-
-  // return code;
-
   const regenerationSystemPrompt = `You are a Manim error-fixing expert. Fix all errors and generate a corrected Manim script. DO NOT CHANGE THE SCRIPT's INTENDED BEHAVIOR OR THE SEQUENCE OF VISUALS UNLESS NECESSARY TO RESOLVE THE ERROR.
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -756,7 +630,6 @@ COMMON ERRORS TO FIX
    - Never use self.add() for content - always animate
 
 6. RUNTIME ERRORS:
-   - Always call ensure_fits_screen(mobject) before animating
    - Use Group(*self.mobjects) not VGroup for mixed types
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -765,52 +638,21 @@ HELPER FUNCTIONS (these are available, use them)
 
 - get_title_position(): Returns safe title position at top
 - get_content_center(): Returns safe center position for content
-- ensure_fits_screen(mobject): Auto-scales to fit viewport
 - create_title(text): Creates properly positioned title
 - create_label(text, style="body"): Creates text with proper sizing
 - create_bullet_list_mixed(items): Creates bullet list (max 3 items!)
-- simple_center(mobject): Centers and scales to fit
-- simple_two_column(left, right): Side-by-side layout
-- create_side_by_side_layout(left, right, spacing=1.5): Two-column layout
+- Use native Manim layout primitives:
+  - VGroup(...).arrange(DOWN, buff=0.8, aligned_edge=LEFT)
+  - VGroup(...).arrange(RIGHT, buff=1.5, aligned_edge=UP)
+  - next_to(..., buff=0.5+) for safe spacing
 
 OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
 
-  // Get relevant examples and schemas via RAG
-  let ragContext = "";
-  try {
-    const ragResult = await getRagContext(prompt);
-    ragContext = formatRagContext(ragResult);
-    if (ragContext) {
-      console.log(
-        `RAG retrieved: ${ragResult.exampleDocs.length} examples, ${ragResult.schemaDocs.length} schemas`,
-      );
-    }
-  } catch (err) {
-    console.warn("RAG retrieval failed, continuing without examples:", err);
-  }
-
   // Build system prompt with language adjustments
-  let augmentedSystemPrompt = buildAugmentedSystemPrompt(
+  const augmentedSystemPrompt = buildAugmentedSystemPrompt(
     regenerationSystemPrompt,
     detectedLanguage,
   );
-
-  // Append RAG context (relevant examples and schemas)
-  if (ragContext) {
-    augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${ragContext}`;
-  }
-
-  // const { text } = await generateText({
-  //   model: cerebras("zai-glm-4.7"),
-  //   system: regenerationSystemPrompt,
-  //   prompt: regenerationPrompt,
-  //   temperature: 0.1,
-  // });
-
-  // const code = text
-  //   .replace(/```python?\n?/g, "")
-  //   .replace(/```\n?/g, "")
-  //   .trim();
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
     const googleModel = createGoogleModel("gemini-3-flash-preview");

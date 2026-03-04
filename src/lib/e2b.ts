@@ -1,18 +1,11 @@
 import { CommandExitError, Sandbox } from "@e2b/code-interpreter";
 import { Buffer } from "node:buffer";
-import {
-  getLayoutConfig,
-  getCompleteLayoutCode,
-  detectContentType,
-} from "./manim-layout-engine";
 import { RenderLogEntry, ValidationStage } from "@/lib/types";
 
 const MAX_COMMAND_OUTPUT_CHARS = 4000;
 let latexEnvironmentVerified = false;
 
 const EDUVIDS_CALLOUT_TEXT = "Generate your free educational videos at";
-const LAYOUT_SENTINEL = "# ADVANCED LAYOUT SYSTEM";
-const FONT_BODY_PATTERN = /\bFONT_BODY\s*=/;
 
 function injectEduvidsCallout(script: string): string {
   if (script.includes(EDUVIDS_CALLOUT_TEXT)) {
@@ -63,31 +56,11 @@ function injectEduvidsCallout(script: string): string {
     }
   }
 
-  //   ``,
-  //   `${bodyIndent}    self.play(FadeIn(cta_title, shift=UP), FadeIn(cta_link, shift=UP), run_time=1.2)`,
-  //   `${bodyIndent}    self.wait(0.5)`,
-  //   ``,
-  //   `${bodyIndent}    # Subtle pulse animation on the link`,
-  //   `${bodyIndent}    self.play(cta_link.animate.scale(1.05), run_time=0.4)`,
-  //   `${bodyIndent}    self.play(cta_link.animate.scale(1.0), run_time=0.4)`,
-  //   `${bodyIndent}    self.wait(0.6)`,
-  // ];
-  // Check if this is a 3D scene to add camera reset
-  const is3D = is3DScene(script);
-
   const snippet = [
     `${bodyIndent}# Clear scene and prepare for CTA (Call-to-Action)`,
     `${bodyIndent}existing_mobjects = list(self.mobjects)`,
     `${bodyIndent}if existing_mobjects:`,
     `${bodyIndent}    self.play(*[FadeOut(mob) for mob in existing_mobjects])`,
-    ...(is3D
-      ? [
-          ``,
-          `${bodyIndent}# Set camera to 2D view for clear CTA visibility`,
-          `${bodyIndent}set_camera_for_2d_view(self)`,
-          ``,
-        ]
-      : []),
     `${bodyIndent}with self.voiceover(text="Generate your own educational videos for free at eduvids dot vercel dot app"):`,
     `${bodyIndent}    # Create CTA with high-contrast background panel for visibility`,
     ``,
@@ -103,9 +76,6 @@ function injectEduvidsCallout(script: string): string {
     `${bodyIndent}    cta_title.set_z_index(101)`,
     `${bodyIndent}    cta_link.set_z_index(101)`,
     ``,
-    `${bodyIndent}    ensure_fits_screen(cta_content)`,
-    `${bodyIndent}    validate_position(cta_content, "eduvids message")`,
-    ``,
     `${bodyIndent}    # Animate CTA entrance`,
     `${bodyIndent}    self.play(FadeIn(cta_title, shift=UP*0.3), FadeIn(cta_link, shift=UP*0.3), run_time=1.0)`,
     `${bodyIndent}    self.wait(0.5)`,
@@ -115,47 +85,6 @@ function injectEduvidsCallout(script: string): string {
     `${bodyIndent}    self.play(cta_link.animate.scale(1.0), run_time=0.4)`,
     `${bodyIndent}    self.wait(0.8)`,
   ];
-
-  // const snippet = [
-  //   `${bodyIndent}# Clear scene and prepare for CTA (Call-to-Action)`,
-  //   `${bodyIndent}existing_mobjects = list(self.mobjects)`,
-  //   `${bodyIndent}if existing_mobjects:`,
-  //   `${bodyIndent}    self.play(*[FadeOut(mob) for mob in existing_mobjects])`,
-  //   ...(is3D
-  //     ? [
-  //         ``,
-  //         `${bodyIndent}# Set camera to 2D view for clear CTA visibility`,
-  //         `${bodyIndent}set_camera_for_2d_view(self)`,
-  //         ``,
-  //       ]
-  //     : []),
-  //   `${bodyIndent}with self.voiceover(text="Generate your own educational videos for free at eduvids dot vercel dot app"):`,
-  //   `${bodyIndent}    # Create CTA with high-contrast background panel for visibility`,
-  //   ``,
-  //   `${bodyIndent}    cta_title = Text("Generate your free educational videos at", font_size=FONT_CAPTION + 6)`,
-  //   `${bodyIndent}    cta_title.set_color(WHITE)`,
-  //   `${bodyIndent}    cta_link = Text("https://eduvids.app", font_size=FONT_CAPTION + 2)`,
-  //   `${bodyIndent}    cta_link.set_color(TEAL)`,
-  //   `${bodyIndent}    cta_link.next_to(cta_title, DOWN, buff=0.4)`,
-  //   `${bodyIndent}    cta_content = VGroup(cta_title, cta_link)`,
-  //   `${bodyIndent}    cta_content.move_to(ORIGIN)`,
-  //   ``,
-  //   `${bodyIndent}    # Set z-indices to ensure visibility`,
-  //   `${bodyIndent}    cta_title.set_z_index(101)`,
-  //   `${bodyIndent}    cta_link.set_z_index(101)`,
-  //   ``,
-  //   `${bodyIndent}    ensure_fits_screen(cta_content)`,
-  //   `${bodyIndent}    validate_position(cta_content, "eduvids message")`,
-  //   ``,
-  //   `${bodyIndent}    # Animate CTA entrance`,
-  //   `${bodyIndent}    self.play(FadeIn(cta_title, shift=UP*0.3), FadeIn(cta_link, shift=UP*0.3), run_time=1.0)`,
-  //   `${bodyIndent}    self.wait(0.5)`,
-  //   ``,
-  //   `${bodyIndent}    # Subtle pulse animation on the link`,
-  //   `${bodyIndent}    self.play(cta_link.animate.scale(1.08), run_time=0.4)`,
-  //   `${bodyIndent}    self.play(cta_link.animate.scale(1.0), run_time=0.4)`,
-  //   `${bodyIndent}    self.wait(0.8)`,
-  // ];
 
   const insertionNeedsBlankLine =
     insertionIndex > constructIndex + 1 &&
@@ -242,9 +171,6 @@ const PROHIBITED_BUILTINS = ["open", "exec", "eval", "compile", "__import__"];
 
 const hasExpectedSceneClass = (source: string) =>
   /\bclass\s+MyScene\b/.test(source);
-
-const is3DScene = (source: string) =>
-  /class\s+MyScene\s*\(\s*ThreeDScene\s*\)/.test(source);
 
 const movingCameraSceneDeclared = (source: string) =>
   /class\s+MyScene\s*\(\s*MovingCameraScene/.test(source);
@@ -727,44 +653,7 @@ export async function renderManimVideo({
     const mediaDir = `/home/user/media`;
     const baseVideosDir = `${mediaDir}/videos`;
 
-    // Inject layout helpers based on render options
     let enhancedScript = normalizedScript;
-    const contentType = detectContentType(normalizedScript);
-    const layoutConfig = getLayoutConfig({
-      orientation: renderOptions?.orientation,
-      resolution: renderOptions?.resolution,
-      contentType,
-      is3D: is3DScene(normalizedScript),
-    });
-
-    pushLog({
-      level: "info",
-      message: `Injecting layout helpers (${layoutConfig.orientation}, ${contentType})`,
-      context: "layout-injection",
-    });
-
-    const layoutCode = getCompleteLayoutCode(layoutConfig);
-    await reportProgress("layout-injection", `Injecting layout helpers`);
-
-    if (!enhancedScript.includes(LAYOUT_SENTINEL)) {
-      const lines = enhancedScript.split("\n");
-      const lastImportIdx = lines.findLastIndex(
-        (line) =>
-          line.trim().startsWith("import ") || line.trim().startsWith("from "),
-      );
-
-      if (lastImportIdx >= 0) {
-        lines.splice(lastImportIdx + 1, 0, "", layoutCode, "");
-        enhancedScript = lines.join("\n");
-      } else {
-        enhancedScript = `${layoutCode}\n\n${enhancedScript}`;
-      }
-    }
-
-    if (!FONT_BODY_PATTERN.test(enhancedScript)) {
-      enhancedScript = `${layoutCode}\n\n${enhancedScript}`;
-    }
-
     enhancedScript = injectEduvidsCallout(enhancedScript);
 
     await reportProgress("prepare", "Uploading enhanced script to sandbox");

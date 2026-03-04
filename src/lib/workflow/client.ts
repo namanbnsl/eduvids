@@ -1,34 +1,19 @@
 import { Client } from "@upstash/workflow";
 import { Client as QStashClient } from "@upstash/qstash";
 
-const getBypassHeaders = (): Record<string, string> => {
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    return {
-      "x-vercel-protection-bypass": bypassSecret,
-    };
-  }
-  return {};
-};
+const BYPASS_SECRET = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+const BYPASS_HEADERS = BYPASS_SECRET
+  ? { "x-vercel-protection-bypass": BYPASS_SECRET }
+  : undefined;
 
 export const workflowClient = new Client({
-  headers: process.env.VERCEL_AUTOMATION_BYPASS_SECRET
-    ? {
-        "x-vercel-protection-bypass":
-          process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
-      }
-    : undefined,
+  headers: BYPASS_HEADERS,
   token: process.env.QSTASH_TOKEN!,
 });
 
 export const qstashClientWithBypass = new QStashClient({
   token: process.env.QSTASH_TOKEN!,
-  headers: process.env.VERCEL_AUTOMATION_BYPASS_SECRET
-    ? {
-        "x-vercel-protection-bypass":
-          process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
-      }
-    : undefined,
+  headers: BYPASS_HEADERS,
 });
 
 export const getBaseUrl = () => {
@@ -42,5 +27,5 @@ export const getBaseUrl = () => {
 };
 
 export const getTriggerHeaders = (): Record<string, string> => {
-  return getBypassHeaders();
+  return BYPASS_HEADERS ?? {};
 };
