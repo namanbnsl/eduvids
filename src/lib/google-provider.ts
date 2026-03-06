@@ -1,126 +1,156 @@
-import { createGoogleGenerativeAI, type GoogleGenerativeAIProvider } from "@ai-sdk/google";
-import { GoogleKeyHealthManager } from "./google-key-manager";
+import {
+  createGoogleGenerativeAI,
+  type GoogleGenerativeAIProvider,
+} from "@ai-sdk/google";
+import { getConvexClient, api } from "./convex-server";
 
 const GOOGLE_KEY_PREFIX = "GOOGLE_GENERATIVE_AI_API_KEY_";
+const PROVIDER_NAME = "google";
+const apiKeysApi = api.apiKeys;
 
 const googleApiKeys = Object.entries(process.env)
-  .filter(([key, value]) => key.startsWith(GOOGLE_KEY_PREFIX) && typeof value === "string")
+  .filter(
+    ([key, value]) =>
+      key.startsWith(GOOGLE_KEY_PREFIX) && typeof value === "string",
+  )
   .map(([, value]) => value!.trim())
   .filter((value) => value.length > 0);
 
 if (!googleApiKeys.length) {
   throw new Error(
-    "Missing Google Generative AI API keys. Configure GOOGLE_GENERATIVE_AI_API_KEY_1 in the environment."
+    "Missing Google Generative AI API keys. Configure GOOGLE_GENERATIVE_AI_API_KEY_1 in the environment.",
   );
 }
 
-// Initialize the key health manager
-const keyManager = new GoogleKeyHealthManager(googleApiKeys);
+// Track which key/model was used for each provider instance.
+const providerKeyMetadataMap = new WeakMap<
+  GoogleGenerativeAIProvider,
+  { keyIndex: number; model: string }
+>();
 
-// Track which key was used for each provider instance to report success/errors
-const providerKeyMap = new WeakMap<GoogleGenerativeAIProvider, string>();
+/**
+ * Create a Google provider using the best available API key from the database.
+ * This is async because it queries the Convex database for key selection.
+ */
+export const createGoogleProvider = async (
+  model: string,
+): Promise<GoogleGenerativeAIProvider> => {
+  const convex = getConvexClient();
+  const { keyIndex } = await convex.mutation(apiKeysApi.selectKey, {
+    provider: PROVIDER_NAME,
+    model,
+    numKeys: googleApiKeys.length,
+  });
 
-const getNextApiKey = () => {
-  const selection = keyManager.selectKey();
+  const apiKey = googleApiKeys[keyIndex];
 
-  // Optional debug logging (only if DEBUG_API_KEYS is set)
   if (process.env.DEBUG_API_KEYS === "true") {
     console.log(
-      `[Google Provider] Using API key ${selection.index + 1}/${googleApiKeys.length} ` +
-      `(${selection.key.slice(0, 8)}...) - Status: ${selection.health.status}`
+      `[Google Provider] Using API key ${keyIndex + 1}/${googleApiKeys.length} ` +
+        `(${apiKey.slice(0, 8)}...)`,
     );
   }
 
-  return selection.key;
-};
-
-export const createGoogleProvider = (): GoogleGenerativeAIProvider => {
-  const apiKey = getNextApiKey();
   const provider = createGoogleGenerativeAI({ apiKey });
-
-  // Store the key associated with this provider for error reporting
-  providerKeyMap.set(provider, apiKey);
+  providerKeyMetadataMap.set(provider, { keyIndex, model });
 
   return provider;
 };
 
 /**
- * Report a successful API call (call this after successful generation)
+ * Report a successful API call (fire-and-forget)
  */
 export const reportSuccess = (provider: GoogleGenerativeAIProvider): void => {
-  const apiKey = providerKeyMap.get(provider);
-  if (apiKey) {
-    keyManager.reportSuccess(apiKey);
-  }
+  const metadata = providerKeyMetadataMap.get(provider);
+  if (!metadata) return;
+
+  void getConvexClient()
+    .mutation(apiKeysApi.reportSuccess, {
+      provider: PROVIDER_NAME,
+      model: metadata.model,
+      keyIndex: metadata.keyIndex,
+    })
+    .catch((e: unknown) =>
+      console.warn("[Google Provider] reportSuccess failed", e),
+    );
 };
 
 /**
- * Report an API error (call this when generation fails)
+ * Report an API error (fire-and-forget)
  */
-export const reportError = (provider: GoogleGenerativeAIProvider, error: unknown): void => {
-  const apiKey = providerKeyMap.get(provider);
-  if (apiKey) {
-    keyManager.reportError(apiKey, error);
-  }
-};
+export const reportError = (
+  provider: GoogleGenerativeAIProvider,
+  error: unknown,
+): void => {
+  const metadata = providerKeyMetadataMap.get(provider);
+  if (!metadata) return;
 
-/**
- * Manually mark a specific API key as blocked
- */
-export const markKeyBlocked = (keyIndex: number): void => {
-  if (keyIndex >= 0 && keyIndex < googleApiKeys.length) {
-    keyManager.markKeyBlocked(googleApiKeys[keyIndex]);
-  }
-};
+  const errorMessage = error instanceof Error ? error.message : String(error);
 
-/**
- * Manually mark a specific API key as healthy
- */
-export const markKeyHealthy = (keyIndex: number): void => {
-  if (keyIndex >= 0 && keyIndex < googleApiKeys.length) {
-    keyManager.markKeyHealthy(googleApiKeys[keyIndex]);
-  }
-};
-
-/**
- * Reset all keys to healthy state
- */
-export const resetAllKeys = (): void => {
-  keyManager.resetAllKeys();
+  void getConvexClient()
+    .mutation(apiKeysApi.reportError, {
+      provider: PROVIDER_NAME,
+      model: metadata.model,
+      keyIndex: metadata.keyIndex,
+      errorMessage,
+    })
+    .catch((e: unknown) =>
+      console.warn("[Google Provider] reportError failed", e),
+    );
 };
 
 /**
  * Get current health status of all keys
  */
-export const getKeyHealthStatus = () => {
-  return keyManager.getHealthStatus();
+export const getKeyHealthStatus = async (model: string) => {
+  return getConvexClient().query(apiKeysApi.getHealthStatus, {
+    provider: PROVIDER_NAME,
+    model,
+  });
 };
 
 /**
- * Get statistics about key usage
+ * Reset all keys to healthy state
  */
-export const getKeyStats = () => {
-  return keyManager.getStats();
-};
-
-/**
- * Print detailed health report to console
- */
-export const printHealthReport = (): void => {
-  keyManager.printHealthReport();
+export const resetAllKeys = async (model: string): Promise<void> => {
+  await getConvexClient().mutation(apiKeysApi.resetAllKeys, {
+    provider: PROVIDER_NAME,
+    model,
+  });
 };
 
 // Export info about the key pool for debugging
-export const getKeyPoolInfo = () => {
-  const stats = keyManager.getStats();
-  return {
+export const getKeyPoolInfo = async (model: string) => {
+  const keys = await getKeyHealthStatus(model);
+  const stats = {
     totalKeys: googleApiKeys.length,
     hasMultipleKeys: googleApiKeys.length > 1,
-    healthyKeys: stats.healthy,
-    blockedKeys: stats.blocked,
-    rateLimitedKeys: stats.rateLimited,
-    quotaExceededKeys: stats.quotaExceeded,
-    totalSuccesses: stats.totalSuccesses,
-    totalErrors: stats.totalErrors,
+    healthy: 0,
+    blocked: 0,
+    rateLimited: 0,
+    quotaExceeded: 0,
+    totalSuccesses: 0,
+    totalErrors: 0,
   };
+
+  for (const key of keys) {
+    stats.totalSuccesses += key.successCount;
+    stats.totalErrors += key.errorCount;
+    switch (key.status) {
+      case "healthy":
+        stats.healthy++;
+        break;
+      case "blocked":
+        stats.blocked++;
+        break;
+      case "rate_limited":
+        stats.rateLimited++;
+        break;
+      case "quota_exceeded":
+        stats.quotaExceeded++;
+        break;
+    }
+  }
+
+  return stats;
 };

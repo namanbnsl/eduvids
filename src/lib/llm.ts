@@ -1,5 +1,5 @@
 import { MANIM_SYSTEM_PROMPT, VOICEOVER_SYSTEM_PROMPT } from "@/prompt";
-import { generateText, LanguageModel } from "ai";
+import { generateText, streamText, LanguageModel } from "ai";
 import {
   createGoogleProvider,
   reportSuccess,
@@ -18,7 +18,7 @@ import { PostHog } from "posthog-node";
 
 interface GoogleModelConfig {
   modelId: string;
-  provider: ReturnType<typeof createGoogleProvider>;
+  provider: Awaited<ReturnType<typeof createGoogleProvider>>;
 }
 
 const isDev = process.env.NODE_ENV !== "production";
@@ -31,13 +31,18 @@ const phClient = isDev
     });
 
 // Wrapper that skips tracing in development
-function maybeWithTracing<T>(model: T, options: Parameters<typeof withTracing>[2]): T {
+function maybeWithTracing<T>(
+  model: T,
+  options: Parameters<typeof withTracing>[2],
+): T {
   if (!phClient) return model;
   return withTracing(model as never, phClient, options) as T;
 }
 
-const createGoogleModel = (modelId: string): GoogleModelConfig => {
-  const provider = createGoogleProvider();
+const createGoogleModel = async (
+  modelId: string,
+): Promise<GoogleModelConfig> => {
+  const provider = await createGoogleProvider(modelId);
   return { modelId, provider };
 };
 
@@ -69,6 +74,30 @@ async function generateTextWithTracking<
     throw error;
   } finally {
     cleanup();
+  }
+}
+
+async function streamTextWithTracking<
+  T extends Parameters<typeof streamText>[0],
+>(
+  config: T & { model: LanguageModel },
+  googleConfig?: GoogleModelConfig,
+): Promise<string> {
+  try {
+    const result = streamText(config);
+    const text = await result.text;
+
+    if (googleConfig) {
+      reportSuccess(googleConfig.provider);
+    }
+
+    return text;
+  } catch (error) {
+    if (googleConfig) {
+      reportError(googleConfig.provider, error);
+    }
+
+    throw error;
   }
 }
 
@@ -313,14 +342,15 @@ Before finalizing each diagram, verify by code that positions and geometry refle
 - Compose camera motion deliberately (stable orientation changes and purposeful reveals), not random spinning.
 - For portrait shorts, prioritize legibility over density: keep fewer objects on screen and use large text constants only.`;
 
+  // TODO: Switch back to gemini-3-flash-preview for production
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-    const googleModel = createGoogleModel("gemini-3-flash-preview");
+    const googleModel = await createGoogleModel("gemini-3-flash-preview");
     const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     });
 
     try {
-      const { text } = await generateTextWithTracking(
+      const text = await streamTextWithTracking(
         {
           model: model,
           system: augmentedSystemPrompt,
@@ -347,24 +377,42 @@ Before finalizing each diagram, verify by code that positions and geometry refle
     }
   }
 
-  // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
-  const flashModel = createGoogleModel("gemini-2.5-flash");
-  const { text: flashText } = await generateTextWithTracking(
-    {
-      model: maybeWithTracing(flashModel.provider(flashModel.modelId), {
-        posthogProperties: { $ai_session_id: sessionId },
-      }),
-      system: augmentedSystemPrompt,
-      prompt: generationPrompt,
-      temperature: 1,
-    },
-    flashModel,
-  );
-  const code = flashText
-    .replace(/```python?\n?/g, "")
-    .replace(/```\n?/g, "")
-    .trim();
-  return code;
+  // // Using flash-lite for testing
+  // for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
+  //   const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
+  //   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
+  //     posthogProperties: { $ai_session_id: sessionId },
+  //   });
+
+  //   try {
+  //     const text = await streamTextWithTracking(
+  //       {
+  //         model: model,
+  //         system: augmentedSystemPrompt,
+  //         prompt: generationPrompt,
+  //         temperature: 1,
+  //       },
+  //       googleModel,
+  //     );
+
+  //     const code = text
+  //       .replace(/```python?\n?/g, "")
+  //       .replace(/```\n?/g, "")
+  //       .trim();
+
+  //     return code;
+  //   } catch (err) {
+  //     if (attempt === GEMINI_MAX_RETRIES) {
+  //       logRetry("generateManimScript", attempt, err);
+  //       throw err;
+  //     }
+  //     const delayMs = randomDelayMs();
+  //     logRetry("generateManimScript", attempt, err, delayMs);
+  //     await sleep(delayMs);
+  //   }
+  // }
+
+  throw new Error("generateManimScript: all retries exhausted");
 }
 
 export async function generateYoutubeTitle({
@@ -655,13 +703,13 @@ OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
   );
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-    const googleModel = createGoogleModel("gemini-3-flash-preview");
+    const googleModel = await createGoogleModel("gemini-3-flash-preview");
     const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     });
 
     try {
-      const { text } = await generateTextWithTracking(
+      const text = await streamTextWithTracking(
         {
           model: model,
           system: augmentedSystemPrompt,
@@ -688,9 +736,9 @@ OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
     }
   }
 
-  // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
-  const flashModel = createGoogleModel("gemini-2.5-flash");
-  const { text: flashText } = await generateTextWithTracking(
+  // Fallback to Gemini 3.1 Flash Lite if Gemini 3 Flash fails after retries
+  const flashModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
+  const flashText = await streamTextWithTracking(
     {
       model: maybeWithTracing(flashModel.provider(flashModel.modelId), {
         posthogProperties: { $ai_session_id: sessionId },
