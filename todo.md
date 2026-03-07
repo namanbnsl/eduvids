@@ -11,5 +11,3 @@ ability to edit videos <br />
 <br />
 
 serach for image illustrations online and then upload to sandbox for usage
-
-move to gemini-3.1-flash-lite for editing and fixing issues after consulting with deepwiki mcp

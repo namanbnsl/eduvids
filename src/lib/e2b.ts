@@ -143,6 +143,7 @@ export type RenderLifecycleStage =
   | "prepare"
   | "render-output"
   | "video-processing"
+  | "script-fix"
   | "files";
 
 export type RenderProgressUpdate = {
@@ -258,11 +259,11 @@ const buildSceneValidationCommand = (scriptPath: string) =>
     "        continue",
     "    scene_classes.append((name, value))",
     "if not scene_classes:",
-    "    raise SystemExit(\"No renderable scene classes were found in the script.\")",
+    '    raise SystemExit("No renderable scene classes were found in the script.")',
     "for name, scene_cls in scene_classes:",
     "    construct = getattr(scene_cls, 'construct', None)",
     "    if construct is None or not callable(construct):",
-    "        raise SystemExit(f\"{name} must define a callable construct() method.\")",
+    '        raise SystemExit(f"{name} must define a callable construct() method.")',
     "    params = list(inspect.signature(construct).parameters.values())",
     "    if not params or params[0].kind not in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):",
     "        raise SystemExit(f\"{name}.construct() must accept 'self' as its first positional argument.\")",
@@ -319,9 +320,11 @@ export interface RenderRequest {
   prompt: string;
   applyWatermark?: boolean;
   renderOptions?: RenderOptions;
-  plugins?: string[];
   onProgress?: (update: RenderProgressUpdate) => Promise<void> | void;
   existingSandboxId?: string;
+  /** Called when dry-run fails — receives the current script and error output,
+   *  returns the fixed script. Omit to skip the fix loop. */
+  scriptFixer?: (script: string, errors: string) => Promise<string>;
 }
 
 export interface ThumbnailResult {
@@ -364,13 +367,13 @@ export async function renderManimVideo({
   prompt: _prompt,
   applyWatermark = true,
   renderOptions,
-  plugins = [],
   onProgress,
   existingSandboxId,
+  scriptFixer,
 }: RenderRequest): Promise<RenderResult> {
   void _prompt;
   const normalizedScript = script.trim();
-  const sceneNames = extractSceneClassNames(normalizedScript);
+  let sceneNames = extractSceneClassNames(normalizedScript);
   const renderLogs: RenderLogEntry[] = [];
 
   const reportProgress = async (
@@ -427,21 +430,47 @@ export async function renderManimVideo({
       { logs: [...renderLogs] },
     );
   }
-  const heuristicResult = runHeuristicChecks(normalizedScript);
+  let heuristicFixedScript = normalizedScript;
+  const heuristicResult = runHeuristicChecks(heuristicFixedScript);
   if (heuristicResult.errors.length) {
     const summary = heuristicResult.errors
       .map((issue) => `- ${issue.message}`)
       .join("\n");
     pushLog({
-      level: "error",
-      message: `Heuristic validation failed: ${summary}`,
+      level: "warn",
+      message: `Heuristic issues detected: ${summary}`,
       context: "heuristic",
     });
-    throw new ManimValidationError(
-      `Heuristic validation failed:\n${summary}`,
-      "heuristic",
-      { logs: [...renderLogs] },
-    );
+
+    if (scriptFixer) {
+      await reportProgress(
+        "script-fix",
+        "Fixing heuristic issues before render",
+      );
+      heuristicFixedScript = await scriptFixer(
+        heuristicFixedScript,
+        `Heuristic validation failed:\n${summary}`,
+      );
+
+      // Re-extract scene names in case the fixer changed classes
+      sceneNames = extractSceneClassNames(heuristicFixedScript);
+      pushLog({
+        level: "info",
+        message: "Script fixer applied for heuristic errors",
+        context: "heuristic",
+      });
+    } else {
+      pushLog({
+        level: "error",
+        message: `Heuristic validation failed (no fixer available): ${summary}`,
+        context: "heuristic",
+      });
+      throw new ManimValidationError(
+        `Heuristic validation failed:\n${summary}`,
+        "heuristic",
+        { logs: [...renderLogs] },
+      );
+    }
   }
 
   const warnings: ValidationWarning[] = [...heuristicResult.warnings];
@@ -673,7 +702,7 @@ export async function renderManimVideo({
     const mediaDir = `/home/user/media`;
     const baseVideosDir = `${mediaDir}/videos`;
 
-    let enhancedScript = normalizedScript;
+    let enhancedScript = heuristicFixedScript;
     enhancedScript = injectEduvidsCallout(enhancedScript);
 
     await reportProgress("prepare", "Uploading enhanced script to sandbox");
@@ -702,24 +731,28 @@ export async function renderManimVideo({
     });
 
     await reportProgress("scene-validation", "Validating definitions");
-    await runCommandOrThrow(buildSceneValidationCommand(scriptPath), {
-      description: "Scene validation",
-      stage: "scene-validation",
-      timeoutMs: 120_000,
-      hint: "Ensure each scene imports correctly, inherits from manim.Scene, and defines construct(self).",
-    });
-
-    if (plugins.includes("manim_ml")) {
-      await reportProgress(
-        "plugin-installation",
-        "Installing optional manim-ml plugin",
-      );
-      await runCommandOrThrow("pip install manim-ml", {
-        description: "Plugin installation (manim-ml)",
-        stage: "plugin-installation",
-        timeoutMs: 300_000, // 5 minutes
-        hint: "The manim-ml plugin failed to install. The script may fail if it depends on this plugin.",
+    try {
+      await runCommandOrThrow(buildSceneValidationCommand(scriptPath), {
+        description: "Scene validation",
+        stage: "scene-validation",
+        timeoutMs: 120_000,
+        hint: "Ensure each scene imports correctly, inherits from manim.Scene, and defines construct(self).",
       });
+    } catch (sceneValError) {
+      if (scriptFixer) {
+        // Don't block the pipeline — let the dry-run loop catch and fix the error
+        pushLog({
+          level: "warn",
+          message: `Scene validation failed but scriptFixer is available; deferring to dry-run loop: ${
+            sceneValError instanceof Error
+              ? sceneValError.message
+              : String(sceneValError)
+          }`,
+          context: "scene-validation",
+        });
+      } else {
+        throw sceneValError;
+      }
     }
 
     if (!latexEnvironmentVerified) {
@@ -731,6 +764,91 @@ export async function renderManimVideo({
         hint: "The Manim template requires LaTeX. Ensure it is installed in the sandbox template.",
       });
       latexEnvironmentVerified = true;
+    }
+
+    // -----------------------------------------------------------------------
+    // Dry-run validation: render last frame only (`-s`) to catch errors
+    // before committing to the full render. If scriptFixer is provided,
+    // loop: fix → rewrite → re-validate until clean or retries exhausted.
+    // -----------------------------------------------------------------------
+    const DRY_RUN_MAX_FIXES = 5;
+    let currentScript = enhancedScript;
+    let currentSceneNames = sceneNames;
+
+    for (let fixAttempt = 0; fixAttempt <= DRY_RUN_MAX_FIXES; fixAttempt++) {
+      const dryRunArgs = [
+        scriptPath,
+        ...currentSceneNames,
+        "-ql",
+        "-s",
+        "--media_dir",
+        mediaDir,
+        "--disable_caching",
+      ];
+      const dryRunCmd = `manim ${dryRunArgs.join(" ")}`;
+
+      await reportProgress(
+        "dry-run",
+        fixAttempt === 0
+          ? "Validating script (dry-run)"
+          : `Re-validating after fix (attempt ${fixAttempt})`,
+      );
+
+      try {
+        await runCommandOrThrow(dryRunCmd, {
+          description: "Manim dry-run validation",
+          stage: "dry-run",
+          timeoutMs: 600_000, // 10 minutes
+          hint: "Dry-run validation failed.",
+          streamOutput: true,
+        });
+
+        pushLog({
+          level: "info",
+          message: `Dry-run passed${fixAttempt > 0 ? ` after ${fixAttempt} fix(es)` : ""}`,
+          context: "dry-run",
+        });
+        break; // success
+      } catch (dryRunError) {
+        if (!scriptFixer || fixAttempt === DRY_RUN_MAX_FIXES) {
+          throw dryRunError;
+        }
+
+        const errorMessage =
+          dryRunError instanceof Error
+            ? dryRunError.message
+            : String(dryRunError);
+
+        pushLog({
+          level: "warn",
+          message: `Dry-run failed (attempt ${fixAttempt + 1}/${DRY_RUN_MAX_FIXES + 1}), requesting LLM fix`,
+          context: "dry-run",
+        });
+
+        await reportProgress(
+          "script-fix",
+          `Fixing script errors (attempt ${fixAttempt + 1})`,
+        );
+
+        currentScript = await scriptFixer(currentScript, errorMessage);
+        currentScript = injectEduvidsCallout(currentScript);
+
+        // Re-extract scene names in case the fixer renamed classes
+        currentSceneNames = extractSceneClassNames(currentScript);
+        if (!currentSceneNames.length) {
+          throw dryRunError; // fixer broke the script structure
+        }
+
+        await sandbox!.files.write(scriptPath, currentScript);
+
+        // Quick syntax sanity check on the fixed script
+        await runCommandOrThrow(`python -m py_compile ${scriptPath}`, {
+          description: "Syntax check (post-fix)",
+          stage: "syntax",
+          timeoutMs: 120_000,
+          hint: "Script fixer introduced a syntax error.",
+        });
+      }
     }
 
     const resolution = renderOptions?.resolution;
@@ -752,9 +870,10 @@ export async function renderManimVideo({
       });
     }
 
+    // Use the (possibly fixed) scene names for the actual render
     const manimArgs = [
       scriptPath,
-      ...sceneNames,
+      ...currentSceneNames,
       "--media_dir",
       mediaDir,
       "--disable_caching",
@@ -789,7 +908,6 @@ export async function renderManimVideo({
       qualityCandidates.push(`custom_quality_${safeWidth}x${safeHeight}`);
     }
     qualityCandidates.push("720p15", "medium_quality", "480p15", "low_quality");
-
 
     if (!sandbox) {
       await ensureCleanup();

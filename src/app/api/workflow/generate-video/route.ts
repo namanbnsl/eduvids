@@ -1,7 +1,11 @@
 import { serve } from "@upstash/workflow/nextjs";
 import { WorkflowNonRetryableError } from "@upstash/workflow";
 
-import { generateVoiceoverScript, generateManimScript } from "@/lib/llm";
+import {
+  generateVoiceoverScript,
+  generateManimScript,
+  fixManimScript,
+} from "@/lib/llm";
 import { renderManimVideo } from "@/lib/e2b";
 import { uploadVideo } from "@/lib/uploadthing";
 import { jobStore } from "@/lib/job-store";
@@ -99,6 +103,12 @@ export const { POST } = serve<VideoGenerationPayload>(
           variant === "short"
             ? { resolution: { width: 1080, height: 1920 }, orientation: "portrait" as const }
             : undefined,
+        scriptFixer: (currentScript, errors) =>
+          fixManimScript({
+            script: currentScript,
+            errors,
+            sessionId: chatId,
+          }),
       });
     });
 

@@ -6,6 +6,7 @@ import {
   reportError,
 } from "./google-provider";
 import { selectGroqModel, GROQ_MODEL_IDS } from "./groq-provider";
+import { queryManimDocs } from "./deepwiki";
 
 import { franc } from "franc";
 
@@ -68,33 +69,6 @@ async function streamTextWithTracking<
     throw error;
   }
 }
-
-// Retry helpers for Gemini calls
-const SLEEP_MIN_MS = 30_000;
-const SLEEP_MAX_MS = 40_000;
-const GEMINI_MAX_RETRIES = 3;
-
-const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
-const randomDelayMs = () =>
-  SLEEP_MIN_MS + Math.floor(Math.random() * (SLEEP_MAX_MS - SLEEP_MIN_MS + 1));
-
-const logRetry = (
-  fnName: string,
-  attempt: number,
-  error: unknown,
-  delayMs?: number,
-) => {
-  const errorMsg = error instanceof Error ? error.message : String(error);
-  console.warn(
-    `[${fnName}] Attempt ${attempt + 1}/${
-      GEMINI_MAX_RETRIES + 1
-    } failed: ${errorMsg}${
-      delayMs
-        ? ` - retrying in ${Math.round(delayMs / 1000)}s`
-        : " - no more retries"
-    }`,
-  );
-};
 
 export async function detectLanguage(text: string): Promise<string> {
   try {
@@ -274,41 +248,156 @@ Before finalizing each diagram, verify by code that positions and geometry refle
 - Compose camera motion deliberately (stable orientation changes and purposeful reveals), not random spinning.
 - For portrait shorts, prioritize legibility over density: keep fewer objects on screen and use large text constants only.`;
 
-  for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-    const googleModel = await createGoogleModel(
-      "gemini-3.1-flash-lite-preview",
+  const googleModel = await createGoogleModel("gemini-3-flash-preview");
+  const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
+    posthogProperties: { $ai_session_id: sessionId },
+  });
+
+  try {
+    const text = await streamTextWithTracking(
+      {
+        model: model,
+        system: augmentedSystemPrompt,
+        prompt: generationPrompt,
+        temperature: 1,
+      },
+      googleModel,
     );
-    const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
-      posthogProperties: { $ai_session_id: sessionId },
-    });
 
-    try {
-      const text = await streamTextWithTracking(
-        {
-          model: model,
-          system: augmentedSystemPrompt,
-          prompt: generationPrompt,
-          temperature: 1,
-        },
-        googleModel,
-      );
+    const code = text
+      .replace(/```python?\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
 
-      const code = text
-        .replace(/```python?\n?/g, "")
-        .replace(/```\n?/g, "")
-        .trim();
+    return code;
+  } catch (err) {
+    console.error(err);
+    return "Script Generation Failed";
+  }
+}
 
+// ---------------------------------------------------------------------------
+// Script fixer – diff-based error correction via gemini-3.1-flash-lite
+// ---------------------------------------------------------------------------
+
+const SEARCH_REPLACE_MARKERS = {
+  search: "<<<<<<< SEARCH",
+  divider: "=======",
+  replace: ">>>>>>> REPLACE",
+} as const;
+
+function applySearchReplaceDiffs(script: string, diffOutput: string): string {
+  if (!diffOutput.includes(SEARCH_REPLACE_MARKERS.search)) {
+    // Model returned the full script instead of diffs
+    const code = diffOutput
+      .replace(/```python?\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+    if (code.includes("from manim import") && /class\s+\w+.*Scene/.test(code)) {
       return code;
-    } catch (err) {
-      if (attempt === GEMINI_MAX_RETRIES) {
-        logRetry("generateManimScript", attempt, err);
-        break;
-      }
-      const delayMs = randomDelayMs();
-      logRetry("generateManimScript", attempt, err, delayMs);
-      await sleep(delayMs);
+    }
+    // Unrecognised output – return original
+    console.warn(
+      "[fixManimScript] Output has no diff markers and doesn't look like a full script; returning original",
+    );
+    return script;
+  }
+
+  const blocks = diffOutput.split(SEARCH_REPLACE_MARKERS.search);
+  let result = script;
+
+  for (const block of blocks.slice(1)) {
+    const divIdx = block.indexOf(SEARCH_REPLACE_MARKERS.divider);
+    if (divIdx === -1) continue;
+
+    const searchPart = block.slice(0, divIdx);
+    const rest = block.slice(divIdx + SEARCH_REPLACE_MARKERS.divider.length);
+    const replaceEndIdx = rest.indexOf(SEARCH_REPLACE_MARKERS.replace);
+    if (replaceEndIdx === -1) continue;
+
+    const replacePart = rest.slice(0, replaceEndIdx);
+
+    // Strip only the first and last newline to preserve inner whitespace
+    const search = searchPart.replace(/^\n/, "").replace(/\n$/, "");
+    const replace = replacePart.replace(/^\n/, "").replace(/\n$/, "");
+
+    if (result.includes(search)) {
+      result = result.replace(search, replace);
+    } else {
+      console.warn(
+        "[fixManimScript] Could not locate SEARCH block in script – skipping",
+      );
     }
   }
 
-  throw new Error("generateManimScript: all retries exhausted");
+  return result;
+}
+
+export interface FixManimScriptRequest {
+  script: string;
+  errors: string;
+  sessionId: string;
+}
+
+export async function fixManimScript({
+  script,
+  errors,
+  sessionId,
+}: FixManimScriptRequest): Promise<string> {
+  // Fetch relevant manim docs from DeepWiki (best-effort)
+  const manimDocs = await queryManimDocs(errors);
+
+  const systemPrompt = `You are a Manim Community v0.18.0 debugging expert.
+You receive a Manim script and the errors produced when running it.
+Your job is to output ONLY search/replace diff blocks that fix the errors.
+
+OUTPUT FORMAT — output NOTHING else:
+<<<<<<< SEARCH
+exact lines from the current script that need to change
+=======
+the corrected replacement lines
+>>>>>>> REPLACE
+
+RULES:
+- Make MINIMAL changes — fix only what the errors indicate.
+- The SEARCH block must match the script EXACTLY (including indentation).
+- You may output multiple diff blocks.
+- Do NOT add commentary, markdown fences, or explanations.
+- Do NOT refactor or rewrite unrelated code.
+- Preserve all existing imports, class names, and voiceover text.`;
+
+  const userPrompt = [
+    "ERRORS:",
+    errors.slice(0, 6000),
+    "",
+    manimDocs ? `RELEVANT MANIM DOCUMENTATION:\n${manimDocs}\n` : "",
+    "CURRENT SCRIPT:",
+    "```python",
+    script,
+    "```",
+  ].join("\n");
+
+  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
+  const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
+    posthogProperties: { $ai_session_id: sessionId },
+  });
+
+  try {
+    const text = await streamTextWithTracking(
+      {
+        model,
+        system: systemPrompt,
+        prompt: userPrompt,
+        temperature: 0,
+      },
+      googleModel,
+    );
+
+    const fixed = applySearchReplaceDiffs(script, text.trim());
+    return fixed;
+  } catch (err) {
+    console.error("[fixManimScript] LLM call failed:", err);
+    // Return original script so the caller can decide whether to retry
+    return script;
+  }
 }

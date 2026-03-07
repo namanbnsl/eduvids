@@ -38,7 +38,6 @@ export async function POST(req: Request) {
   // Create a new provider instance for each request to rotate API keys
   const result = streamText({
     model: selectGroqModel(GROQ_MODEL_IDS.gptOss),
-    toolChoice: "required",
     system: systemPrompt,
     messages: await convertToModelMessages(messages),
     tools: {

@@ -3,11 +3,11 @@ import { Lexend } from "next/font/google";
 
 import { ClerkProvider } from "@clerk/nextjs";
 
-import "./globals.css";
 import ConvexClientProvider from "@/components/providers/ConvexClientProvider";
 import { PostHogUserIdentifier } from "@/components/providers/PostHogUserIdentifier";
 
 import { shadcn } from "@clerk/themes";
+import "./globals.css";
 
 const defaultFont = Lexend({
   display: "optional",
