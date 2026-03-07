@@ -1,15 +1,13 @@
 const useElevenLabs =
   (process.env.USE_ELEVEN_LABS ?? "").toLowerCase() === "true";
 
-export const VOICEOVER_SERVICE_CLASS = useElevenLabs
-  ? `self.set_speech_service(ElevenLabsService(transcription_model=None))`
-  : `self.set_speech_service(GTTSService())`;
-
-export const VOICEOVER_SERVICE_IMPORT = useElevenLabs
+const VOICEOVER_SERVICE_IMPORT = useElevenLabs
   ? "from manim_voiceover.services.elevenlabs import ElevenLabsService"
   : "from manim_voiceover.services.gtts import GTTSService";
 
-export const VOICEOVER_SERVICE_SETTER = `self.set_speech_service(${VOICEOVER_SERVICE_CLASS}())`;
+const VOICEOVER_SERVICE_SETTER = useElevenLabs
+  ? "self.set_speech_service(ElevenLabsService(transcription_model=None))"
+  : "self.set_speech_service(GTTSService())";
 
 // =============================================================================
 // SYSTEM PROMPT - Teacher/Planner Agent
