@@ -39,7 +39,7 @@ export default async function Image() {
             marginBottom: "24px",
           }}
         >
-          <img src={logoSrc} width={100} height={100} />
+           <img src={logoSrc} alt="eduvids logo" width={100} height={100} />
           <div
             style={{
               fontSize: 80,

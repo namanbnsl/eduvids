@@ -33,6 +33,7 @@ export default async function Image() {
         {/* Logo */}
         <img
           src={logoSrc}
+          alt="eduvids logo"
           width={120}
           height={120}
           style={{ marginBottom: "36px" }}

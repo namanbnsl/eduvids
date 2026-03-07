@@ -46,37 +46,6 @@ const createGoogleModel = async (
   return { modelId, provider };
 };
 
-async function generateTextWithTracking<
-  T extends Parameters<typeof generateText>[0],
->(
-  config: T & { model: LanguageModel },
-  googleConfig?: GoogleModelConfig,
-  timeoutMs: number = LLM_CALL_TIMEOUT_MS,
-): Promise<Awaited<ReturnType<typeof generateText>>> {
-  const { controller, cleanup } = createTimeoutController(timeoutMs);
-
-  try {
-    const result = await generateText({
-      ...config,
-      abortSignal: controller.signal,
-    });
-
-    if (googleConfig) {
-      reportSuccess(googleConfig.provider);
-    }
-
-    return result;
-  } catch (error) {
-    if (googleConfig) {
-      reportError(googleConfig.provider, error);
-    }
-
-    throw error;
-  } finally {
-    cleanup();
-  }
-}
-
 async function streamTextWithTracking<
   T extends Parameters<typeof streamText>[0],
 >(
@@ -110,24 +79,6 @@ const LLM_CALL_TIMEOUT_MS = 120_000; // 2 minute timeout per LLM call
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 const randomDelayMs = () =>
   SLEEP_MIN_MS + Math.floor(Math.random() * (SLEEP_MAX_MS - SLEEP_MIN_MS + 1));
-
-/**
- * Creates an AbortController with a timeout
- */
-function createTimeoutController(timeoutMs: number = LLM_CALL_TIMEOUT_MS): {
-  controller: AbortController;
-  cleanup: () => void;
-} {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort(new Error(`LLM call timed out after ${timeoutMs}ms`));
-  }, timeoutMs);
-
-  return {
-    controller,
-    cleanup: () => clearTimeout(timeoutId),
-  };
-}
 
 const logRetry = (
   fnName: string,
@@ -326,7 +277,15 @@ export async function generateManimScript({
     detectedLanguage,
   );
 
-  const generationPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration with purposeful, step-by-step visuals that directly reinforce each narrated idea while staying on the same core topic.
+  const generationPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script as MULTIPLE ORDERED SCENE CLASSES, not one giant scene. Split the narration into a sequence of focused scenes so that later each scene can be rerendered independently without redoing the whole video.
+
+Scene planning requirements:
+- Start a new scene whenever the explanation changes concept, example, or diagram
+- Prefer more small scenes over fewer overloaded scenes
+- Use ordered class names like Scene01Intro, Scene02Setup, Scene03WorkedExample
+- Each scene must be self-contained and renderable on its own
+- Keep visual continuity across scenes, but do not depend on prior scene state
+- Return one Python file containing all scenes in order
 
 Geometry and diagram accuracy requirements (always apply when relevant):
 - Angle arcs must represent the intended angle region exactly (interior/reflex/acute/obtuse) and labels must match the highlighted region.
@@ -342,9 +301,10 @@ Before finalizing each diagram, verify by code that positions and geometry refle
 - Compose camera motion deliberately (stable orientation changes and purposeful reveals), not random spinning.
 - For portrait shorts, prioritize legibility over density: keep fewer objects on screen and use large text constants only.`;
 
-  // TODO: Switch back to gemini-3-flash-preview for production
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-    const googleModel = await createGoogleModel("gemini-3-flash-preview");
+    const googleModel = await createGoogleModel(
+      "gemini-3.1-flash-lite-preview",
+    );
     const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     });
@@ -621,8 +581,10 @@ export async function regenerateManimScriptWithError({
 MANDATORY REQUIREMENTS
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. CLASS NAME: Must be exactly "MyScene" inheriting from VoiceoverScene
-2. OUTPUT FORMAT: Pure Python code only. NO markdown fences, NO commentary, NO explanations.
+1. OUTPUT MULTIPLE ORDERED SCENE CLASSES whenever the content naturally spans multiple beats
+2. Every scene class must define construct(self) and be independently renderable
+3. Prefer focused scene-local fixes over rewriting the whole file unless necessary
+4. OUTPUT FORMAT: Pure Python code only. NO markdown fences, NO commentary, NO explanations.
 
 ═══════════════════════════════════════════════════════════════════════════════
 SCREEN & SIZING CONSTRAINTS (14.2 x 8.0 Manim units)
@@ -694,6 +656,8 @@ HELPER FUNCTIONS (these are available, use them)
   - VGroup(...).arrange(RIGHT, buff=1.5, aligned_edge=UP)
   - next_to(..., buff=0.5+) for safe spacing
 
+If a scene is overcrowded or unstable, split it into smaller scenes instead of preserving one giant construct().
+
 OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
 
   // Build system prompt with language adjustments
@@ -703,7 +667,9 @@ OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
   );
 
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-    const googleModel = await createGoogleModel("gemini-3-flash-preview");
+    const googleModel = await createGoogleModel(
+      "gemini-3.1-flash-lite-preview",
+    );
     const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     });
@@ -736,23 +702,5 @@ OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
     }
   }
 
-  // Fallback to Gemini 3.1 Flash Lite if Gemini 3 Flash fails after retries
-  const flashModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
-  const flashText = await streamTextWithTracking(
-    {
-      model: maybeWithTracing(flashModel.provider(flashModel.modelId), {
-        posthogProperties: { $ai_session_id: sessionId },
-      }),
-      system: regenerationSystemPrompt,
-      prompt: regenerationPrompt,
-      temperature: 1,
-    },
-    flashModel,
-  );
-  const code = flashText
-    .replace(/```python?\n?/g, "")
-    .replace(/```\n?/g, "")
-    .trim();
-
-  return code;
+  throw new Error("regenerateManimScriptWithError: all retries exhausted");
 }

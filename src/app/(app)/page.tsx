@@ -6,7 +6,6 @@ import { generateTopics } from "@/lib/actions/generate-topics";
 // Hooks
 import { useEffect, useState, useTransition } from "react";
 import { useChat } from "@ai-sdk/react";
-import { useFirstVisit } from "@/lib/use-first-visit";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useMutation } from "convex/react";
@@ -45,7 +44,10 @@ const VideoPlayer = dynamic(
 );
 
 const QuickActionCards = dynamic(
-  () => import("@/components/quick-action-cards").then((mod) => mod.QuickActionCards),
+  () =>
+    import("@/components/quick-action-cards").then(
+      (mod) => mod.QuickActionCards,
+    ),
   {
     loading: () => (
       <div className="flex justify-center w-full">
@@ -54,11 +56,6 @@ const QuickActionCards = dynamic(
     ),
   },
 );
-
-// const Onboarding = dynamic(
-//   () => import("@/components/onboarding").then((mod) => mod.Onboarding),
-//   { ssr: false },
-// );
 
 // Helpers
 const isGenerateVideoToolPart = (
@@ -82,43 +79,6 @@ export default function HomePage() {
 
   const { messages, status, sendMessage } = useChat<ChatMessage>();
   const hasMessages = messages.length > 0;
-  const { isFirstVisit, completeOnboarding } = useFirstVisit();
-
-  const handleOnboardingComplete = async (
-    message: string | null,
-    mode: "video" | "short" | null,
-  ) => {
-    completeOnboarding();
-    if (message) {
-      if (isSignedIn) {
-        const title =
-          message.length > 50 ? message.slice(0, 50) + "..." : message;
-
-        // Single mutation creates chat + message
-        const chatId = await createChatWithMessage({
-          title,
-          content: message,
-          parts: [{ type: "text", text: message }],
-        });
-
-        // Navigate immediately after getting chatId
-        startTransition(() => {
-          router.push(
-            `/chat/${chatId}?pending=${encodeURIComponent(message)}&mode=${mode || ""}`,
-          );
-        });
-      } else {
-        sendMessage(
-          { text: message },
-          {
-            body: {
-              forceVariant: mode,
-            },
-          },
-        );
-      }
-    }
-  };
 
   const handleGenerationModeToggle = (mode: "video" | "short") => {
     const videoPrefix = "Generate a video of ";
@@ -211,15 +171,13 @@ export default function HomePage() {
 
   return (
     <>
-      {/* {isFirstVisit && <Onboarding onComplete={handleOnboardingComplete} />} */}
-
       <div className="relative flex-1 flex flex-col overflow-hidden">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
         >
           <div className="absolute inset-0 bg-[radial-gradient(1200px_500px_at_30%_0%,color-mix(in_oklch,var(--foreground)_8%,transparent),transparent_62%),radial-gradient(1000px_420px_at_85%_100%,color-mix(in_oklch,var(--accent)_70%,transparent),transparent_70%)]" />
-          <div className="absolute inset-0 opacity-[0.18] [background-image:linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [background-size:40px_40px]" />
+          <div className="absolute inset-0 opacity-[0.18] bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] bg-size-[40px_40px]" />
         </div>
 
         {hasMessages ? (

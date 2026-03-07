@@ -19,7 +19,6 @@ function injectEduvidsCallout(script: string): string {
   for (let i = 0; i < lines.length; i++) {
     if (constructPattern.test(lines[i])) {
       constructIndex = i;
-      break;
     }
   }
 
@@ -168,12 +167,27 @@ const PROHIBITED_MODULES = [
 ];
 
 const PROHIBITED_BUILTINS = ["open", "exec", "eval", "compile", "__import__"];
+const extractSceneClassNames = (source: string) => {
+  const names: string[] = [];
+  const scenePattern =
+    /class\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*(?:Scene|VoiceoverScene)[^)]*)\)\s*:/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = scenePattern.exec(source)) !== null) {
+    const name = match[1];
+    if (name) {
+      names.push(name);
+    }
+  }
+
+  return names;
+};
 
 const hasExpectedSceneClass = (source: string) =>
-  /\bclass\s+MyScene\b/.test(source);
+  extractSceneClassNames(source).length > 0;
 
 const movingCameraSceneDeclared = (source: string) =>
-  /class\s+MyScene\s*\(\s*MovingCameraScene/.test(source);
+  /class\s+[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*MovingCameraScene/.test(source);
 
 const runHeuristicChecks = (
   source: string,
@@ -191,7 +205,7 @@ const runHeuristicChecks = (
     errors.push({
       stage: "heuristic",
       message:
-        "Detected self.camera.frame usage outside MovingCameraScene. Update MyScene to inherit from MovingCameraScene or remove camera frame operations.",
+        "Detected self.camera.frame usage outside MovingCameraScene. Update the relevant scene class to inherit from MovingCameraScene or remove camera frame operations.",
     });
   }
 
@@ -199,7 +213,7 @@ const runHeuristicChecks = (
     warnings.push({
       stage: "heuristic",
       message:
-        "Scene contains no animations (play calls); output may be empty.",
+        "Scene file contains no animations (play calls); output may be empty.",
     });
   }
 
@@ -234,20 +248,25 @@ const buildSceneValidationCommand = (scriptPath: string) =>
     "    import traceback",
     "    traceback.print_exc()",
     "    raise SystemExit(f'Failed to import script: {exc}')",
-    "scene_cls = getattr(module, 'MyScene', None)",
-    "if scene_cls is None:",
-    "    raise SystemExit(\"No class named 'MyScene' was found in the script.\")",
-    "if not isinstance(scene_cls, type):",
-    "    raise SystemExit(\"Attribute 'MyScene' exists but is not a class.\")",
-    "if not issubclass(scene_cls, Scene):",
-    '    raise SystemExit("MyScene must inherit from manim.Scene.")',
-    "construct = getattr(scene_cls, 'construct', None)",
-    "if construct is None or not callable(construct):",
-    '    raise SystemExit("MyScene must define a callable construct() method.")',
-    "params = list(inspect.signature(construct).parameters.values())",
-    "if not params or params[0].kind not in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):",
-    "    raise SystemExit(\"construct() must accept 'self' as its first positional argument.\")",
-    "print('Scene validation passed.')",
+    "scene_classes = []",
+    "for name, value in vars(module).items():",
+    "    if not isinstance(value, type):",
+    "        continue",
+    "    if not issubclass(value, Scene) or value is Scene:",
+    "        continue",
+    "    if getattr(value, '__module__', None) != module.__name__:",
+    "        continue",
+    "    scene_classes.append((name, value))",
+    "if not scene_classes:",
+    "    raise SystemExit(\"No renderable scene classes were found in the script.\")",
+    "for name, scene_cls in scene_classes:",
+    "    construct = getattr(scene_cls, 'construct', None)",
+    "    if construct is None or not callable(construct):",
+    "        raise SystemExit(f\"{name} must define a callable construct() method.\")",
+    "    params = list(inspect.signature(construct).parameters.values())",
+    "    if not params or params[0].kind not in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):",
+    "        raise SystemExit(f\"{name}.construct() must accept 'self' as its first positional argument.\")",
+    "print('Scene validation passed for:', ', '.join(name for name, _ in scene_classes))",
     "PY",
   ].join("\n");
 
@@ -351,6 +370,7 @@ export async function renderManimVideo({
 }: RenderRequest): Promise<RenderResult> {
   void _prompt;
   const normalizedScript = script.trim();
+  const sceneNames = extractSceneClassNames(normalizedScript);
   const renderLogs: RenderLogEntry[] = [];
 
   const reportProgress = async (
@@ -398,11 +418,11 @@ export async function renderManimVideo({
   if (!hasExpectedSceneClass(normalizedScript)) {
     pushLog({
       level: "error",
-      message: "Aborting render: class MyScene missing",
+      message: "Aborting render: no scene classes found",
       context: "input",
     });
     throw new ManimValidationError(
-      "Manim script must declare `class MyScene` before rendering. Rename your scene or adjust the renderer to match.",
+      "Manim script must declare at least one renderable scene class before rendering.",
       "input",
       { logs: [...renderLogs] },
     );
@@ -686,7 +706,7 @@ export async function renderManimVideo({
       description: "Scene validation",
       stage: "scene-validation",
       timeoutMs: 120_000,
-      hint: "Ensure MyScene imports correctly, inherits from manim.Scene, and defines construct(self).",
+      hint: "Ensure each scene imports correctly, inherits from manim.Scene, and defines construct(self).",
     });
 
     if (plugins.includes("manim_ml")) {
@@ -734,7 +754,7 @@ export async function renderManimVideo({
 
     const manimArgs = [
       scriptPath,
-      "MyScene",
+      ...sceneNames,
       "--media_dir",
       mediaDir,
       "--disable_caching",
@@ -763,7 +783,6 @@ export async function renderManimVideo({
 
     const scriptFilename = scriptPath.split("/").pop() ?? "script.py";
     const moduleName = scriptFilename.replace(/\.py$/i, "");
-    const sceneName = "MyScene";
     const qualityCandidates: string[] = [];
 
     if (safeWidth && safeHeight) {
@@ -771,15 +790,6 @@ export async function renderManimVideo({
     }
     qualityCandidates.push("720p15", "medium_quality", "480p15", "low_quality");
 
-    const candidatePaths = Array.from(
-      new Set([
-        ...qualityCandidates.map(
-          (quality) =>
-            `${baseVideosDir}/${moduleName}/${quality}/${sceneName}.mp4`,
-        ),
-        `${baseVideosDir}/${moduleName}/${sceneName}.mp4`,
-      ]),
-    );
 
     if (!sandbox) {
       await ensureCleanup();
@@ -791,30 +801,38 @@ export async function renderManimVideo({
     }
 
     await reportProgress("files", "Locating rendered video file");
-    let videoPath: string | undefined;
-    for (const candidate of candidatePaths) {
-      const existsCheck = await sandbox.commands.run(
-        [
-          "python - <<'PY'",
-          "import os",
-          `path = r"${candidate}"`,
-          "print('1' if os.path.isfile(path) else '', end='')",
-          "PY",
-        ].join("\n"),
+    const locateRenderedScenePath = async (sceneName: string) => {
+      const candidatePaths = Array.from(
+        new Set([
+          ...qualityCandidates.map(
+            (quality) =>
+              `${baseVideosDir}/${moduleName}/${quality}/${sceneName}.mp4`,
+          ),
+          `${baseVideosDir}/${moduleName}/${sceneName}.mp4`,
+        ]),
       );
-      if ((existsCheck.stdout ?? "").trim() === "1") {
-        videoPath = candidate;
-        break;
-      }
-    }
 
-    if (!videoPath) {
-      const searchResult = await sandbox.commands.run(
+      for (const candidate of candidatePaths) {
+        const existsCheck = await sandbox!.commands.run(
+          [
+            "python - <<'PY'",
+            "import os",
+            `path = r"${candidate}"`,
+            "print('1' if os.path.isfile(path) else '', end='')",
+            "PY",
+          ].join("\n"),
+        );
+        if ((existsCheck.stdout ?? "").trim() === "1") {
+          return candidate;
+        }
+      }
+
+      const searchResult = await sandbox!.commands.run(
         [
           "python - <<'PY'",
           "import os",
           `base = r"${baseVideosDir}/${moduleName}"`,
-          "target = 'MyScene.mp4'",
+          `target = "${sceneName}.mp4"`,
           "if os.path.isdir(base):",
           "    for root, _, files in os.walk(base):",
           "        if target in files:",
@@ -824,23 +842,49 @@ export async function renderManimVideo({
         ].join("\n"),
       );
       const locatedPath = (searchResult.stdout ?? "").trim();
-      if (locatedPath) {
-        videoPath = locatedPath;
-        pushLog({
-          level: "info",
-          message: `Video file located via fallback search: ${locatedPath}`,
-          context: "files",
-        });
+      return locatedPath || undefined;
+    };
+
+    const renderedScenePaths: string[] = [];
+    for (const sceneName of sceneNames) {
+      const scenePath = await locateRenderedScenePath(sceneName);
+      if (!scenePath) {
+        await ensureCleanup();
+        throw new ManimValidationError(
+          `Unable to locate ${sceneName}.mp4 under ${baseVideosDir}/${moduleName}.`,
+          "render",
+          { logs: [...renderLogs] },
+        );
       }
+      renderedScenePaths.push(scenePath);
+      pushLog({
+        level: "info",
+        message: `Video file located: ${scenePath}`,
+        context: "files",
+      });
     }
 
-    if (!videoPath) {
-      await ensureCleanup();
-      throw new ManimValidationError(
-        `Unable to locate MyScene.mp4 under ${baseVideosDir}/${moduleName}.`,
-        "render",
-        { logs: [...renderLogs] },
+    let videoPath = renderedScenePaths[0];
+    if (renderedScenePaths.length > 1) {
+      const concatListPath = `${baseVideosDir}/${moduleName}/concat.txt`;
+      const mergedVideoPath = `${baseVideosDir}/${moduleName}/combined.mp4`;
+      const concatFileContents = renderedScenePaths
+        .map((scenePath) => `file '${scenePath}'`)
+        .join("\n");
+
+      await sandbox.files.write(concatListPath, concatFileContents);
+      await reportProgress("video-processing", "Concatenating rendered scenes");
+      await runCommandOrThrow(
+        `ffmpeg -y -f concat -safe 0 -i ${concatListPath} -c copy ${mergedVideoPath}`,
+        {
+          description: "Concatenate rendered scenes",
+          stage: "render",
+          timeoutMs: 300_000,
+          hint: "ffmpeg failed while joining individual scene renders.",
+          streamOutput: { stdout: true, stderr: true },
+        },
       );
+      videoPath = mergedVideoPath;
     }
 
     const outputDirIndex = videoPath.lastIndexOf("/");
