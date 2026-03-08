@@ -182,23 +182,15 @@ export async function generateVoiceoverScript({
   const composedPrompt = [
     `User request: ${prompt}`,
     `Use the language that is asked for and output text in that script`,
-    "Directive: Cover every essential idea from the request in sequence, adding as many explanatory lines as needed so no core step is skipped.",
-    "Directive: Keep the narration purely educational—no jokes, sound effects, or entertainment filler.",
-    "Directive: Focus on a single clearly defined topic drawn from the user request—do not introduce unrelated hooks, metaphors, or tangents.",
-    "Directive: Start with an engaging hook that immediately connects to the topic and states the learning objective; avoid vague rhetorical questions that are never answered.",
-    "Directive: Develop each explanation with concrete definitions, reasoning, and worked steps so the listener learns how and why—not just what.",
-    "Directive: Ensure the worked example and reflection lines explicitly reference the same core concept and build on prior steps.",
-    "Directive: Maintain smooth flow by referencing prior steps and previewing what comes next.",
-    "Directive: Do NOT force a fixed section template. Write a natural teaching flow that would help a complete beginner understand the topic end-to-end.",
-    "Directive: Explain enough detail to be truly educational: define terms, show why steps are valid, and include concrete examples or counterexamples when useful.",
     "Directive: When you mention an acronym, initialism, or all-caps mnemonic, write ONLY the phonetic pronunciation in lowercase without showing the uppercase form or parentheses, so TTS reads it naturally once (e.g., write 'soah caah toa' instead of 'SOH CAH TOA', write 'dee en ay' instead of 'DNA'). For well-known acronyms that TTS handles correctly (like 'NASA' or 'FBI'), you may use the standard form.",
     "Draft the narration voiceover:",
   ].join("\n\n");
 
-  const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
+  // const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
+  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
 
   const { text } = await generateText({
-    model: maybeWithTracing(model, {
+    model: maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     }),
     system: systemPrompt,
@@ -357,7 +349,7 @@ EXAMPLE AESTHETIC:
     return {
       html: "<div style='display:flex;align-items:center;justify-content:center;width:1280px;height:720px;background:#fff;color:#000;font-family:sans-serif;font-size:48px;text-align:center;padding:20px;'>Thumbnail generation failed</div>",
       css: "",
-    }
+    };
   }
 }
 
