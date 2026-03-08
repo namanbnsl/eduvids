@@ -277,6 +277,91 @@ Before finalizing each diagram, verify by code that positions and geometry refle
 }
 
 // ---------------------------------------------------------------------------
+// Thumbnail design generation via gemini-3.1-flash-lite
+// ---------------------------------------------------------------------------
+
+export interface ThumbnailDesign {
+  html: string;
+  css: string;
+}
+
+export interface ThumbnailDesignRequest {
+  prompt: string;
+  frameCount: number;
+  sessionId: string;
+}
+
+export async function generateThumbnailDesign({
+  prompt,
+  frameCount,
+  sessionId,
+}: ThumbnailDesignRequest): Promise<ThumbnailDesign> {
+  const systemPrompt = `You are a minimalist design expert. Generate complete HTML + CSS for a YouTube thumbnail (1280x720).
+
+OUTPUT FORMAT — output ONLY valid JSON, no markdown fences, no explanation:
+{
+  "html": "<div class='container'>...use semantic HTML...</div>",
+  "css": "* { ... } .container { ... } /* complete CSS */"
+}
+
+DESIGN PRINCIPLES:
+- Minimalistic & clean aesthetic
+- Limited color palette: max 2-3 colors (e.g., white + 1 accent + gray)
+- Lots of whitespace
+- Simple, bold typography (one or two font sizes)
+- Subtle use of spacing and alignment
+- Elegant rather than flashy
+- No gradients, patterns, or visual clutter
+- Focus on clarity and readability
+
+TECHNICAL REQUIREMENTS:
+- Width: 1280px, Height: 720px
+- Use inline CSS classes only (no external imports except system fonts)
+- ${frameCount} frame(s) available as <img> elements with src placeholder
+- Title should be ${frameCount > 1 ? "prominent" : "centered"}
+- Use semantic HTML (div, h1, h2, p, img, etc)
+- Ensure high contrast for text readability
+
+EXAMPLE AESTHETIC:
+- Black text on white background with subtle gray accents
+- Clean sans-serif (system fonts)
+- Generous padding and margins
+- Maybe a thin border or subtle shadow for depth
+- Video frames displayed minimally (small size, clean borders)`;
+
+  const userPrompt = `Create a minimalist YouTube thumbnail for: "${prompt}"\n\nKeep it clean, elegant, and uncluttered. Maximum 2-3 colors. Focus on clarity.`;
+
+  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
+  const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
+    posthogProperties: { $ai_session_id: sessionId },
+  });
+
+  const text = await streamTextWithTracking(
+    {
+      model,
+      system: systemPrompt,
+      prompt: userPrompt,
+      temperature: 0.8,
+    },
+    googleModel,
+  );
+
+  const cleaned = text
+    .replace(/```json?\n?/g, "")
+    .replace(/```\n?/g, "")
+    .trim();
+
+  try {
+    return JSON.parse(cleaned) as ThumbnailDesign;
+  } catch {
+    return {
+      html: "<div style='display:flex;align-items:center;justify-content:center;width:1280px;height:720px;background:#fff;color:#000;font-family:sans-serif;font-size:48px;text-align:center;padding:20px;'>Thumbnail generation failed</div>",
+      css: "",
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Script fixer – diff-based error correction via gemini-3.1-flash-lite
 // ---------------------------------------------------------------------------
 

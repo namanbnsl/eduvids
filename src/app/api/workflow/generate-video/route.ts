@@ -5,7 +5,9 @@ import {
   generateVoiceoverScript,
   generateManimScript,
   fixManimScript,
+  generateThumbnailDesign,
 } from "@/lib/llm";
+import { renderThumbnail } from "@/lib/thumbnail";
 import { renderManimVideo } from "@/lib/e2b";
 import { uploadVideo } from "@/lib/uploadthing";
 import { jobStore } from "@/lib/job-store";
@@ -125,6 +127,33 @@ export const { POST } = serve<VideoGenerationPayload>(
 
     console.log("✅ Video uploaded:", uploadUrl);
 
+    // Generate thumbnail using Satori (best-effort, non-blocking)
+    let thumbnailDataUrl: string | undefined;
+    if (renderResult.frameDataUrls && renderResult.frameDataUrls.length > 0) {
+      try {
+        thumbnailDataUrl = await context.run("generate-thumbnail", async () => {
+          await updateJobProgress(jobId, {
+            progress: 90,
+            step: "Creating thumbnail",
+            details: "Designing",
+          });
+
+          const design = await generateThumbnailDesign({
+            prompt,
+            frameCount: renderResult.frameDataUrls!.length,
+            sessionId: chatId,
+          });
+
+          const pngBuffer = await renderThumbnail(design, renderResult.frameDataUrls!);
+          return `data:image/png;base64,${pngBuffer.toString("base64")}`;
+        });
+
+        console.log("✅ Thumbnail generated");
+      } catch (err) {
+        console.warn("Thumbnail generation failed (non-fatal):", err);
+      }
+    }
+
     await context.run("finalize-and-trigger-youtube-upload", async () => {
       await updateJobProgress(jobId, {
         progress: 95,
@@ -144,6 +173,7 @@ export const { POST } = serve<VideoGenerationPayload>(
           jobId,
           userId,
           variant,
+          thumbnailDataUrl,
         },
       });
     });

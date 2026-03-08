@@ -127,6 +127,7 @@ interface ValidationWarning {
 
 export interface RenderResult {
   videoPath: string;
+  frameDataUrls?: string[];
   warnings: ValidationWarning[];
   logs: RenderLogEntry[];
   sandboxId: string;
@@ -371,7 +372,6 @@ export async function renderManimVideo({
   existingSandboxId,
   scriptFixer,
 }: RenderRequest): Promise<RenderResult> {
-  void _prompt;
   const normalizedScript = script.trim();
   let sceneNames = extractSceneClassNames(normalizedScript);
   const renderLogs: RenderLogEntry[] = [];
@@ -1165,6 +1165,58 @@ export async function renderManimVideo({
 
     const finalVideoPath = processedVideoPath;
 
+    // --- Extract frames for thumbnail (best-effort) ---
+    const frameDataUrls: string[] = [];
+    try {
+      await reportProgress("video-processing", "Extracting frames for thumbnail");
+
+      const thumbDurationProbe = await sandbox.commands.run(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${finalVideoPath}`,
+        { timeoutMs: 60_000 },
+      );
+      const totalDuration = parseFloat((thumbDurationProbe.stdout || "").trim()) || 10;
+
+      const frameCount = 3;
+      const frameDir = `${outputDir}/frames`;
+      await sandbox.commands.run(`mkdir -p ${frameDir}`);
+
+      const frameTimestamps = Array.from({ length: frameCount }, (_, i) =>
+        (totalDuration * (i + 1)) / (frameCount + 1),
+      );
+
+      for (let i = 0; i < frameTimestamps.length; i++) {
+        await sandbox.commands.run(
+          `ffmpeg -y -ss ${frameTimestamps[i]!.toFixed(2)} -i ${finalVideoPath} -frames:v 1 -q:v 2 ${frameDir}/frame_${i}.png`,
+          { timeoutMs: 60_000 },
+        );
+      }
+
+      for (let i = 0; i < frameCount; i++) {
+        const frameBytes = (await sandbox.files.read(`${frameDir}/frame_${i}.png`, {
+          format: "bytes",
+        })) as Uint8Array;
+        if (frameBytes && frameBytes.length > 0) {
+          const frameBase64 = Buffer.from(frameBytes).toString("base64");
+          frameDataUrls.push(`data:image/png;base64,${frameBase64}`);
+        }
+      }
+
+      if (frameDataUrls.length > 0) {
+        pushLog({
+          level: "info",
+          message: `Extracted ${frameDataUrls.length} frames for thumbnail`,
+          context: "thumbnail",
+        });
+      }
+    } catch (thumbError) {
+      console.warn("Frame extraction failed (non-fatal):", thumbError);
+      pushLog({
+        level: "warn",
+        message: `Frame extraction failed: ${thumbError instanceof Error ? thumbError.message : String(thumbError)}`,
+        context: "thumbnail",
+      });
+    }
+
     const fileBytesArray = (await sandbox.files.read(finalVideoPath, {
       format: "bytes",
     })) as Uint8Array;
@@ -1199,6 +1251,7 @@ export async function renderManimVideo({
 
     return {
       videoPath: dataUrl,
+      frameDataUrls: frameDataUrls.length > 0 ? frameDataUrls : undefined,
       warnings,
       logs: [...renderLogs],
       sandboxId: sandbox.sandboxId,
