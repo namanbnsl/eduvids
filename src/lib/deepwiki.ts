@@ -12,6 +12,37 @@ interface MCPResponse {
 }
 
 /**
+ * Parse a response that may be JSON or SSE (text/event-stream).
+ * DeepWiki's MCP endpoint can return SSE even when JSON is preferred.
+ * In SSE format, the JSON-RPC message is in the last `data:` line
+ * of a `message` event.
+ */
+async function parseMCPResponse(response: Response): Promise<MCPResponse> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("text/event-stream")) {
+    const text = await response.text();
+    // Collect all `data:` lines; the final JSON-RPC payload is the last one
+    const dataLines = text
+      .split("\n")
+      .filter((l) => l.startsWith("data:"))
+      .map((l) => l.slice("data:".length).trim());
+
+    // Walk backwards to find the last parseable JSON-RPC object
+    for (let i = dataLines.length - 1; i >= 0; i--) {
+      if (!dataLines[i]) continue;
+      try {
+        const parsed = JSON.parse(dataLines[i]) as MCPResponse;
+        if (parsed.jsonrpc) return parsed;
+      } catch {
+        // not valid JSON, keep looking
+      }
+    }
+    throw new Error("No valid JSON-RPC message found in SSE stream");
+  }
+  return (await response.json()) as MCPResponse;
+}
+
+/**
  * Query ManimCommunity/manim documentation via DeepWiki MCP
  * to get context for fixing Manim script errors.
  */
@@ -41,7 +72,7 @@ export async function queryManimDocs(errorContext: string): Promise<string> {
     });
 
     const sessionId = initResponse.headers.get("mcp-session-id");
-    const initData = (await initResponse.json()) as MCPResponse;
+    const initData = await parseMCPResponse(initResponse);
     if (initData.error) {
       console.warn("[DeepWiki] Init error:", initData.error.message);
       return "";
@@ -81,7 +112,7 @@ export async function queryManimDocs(errorContext: string): Promise<string> {
       signal: AbortSignal.timeout(30_000),
     });
 
-    const toolData = (await toolResponse.json()) as MCPResponse;
+    const toolData = await parseMCPResponse(toolResponse);
     if (toolData.error) {
       console.warn("[DeepWiki] Tool call error:", toolData.error.message);
       return "";

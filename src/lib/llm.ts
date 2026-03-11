@@ -100,28 +100,15 @@ function buildAugmentedSystemPrompt(base: string, language?: string): string {
   if (language && language !== "english") {
     const langUpper = language.toUpperCase();
 
-    // 1. Replace the main LaTeX requirement line
-    modifiedBase = modifiedBase.replace(
-      /- \*\*ALL ON-SCREEN TEXT MUST BE LATEX\*\*: Use Tex\/MathTex via the provided helpers \(create_tex_label, create_text_panel\)\. NEVER use Text, MarkupText, or Paragraph directly\./g,
-      `- **FOR ${langUpper} TEXT, USE Text() INSTEAD OF LATEX**: LaTeX does not properly support ${language} characters. For all non-mathematical text, use the Text() class directly: Text("your text", font_size=FONT_BODY, color=WHITE). ONLY use Tex/MathTex for mathematical formulas and equations. Never use create_tex_label for ${language} text.`,
-    );
-
-    // 2. Modify all create_tex_label references to suggest Text() for non-English
-    modifiedBase = modifiedBase.replace(
-      /create_tex_label\(/g,
-      `Text(  # For ${language}, use Text() instead of create_tex_label(`,
-    );
-
     // 3. Add a prominent section at the beginning about non-English text handling
     const nonEnglishHeader = `
-⚠️ CRITICAL - ${langUpper} LANGUAGE DETECTED ⚠️
+CRITICAL - ${langUpper} LANGUAGE DETECTED
 This video is in ${language.toUpperCase()}. IMPORTANT RULES:
-1. **USE Text() FOR ALL NON-MATHEMATICAL TEXT**: Text("your text", font_size=FONT_BODY, color=WHITE, font=DEFAULT_FONT)
-2. **USE Tex/MathTex ONLY FOR MATH**: MathTex(r"E = mc^2", font_size=FONT_MATH)
-3. **ALWAYS use font=DEFAULT_FONT (Latin Modern Roman)** for consistent, professional typography
-4. **NEVER use create_tex_label, create_text_panel, or create_bullet_item for ${language} text**
-5. **For bullets in ${language}**: Create Text() objects and arrange them manually
-6. **Example correct usage**:
+1. USE Text() FOR ALL NON-MATHEMATICAL TEXT: Text("your text", font="EB Garamond", font_size=36, color=WHITE)
+2. USE Tex/MathTex ONLY FOR MATH: MathTex(r"E = mc^2", font_size=44)
+3. ALWAYS use font="EB Garamond" for consistent typography
+4. For bullets in ${language}: Create Text() objects with font="EB Garamond" and arrange them manually
+5. Example correct usage:
    title = Text("${
      language === "spanish"
        ? "Título"
@@ -130,7 +117,7 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
          : language === "german"
            ? "Titel"
            : "Title"
-   }", font_size=FONT_TITLE, color=WHITE, font=DEFAULT_FONT)
+   }", font="EB Garamond", font_size=48, color=WHITE)
    body = Text("${
      language === "spanish"
        ? "Contenido"
@@ -139,24 +126,12 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
          : language === "german"
            ? "Inhalt"
            : "Content"
-   }", font_size=FONT_BODY, color=WHITE, font=DEFAULT_FONT)
-7. **LaTeX will NOT work for ${language} characters** - it will show garbled text or errors
+   }", font="EB Garamond", font_size=36, color=WHITE)
+6. LaTeX will NOT work for ${language} characters - it will show garbled text or errors
 
 `;
 
     modifiedBase = nonEnglishHeader + modifiedBase;
-
-    // 4. Modify bullet point creation instructions
-    modifiedBase = modifiedBase.replace(
-      /\*\*RECOMMENDED:\*\* Use the \\`create_bullet_list\\` helper function for safe, consistent bullet points/g,
-      `**FOR ${langUpper}**: DO NOT use create_bullet_list - it uses LaTeX which doesn't support ${language}. Instead, create Text() objects and arrange them vertically`,
-    );
-
-    // 5. Update text panel instructions
-    modifiedBase = modifiedBase.replace(
-      /create_text_panel\(/g,
-      `# For ${language}, manually create Text() + Rectangle instead of create_text_panel(`,
-    );
   }
 
   return `${modifiedBase}\n\n---\n`;
@@ -201,6 +176,8 @@ export async function generateVoiceoverScript({
   return text.trim();
 }
 
+const MANIM_SCRIPT_MAX_RETRIES = 3;
+
 export async function generateManimScript({
   prompt,
   voiceoverScript,
@@ -240,32 +217,48 @@ Before finalizing each diagram, verify by code that positions and geometry refle
 - Compose camera motion deliberately (stable orientation changes and purposeful reveals), not random spinning.
 - For portrait shorts, prioritize legibility over density: keep fewer objects on screen and use large text constants only.`;
 
-  const googleModel = await createGoogleModel("gemini-3-flash-preview");
-  const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
-    posthogProperties: { $ai_session_id: sessionId },
-  });
+  let lastError: unknown;
 
-  try {
-    const text = await streamTextWithTracking(
-      {
-        model: model,
-        system: augmentedSystemPrompt,
-        prompt: generationPrompt,
-        temperature: 1,
-      },
-      googleModel,
-    );
+  for (let attempt = 0; attempt < MANIM_SCRIPT_MAX_RETRIES; attempt++) {
+    const googleModel = await createGoogleModel("gemini-3-flash-preview");
+    const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
+      posthogProperties: { $ai_session_id: sessionId },
+    });
 
-    const code = text
-      .replace(/```python?\n?/g, "")
-      .replace(/```\n?/g, "")
-      .trim();
+    try {
+      const text = await streamTextWithTracking(
+        {
+          model: model,
+          system: augmentedSystemPrompt,
+          prompt: generationPrompt,
+          temperature: 0.2,
+        },
+        googleModel,
+      );
 
-    return code;
-  } catch (err) {
-    console.error(err);
-    return "Script Generation Failed";
+      const code = text
+        .replace(/```python?\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
+
+      return code;
+    } catch (err) {
+      lastError = err;
+      console.error(
+        `[generateManimScript] Attempt ${attempt + 1}/${MANIM_SCRIPT_MAX_RETRIES} failed:`,
+        err,
+      );
+      // reportError is already called inside streamTextWithTracking,
+      // so the failed key is marked and the next createGoogleModel call
+      // will select a different unblocked key.
+    }
   }
+
+  console.error(
+    `[generateManimScript] All ${MANIM_SCRIPT_MAX_RETRIES} attempts exhausted`,
+    lastError,
+  );
+  return "Script Generation Failed";
 }
 
 // ---------------------------------------------------------------------------

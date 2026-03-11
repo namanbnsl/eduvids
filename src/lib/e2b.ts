@@ -5,10 +5,10 @@ import { RenderLogEntry, ValidationStage } from "@/lib/types";
 const MAX_COMMAND_OUTPUT_CHARS = 4000;
 let latexEnvironmentVerified = false;
 
-const EDUVIDS_CALLOUT_TEXT = "Generate your free educational videos at";
+const CTA_MARKER = "# __EDUVIDS_CTA_INJECTED__";
 
 function injectEduvidsCallout(script: string): string {
-  if (script.includes(EDUVIDS_CALLOUT_TEXT)) {
+  if (script.includes(CTA_MARKER)) {
     return script;
   }
 
@@ -56,30 +56,26 @@ function injectEduvidsCallout(script: string): string {
   }
 
   const snippet = [
+    `${bodyIndent}${CTA_MARKER}`,
     `${bodyIndent}# Clear scene and prepare for CTA (Call-to-Action)`,
     `${bodyIndent}existing_mobjects = list(self.mobjects)`,
     `${bodyIndent}if existing_mobjects:`,
     `${bodyIndent}    self.play(*[FadeOut(mob) for mob in existing_mobjects])`,
     `${bodyIndent}with self.voiceover(text="Generate your own educational videos for free at eduvids dot vercel dot app"):`,
-    `${bodyIndent}    # Create CTA with high-contrast background panel for visibility`,
-    ``,
-    `${bodyIndent}    cta_title = Text("Generate your own educational videos for free!", font_size=FONT_CAPTION + 10)`,
+    `${bodyIndent}    cta_title = Text("Generate your own educational videos for free!", font="EB Garamond", font_size=32)`,
     `${bodyIndent}    cta_title.set_color(WHITE)`,
-    `${bodyIndent}    cta_link = Text("https://eduvids.app", font_size=FONT_CAPTION + 6)`,
+    `${bodyIndent}    cta_link = Text("https://eduvids.app", font="EB Garamond", font_size=28)`,
     `${bodyIndent}    cta_link.set_color(TEAL)`,
     `${bodyIndent}    cta_link.next_to(cta_title, DOWN, buff=0.4)`,
     `${bodyIndent}    cta_content = VGroup(cta_title, cta_link)`,
     `${bodyIndent}    cta_content.move_to(ORIGIN)`,
     ``,
-    `${bodyIndent}    # Set z-indices to ensure visibility`,
     `${bodyIndent}    cta_title.set_z_index(101)`,
     `${bodyIndent}    cta_link.set_z_index(101)`,
     ``,
-    `${bodyIndent}    # Animate CTA entrance`,
     `${bodyIndent}    self.play(FadeIn(cta_title, shift=UP*0.3), FadeIn(cta_link, shift=UP*0.3), run_time=1.0)`,
     `${bodyIndent}    self.wait(0.5)`,
     ``,
-    `${bodyIndent}    # Subtle pulse animation on the link`,
     `${bodyIndent}    self.play(cta_link.animate.scale(1.08), run_time=0.4)`,
     `${bodyIndent}    self.play(cta_link.animate.scale(1.0), run_time=0.4)`,
     `${bodyIndent}    self.wait(0.8)`,
@@ -814,10 +810,31 @@ export async function renderManimVideo({
           throw dryRunError;
         }
 
-        const errorMessage =
-          dryRunError instanceof Error
-            ? dryRunError.message
-            : String(dryRunError);
+        // Build rich error context with stderr/stdout tails for the fixer
+        let fixerErrorContext: string;
+        if (dryRunError instanceof ManimValidationError) {
+          const tail = (text: string | undefined, n = 12000) => {
+            if (!text) return "";
+            return text.length <= n ? text : text.slice(-n);
+          };
+          const parts = [
+            `STAGE: ${dryRunError.stage}`,
+            dryRunError.hint ? `HINT: ${dryRunError.hint}` : "",
+            dryRunError.stderr
+              ? `STDERR:\n${tail(dryRunError.stderr)}`
+              : "",
+            dryRunError.stdout
+              ? `STDOUT:\n${tail(dryRunError.stdout, 4000)}`
+              : "",
+          ].filter(Boolean);
+          fixerErrorContext =
+            parts.length > 0 ? parts.join("\n\n") : dryRunError.message;
+        } else {
+          fixerErrorContext =
+            dryRunError instanceof Error
+              ? dryRunError.message
+              : String(dryRunError);
+        }
 
         pushLog({
           level: "warn",
@@ -830,7 +847,19 @@ export async function renderManimVideo({
           `Fixing script errors (attempt ${fixAttempt + 1})`,
         );
 
-        currentScript = await scriptFixer(currentScript, errorMessage);
+        const previousScript = currentScript;
+        currentScript = await scriptFixer(currentScript, fixerErrorContext);
+
+        // Detect no-op fix — if the fixer returned the same script, stop wasting attempts
+        if (currentScript === previousScript) {
+          pushLog({
+            level: "warn",
+            message: `Script fixer returned unchanged script on attempt ${fixAttempt + 1} — skipping remaining retries`,
+            context: "script-fix",
+          });
+          throw dryRunError;
+        }
+
         currentScript = injectEduvidsCallout(currentScript);
 
         // Re-extract scene names in case the fixer renamed classes
@@ -964,7 +993,7 @@ export async function renderManimVideo({
     };
 
     const renderedScenePaths: string[] = [];
-    for (const sceneName of sceneNames) {
+    for (const sceneName of currentSceneNames) {
       const scenePath = await locateRenderedScenePath(sceneName);
       if (!scenePath) {
         await ensureCleanup();
@@ -1168,20 +1197,25 @@ export async function renderManimVideo({
     // --- Extract frames for thumbnail (best-effort) ---
     const frameDataUrls: string[] = [];
     try {
-      await reportProgress("video-processing", "Extracting frames for thumbnail");
+      await reportProgress(
+        "video-processing",
+        "Extracting frames for thumbnail",
+      );
 
       const thumbDurationProbe = await sandbox.commands.run(
         `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${finalVideoPath}`,
         { timeoutMs: 60_000 },
       );
-      const totalDuration = parseFloat((thumbDurationProbe.stdout || "").trim()) || 10;
+      const totalDuration =
+        parseFloat((thumbDurationProbe.stdout || "").trim()) || 10;
 
       const frameCount = 3;
       const frameDir = `${outputDir}/frames`;
       await sandbox.commands.run(`mkdir -p ${frameDir}`);
 
-      const frameTimestamps = Array.from({ length: frameCount }, (_, i) =>
-        (totalDuration * (i + 1)) / (frameCount + 1),
+      const frameTimestamps = Array.from(
+        { length: frameCount },
+        (_, i) => (totalDuration * (i + 1)) / (frameCount + 1),
       );
 
       for (let i = 0; i < frameTimestamps.length; i++) {
@@ -1192,9 +1226,12 @@ export async function renderManimVideo({
       }
 
       for (let i = 0; i < frameCount; i++) {
-        const frameBytes = (await sandbox.files.read(`${frameDir}/frame_${i}.png`, {
-          format: "bytes",
-        })) as Uint8Array;
+        const frameBytes = (await sandbox.files.read(
+          `${frameDir}/frame_${i}.png`,
+          {
+            format: "bytes",
+          },
+        )) as Uint8Array;
         if (frameBytes && frameBytes.length > 0) {
           const frameBase64 = Buffer.from(frameBytes).toString("base64");
           frameDataUrls.push(`data:image/png;base64,${frameBase64}`);
