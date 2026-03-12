@@ -268,6 +268,143 @@ const buildSceneValidationCommand = (scriptPath: string) =>
     "PY",
   ].join("\n");
 
+const buildOverlapValidationScript = (
+  scriptPath: string,
+  mediaDir: string,
+): string =>
+  [
+    "import sys",
+    "import importlib.util",
+    "from contextlib import contextmanager",
+    "",
+    "# ── Mock voiceover so TTS is never called ──",
+    "try:",
+    "    from manim_voiceover import VoiceoverScene",
+    "    @contextmanager",
+    '    def _mock_voiceover(self, text="", **kw):',
+    "        class _Tracker:",
+    "            duration = 2.0",
+    '            data = {"original_text": text}',
+    "        yield _Tracker()",
+    "    VoiceoverScene.voiceover = _mock_voiceover",
+    "    VoiceoverScene.set_speech_service = lambda self, *a, **kw: None",
+    "except ImportError:",
+    "    pass",
+    "",
+    "from manim import Scene, config",
+    "",
+    'config.quality = "low_quality"',
+    "config.save_last_frame = True",
+    "config.write_to_movie = False",
+    "config.preview = False",
+    "config.disable_caching = True",
+    `config.media_dir = r"${mediaDir}/overlap_check"`,
+    "",
+    `spec = importlib.util.spec_from_file_location("_scene", r"${scriptPath}")`,
+    "mod = importlib.util.module_from_spec(spec)",
+    "spec.loader.exec_module(mod)",
+    "",
+    "FRAME_HW = config.frame_width / 2",
+    "FRAME_HH = config.frame_height / 2",
+    "OVERLAP_MIN = 0.2",
+    "SIZE_FRAC = 0.5",
+    "OOF_MARGIN = 0.5",
+    "",
+    "violations = []",
+    "",
+    "def _check(sn, mobs, step):",
+    "    top = []",
+    "    for m in mobs:",
+    "        try:",
+    "            if m.has_points() or m.submobjects:",
+    "                top.append(m)",
+    "        except Exception:",
+    "            pass",
+    "    for m in top:",
+    "        try:",
+    "            l, r = m.get_left()[0], m.get_right()[0]",
+    "            b, t = m.get_bottom()[1], m.get_top()[1]",
+    "            if r - l < 0.01 and t - b < 0.01:",
+    "                continue",
+    "            parts = []",
+    '            if r > FRAME_HW + OOF_MARGIN: parts.append(f"right edge at x={r:.1f}")',
+    '            if l < -FRAME_HW - OOF_MARGIN: parts.append(f"left edge at x={l:.1f}")',
+    '            if t > FRAME_HH + OOF_MARGIN: parts.append(f"top edge at y={t:.1f}")',
+    '            if b < -FRAME_HH - OOF_MARGIN: parts.append(f"bottom edge at y={b:.1f}")',
+    "            if parts:",
+    "                violations.append(",
+    "                    f\"[{sn}][step {step}] OUT_OF_FRAME: {', '.join(parts)}. \"",
+    '                    f"Visible frame is x=[{-FRAME_HW:.1f}, {FRAME_HW:.1f}], y=[{-FRAME_HH:.1f}, {FRAME_HH:.1f}]. "',
+    '                    f"Fix: use ensure_in_frame() or reposition with .to_edge()/.next_to()."',
+    "                )",
+    "        except Exception:",
+    "            pass",
+    "    small = []",
+    "    for m in top:",
+    "        try:",
+    "            w = m.get_right()[0] - m.get_left()[0]",
+    "            h = m.get_top()[1] - m.get_bottom()[1]",
+    "            if w < config.frame_width * SIZE_FRAC and h < config.frame_height * SIZE_FRAC:",
+    "                small.append(m)",
+    "        except Exception:",
+    "            pass",
+    "    for i in range(len(small)):",
+    "        for j in range(i + 1, len(small)):",
+    "            try:",
+    "                m1, m2 = small[i], small[j]",
+    "                r1l, r1r = m1.get_left()[0], m1.get_right()[0]",
+    "                r1b, r1t = m1.get_bottom()[1], m1.get_top()[1]",
+    "                r2l, r2r = m2.get_left()[0], m2.get_right()[0]",
+    "                r2b, r2t = m2.get_bottom()[1], m2.get_top()[1]",
+    "                xov = min(r1r, r2r) - max(r1l, r2l)",
+    "                yov = min(r1t, r2t) - max(r1b, r2b)",
+    "                if xov > OVERLAP_MIN and yov > OVERLAP_MIN:",
+    "                    violations.append(",
+    '                        f"[{sn}][step {step}] OVERLAP ({xov:.2f}x{yov:.2f} units): "',
+    '                        f"mob1 x=[{r1l:.2f},{r1r:.2f}] y=[{r1b:.2f},{r1t:.2f}], "',
+    '                        f"mob2 x=[{r2l:.2f},{r2r:.2f}] y=[{r2b:.2f},{r2t:.2f}]. "',
+    '                        f"Fix: use ensure_no_overlap() or increase buff in .next_to() calls."',
+    "                    )",
+    "            except Exception:",
+    "                pass",
+    "",
+    "scene_classes = sorted(",
+    "    [(n, v) for n, v in vars(mod).items()",
+    "     if isinstance(v, type) and issubclass(v, Scene) and v is not Scene",
+    '     and getattr(v, "__module__", None) == mod.__name__],',
+    "    key=lambda x: x[0]",
+    ")",
+    "",
+    "for sn, cls in scene_classes:",
+    "    ctr = [0]",
+    "    orig = cls.play",
+    "    def _mk(name, o):",
+    "        def _p(self, *a, **kw):",
+    "            r = o(self, *a, **kw)",
+    "            ctr[0] += 1",
+    "            _check(name, list(self.mobjects), ctr[0])",
+    "            return r",
+    "        return _p",
+    "    cls.play = _mk(sn, orig)",
+    "    try:",
+    "        cls().render()",
+    "    except SystemExit:",
+    "        pass",
+    "    except Exception:",
+    "        pass",
+    "    finally:",
+    "        cls.play = orig",
+    "",
+    "if violations:",
+    "    unique = list(dict.fromkeys(violations))",
+    '    print("BOUNDING_BOX_VIOLATIONS_FOUND")',
+    "    for v in unique[:20]:",
+    "        print(v)",
+    "    sys.exit(1)",
+    "else:",
+    '    print("OVERLAP_VALIDATION_PASSED")',
+  ].join("\n");
+
 const buildAstValidationCommand = (scriptPath: string) =>
   [
     "python - <<'PY'",
@@ -710,13 +847,82 @@ export async function renderManimVideo({
       context: "prepare",
     });
 
-    await reportProgress("syntax", "Running Python syntax check");
-    await runCommandOrThrow(`python -m py_compile ${scriptPath}`, {
-      description: "Python syntax check",
-      stage: "syntax",
-      timeoutMs: 120_000,
-      hint: "Fix Python syntax errors reported above before rendering with Manim.",
-    });
+    // -----------------------------------------------------------------------
+    // Pre-render validation: syntax, AST safety, and scene structure.
+    // When scriptFixer is available, attempt to fix errors inline rather
+    // than aborting the pipeline — the dry-run loop will catch remaining
+    // issues too, but fixing early avoids wasting sandbox time.
+    // -----------------------------------------------------------------------
+    const PRE_RENDER_MAX_FIXES = 3;
+
+    for (let preFixAttempt = 0; preFixAttempt <= PRE_RENDER_MAX_FIXES; preFixAttempt++) {
+      await reportProgress(
+        "syntax",
+        preFixAttempt === 0
+          ? "Running Python syntax check"
+          : `Re-checking syntax after fix (attempt ${preFixAttempt})`,
+      );
+
+      try {
+        await runCommandOrThrow(`python -m py_compile ${scriptPath}`, {
+          description: "Python syntax check",
+          stage: "syntax",
+          timeoutMs: 120_000,
+          hint: "Fix Python syntax errors reported above before rendering with Manim.",
+        });
+        break; // syntax check passed
+      } catch (syntaxError) {
+        if (!scriptFixer || preFixAttempt === PRE_RENDER_MAX_FIXES) {
+          throw syntaxError;
+        }
+
+        const errorMsg =
+          syntaxError instanceof ManimValidationError
+            ? [
+                `STAGE: ${syntaxError.stage}`,
+                syntaxError.hint ? `HINT: ${syntaxError.hint}` : "",
+                syntaxError.stderr ? `STDERR:\n${syntaxError.stderr}` : "",
+              ]
+                .filter(Boolean)
+                .join("\n\n")
+            : syntaxError instanceof Error
+              ? syntaxError.message
+              : String(syntaxError);
+
+        pushLog({
+          level: "warn",
+          message: `Syntax check failed (attempt ${preFixAttempt + 1}/${PRE_RENDER_MAX_FIXES + 1}), requesting LLM fix`,
+          context: "syntax",
+        });
+
+        await reportProgress(
+          "script-fix",
+          `Fixing syntax errors (attempt ${preFixAttempt + 1})`,
+        );
+
+        const previousScript = enhancedScript;
+        enhancedScript = await scriptFixer(enhancedScript, errorMsg);
+
+        if (enhancedScript === previousScript) {
+          pushLog({
+            level: "warn",
+            message: `Script fixer returned unchanged script on syntax fix attempt ${preFixAttempt + 1} — aborting`,
+            context: "script-fix",
+          });
+          throw syntaxError;
+        }
+
+        enhancedScript = injectEduvidsCallout(enhancedScript);
+
+        // Re-extract scene names in case the fixer renamed classes
+        sceneNames = extractSceneClassNames(enhancedScript);
+        if (!sceneNames.length) {
+          throw syntaxError; // fixer broke the script structure
+        }
+
+        await sandbox!.files.write(scriptPath, enhancedScript);
+      }
+    }
 
     await reportProgress("ast-guard", "Enforcing AST safety rules");
     await runCommandOrThrow(buildAstValidationCommand(scriptPath), {
@@ -877,6 +1083,147 @@ export async function renderManimVideo({
           timeoutMs: 120_000,
           hint: "Script fixer introduced a syntax error.",
         });
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Overlap / out-of-frame validation: renders each scene with mocked
+    // voiceover and checks bounding boxes after every play() call. Feeds
+    // violations to scriptFixer for auto-correction (best-effort).
+    // -----------------------------------------------------------------------
+    const OVERLAP_MAX_FIXES = 2;
+    const overlapValidationPath = `/home/user/overlap_validation.py`;
+
+    if (scriptFixer) {
+      for (
+        let overlapAttempt = 0;
+        overlapAttempt <= OVERLAP_MAX_FIXES;
+        overlapAttempt++
+      ) {
+        await reportProgress(
+          "overlap-validation",
+          overlapAttempt === 0
+            ? "Checking for visual overlaps"
+            : `Re-checking overlaps after fix (attempt ${overlapAttempt})`,
+        );
+
+        const validationScript = buildOverlapValidationScript(
+          scriptPath,
+          mediaDir,
+        );
+        await sandbox!.files.write(overlapValidationPath, validationScript);
+
+        try {
+          await runCommandOrThrow(`python ${overlapValidationPath}`, {
+            description: "Bounding-box overlap validation",
+            stage: "overlap-validation",
+            timeoutMs: 600_000, // 10 minutes
+            hint: "Overlap or out-of-frame issues detected.",
+            streamOutput: true,
+          });
+
+          pushLog({
+            level: "info",
+            message: `Overlap validation passed${overlapAttempt > 0 ? ` after ${overlapAttempt} fix(es)` : ""}`,
+            context: "overlap-validation",
+          });
+          break; // clean
+        } catch (overlapError) {
+          if (overlapAttempt === OVERLAP_MAX_FIXES) {
+            // Out of fix attempts — warn but don't block the render
+            pushLog({
+              level: "warn",
+              message:
+                "Overlap validation issues remain after max fix attempts — proceeding with render",
+              context: "overlap-validation",
+            });
+            break;
+          }
+
+          // Build error context for the fixer
+          let overlapErrorContext: string;
+          if (overlapError instanceof ManimValidationError) {
+            const tail = (text: string | undefined, n = 12000) => {
+              if (!text) return "";
+              return text.length <= n ? text : text.slice(-n);
+            };
+            const parts = [
+              "STAGE: overlap-validation",
+              "HINT: The following bounding-box violations were detected. Fix overlapping or out-of-frame elements using ensure_no_overlap() and ensure_in_frame(), or reposition with .next_to() using larger buff values.",
+              overlapError.stdout
+                ? `VIOLATIONS:\n${tail(overlapError.stdout)}`
+                : "",
+              overlapError.stderr
+                ? `STDERR:\n${tail(overlapError.stderr, 4000)}`
+                : "",
+            ].filter(Boolean);
+            overlapErrorContext = parts.join("\n\n");
+          } else {
+            overlapErrorContext =
+              overlapError instanceof Error
+                ? overlapError.message
+                : String(overlapError);
+          }
+
+          pushLog({
+            level: "warn",
+            message: `Overlap validation failed (attempt ${overlapAttempt + 1}/${OVERLAP_MAX_FIXES + 1}), requesting LLM fix`,
+            context: "overlap-validation",
+          });
+
+          await reportProgress(
+            "script-fix",
+            `Fixing overlap issues (attempt ${overlapAttempt + 1})`,
+          );
+
+          const previousScript = currentScript;
+          currentScript = await scriptFixer(
+            currentScript,
+            overlapErrorContext,
+          );
+
+          if (currentScript === previousScript) {
+            pushLog({
+              level: "warn",
+              message: `Script fixer returned unchanged script for overlap fix — skipping remaining attempts`,
+              context: "overlap-validation",
+            });
+            break;
+          }
+
+          currentScript = injectEduvidsCallout(currentScript);
+
+          currentSceneNames = extractSceneClassNames(currentScript);
+          if (!currentSceneNames.length) {
+            pushLog({
+              level: "warn",
+              message:
+                "Script fixer broke scene structure during overlap fix — proceeding with previous script",
+              context: "overlap-validation",
+            });
+            break;
+          }
+
+          await sandbox!.files.write(scriptPath, currentScript);
+
+          // Syntax check on the fixed script
+          try {
+            await runCommandOrThrow(`python -m py_compile ${scriptPath}`, {
+              description: "Syntax check (post-overlap-fix)",
+              stage: "syntax",
+              timeoutMs: 120_000,
+              hint: "Script fixer introduced a syntax error while fixing overlaps.",
+            });
+          } catch {
+            pushLog({
+              level: "warn",
+              message:
+                "Overlap fix introduced a syntax error — proceeding with previous script",
+              context: "overlap-validation",
+            });
+            break;
+          }
+        }
       }
     }
 
@@ -1111,44 +1458,6 @@ export async function renderManimVideo({
     }
 
     let processedVideoPath = videoPath;
-
-    // Speed up video to 1.3x
-    const speedUpPath = `${outputDir}/speedup.mp4`;
-    await reportProgress("video-processing", "Speeding up rendered video");
-    const speedUpCmd = `ffmpeg -y -i ${processedVideoPath} -filter:v "setpts=PTS/1.3" -filter:a "atempo=1.3" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart ${speedUpPath}`;
-    await runCommandOrThrow(speedUpCmd, {
-      description: "Speed up video to 1.3x",
-      stage: "render",
-      timeoutMs: 360_000,
-      hint: "ffmpeg failed while speeding up the video.",
-      streamOutput: { stdout: true, stderr: true },
-    });
-
-    const probeSpeedUp = await runCommandOrThrow(
-      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${speedUpPath}`,
-      {
-        description: "Speed up video validation",
-        stage: "video-validation",
-        timeoutMs: 180_000,
-        hint: "The sped-up video appears to be corrupted.",
-      },
-    );
-    const speedUpDuration = parseFloat((probeSpeedUp.stdout || "").trim());
-    if (!speedUpDuration || speedUpDuration <= 0) {
-      await ensureCleanup();
-      throw new ManimValidationError(
-        `Sped-up video has invalid duration: ${speedUpDuration}s — aborting upload`,
-        "video-validation",
-        { logs: [...renderLogs] },
-      );
-    }
-
-    processedVideoPath = speedUpPath;
-    pushLog({
-      level: "info",
-      message: `Video sped up to 1.15x (new duration: ${speedUpDuration}s)`,
-      context: "video-processing",
-    });
 
     if (applyWatermark) {
       const watermarkedPath = `${outputDir}/watermarked.mp4`;

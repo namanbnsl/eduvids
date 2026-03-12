@@ -94,6 +94,7 @@ type ValidationStage =
   | "video-validation"
   | "watermark"
   | "watermark-validation"
+  | "overlap-validation"
   | "download";
 
 interface RenderLogEntry {

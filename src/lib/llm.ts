@@ -197,11 +197,24 @@ export async function generateManimScript({
 
 Scene planning requirements:
 - Start a new scene whenever the explanation changes concept, example, or diagram
-- Prefer more small scenes over fewer overloaded scenes
+- Prefer MORE small scenes over fewer overloaded scenes (aim for 6-14 scenes for full videos)
 - Use ordered class names like Scene01Intro, Scene02Setup, Scene03WorkedExample
 - Each scene must be self-contained and renderable on its own
 - Keep visual continuity across scenes, but do not depend on prior scene state
 - Return one Python file containing all scenes in order
+- NEVER cram multiple concepts into a single scene. One idea per scene.
+- Longer videos with proper pacing are better than short rushed ones.
+
+VISUAL QUALITY — CRITICAL:
+- LABEL EVERYTHING: every formula part, every axis, every shape vertex, every graph curve must have a visible label
+- Show formulas one at a time, then add labels explaining each symbol (e.g., after showing F=ma, label F as "force", m as "mass", a as "acceleration")
+- Use color-coding: match the color of a label to the element it describes
+- Maximum 4-5 elements on screen at once. FadeOut old content before adding new.
+- Use generous spacing: buff=0.4 minimum in all .next_to() calls, buff=0.6 between unrelated elements
+- Place labels OUTSIDE shapes, not inside or on top of them
+- Use self.wait(1) between new elements appearing, self.wait(2) between concept changes
+- Add elements ONE AT A TIME with animations, not all at once
+- Keep all content within safe frame: x in [-6, 6], y in [-3.2, 3.2]
 
 Geometry and diagram accuracy requirements (always apply when relevant):
 - Angle arcs must represent the intended angle region exactly (interior/reflex/acute/obtuse) and labels must match the highlighted region.
@@ -414,10 +427,20 @@ export async function fixManimScript({
   errors,
   sessionId,
 }: FixManimScriptRequest): Promise<string> {
+  const heuristicFixed = fixManimScriptHeuristically(script, errors);
+  if (heuristicFixed.changed) {
+    console.warn(
+      "[fixManimScript] Applied heuristic fix before LLM:",
+      heuristicFixed.notes.join("; "),
+    );
+    return heuristicFixed.script;
+  }
+
   // Fetch relevant manim docs from DeepWiki (best-effort)
   const manimDocs = await queryManimDocs(errors);
+  console.log(manimDocs);
 
-  const systemPrompt = `You are a Manim Community v0.18.0 debugging expert.
+  const systemPrompt = `You are a Manim Community v0.19.0 debugging expert.
 You receive a Manim script and the errors produced when running it.
 Your job is to output ONLY search/replace diff blocks that fix the errors.
 
@@ -434,7 +457,42 @@ RULES:
 - You may output multiple diff blocks.
 - Do NOT add commentary, markdown fences, or explanations.
 - Do NOT refactor or rewrite unrelated code.
-- Preserve all existing imports, class names, and voiceover text.`;
+- Preserve all existing imports, class names, and voiceover text.
+
+OVERLAP / OUT-OF-FRAME FIXES:
+When errors mention OVERLAP or OUT_OF_FRAME bounding-box violations:
+- Use ensure_no_overlap(mob1, mob2) after positioning to auto-resolve overlaps.
+- Use ensure_in_frame(mob) after positioning to push elements back into view.
+- Increase buff= values in .next_to() calls (use buff=0.5 or higher).
+- Move elements further apart with .shift() or reposition with .to_edge().
+- If the script does not define ensure_no_overlap / ensure_in_frame, add them:
+  def ensure_no_overlap(mob1, mob2, min_gap=0.4):
+      r1_l, r1_r = mob1.get_left()[0], mob1.get_right()[0]
+      r1_b, r1_t = mob1.get_bottom()[1], mob1.get_top()[1]
+      r2_l, r2_r = mob2.get_left()[0], mob2.get_right()[0]
+      r2_b, r2_t = mob2.get_bottom()[1], mob2.get_top()[1]
+      x_overlap = min(r1_r, r2_r) - max(r1_l, r2_l) + min_gap
+      y_overlap = min(r1_t, r2_t) - max(r1_b, r2_b) + min_gap
+      if x_overlap > 0 and y_overlap > 0:
+          if x_overlap < y_overlap:
+              if mob2.get_center()[0] >= mob1.get_center()[0]:
+                  mob2.shift(RIGHT * x_overlap)
+              else:
+                  mob2.shift(LEFT * x_overlap)
+          else:
+              if mob2.get_center()[1] >= mob1.get_center()[1]:
+                  mob2.shift(UP * y_overlap)
+              else:
+                  mob2.shift(DOWN * y_overlap)
+  def ensure_in_frame(mob, margin=0.5):
+      if mob.get_right()[0] > 7.0 - margin:
+          mob.shift(LEFT * (mob.get_right()[0] - 7.0 + margin))
+      if mob.get_left()[0] < -7.0 + margin:
+          mob.shift(RIGHT * (-7.0 + margin - mob.get_left()[0]))
+      if mob.get_top()[1] > 4.0 - margin:
+          mob.shift(DOWN * (mob.get_top()[1] - 4.0 + margin))
+      if mob.get_bottom()[1] < -4.0 + margin:
+          mob.shift(UP * (-4.0 + margin - mob.get_bottom()[1]))`;
 
   const userPrompt = [
     "ERRORS:",
@@ -464,10 +522,100 @@ RULES:
     );
 
     const fixed = applySearchReplaceDiffs(script, text.trim());
-    return fixed;
+    if (fixed !== script) return fixed;
+
+    const heuristicAfter = fixManimScriptHeuristically(script, errors);
+    if (heuristicAfter.changed) {
+      console.warn(
+        "[fixManimScript] Applied heuristic fix after LLM:",
+        heuristicAfter.notes.join("; "),
+      );
+      return heuristicAfter.script;
+    }
+
+    return script;
   } catch (err) {
     console.error("[fixManimScript] LLM call failed:", err);
     // Return original script so the caller can decide whether to retry
+    const heuristicAfter = fixManimScriptHeuristically(script, errors);
+    if (heuristicAfter.changed) {
+      console.warn(
+        "[fixManimScript] Applied heuristic fix after LLM failure:",
+        heuristicAfter.notes.join("; "),
+      );
+      return heuristicAfter.script;
+    }
     return script;
   }
+}
+
+type HeuristicFixResult = {
+  script: string;
+  changed: boolean;
+  notes: string[];
+};
+
+function fixManimScriptHeuristically(
+  script: string,
+  errors: string,
+): HeuristicFixResult {
+  let updated = script;
+  const notes: string[] = [];
+
+  const nameErrorMatch = /NameError:\s+name\s+'([^']+)' is not defined/.exec(
+    errors,
+  );
+  if (nameErrorMatch) {
+    const missingName = nameErrorMatch[1];
+    const rateFuncMap: Record<string, string> = {
+      slow_into_fast: "rate_functions.smooth",
+      slow_into: "rate_functions.smooth",
+      rush_into: "rate_functions.rush_into",
+      rush_from: "rate_functions.rush_from",
+      there_and_back: "rate_functions.there_and_back",
+      there_and_back_with_pause: "rate_functions.there_and_back_with_pause",
+      linear: "rate_functions.linear",
+      smooth: "rate_functions.smooth",
+      double_smooth: "rate_functions.double_smooth",
+    };
+
+    const replacement = rateFuncMap[missingName];
+    if (replacement) {
+      const nameRegex = new RegExp(`\\b${missingName}\\b`, "g");
+      if (nameRegex.test(updated)) {
+        updated = updated.replace(nameRegex, replacement);
+        notes.push(`replaced ${missingName} with ${replacement}`);
+      }
+
+      if (
+        updated !== script &&
+        !/from\s+manim\s+import\s+.*\brate_functions\b/.test(updated) &&
+        !/import\s+manim\s+as\s+\w+/.test(updated)
+      ) {
+        const importMatch = /from\s+manim\s+import\s+([^\n]+)/.exec(updated);
+        if (importMatch) {
+          const existing = importMatch[1];
+          if (!existing.includes("rate_functions")) {
+            const patched = existing.trim().endsWith(",")
+              ? `${existing} rate_functions`
+              : `${existing}, rate_functions`;
+            updated = updated.replace(
+              importMatch[0],
+              `from manim import ${patched}`,
+            );
+            notes.push("added rate_functions to manim import");
+          }
+        } else if (updated.includes("import manim as")) {
+          // Prefer explicit import for rate_functions if using manim alias elsewhere
+          updated = `from manim import rate_functions\n${updated}`;
+          notes.push("added explicit rate_functions import");
+        } else {
+          updated = `from manim import rate_functions\n${updated}`;
+          notes.push("added rate_functions import");
+        }
+      }
+    }
+  }
+
+  return { script: updated, changed: updated !== script, notes };
 }

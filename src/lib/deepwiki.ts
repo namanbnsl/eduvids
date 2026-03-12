@@ -71,6 +71,15 @@ export async function queryManimDocs(errorContext: string): Promise<string> {
       signal: AbortSignal.timeout(15_000),
     });
 
+    if (!initResponse.ok) {
+      console.warn(
+        "[DeepWiki] Init HTTP error:",
+        initResponse.status,
+        initResponse.statusText,
+      );
+      return "";
+    }
+
     const sessionId = initResponse.headers.get("mcp-session-id");
     const initData = await parseMCPResponse(initResponse);
     if (initData.error) {
@@ -81,7 +90,7 @@ export async function queryManimDocs(errorContext: string): Promise<string> {
     if (sessionId) headers["mcp-session-id"] = sessionId;
 
     // 2. Send initialized notification
-    await fetch(MCP_ENDPOINT, {
+    const initializedResponse = await fetch(MCP_ENDPOINT, {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -90,9 +99,17 @@ export async function queryManimDocs(errorContext: string): Promise<string> {
       }),
       signal: AbortSignal.timeout(10_000),
     });
+    if (!initializedResponse.ok) {
+      console.warn(
+        "[DeepWiki] Initialized HTTP error:",
+        initializedResponse.status,
+        initializedResponse.statusText,
+      );
+      return "";
+    }
 
     // 3. Call ask_question tool
-    const question = `I'm getting this error in my Manim Community v0.18.0 script. What is the correct API usage to fix it?\n\nError:\n${errorContext.slice(0, 2000)}`;
+    const question = `I'm getting this error in my Manim Community v0.19.0 script. What is the correct API usage to fix it?\n\nError:\n${errorContext.slice(0, 2000)}`;
 
     const toolResponse = await fetch(MCP_ENDPOINT, {
       method: "POST",
@@ -103,7 +120,7 @@ export async function queryManimDocs(errorContext: string): Promise<string> {
         params: {
           name: "ask_question",
           arguments: {
-            repo_name: MANIM_REPO,
+            repoName: MANIM_REPO,
             question,
           },
         },
@@ -111,6 +128,15 @@ export async function queryManimDocs(errorContext: string): Promise<string> {
       }),
       signal: AbortSignal.timeout(30_000),
     });
+
+    if (!toolResponse.ok) {
+      console.warn(
+        "[DeepWiki] Tool HTTP error:",
+        toolResponse.status,
+        toolResponse.statusText,
+      );
+      return "";
+    }
 
     const toolData = await parseMCPResponse(toolResponse);
     if (toolData.error) {

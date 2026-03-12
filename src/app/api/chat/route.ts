@@ -58,8 +58,6 @@ export async function POST(req: Request) {
             ),
         }),
         execute: async ({ description, variant }) => {
-          console.log("Starting video generation for:", description);
-
           const normalized = description.trim();
           const normalizedLower = normalized.toLowerCase();
 
@@ -73,12 +71,6 @@ export async function POST(req: Request) {
                     normalizedLower.includes("vertical short")
                   ? "short"
                   : "video";
-
-          console.log("Variant determination:", {
-            forceVariant,
-            toolVariant: variant,
-            inferredVariant,
-          });
 
           // Create a job in the job store (KV in prod, memory in dev)
           const job = await jobStore.create(description, {
