@@ -50,6 +50,7 @@
     "global": "^4.4.0",
     "google-auth-library": "^9.15.1",
     "googleapis": "^129.0.0",
+    "jsonrepair": "^3.13.3",
     "langs": "^2.0.0",
     "lucide-react": "^0.563.0",
     "next": "^16.1.2",

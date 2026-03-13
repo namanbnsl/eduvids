@@ -268,143 +268,6 @@ const buildSceneValidationCommand = (scriptPath: string) =>
     "PY",
   ].join("\n");
 
-const buildOverlapValidationScript = (
-  scriptPath: string,
-  mediaDir: string,
-): string =>
-  [
-    "import sys",
-    "import importlib.util",
-    "from contextlib import contextmanager",
-    "",
-    "# ── Mock voiceover so TTS is never called ──",
-    "try:",
-    "    from manim_voiceover import VoiceoverScene",
-    "    @contextmanager",
-    '    def _mock_voiceover(self, text="", **kw):',
-    "        class _Tracker:",
-    "            duration = 2.0",
-    '            data = {"original_text": text}',
-    "        yield _Tracker()",
-    "    VoiceoverScene.voiceover = _mock_voiceover",
-    "    VoiceoverScene.set_speech_service = lambda self, *a, **kw: None",
-    "except ImportError:",
-    "    pass",
-    "",
-    "from manim import Scene, config",
-    "",
-    'config.quality = "low_quality"',
-    "config.save_last_frame = True",
-    "config.write_to_movie = False",
-    "config.preview = False",
-    "config.disable_caching = True",
-    `config.media_dir = r"${mediaDir}/overlap_check"`,
-    "",
-    `spec = importlib.util.spec_from_file_location("_scene", r"${scriptPath}")`,
-    "mod = importlib.util.module_from_spec(spec)",
-    "spec.loader.exec_module(mod)",
-    "",
-    "FRAME_HW = config.frame_width / 2",
-    "FRAME_HH = config.frame_height / 2",
-    "OVERLAP_MIN = 0.2",
-    "SIZE_FRAC = 0.5",
-    "OOF_MARGIN = 0.5",
-    "",
-    "violations = []",
-    "",
-    "def _check(sn, mobs, step):",
-    "    top = []",
-    "    for m in mobs:",
-    "        try:",
-    "            if m.has_points() or m.submobjects:",
-    "                top.append(m)",
-    "        except Exception:",
-    "            pass",
-    "    for m in top:",
-    "        try:",
-    "            l, r = m.get_left()[0], m.get_right()[0]",
-    "            b, t = m.get_bottom()[1], m.get_top()[1]",
-    "            if r - l < 0.01 and t - b < 0.01:",
-    "                continue",
-    "            parts = []",
-    '            if r > FRAME_HW + OOF_MARGIN: parts.append(f"right edge at x={r:.1f}")',
-    '            if l < -FRAME_HW - OOF_MARGIN: parts.append(f"left edge at x={l:.1f}")',
-    '            if t > FRAME_HH + OOF_MARGIN: parts.append(f"top edge at y={t:.1f}")',
-    '            if b < -FRAME_HH - OOF_MARGIN: parts.append(f"bottom edge at y={b:.1f}")',
-    "            if parts:",
-    "                violations.append(",
-    "                    f\"[{sn}][step {step}] OUT_OF_FRAME: {', '.join(parts)}. \"",
-    '                    f"Visible frame is x=[{-FRAME_HW:.1f}, {FRAME_HW:.1f}], y=[{-FRAME_HH:.1f}, {FRAME_HH:.1f}]. "',
-    '                    f"Fix: use ensure_in_frame() or reposition with .to_edge()/.next_to()."',
-    "                )",
-    "        except Exception:",
-    "            pass",
-    "    small = []",
-    "    for m in top:",
-    "        try:",
-    "            w = m.get_right()[0] - m.get_left()[0]",
-    "            h = m.get_top()[1] - m.get_bottom()[1]",
-    "            if w < config.frame_width * SIZE_FRAC and h < config.frame_height * SIZE_FRAC:",
-    "                small.append(m)",
-    "        except Exception:",
-    "            pass",
-    "    for i in range(len(small)):",
-    "        for j in range(i + 1, len(small)):",
-    "            try:",
-    "                m1, m2 = small[i], small[j]",
-    "                r1l, r1r = m1.get_left()[0], m1.get_right()[0]",
-    "                r1b, r1t = m1.get_bottom()[1], m1.get_top()[1]",
-    "                r2l, r2r = m2.get_left()[0], m2.get_right()[0]",
-    "                r2b, r2t = m2.get_bottom()[1], m2.get_top()[1]",
-    "                xov = min(r1r, r2r) - max(r1l, r2l)",
-    "                yov = min(r1t, r2t) - max(r1b, r2b)",
-    "                if xov > OVERLAP_MIN and yov > OVERLAP_MIN:",
-    "                    violations.append(",
-    '                        f"[{sn}][step {step}] OVERLAP ({xov:.2f}x{yov:.2f} units): "',
-    '                        f"mob1 x=[{r1l:.2f},{r1r:.2f}] y=[{r1b:.2f},{r1t:.2f}], "',
-    '                        f"mob2 x=[{r2l:.2f},{r2r:.2f}] y=[{r2b:.2f},{r2t:.2f}]. "',
-    '                        f"Fix: use ensure_no_overlap() or increase buff in .next_to() calls."',
-    "                    )",
-    "            except Exception:",
-    "                pass",
-    "",
-    "scene_classes = sorted(",
-    "    [(n, v) for n, v in vars(mod).items()",
-    "     if isinstance(v, type) and issubclass(v, Scene) and v is not Scene",
-    '     and getattr(v, "__module__", None) == mod.__name__],',
-    "    key=lambda x: x[0]",
-    ")",
-    "",
-    "for sn, cls in scene_classes:",
-    "    ctr = [0]",
-    "    orig = cls.play",
-    "    def _mk(name, o):",
-    "        def _p(self, *a, **kw):",
-    "            r = o(self, *a, **kw)",
-    "            ctr[0] += 1",
-    "            _check(name, list(self.mobjects), ctr[0])",
-    "            return r",
-    "        return _p",
-    "    cls.play = _mk(sn, orig)",
-    "    try:",
-    "        cls().render()",
-    "    except SystemExit:",
-    "        pass",
-    "    except Exception:",
-    "        pass",
-    "    finally:",
-    "        cls.play = orig",
-    "",
-    "if violations:",
-    "    unique = list(dict.fromkeys(violations))",
-    '    print("BOUNDING_BOX_VIOLATIONS_FOUND")',
-    "    for v in unique[:20]:",
-    "        print(v)",
-    "    sys.exit(1)",
-    "else:",
-    '    print("OVERLAP_VALIDATION_PASSED")',
-  ].join("\n");
-
 const buildAstValidationCommand = (scriptPath: string) =>
   [
     "python - <<'PY'",
@@ -1010,6 +873,9 @@ export async function renderManimVideo({
           message: `Dry-run passed${fixAttempt > 0 ? ` after ${fixAttempt} fix(es)` : ""}`,
           context: "dry-run",
         });
+        console.log(
+          `✅ Dry-run passed${fixAttempt > 0 ? ` after ${fixAttempt} fix(es)` : ""}`,
+        );
         break; // success
       } catch (dryRunError) {
         if (!scriptFixer || fixAttempt === DRY_RUN_MAX_FIXES) {
@@ -1047,6 +913,9 @@ export async function renderManimVideo({
           message: `Dry-run failed (attempt ${fixAttempt + 1}/${DRY_RUN_MAX_FIXES + 1}), requesting LLM fix`,
           context: "dry-run",
         });
+        console.warn(
+          `⚠️ Dry-run failed (attempt ${fixAttempt + 1}/${DRY_RUN_MAX_FIXES + 1}), requesting LLM fix`,
+        );
 
         await reportProgress(
           "script-fix",
@@ -1063,6 +932,9 @@ export async function renderManimVideo({
             message: `Script fixer returned unchanged script on attempt ${fixAttempt + 1} — skipping remaining retries`,
             context: "script-fix",
           });
+          console.warn(
+            `⚠️ Script fixer returned unchanged script on attempt ${fixAttempt + 1} — skipping remaining retries`,
+          );
           throw dryRunError;
         }
 
@@ -1083,147 +955,6 @@ export async function renderManimVideo({
           timeoutMs: 120_000,
           hint: "Script fixer introduced a syntax error.",
         });
-      }
-    }
-
-    // -----------------------------------------------------------------------
-    // Overlap / out-of-frame validation: renders each scene with mocked
-    // voiceover and checks bounding boxes after every play() call. Feeds
-    // violations to scriptFixer for auto-correction (best-effort).
-    // -----------------------------------------------------------------------
-    const OVERLAP_MAX_FIXES = 2;
-    const overlapValidationPath = `/home/user/overlap_validation.py`;
-
-    if (scriptFixer) {
-      for (
-        let overlapAttempt = 0;
-        overlapAttempt <= OVERLAP_MAX_FIXES;
-        overlapAttempt++
-      ) {
-        await reportProgress(
-          "overlap-validation",
-          overlapAttempt === 0
-            ? "Checking for visual overlaps"
-            : `Re-checking overlaps after fix (attempt ${overlapAttempt})`,
-        );
-
-        const validationScript = buildOverlapValidationScript(
-          scriptPath,
-          mediaDir,
-        );
-        await sandbox!.files.write(overlapValidationPath, validationScript);
-
-        try {
-          await runCommandOrThrow(`python ${overlapValidationPath}`, {
-            description: "Bounding-box overlap validation",
-            stage: "overlap-validation",
-            timeoutMs: 600_000, // 10 minutes
-            hint: "Overlap or out-of-frame issues detected.",
-            streamOutput: true,
-          });
-
-          pushLog({
-            level: "info",
-            message: `Overlap validation passed${overlapAttempt > 0 ? ` after ${overlapAttempt} fix(es)` : ""}`,
-            context: "overlap-validation",
-          });
-          break; // clean
-        } catch (overlapError) {
-          if (overlapAttempt === OVERLAP_MAX_FIXES) {
-            // Out of fix attempts — warn but don't block the render
-            pushLog({
-              level: "warn",
-              message:
-                "Overlap validation issues remain after max fix attempts — proceeding with render",
-              context: "overlap-validation",
-            });
-            break;
-          }
-
-          // Build error context for the fixer
-          let overlapErrorContext: string;
-          if (overlapError instanceof ManimValidationError) {
-            const tail = (text: string | undefined, n = 12000) => {
-              if (!text) return "";
-              return text.length <= n ? text : text.slice(-n);
-            };
-            const parts = [
-              "STAGE: overlap-validation",
-              "HINT: The following bounding-box violations were detected. Fix overlapping or out-of-frame elements using ensure_no_overlap() and ensure_in_frame(), or reposition with .next_to() using larger buff values.",
-              overlapError.stdout
-                ? `VIOLATIONS:\n${tail(overlapError.stdout)}`
-                : "",
-              overlapError.stderr
-                ? `STDERR:\n${tail(overlapError.stderr, 4000)}`
-                : "",
-            ].filter(Boolean);
-            overlapErrorContext = parts.join("\n\n");
-          } else {
-            overlapErrorContext =
-              overlapError instanceof Error
-                ? overlapError.message
-                : String(overlapError);
-          }
-
-          pushLog({
-            level: "warn",
-            message: `Overlap validation failed (attempt ${overlapAttempt + 1}/${OVERLAP_MAX_FIXES + 1}), requesting LLM fix`,
-            context: "overlap-validation",
-          });
-
-          await reportProgress(
-            "script-fix",
-            `Fixing overlap issues (attempt ${overlapAttempt + 1})`,
-          );
-
-          const previousScript = currentScript;
-          currentScript = await scriptFixer(
-            currentScript,
-            overlapErrorContext,
-          );
-
-          if (currentScript === previousScript) {
-            pushLog({
-              level: "warn",
-              message: `Script fixer returned unchanged script for overlap fix — skipping remaining attempts`,
-              context: "overlap-validation",
-            });
-            break;
-          }
-
-          currentScript = injectEduvidsCallout(currentScript);
-
-          currentSceneNames = extractSceneClassNames(currentScript);
-          if (!currentSceneNames.length) {
-            pushLog({
-              level: "warn",
-              message:
-                "Script fixer broke scene structure during overlap fix — proceeding with previous script",
-              context: "overlap-validation",
-            });
-            break;
-          }
-
-          await sandbox!.files.write(scriptPath, currentScript);
-
-          // Syntax check on the fixed script
-          try {
-            await runCommandOrThrow(`python -m py_compile ${scriptPath}`, {
-              description: "Syntax check (post-overlap-fix)",
-              stage: "syntax",
-              timeoutMs: 120_000,
-              hint: "Script fixer introduced a syntax error while fixing overlaps.",
-            });
-          } catch {
-            pushLog({
-              level: "warn",
-              message:
-                "Overlap fix introduced a syntax error — proceeding with previous script",
-              context: "overlap-validation",
-            });
-            break;
-          }
-        }
       }
     }
 
@@ -1518,32 +1249,62 @@ export async function renderManimVideo({
       const totalDuration =
         parseFloat((thumbDurationProbe.stdout || "").trim()) || 10;
 
-      const frameCount = 3;
+      // Extract 1 frame per scene so visual review covers every scene's layout.
+      // Fall back to 3 if scene count is unavailable.
+      const frameCount = Math.max(currentSceneNames.length, 3);
       const frameDir = `${outputDir}/frames`;
       await sandbox.commands.run(`mkdir -p ${frameDir}`);
 
+      // Place each timestamp at the midpoint of its scene's time slice
       const frameTimestamps = Array.from(
         { length: frameCount },
-        (_, i) => (totalDuration * (i + 1)) / (frameCount + 1),
+        (_, i) => (totalDuration * (i + 0.5)) / frameCount,
       );
 
       for (let i = 0; i < frameTimestamps.length; i++) {
-        await sandbox.commands.run(
-          `ffmpeg -y -ss ${frameTimestamps[i]!.toFixed(2)} -i ${finalVideoPath} -frames:v 1 -q:v 2 ${frameDir}/frame_${i}.png`,
-          { timeoutMs: 60_000 },
-        );
+        const baseTs = frameTimestamps[i]!;
+        const framePath = `${frameDir}/frame_${i}.png`;
+        const offsets = [0, 1, -1, 2, -2];
+        let extracted = false;
+
+        for (const offset of offsets) {
+          const ts = Math.max(0, Math.min(baseTs + offset, totalDuration - 0.1));
+          await sandbox.commands.run(
+            `ffmpeg -y -i ${finalVideoPath} -ss ${ts.toFixed(2)} -frames:v 1 -vf "scale=640:-1" -q:v 4 ${framePath}`,
+            { timeoutMs: 60_000 },
+          );
+
+          // Check if the frame is black by measuring mean luminance (YAVG)
+          const statsResult = await sandbox.commands.run(
+            `ffprobe -f lavfi -i "movie=${framePath},signalstats" -show_entries frame_tags=lavfi.signalstats.YAVG -of default=noprint_wrappers=1:nokey=1 -read_intervals "%+#1"`,
+            { timeoutMs: 30_000 },
+          );
+          const yavg = parseFloat((statsResult.stdout || "").trim());
+
+          if (!isNaN(yavg) && yavg >= 10) {
+            extracted = true;
+            break;
+          }
+          // YAVG < 10 means near-black frame, try next offset
+        }
+
+        if (!extracted) {
+          // All offsets produced dark frames — keep the last extracted frame anyway
+        }
       }
 
       for (let i = 0; i < frameCount; i++) {
-        const frameBytes = (await sandbox.files.read(
-          `${frameDir}/frame_${i}.png`,
-          {
+        const framePath = `${frameDir}/frame_${i}.png`;
+        try {
+          const frameBytes = (await sandbox.files.read(framePath, {
             format: "bytes",
-          },
-        )) as Uint8Array;
-        if (frameBytes && frameBytes.length > 0) {
-          const frameBase64 = Buffer.from(frameBytes).toString("base64");
-          frameDataUrls.push(`data:image/png;base64,${frameBase64}`);
+          })) as Uint8Array;
+          if (frameBytes && frameBytes.length > 0) {
+            const frameBase64 = Buffer.from(frameBytes).toString("base64");
+            frameDataUrls.push(`data:image/png;base64,${frameBase64}`);
+          }
+        } catch {
+          // Frame file missing, skip
         }
       }
 

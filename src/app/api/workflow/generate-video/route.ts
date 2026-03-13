@@ -3,8 +3,10 @@ import { WorkflowNonRetryableError } from "@upstash/workflow";
 
 import {
   generateVoiceoverScript,
+  generateScenePlan,
   generateManimScript,
   fixManimScript,
+  reviewRenderedFrames,
   generateThumbnailDesign,
 } from "@/lib/llm";
 import { renderThumbnail } from "@/lib/thumbnail";
@@ -50,10 +52,6 @@ export const { POST } = serve<VideoGenerationPayload>(
         ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Use large readable typography and keep visual groups well spaced.`
         : prompt;
 
-    console.log(
-      `🎬 Starting ${variant === "short" ? "vertical short" : "full video"} generation for prompt: "${prompt}"`,
-    );
-
     const voiceoverScript = await context.run(
       "generate-voiceover-script",
       async () => {
@@ -73,21 +71,36 @@ export const { POST } = serve<VideoGenerationPayload>(
       length: voiceoverScript.length,
     });
 
-    const script = await context.run(
-      "generate-manim-script",
-      async () => {
-        await updateJobProgress(jobId, {
-          progress: 18,
-          step: "Writing scenes",
-          details: "Creating",
-        });
-        return generateManimScript({
-          prompt: generationPrompt,
-          voiceoverScript,
-          sessionId: chatId,
-        });
-      },
-    );
+    const scenePlan = await context.run("generate-scene-plan", async () => {
+      await updateJobProgress(jobId, {
+        progress: 12,
+        step: "Planning scenes",
+        details: "Structuring layout",
+      });
+      return generateScenePlan({
+        prompt: generationPrompt,
+        voiceoverScript,
+        sessionId: chatId,
+      });
+    });
+
+    console.log("✅ Scene plan generated", {
+      sceneCount: scenePlan.length,
+    });
+
+    const script = await context.run("generate-manim-script", async () => {
+      await updateJobProgress(jobId, {
+        progress: 22,
+        step: "Writing scenes",
+        details: "Creating",
+      });
+      return generateManimScript({
+        prompt: generationPrompt,
+        voiceoverScript,
+        sessionId: chatId,
+        scenePlan,
+      });
+    });
 
     console.log("✅ Manim script generated", { length: script.length });
 
@@ -103,7 +116,10 @@ export const { POST } = serve<VideoGenerationPayload>(
         applyWatermark: true,
         renderOptions:
           variant === "short"
-            ? { resolution: { width: 1080, height: 1920 }, orientation: "portrait" as const }
+            ? {
+                resolution: { width: 1080, height: 1920 },
+                orientation: "portrait" as const,
+              }
             : undefined,
         scriptFixer: (currentScript, errors) =>
           fixManimScript({
@@ -115,6 +131,102 @@ export const { POST } = serve<VideoGenerationPayload>(
     });
 
     console.log("✅ Video rendered");
+
+    // Visual review: extract frames, evaluate quality, re-render if needed
+    // NOTE: Upstash Workflow requires deterministic step names across replays.
+    // All context.run steps must always be reached (no conditional skipping),
+    // and must NOT be wrapped in try/catch (WorkflowAbort must propagate).
+    const hasFrames =
+      renderResult.frameDataUrls && renderResult.frameDataUrls.length > 0;
+
+    const visualReview = await context.run(
+      "visual-quality-review",
+      async () => {
+        if (!hasFrames) {
+          return { overallQuality: "good" as const, issues: [], suggestedFixes: "" };
+        }
+        await updateJobProgress(jobId, {
+          progress: 70,
+          step: "Reviewing quality",
+          details: "Checking visuals",
+        });
+        return reviewRenderedFrames({
+          frames: renderResult.frameDataUrls!,
+          script,
+          sessionId: chatId,
+        });
+      },
+    );
+
+    const needsFixes =
+      hasFrames && visualReview.overallQuality === "needs_fixes";
+
+    if (needsFixes) {
+      console.log("⚠️ Visual review found issues:", visualReview.issues);
+    } else {
+      console.log("✅ Visual review passed");
+    }
+
+    const fixedScript = await context.run("fix-visual-issues", async () => {
+      if (!needsFixes) {
+        return script;
+      }
+      await updateJobProgress(jobId, {
+        progress: 75,
+        step: "Fixing visual issues",
+        details: "Improving layout",
+      });
+      const issuesSummary = [
+        "VISUAL REVIEW ISSUES (from rendered frame analysis):",
+        ...visualReview.issues.map((i) => `- ${i}`),
+        "",
+        "SUGGESTED FIXES:",
+        visualReview.suggestedFixes,
+      ].join("\n");
+      return fixManimScript({
+        script,
+        errors: issuesSummary,
+        sessionId: chatId,
+      });
+    });
+
+    const reRenderResult = await context.run("re-render-video", async () => {
+      if (!needsFixes || fixedScript === script) {
+        return null;
+      }
+      console.log("✅ Visual fixes applied, re-rendering");
+      await updateJobProgress(jobId, {
+        progress: 78,
+        step: "Re-rendering",
+        details: "Applying fixes",
+      });
+      return renderManimVideo({
+        script: fixedScript,
+        prompt: generationPrompt,
+        applyWatermark: true,
+        renderOptions:
+          variant === "short"
+            ? {
+                resolution: { width: 1080, height: 1920 },
+                orientation: "portrait" as const,
+              }
+            : undefined,
+        scriptFixer: (currentScript, errors) =>
+          fixManimScript({
+            script: currentScript,
+            errors,
+            sessionId: chatId,
+          }),
+      });
+    });
+
+    if (reRenderResult) {
+      renderResult.videoPath = reRenderResult.videoPath;
+      if (reRenderResult.frameDataUrls) {
+        renderResult.frameDataUrls = reRenderResult.frameDataUrls;
+      }
+      console.log("✅ Re-render complete");
+    }
 
     const uploadUrl = await context.run("upload-video", async () => {
       await updateJobProgress(jobId, {
@@ -144,7 +256,10 @@ export const { POST } = serve<VideoGenerationPayload>(
             sessionId: chatId,
           });
 
-          const pngBuffer = await renderThumbnail(design, renderResult.frameDataUrls!);
+          const pngBuffer = await renderThumbnail(
+            design,
+            renderResult.frameDataUrls!,
+          );
           return `data:image/png;base64,${pngBuffer.toString("base64")}`;
         });
 

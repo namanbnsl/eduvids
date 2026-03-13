@@ -1,13 +1,17 @@
-import { MANIM_SYSTEM_PROMPT, VOICEOVER_SYSTEM_PROMPT } from "@/prompt";
+import {
+  MANIM_SYSTEM_PROMPT,
+  VOICEOVER_SYSTEM_PROMPT,
+  SCENE_PLAN_SYSTEM_PROMPT,
+} from "@/prompt";
 import { generateText, streamText, LanguageModel } from "ai";
 import {
   createGoogleProvider,
   reportSuccess,
   reportError,
 } from "./google-provider";
-import { selectGroqModel, GROQ_MODEL_IDS } from "./groq-provider";
 import { queryManimDocs } from "./deepwiki";
 
+import { jsonrepair } from "jsonrepair";
 import { franc } from "franc";
 
 // @ts-expect-error langs has no types
@@ -146,6 +150,101 @@ export interface ManimScriptRequest {
   prompt: string;
   voiceoverScript: string;
   sessionId: string;
+  scenePlan?: ScenePlanEntry[];
+}
+
+export interface ScenePlanElement {
+  id: string;
+  type: "text" | "math" | "label" | "diagram" | "graph" | "axis" | "shape";
+  content: string;
+  color?: string;
+}
+
+export interface ScenePlanLabel {
+  targetElementId: string;
+  labelText: string;
+  position: "above" | "below" | "left" | "right";
+}
+
+export interface ScenePlanEntry {
+  sceneId: string;
+  narration: string;
+  visualType: string;
+  elements: ScenePlanElement[];
+  layout: string;
+  maxSimultaneousElements: number;
+  transitionIn: string;
+  clearPrevious: boolean;
+  labels: ScenePlanLabel[];
+}
+
+const SCENE_PLAN_MAX_RETRIES = 3;
+
+export async function generateScenePlan({
+  prompt,
+  voiceoverScript,
+  sessionId,
+}: ManimScriptRequest): Promise<ScenePlanEntry[]> {
+  const composedPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}`;
+
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < SCENE_PLAN_MAX_RETRIES; attempt++) {
+    const googleModel = await createGoogleModel("gemini-3-flash-preview");
+    const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
+      posthogProperties: { $ai_session_id: sessionId },
+    });
+
+    try {
+      const text = await streamTextWithTracking(
+        {
+          model,
+          system: SCENE_PLAN_SYSTEM_PROMPT,
+          prompt: composedPrompt,
+          temperature: 0.3,
+        },
+        googleModel,
+      );
+
+      const cleaned = text
+        .replace(/```json?\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
+
+      // Try strict parse first, then repair truncated/malformed JSON
+      let parsed: ScenePlanEntry[];
+      try {
+        parsed = JSON.parse(cleaned) as ScenePlanEntry[];
+      } catch {
+        console.warn(
+          `[generateScenePlan] Attempt ${attempt + 1}: strict JSON parse failed, trying jsonrepair`,
+        );
+        const repaired = jsonrepair(cleaned);
+        parsed = JSON.parse(repaired) as ScenePlanEntry[];
+      }
+
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        throw new Error(
+          `Scene plan returned ${Array.isArray(parsed) ? "empty array" : typeof parsed} instead of a non-empty array`,
+        );
+      }
+
+      console.log(
+        `[generateScenePlan] Success on attempt ${attempt + 1}, ${parsed.length} scenes`,
+      );
+      return parsed;
+    } catch (err) {
+      lastError = err;
+      console.error(
+        `[generateScenePlan] Attempt ${attempt + 1}/${SCENE_PLAN_MAX_RETRIES} failed:`,
+        err,
+      );
+    }
+  }
+
+  throw new Error(
+    `[generateScenePlan] All ${SCENE_PLAN_MAX_RETRIES} attempts failed. Last error: ${lastError}`,
+  );
 }
 
 export async function generateVoiceoverScript({
@@ -161,7 +260,6 @@ export async function generateVoiceoverScript({
     "Draft the narration voiceover:",
   ].join("\n\n");
 
-  // const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
   const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
 
   const { text } = await generateText({
@@ -176,12 +274,216 @@ export async function generateVoiceoverScript({
   return text.trim();
 }
 
+const PROHIBITED_MODULES = [
+  "os",
+  "sys",
+  "subprocess",
+  "pathlib",
+  "shutil",
+  "socket",
+  "requests",
+  "http",
+  "urllib",
+  "multiprocessing",
+  "psutil",
+  "asyncio",
+];
+
+export function sanitizeManimScript(script: string): string {
+  let result = script;
+
+  // 1. Remove markdown fences and HTML tags
+  result = result.replace(/```[\w]*\n?/g, "");
+  result = result.replace(/<\/?[a-zA-Z][^>]*>/g, "");
+
+  // 2. Remove non-Python language blocks (JSON, JS/TS, YAML etc.)
+  // Detect blocks that look like JSON objects/arrays at the top level
+  result = result.replace(
+    /^[ \t]*(\{[\s\S]*?"[\w]+"[\s\S]*?\}|^\[[\s\S]*?\])[ \t]*$/gm,
+    (match) => {
+      // Only remove if it looks like JSON (has quoted keys with colons)
+      if (/"[\w]+"[\t ]*:/.test(match) && !/^[ \t]*(#|def |class |from |import )/.test(match)) {
+        console.warn("[sanitizeManimScript] Removed JSON-like block");
+        return "";
+      }
+      return match;
+    },
+  );
+  // Remove lines that look like JS/TS (const/let/var declarations, =>, function keyword with braces)
+  const jsPatterns = /^[ \t]*(const |let |var |function \w+\s*\(|export (default |))/;
+  result = result
+    .split("\n")
+    .filter((line) => {
+      if (jsPatterns.test(line)) {
+        console.warn(`[sanitizeManimScript] Removed non-Python line: ${line.slice(0, 80)}`);
+        return false;
+      }
+      return true;
+    })
+    .join("\n");
+
+  // 3. Fix common syntax issues
+
+  // 3a. Fix unmatched parentheses/brackets
+  const lines = result.split("\n");
+  const openChars: Record<string, string> = { "(": ")", "[": "]", "{": "}" };
+  const closeChars = new Set([")", "]", "}"]);
+  let parenStack: string[] = [];
+  let inString = false;
+  let stringChar = "";
+
+  for (const line of lines) {
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inString) {
+        if (ch === stringChar && line[i - 1] !== "\\") {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        // Check for triple quotes
+        if (line.slice(i, i + 3) === ch.repeat(3)) {
+          // Skip triple-quoted strings for simplicity (multi-line)
+          continue;
+        }
+        inString = true;
+        stringChar = ch;
+        continue;
+      }
+      if (ch === "#") break; // rest of line is comment
+      if (openChars[ch]) {
+        parenStack.push(openChars[ch]);
+      } else if (closeChars.has(ch)) {
+        if (parenStack.length > 0 && parenStack[parenStack.length - 1] === ch) {
+          parenStack.pop();
+        }
+      }
+    }
+  }
+
+  if (parenStack.length > 0) {
+    console.warn(
+      `[sanitizeManimScript] Closing ${parenStack.length} unmatched bracket(s): ${parenStack.join("")}`,
+    );
+    result = result + "\n" + parenStack.reverse().join("");
+  }
+
+  // 3b. Remove trailing incomplete lines (lines ending with an operator or opening bracket mid-expression, at the very end)
+  const trimmedLines = result.split("\n");
+  while (trimmedLines.length > 0) {
+    const lastLine = trimmedLines[trimmedLines.length - 1].trim();
+    if (
+      lastLine === "" ||
+      /[+\-*/=,\\]$/.test(lastLine) ||
+      /[\(\[\{]$/.test(lastLine)
+    ) {
+      // Don't remove if it's a closing bracket we just added
+      if (/^[)\]\}]+$/.test(lastLine)) break;
+      // Don't remove blank lines that are mid-file
+      if (lastLine === "" && trimmedLines.length > 1) {
+        trimmedLines.pop();
+        continue;
+      }
+      if (lastLine !== "") {
+        console.warn(
+          `[sanitizeManimScript] Removed trailing incomplete line: ${lastLine.slice(0, 80)}`,
+        );
+        trimmedLines.pop();
+        continue;
+      }
+    }
+    break;
+  }
+  result = trimmedLines.join("\n");
+
+  // 4. Validate and fix imports
+  if (!/from\s+manim\s+import\s/.test(result) && !/import\s+manim/.test(result)) {
+    console.warn("[sanitizeManimScript] Added missing 'from manim import *'");
+    result = "from manim import *\n" + result;
+  }
+  if (!/from\s+manim_voiceover\s+import\s/.test(result) && !/import\s+manim_voiceover/.test(result)) {
+    console.warn("[sanitizeManimScript] Added missing manim_voiceover import");
+    // Insert after the manim import line
+    result = result.replace(
+      /(from\s+manim\s+import\s+[^\n]+)/,
+      "$1\nfrom manim_voiceover import VoiceoverScene",
+    );
+  }
+
+  // Remove duplicate import lines
+  const seenImports = new Set<string>();
+  result = result
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (/^(from\s+\S+\s+import\s|import\s+)/.test(trimmed)) {
+        if (seenImports.has(trimmed)) {
+          console.warn(`[sanitizeManimScript] Removed duplicate import: ${trimmed}`);
+          return false;
+        }
+        seenImports.add(trimmed);
+      }
+      return true;
+    })
+    .join("\n");
+
+  // 5. Remove disallowed imports
+  result = result
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      // Match "import X" or "from X import ..."
+      const importMatch = trimmed.match(/^(?:from\s+(\S+)\s+import|import\s+(\S+))/);
+      if (importMatch) {
+        const mod = (importMatch[1] || importMatch[2]).split(".")[0];
+        if (PROHIBITED_MODULES.includes(mod)) {
+          console.warn(`[sanitizeManimScript] Removed prohibited import: ${trimmed}`);
+          return false;
+        }
+      }
+      return true;
+    })
+    .join("\n");
+
+  // 6. Ensure scene class structure (just verify, don't modify if missing)
+  const hasSceneClass =
+    /class\s+\w+\s*\([^)]*(?:Scene|VoiceoverScene)[^)]*\)\s*:/.test(result);
+  if (!hasSceneClass) {
+    console.warn(
+      "[sanitizeManimScript] No Scene/VoiceoverScene class found; leaving script as-is for downstream error",
+    );
+  }
+
+  // 7. Fix indentation: normalize mixed tabs/spaces to 4 spaces
+  if (/\t/.test(result)) {
+    console.warn("[sanitizeManimScript] Normalized tabs to 4-space indentation");
+    result = result
+      .split("\n")
+      .map((line) => {
+        // Replace leading tabs with 4 spaces each
+        const leadingWhitespace = line.match(/^[\t ]*/)![0];
+        const rest = line.slice(leadingWhitespace.length);
+        const normalized = leadingWhitespace.replace(/\t/g, "    ");
+        return normalized + rest;
+      })
+      .join("\n");
+  }
+
+  // 8. Remove empty/orphan trailing lines
+  result = result.replace(/\n{3,}/g, "\n\n"); // collapse 3+ blank lines to 2
+  result = result.replace(/\n+$/, "\n"); // single trailing newline
+
+  return result.trim();
+}
+
 const MANIM_SCRIPT_MAX_RETRIES = 3;
 
 export async function generateManimScript({
   prompt,
   voiceoverScript,
   sessionId,
+  scenePlan,
 }: ManimScriptRequest): Promise<string> {
   // Detect language from voiceover script using LLM
   const detectedLanguage = await detectLanguage(voiceoverScript);
@@ -193,42 +495,20 @@ export async function generateManimScript({
     detectedLanguage,
   );
 
-  const generationPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script as MULTIPLE ORDERED SCENE CLASSES, not one giant scene. Split the narration into a sequence of focused scenes so that later each scene can be rerendered independently without redoing the whole video.
+  const generationPromptParts = [
+    `User request: ${prompt}`,
+    `Voiceover narration:\n${voiceoverScript}`,
+    `Generate a complete Manim script as MULTIPLE ORDERED SCENE CLASSES (6-14 for videos, 4-8 for shorts). One concept per scene. Each scene is self-contained.`,
+    `Use the layout templates from the system prompt.`,
+  ];
 
-Scene planning requirements:
-- Start a new scene whenever the explanation changes concept, example, or diagram
-- Prefer MORE small scenes over fewer overloaded scenes (aim for 6-14 scenes for full videos)
-- Use ordered class names like Scene01Intro, Scene02Setup, Scene03WorkedExample
-- Each scene must be self-contained and renderable on its own
-- Keep visual continuity across scenes, but do not depend on prior scene state
-- Return one Python file containing all scenes in order
-- NEVER cram multiple concepts into a single scene. One idea per scene.
-- Longer videos with proper pacing are better than short rushed ones.
+  if (scenePlan) {
+    generationPromptParts.push(
+      `SCENE PLAN (follow this structure exactly):\n${JSON.stringify(scenePlan, null, 2)}`,
+    );
+  }
 
-VISUAL QUALITY — CRITICAL:
-- LABEL EVERYTHING: every formula part, every axis, every shape vertex, every graph curve must have a visible label
-- Show formulas one at a time, then add labels explaining each symbol (e.g., after showing F=ma, label F as "force", m as "mass", a as "acceleration")
-- Use color-coding: match the color of a label to the element it describes
-- Maximum 4-5 elements on screen at once. FadeOut old content before adding new.
-- Use generous spacing: buff=0.4 minimum in all .next_to() calls, buff=0.6 between unrelated elements
-- Place labels OUTSIDE shapes, not inside or on top of them
-- Use self.wait(1) between new elements appearing, self.wait(2) between concept changes
-- Add elements ONE AT A TIME with animations, not all at once
-- Keep all content within safe frame: x in [-6, 6], y in [-3.2, 3.2]
-
-Geometry and diagram accuracy requirements (always apply when relevant):
-- Angle arcs must represent the intended angle region exactly (interior/reflex/acute/obtuse) and labels must match the highlighted region.
-- Shared edges or touching polygons should have zero visual gap unless separation is explicitly requested.
-- Adjacent or congruent shapes must preserve stated relationships (equal side lengths, equal angles, parallel/perpendicular markers).
-- Place measurement labels outside shapes with clear pointers when needed; avoid ambiguous label placement.
-- If a diagram could be ambiguous, add visual cues (ticks, right-angle markers, color-coded corresponding parts) before explaining conclusions.
-
-Before finalizing each diagram, verify by code that positions and geometry reflect the narrated claim (not just approximate visuals).
-
-3D quality and readability requirements:
-- If the concept is inherently spatial, use real 3D constructs (e.g., ThreeDAxes, surfaces, Arrow3D) instead of flattening to 2D.
-- Compose camera motion deliberately (stable orientation changes and purposeful reveals), not random spinning.
-- For portrait shorts, prioritize legibility over density: keep fewer objects on screen and use large text constants only.`;
+  const generationPrompt = generationPromptParts.join("\n\n");
 
   let lastError: unknown;
 
@@ -254,7 +534,7 @@ Before finalizing each diagram, verify by code that positions and geometry refle
         .replace(/```\n?/g, "")
         .trim();
 
-      return code;
+      return sanitizeManimScript(code);
     } catch (err) {
       lastError = err;
       console.error(
@@ -438,7 +718,6 @@ export async function fixManimScript({
 
   // Fetch relevant manim docs from DeepWiki (best-effort)
   const manimDocs = await queryManimDocs(errors);
-  console.log(manimDocs);
 
   const systemPrompt = `You are a Manim Community v0.19.0 debugging expert.
 You receive a Manim script and the errors produced when running it.
@@ -459,40 +738,7 @@ RULES:
 - Do NOT refactor or rewrite unrelated code.
 - Preserve all existing imports, class names, and voiceover text.
 
-OVERLAP / OUT-OF-FRAME FIXES:
-When errors mention OVERLAP or OUT_OF_FRAME bounding-box violations:
-- Use ensure_no_overlap(mob1, mob2) after positioning to auto-resolve overlaps.
-- Use ensure_in_frame(mob) after positioning to push elements back into view.
-- Increase buff= values in .next_to() calls (use buff=0.5 or higher).
-- Move elements further apart with .shift() or reposition with .to_edge().
-- If the script does not define ensure_no_overlap / ensure_in_frame, add them:
-  def ensure_no_overlap(mob1, mob2, min_gap=0.4):
-      r1_l, r1_r = mob1.get_left()[0], mob1.get_right()[0]
-      r1_b, r1_t = mob1.get_bottom()[1], mob1.get_top()[1]
-      r2_l, r2_r = mob2.get_left()[0], mob2.get_right()[0]
-      r2_b, r2_t = mob2.get_bottom()[1], mob2.get_top()[1]
-      x_overlap = min(r1_r, r2_r) - max(r1_l, r2_l) + min_gap
-      y_overlap = min(r1_t, r2_t) - max(r1_b, r2_b) + min_gap
-      if x_overlap > 0 and y_overlap > 0:
-          if x_overlap < y_overlap:
-              if mob2.get_center()[0] >= mob1.get_center()[0]:
-                  mob2.shift(RIGHT * x_overlap)
-              else:
-                  mob2.shift(LEFT * x_overlap)
-          else:
-              if mob2.get_center()[1] >= mob1.get_center()[1]:
-                  mob2.shift(UP * y_overlap)
-              else:
-                  mob2.shift(DOWN * y_overlap)
-  def ensure_in_frame(mob, margin=0.5):
-      if mob.get_right()[0] > 7.0 - margin:
-          mob.shift(LEFT * (mob.get_right()[0] - 7.0 + margin))
-      if mob.get_left()[0] < -7.0 + margin:
-          mob.shift(RIGHT * (-7.0 + margin - mob.get_left()[0]))
-      if mob.get_top()[1] > 4.0 - margin:
-          mob.shift(DOWN * (mob.get_top()[1] - 4.0 + margin))
-      if mob.get_bottom()[1] < -4.0 + margin:
-          mob.shift(UP * (-4.0 + margin - mob.get_bottom()[1]))`;
+`;
 
   const userPrompt = [
     "ERRORS:",
@@ -505,7 +751,7 @@ When errors mention OVERLAP or OUT_OF_FRAME bounding-box violations:
     "```",
   ].join("\n");
 
-  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
+  const googleModel = await createGoogleModel("gemini-3-flash-preview");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
   });
@@ -615,7 +861,116 @@ function fixManimScriptHeuristically(
         }
       }
     }
+
+    // Map invalid color names to valid Manim default-namespace colors
+    const colorMap: Record<string, string> = {
+      CYAN: "TEAL",
+      MAGENTA: "PINK",
+      LIME: "GREEN",
+      SILVER: "GRAY",
+      AQUA: "TEAL_A",
+      NAVY: "DARK_BLUE",
+      OLIVE: "GREEN_D",
+      BROWN: "DARK_BROWN",
+      INDIGO: "PURPLE_E",
+      VIOLET: "PURPLE_A",
+    };
+    const colorReplacement = colorMap[missingName];
+    if (colorReplacement) {
+      const colorRegex = new RegExp(`\\b${missingName}\\b`, "g");
+      if (colorRegex.test(updated)) {
+        updated = updated.replace(colorRegex, colorReplacement);
+        notes.push(`replaced invalid color ${missingName} with ${colorReplacement}`);
+      }
+    }
   }
 
   return { script: updated, changed: updated !== script, notes };
+}
+
+// ---------------------------------------------------------------------------
+// Frame review – vision-based quality check of rendered frames
+// ---------------------------------------------------------------------------
+
+export interface ReviewRenderedFramesRequest {
+  frames: string[];
+  script: string;
+  sessionId: string;
+}
+
+export interface ReviewRenderedFramesResult {
+  issues: string[];
+  overallQuality: "good" | "needs_fixes";
+  suggestedFixes: string;
+}
+
+export async function reviewRenderedFrames({
+  frames,
+  script,
+  sessionId,
+}: ReviewRenderedFramesRequest): Promise<ReviewRenderedFramesResult> {
+  const systemPrompt = `You are a visual quality reviewer for educational math/science animation frames rendered by Manim.
+You will receive rendered frames as images and the script that produced them.
+Evaluate the frames for the following issues:
+- Overlapping elements (text over text, shapes over shapes)
+- Off-screen or clipped content (elements cut off at edges)
+- Text too small to read
+- Missing labels (unlabeled axes, shapes, or formula parts)
+- Too many elements on screen at once (more than 5-6 simultaneously)
+- Poor spacing (elements too close together, cramped layout)
+
+OUTPUT FORMAT — output ONLY valid JSON, no markdown fences:
+{
+  "issues": ["description of issue 1", "description of issue 2"],
+  "overallQuality": "good" or "needs_fixes",
+  "suggestedFixes": "brief description of how to fix the issues"
+}
+
+If there are no issues, return:
+{
+  "issues": [],
+  "overallQuality": "good",
+  "suggestedFixes": ""
+}`;
+
+  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
+  const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
+    posthogProperties: { $ai_session_id: sessionId },
+  });
+
+  // Frames are 640px-wide PNGs (1 per scene), small enough to send all of them
+  // so the vision model can evaluate every scene's layout.
+  const content: Array<
+    { type: "text"; text: string } | { type: "image"; image: string }
+  > = [
+    { type: "text", text: `SCRIPT:\n${script}` },
+    ...frames.map((frame) => ({ type: "image" as const, image: frame })),
+    {
+      type: "text",
+      text: `Review all ${frames.length} frames above (one per scene) for visual quality issues.`,
+    },
+  ];
+
+  try {
+    const { text } = await generateText({
+      model,
+      system: systemPrompt,
+      messages: [{ role: "user", content }],
+      temperature: 0.2,
+    });
+
+    const cleaned = text
+      .replace(/```json?\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+
+    return JSON.parse(cleaned) as ReviewRenderedFramesResult;
+  } catch (err) {
+    console.error("[reviewRenderedFrames] Failed:", err);
+    return {
+      issues: [],
+      overallQuality: "good",
+      suggestedFixes: "",
+    };
+  }
 }
