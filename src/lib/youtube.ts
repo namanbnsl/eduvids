@@ -11,7 +11,6 @@ export interface YouTubeUploadRequest {
   description?: string;
   tags?: string[];
   privacyStatus?: YouTubePrivacyStatus;
-  thumbnailDataUrl?: string;
   variant?: VideoVariant;
 }
 
@@ -39,7 +38,6 @@ export async function uploadToYouTube({
   description,
   tags,
   privacyStatus,
-  thumbnailDataUrl,
 }: YouTubeUploadRequest): Promise<{
   videoId: string;
   watchUrl: string;
@@ -91,28 +89,11 @@ export async function uploadToYouTube({
     throw new Error("YouTube upload did not return a video ID");
   }
 
-  // Upload custom thumbnail if provided
-  if (thumbnailDataUrl) {
-    try {
-      const base64Data = thumbnailDataUrl.replace(/^data:image\/\w+;base64,/, "");
-      const thumbnailBuffer = Buffer.from(base64Data, "base64");
-
-      await youtube.thumbnails.set({
-        videoId,
-        media: {
-          mimeType: "image/png",
-          body: Readable.from(thumbnailBuffer),
-        },
-      });
-      console.log(`Custom thumbnail set for video ${videoId}`);
-    } catch (thumbnailError) {
-      console.warn("Failed to set custom thumbnail (non-fatal):", thumbnailError);
-    }
-  }
-
   return {
     videoId,
     watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
     title: title,
   };
 }
+
+

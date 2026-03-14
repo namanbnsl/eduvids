@@ -22,12 +22,12 @@ type YouTubeUploadPayload = {
   jobId?: string;
   userId: string;
   variant?: VideoVariant;
-  thumbnailDataUrl?: string;
+
 };
 
 export const { POST } = serve<YouTubeUploadPayload>(
   async (context) => {
-    const { videoUrl, title, description, prompt, jobId, variant, thumbnailDataUrl } =
+    const { videoUrl, title, description, prompt, jobId, variant } =
       context.requestPayload;
 
     const isShort = variant === "short";
@@ -46,7 +46,6 @@ export const { POST } = serve<YouTubeUploadPayload>(
         description,
         tags,
         variant,
-        thumbnailDataUrl,
       });
     });
 

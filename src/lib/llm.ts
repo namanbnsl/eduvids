@@ -575,51 +575,28 @@ export async function generateManimScript({
 }
 
 // ---------------------------------------------------------------------------
-// Thumbnail design generation via gemini-3.1-flash-lite
+// YouTube title generation
 // ---------------------------------------------------------------------------
 
-export interface ThumbnailDesign {
-  title: string;
-  subtitle: string;
-  backgroundColor: string;
-  accentColor: string;
-  textColor: string;
-  layout: "centered" | "left-aligned" | "split";
-}
-
-export interface ThumbnailDesignRequest {
+export interface VideoTitleRequest {
   prompt: string;
-  frameCount: number;
   sessionId: string;
 }
 
-export async function generateThumbnailDesign({
+export async function generateVideoTitle({
   prompt,
-  frameCount,
   sessionId,
-}: ThumbnailDesignRequest): Promise<ThumbnailDesign> {
-  const systemPrompt = `You are a minimalist design expert. Generate a design specification for a YouTube thumbnail (1280x720).
+}: VideoTitleRequest): Promise<string> {
+  const systemPrompt = `You are a YouTube title expert. Generate a single catchy, concise video title.
 
-OUTPUT FORMAT — output ONLY valid JSON, no markdown fences, no explanation:
-{
-  "title": "Short bold title text (max 6 words)",
-  "subtitle": "Optional short subtitle or tagline (max 8 words, empty string if none)",
-  "backgroundColor": "#hex color for background",
-  "accentColor": "#hex accent color for decorative elements",
-  "textColor": "#hex color for text",
-  "layout": "centered" | "left-aligned" | "split"
-}
+RULES:
+- Maximum 80 characters
+- No quotes around the title
+- Make it engaging and descriptive
+- Use title case
+- Output ONLY the title text, nothing else`;
 
-DESIGN PRINCIPLES:
-- Minimalistic & clean aesthetic
-- Limited color palette: max 2-3 colors
-- Simple, bold typography
-- High contrast for readability
-- ${frameCount > 1 ? "Use 'split' layout to show frames alongside text" : "Use 'centered' or 'left-aligned' layout"}
-
-Choose colors and a layout that best represent the topic.`;
-
-  const userPrompt = `Create a minimalist YouTube thumbnail design for: "${prompt}"\n\nKeep it clean, elegant, and uncluttered. Maximum 2-3 colors. Focus on clarity.`;
+  const userPrompt = `Generate a YouTube title for a math/science animation video about: "${prompt}"`;
 
   const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
@@ -631,28 +608,12 @@ Choose colors and a layout that best represent the topic.`;
       model,
       system: systemPrompt,
       prompt: userPrompt,
-      temperature: 0.8,
+      temperature: 0.7,
     },
     googleModel,
   );
 
-  const cleaned = text
-    .replace(/```json?\n?/g, "")
-    .replace(/```\n?/g, "")
-    .trim();
-
-  try {
-    return JSON.parse(cleaned) as ThumbnailDesign;
-  } catch {
-    return {
-      title: "Video",
-      subtitle: "",
-      backgroundColor: "#ffffff",
-      accentColor: "#333333",
-      textColor: "#000000",
-      layout: "centered",
-    };
-  }
+  return text.trim().replace(/^["']|["']$/g, "").slice(0, 80);
 }
 
 // ---------------------------------------------------------------------------

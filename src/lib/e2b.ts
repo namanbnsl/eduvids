@@ -123,7 +123,7 @@ interface ValidationWarning {
 
 export interface RenderResult {
   videoPath: string;
-  frameDataUrls?: string[];
+
   warnings: ValidationWarning[];
   logs: RenderLogEntry[];
   sandboxId: string;
@@ -1236,103 +1236,7 @@ export async function renderManimVideo({
 
     const finalVideoPath = processedVideoPath;
 
-    // --- Extract frames for thumbnail (best-effort) ---
-    const frameDataUrls: string[] = [];
-    try {
-      await reportProgress(
-        "video-processing",
-        "Extracting frames for thumbnail",
-      );
 
-      const thumbDurationProbe = await sandbox.commands.run(
-        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${finalVideoPath}`,
-        { timeoutMs: 60_000 },
-      );
-      const totalDuration =
-        parseFloat((thumbDurationProbe.stdout || "").trim()) || 10;
-
-      // Extract 1 frame per scene so visual review covers every scene's layout.
-      // Fall back to 3 if scene count is unavailable.
-      const frameCount = Math.max(currentSceneNames.length, 3);
-      const frameDir = `${outputDir}/frames`;
-      await sandbox.commands.run(`mkdir -p ${frameDir}`);
-
-      // Place each timestamp at the midpoint of its scene's time slice
-      const frameTimestamps = Array.from(
-        { length: frameCount },
-        (_, i) => (totalDuration * (i + 0.5)) / frameCount,
-      );
-
-      for (let i = 0; i < frameTimestamps.length; i++) {
-        const baseTs = frameTimestamps[i]!;
-        const framePath = `${frameDir}/frame_${i}.png`;
-        const offsets = [0, 1, -1, 2, -2];
-        let extracted = false;
-
-        for (const offset of offsets) {
-          const ts = Math.max(
-            0,
-            Math.min(baseTs + offset, totalDuration - 0.1),
-          );
-          await sandbox.commands.run(
-            `ffmpeg -y -i ${finalVideoPath} -ss ${ts.toFixed(2)} -frames:v 1 -vf "scale=640:-1" -q:v 4 ${framePath}`,
-            { timeoutMs: 60_000 },
-          );
-
-          // Check if the frame is black by measuring mean pixel value
-          try {
-            const statsResult = await sandbox.commands.run(
-              `ffprobe -v error -f image2 -i ${framePath} -show_entries frame=pkt_size -of default=noprint_wrappers=1:nokey=1`,
-              { timeoutMs: 15_000 },
-            );
-            const frameSize = parseInt((statsResult.stdout || "").trim(), 10);
-            // A very small frame (under 2KB) is likely a solid black image
-            if (!isNaN(frameSize) && frameSize >= 2000) {
-              extracted = true;
-              break;
-            }
-          } catch {
-            // If ffprobe fails, accept the frame as-is rather than crashing
-            extracted = true;
-            break;
-          }
-        }
-
-        if (!extracted) {
-          // All offsets produced dark frames — keep the last extracted frame anyway
-        }
-      }
-
-      for (let i = 0; i < frameCount; i++) {
-        const framePath = `${frameDir}/frame_${i}.png`;
-        try {
-          const frameBytes = (await sandbox.files.read(framePath, {
-            format: "bytes",
-          })) as Uint8Array;
-          if (frameBytes && frameBytes.length > 0) {
-            const frameBase64 = Buffer.from(frameBytes).toString("base64");
-            frameDataUrls.push(`data:image/png;base64,${frameBase64}`);
-          }
-        } catch {
-          // Frame file missing, skip
-        }
-      }
-
-      if (frameDataUrls.length > 0) {
-        pushLog({
-          level: "info",
-          message: `Extracted ${frameDataUrls.length} frames for thumbnail`,
-          context: "thumbnail",
-        });
-      }
-    } catch (thumbError) {
-      console.warn("Frame extraction failed (non-fatal):", thumbError);
-      pushLog({
-        level: "warn",
-        message: `Frame extraction failed: ${thumbError instanceof Error ? thumbError.message : String(thumbError)}`,
-        context: "thumbnail",
-      });
-    }
 
     const fileBytesArray = (await sandbox.files.read(finalVideoPath, {
       format: "bytes",
@@ -1368,7 +1272,7 @@ export async function renderManimVideo({
 
     return {
       videoPath: dataUrl,
-      frameDataUrls: frameDataUrls.length > 0 ? frameDataUrls : undefined,
+
       warnings,
       logs: [...renderLogs],
       sandboxId: sandbox.sandboxId,
