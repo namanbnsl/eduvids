@@ -6,7 +6,6 @@ import {
   generateScenePlan,
   generateManimScript,
   fixManimScript,
-  reviewRenderedFrames,
   generateThumbnailDesign,
 } from "@/lib/llm";
 import { renderThumbnail } from "@/lib/thumbnail";
@@ -131,102 +130,6 @@ export const { POST } = serve<VideoGenerationPayload>(
     });
 
     console.log("✅ Video rendered");
-
-    // Visual review: extract frames, evaluate quality, re-render if needed
-    // NOTE: Upstash Workflow requires deterministic step names across replays.
-    // All context.run steps must always be reached (no conditional skipping),
-    // and must NOT be wrapped in try/catch (WorkflowAbort must propagate).
-    const hasFrames =
-      renderResult.frameDataUrls && renderResult.frameDataUrls.length > 0;
-
-    const visualReview = await context.run(
-      "visual-quality-review",
-      async () => {
-        if (!hasFrames) {
-          return { overallQuality: "good" as const, issues: [], suggestedFixes: "" };
-        }
-        await updateJobProgress(jobId, {
-          progress: 70,
-          step: "Reviewing quality",
-          details: "Checking visuals",
-        });
-        return reviewRenderedFrames({
-          frames: renderResult.frameDataUrls!,
-          script,
-          sessionId: chatId,
-        });
-      },
-    );
-
-    const needsFixes =
-      hasFrames && visualReview.overallQuality === "needs_fixes";
-
-    if (needsFixes) {
-      console.log("⚠️ Visual review found issues:", visualReview.issues);
-    } else {
-      console.log("✅ Visual review passed");
-    }
-
-    const fixedScript = await context.run("fix-visual-issues", async () => {
-      if (!needsFixes) {
-        return script;
-      }
-      await updateJobProgress(jobId, {
-        progress: 75,
-        step: "Fixing visual issues",
-        details: "Improving layout",
-      });
-      const issuesSummary = [
-        "VISUAL REVIEW ISSUES (from rendered frame analysis):",
-        ...visualReview.issues.map((i) => `- ${i}`),
-        "",
-        "SUGGESTED FIXES:",
-        visualReview.suggestedFixes,
-      ].join("\n");
-      return fixManimScript({
-        script,
-        errors: issuesSummary,
-        sessionId: chatId,
-      });
-    });
-
-    const reRenderResult = await context.run("re-render-video", async () => {
-      if (!needsFixes || fixedScript === script) {
-        return null;
-      }
-      console.log("✅ Visual fixes applied, re-rendering");
-      await updateJobProgress(jobId, {
-        progress: 78,
-        step: "Re-rendering",
-        details: "Applying fixes",
-      });
-      return renderManimVideo({
-        script: fixedScript,
-        prompt: generationPrompt,
-        applyWatermark: true,
-        renderOptions:
-          variant === "short"
-            ? {
-                resolution: { width: 1080, height: 1920 },
-                orientation: "portrait" as const,
-              }
-            : undefined,
-        scriptFixer: (currentScript, errors) =>
-          fixManimScript({
-            script: currentScript,
-            errors,
-            sessionId: chatId,
-          }),
-      });
-    });
-
-    if (reRenderResult) {
-      renderResult.videoPath = reRenderResult.videoPath;
-      if (reRenderResult.frameDataUrls) {
-        renderResult.frameDataUrls = reRenderResult.frameDataUrls;
-      }
-      console.log("✅ Re-render complete");
-    }
 
     const uploadUrl = await context.run("upload-video", async () => {
       await updateJobProgress(jobId, {

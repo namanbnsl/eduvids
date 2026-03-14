@@ -718,7 +718,11 @@ export async function renderManimVideo({
     // -----------------------------------------------------------------------
     const PRE_RENDER_MAX_FIXES = 3;
 
-    for (let preFixAttempt = 0; preFixAttempt <= PRE_RENDER_MAX_FIXES; preFixAttempt++) {
+    for (
+      let preFixAttempt = 0;
+      preFixAttempt <= PRE_RENDER_MAX_FIXES;
+      preFixAttempt++
+    ) {
       await reportProgress(
         "syntax",
         preFixAttempt === 0
@@ -892,9 +896,7 @@ export async function renderManimVideo({
           const parts = [
             `STAGE: ${dryRunError.stage}`,
             dryRunError.hint ? `HINT: ${dryRunError.hint}` : "",
-            dryRunError.stderr
-              ? `STDERR:\n${tail(dryRunError.stderr)}`
-              : "",
+            dryRunError.stderr ? `STDERR:\n${tail(dryRunError.stderr)}` : "",
             dryRunError.stdout
               ? `STDOUT:\n${tail(dryRunError.stdout, 4000)}`
               : "",
@@ -985,7 +987,7 @@ export async function renderManimVideo({
       mediaDir,
       "--disable_caching",
       "--format=mp4",
-      "-ql",
+      "-qm",
     ];
     if (resolution) {
       safeWidth = Math.max(1, Math.round(resolution.width));
@@ -1268,24 +1270,32 @@ export async function renderManimVideo({
         let extracted = false;
 
         for (const offset of offsets) {
-          const ts = Math.max(0, Math.min(baseTs + offset, totalDuration - 0.1));
+          const ts = Math.max(
+            0,
+            Math.min(baseTs + offset, totalDuration - 0.1),
+          );
           await sandbox.commands.run(
             `ffmpeg -y -i ${finalVideoPath} -ss ${ts.toFixed(2)} -frames:v 1 -vf "scale=640:-1" -q:v 4 ${framePath}`,
             { timeoutMs: 60_000 },
           );
 
-          // Check if the frame is black by measuring mean luminance (YAVG)
-          const statsResult = await sandbox.commands.run(
-            `ffprobe -f lavfi -i "movie=${framePath},signalstats" -show_entries frame_tags=lavfi.signalstats.YAVG -of default=noprint_wrappers=1:nokey=1 -read_intervals "%+#1"`,
-            { timeoutMs: 30_000 },
-          );
-          const yavg = parseFloat((statsResult.stdout || "").trim());
-
-          if (!isNaN(yavg) && yavg >= 10) {
+          // Check if the frame is black by measuring mean pixel value
+          try {
+            const statsResult = await sandbox.commands.run(
+              `ffprobe -v error -f image2 -i ${framePath} -show_entries frame=pkt_size -of default=noprint_wrappers=1:nokey=1`,
+              { timeoutMs: 15_000 },
+            );
+            const frameSize = parseInt((statsResult.stdout || "").trim(), 10);
+            // A very small frame (under 2KB) is likely a solid black image
+            if (!isNaN(frameSize) && frameSize >= 2000) {
+              extracted = true;
+              break;
+            }
+          } catch {
+            // If ffprobe fails, accept the frame as-is rather than crashing
             extracted = true;
             break;
           }
-          // YAVG < 10 means near-black frame, try next offset
         }
 
         if (!extracted) {

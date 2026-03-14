@@ -225,7 +225,7 @@ export default function HomePage() {
                         </MessageContent>
                         <MessageAvatar
                           src=""
-                          name={message.role == "assistant" ? "AI" : "ME"}
+                          name={message.role == "assistant" ? "EV" : "ME"}
                         />
                       </Message>
                     ))}

@@ -302,7 +302,10 @@ export function sanitizeManimScript(script: string): string {
     /^[ \t]*(\{[\s\S]*?"[\w]+"[\s\S]*?\}|^\[[\s\S]*?\])[ \t]*$/gm,
     (match) => {
       // Only remove if it looks like JSON (has quoted keys with colons)
-      if (/"[\w]+"[\t ]*:/.test(match) && !/^[ \t]*(#|def |class |from |import )/.test(match)) {
+      if (
+        /"[\w]+"[\t ]*:/.test(match) &&
+        !/^[ \t]*(#|def |class |from |import )/.test(match)
+      ) {
         console.warn("[sanitizeManimScript] Removed JSON-like block");
         return "";
       }
@@ -310,12 +313,15 @@ export function sanitizeManimScript(script: string): string {
     },
   );
   // Remove lines that look like JS/TS (const/let/var declarations, =>, function keyword with braces)
-  const jsPatterns = /^[ \t]*(const |let |var |function \w+\s*\(|export (default |))/;
+  const jsPatterns =
+    /^[ \t]*(const |let |var |function \w+\s*\(|export (default |))/;
   result = result
     .split("\n")
     .filter((line) => {
       if (jsPatterns.test(line)) {
-        console.warn(`[sanitizeManimScript] Removed non-Python line: ${line.slice(0, 80)}`);
+        console.warn(
+          `[sanitizeManimScript] Removed non-Python line: ${line.slice(0, 80)}`,
+        );
         return false;
       }
       return true;
@@ -398,11 +404,17 @@ export function sanitizeManimScript(script: string): string {
   result = trimmedLines.join("\n");
 
   // 4. Validate and fix imports
-  if (!/from\s+manim\s+import\s/.test(result) && !/import\s+manim/.test(result)) {
+  if (
+    !/from\s+manim\s+import\s/.test(result) &&
+    !/import\s+manim/.test(result)
+  ) {
     console.warn("[sanitizeManimScript] Added missing 'from manim import *'");
     result = "from manim import *\n" + result;
   }
-  if (!/from\s+manim_voiceover\s+import\s/.test(result) && !/import\s+manim_voiceover/.test(result)) {
+  if (
+    !/from\s+manim_voiceover\s+import\s/.test(result) &&
+    !/import\s+manim_voiceover/.test(result)
+  ) {
     console.warn("[sanitizeManimScript] Added missing manim_voiceover import");
     // Insert after the manim import line
     result = result.replace(
@@ -419,7 +431,9 @@ export function sanitizeManimScript(script: string): string {
       const trimmed = line.trim();
       if (/^(from\s+\S+\s+import\s|import\s+)/.test(trimmed)) {
         if (seenImports.has(trimmed)) {
-          console.warn(`[sanitizeManimScript] Removed duplicate import: ${trimmed}`);
+          console.warn(
+            `[sanitizeManimScript] Removed duplicate import: ${trimmed}`,
+          );
           return false;
         }
         seenImports.add(trimmed);
@@ -434,11 +448,15 @@ export function sanitizeManimScript(script: string): string {
     .filter((line) => {
       const trimmed = line.trim();
       // Match "import X" or "from X import ..."
-      const importMatch = trimmed.match(/^(?:from\s+(\S+)\s+import|import\s+(\S+))/);
+      const importMatch = trimmed.match(
+        /^(?:from\s+(\S+)\s+import|import\s+(\S+))/,
+      );
       if (importMatch) {
         const mod = (importMatch[1] || importMatch[2]).split(".")[0];
         if (PROHIBITED_MODULES.includes(mod)) {
-          console.warn(`[sanitizeManimScript] Removed prohibited import: ${trimmed}`);
+          console.warn(
+            `[sanitizeManimScript] Removed prohibited import: ${trimmed}`,
+          );
           return false;
         }
       }
@@ -457,7 +475,9 @@ export function sanitizeManimScript(script: string): string {
 
   // 7. Fix indentation: normalize mixed tabs/spaces to 4 spaces
   if (/\t/.test(result)) {
-    console.warn("[sanitizeManimScript] Normalized tabs to 4-space indentation");
+    console.warn(
+      "[sanitizeManimScript] Normalized tabs to 4-space indentation",
+    );
     result = result
       .split("\n")
       .map((line) => {
@@ -559,8 +579,12 @@ export async function generateManimScript({
 // ---------------------------------------------------------------------------
 
 export interface ThumbnailDesign {
-  html: string;
-  css: string;
+  title: string;
+  subtitle: string;
+  backgroundColor: string;
+  accentColor: string;
+  textColor: string;
+  layout: "centered" | "left-aligned" | "split";
 }
 
 export interface ThumbnailDesignRequest {
@@ -574,40 +598,28 @@ export async function generateThumbnailDesign({
   frameCount,
   sessionId,
 }: ThumbnailDesignRequest): Promise<ThumbnailDesign> {
-  const systemPrompt = `You are a minimalist design expert. Generate complete HTML + CSS for a YouTube thumbnail (1280x720).
+  const systemPrompt = `You are a minimalist design expert. Generate a design specification for a YouTube thumbnail (1280x720).
 
 OUTPUT FORMAT — output ONLY valid JSON, no markdown fences, no explanation:
 {
-  "html": "<div class='container'>...use semantic HTML...</div>",
-  "css": "* { ... } .container { ... } /* complete CSS */"
+  "title": "Short bold title text (max 6 words)",
+  "subtitle": "Optional short subtitle or tagline (max 8 words, empty string if none)",
+  "backgroundColor": "#hex color for background",
+  "accentColor": "#hex accent color for decorative elements",
+  "textColor": "#hex color for text",
+  "layout": "centered" | "left-aligned" | "split"
 }
 
 DESIGN PRINCIPLES:
 - Minimalistic & clean aesthetic
-- Limited color palette: max 2-3 colors (e.g., white + 1 accent + gray)
-- Lots of whitespace
-- Simple, bold typography (one or two font sizes)
-- Subtle use of spacing and alignment
-- Elegant rather than flashy
-- No gradients, patterns, or visual clutter
-- Focus on clarity and readability
+- Limited color palette: max 2-3 colors
+- Simple, bold typography
+- High contrast for readability
+- ${frameCount > 1 ? "Use 'split' layout to show frames alongside text" : "Use 'centered' or 'left-aligned' layout"}
 
-TECHNICAL REQUIREMENTS:
-- Width: 1280px, Height: 720px
-- Use inline CSS classes only (no external imports except system fonts)
-- ${frameCount} frame(s) available as <img> elements with src placeholder
-- Title should be ${frameCount > 1 ? "prominent" : "centered"}
-- Use semantic HTML (div, h1, h2, p, img, etc)
-- Ensure high contrast for text readability
+Choose colors and a layout that best represent the topic.`;
 
-EXAMPLE AESTHETIC:
-- Black text on white background with subtle gray accents
-- Clean sans-serif (system fonts)
-- Generous padding and margins
-- Maybe a thin border or subtle shadow for depth
-- Video frames displayed minimally (small size, clean borders)`;
-
-  const userPrompt = `Create a minimalist YouTube thumbnail for: "${prompt}"\n\nKeep it clean, elegant, and uncluttered. Maximum 2-3 colors. Focus on clarity.`;
+  const userPrompt = `Create a minimalist YouTube thumbnail design for: "${prompt}"\n\nKeep it clean, elegant, and uncluttered. Maximum 2-3 colors. Focus on clarity.`;
 
   const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
@@ -633,8 +645,12 @@ EXAMPLE AESTHETIC:
     return JSON.parse(cleaned) as ThumbnailDesign;
   } catch {
     return {
-      html: "<div style='display:flex;align-items:center;justify-content:center;width:1280px;height:720px;background:#fff;color:#000;font-family:sans-serif;font-size:48px;text-align:center;padding:20px;'>Thumbnail generation failed</div>",
-      css: "",
+      title: "Video",
+      subtitle: "",
+      backgroundColor: "#ffffff",
+      accentColor: "#333333",
+      textColor: "#000000",
+      layout: "centered",
     };
   }
 }
@@ -751,7 +767,9 @@ RULES:
     "```",
   ].join("\n");
 
-  const googleModel = await createGoogleModel("gemini-3-flash-preview");
+  console.log(userPrompt);
+
+  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
   });
@@ -767,6 +785,7 @@ RULES:
       googleModel,
     );
 
+    console.log(text.trim());
     const fixed = applySearchReplaceDiffs(script, text.trim());
     if (fixed !== script) return fixed;
 
@@ -880,7 +899,9 @@ function fixManimScriptHeuristically(
       const colorRegex = new RegExp(`\\b${missingName}\\b`, "g");
       if (colorRegex.test(updated)) {
         updated = updated.replace(colorRegex, colorReplacement);
-        notes.push(`replaced invalid color ${missingName} with ${colorReplacement}`);
+        notes.push(
+          `replaced invalid color ${missingName} with ${colorReplacement}`,
+        );
       }
     }
   }

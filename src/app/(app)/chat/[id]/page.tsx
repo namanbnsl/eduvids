@@ -260,7 +260,7 @@ function ChatPageContent({ chatId }: ChatPageContentProps) {
                   </MessageContent>
                   <MessageAvatar
                     src=""
-                    name={message.role == "assistant" ? "AI" : "ME"}
+                    name={message.role == "assistant" ? "EV" : "ME"}
                   />
                 </Message>
               ))}
