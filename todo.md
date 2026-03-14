@@ -14,4 +14,3 @@ search for image illustrations online and then upload to sandbox for usage
 
 file attatchments
 projects
-automate getting youtube keys
