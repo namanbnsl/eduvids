@@ -7,6 +7,7 @@ import {
   generateManimScript,
   fixManimScript,
   generateVideoTitle,
+  generateVideoDescription,
 } from "@/lib/llm";
 import { renderManimVideo } from "@/lib/e2b";
 import { uploadVideo } from "@/lib/uploadthing";
@@ -55,8 +56,8 @@ export const { POST } = serve<VideoGenerationPayload>(
       async () => {
         await updateJobProgress(jobId, {
           progress: 5,
-          step: "Creating narration",
-          details: "Writing script",
+          step: "generating voiceover",
+          details: "Crafting a narration that slaps",
         });
         return generateVoiceoverScript({
           prompt: generationPrompt,
@@ -72,8 +73,8 @@ export const { POST } = serve<VideoGenerationPayload>(
     const scenePlan = await context.run("generate-scene-plan", async () => {
       await updateJobProgress(jobId, {
         progress: 12,
-        step: "Planning scenes",
-        details: "Structuring layout",
+        step: "generating script",
+        details: "Storyboarding the scenes",
       });
       return generateScenePlan({
         prompt: generationPrompt,
@@ -89,8 +90,8 @@ export const { POST } = serve<VideoGenerationPayload>(
     const script = await context.run("generate-manim-script", async () => {
       await updateJobProgress(jobId, {
         progress: 22,
-        step: "Writing scenes",
-        details: "Creating",
+        step: "verifying script",
+        details: "Writing the animation code",
       });
       return generateManimScript({
         prompt: generationPrompt,
@@ -105,8 +106,8 @@ export const { POST } = serve<VideoGenerationPayload>(
     const renderResult = await context.run("render-video", async () => {
       await updateJobProgress(jobId, {
         progress: 40,
-        step: "Rendering video",
-        details: "Running Manim",
+        step: "rendering video",
+        details: "Bringing your animations to life",
       });
       return renderManimVideo({
         script,
@@ -133,8 +134,8 @@ export const { POST } = serve<VideoGenerationPayload>(
     const uploadUrl = await context.run("upload-video", async () => {
       await updateJobProgress(jobId, {
         progress: 85,
-        step: "Uploading video",
-        details: "Saving",
+        step: "uploading video",
+        details: "Beaming your video to the cloud",
       });
       return uploadVideo({ videoPath: renderResult.videoPath, userId });
     });
@@ -143,6 +144,7 @@ export const { POST } = serve<VideoGenerationPayload>(
 
     // Generate title (best-effort)
     let videoTitle: string | undefined;
+    let videoDescription: string | undefined;
 
     try {
       videoTitle = await context.run("generate-title", async () => {
@@ -153,11 +155,27 @@ export const { POST } = serve<VideoGenerationPayload>(
       console.warn("Title generation failed (non-fatal):", err);
     }
 
+    try {
+      videoDescription = await context.run("generate-description", async () => {
+        return generateVideoDescription({
+          prompt,
+          voiceoverScript,
+          sessionId: chatId,
+          variant,
+        });
+      });
+      console.log("✅ Description generated:", {
+        length: videoDescription.length,
+      });
+    } catch (err) {
+      console.warn("Description generation failed (non-fatal):", err);
+    }
+
     await context.run("finalize-and-trigger-youtube-upload", async () => {
       await updateJobProgress(jobId, {
         progress: 95,
-        step: "Finishing up",
-        details: "Wrapping up",
+        step: "finalizing",
+        details: "Putting the finishing touches on",
       });
       await jobStore.setReady(jobId, uploadUrl);
       await jobStore.setYoutubeStatus(jobId, { youtubeStatus: "pending" });
@@ -168,6 +186,7 @@ export const { POST } = serve<VideoGenerationPayload>(
         body: {
           videoUrl: uploadUrl,
           title: videoTitle,
+          description: videoDescription,
           prompt,
           voiceoverScript,
           jobId,

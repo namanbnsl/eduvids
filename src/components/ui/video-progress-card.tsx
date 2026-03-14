@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   Card,
@@ -37,6 +40,19 @@ export function VideoProgressCard({
         .join(" ")
     : undefined;
 
+  const [displayedSubtitle, setDisplayedSubtitle] = useState(subtitle);
+  const [subtitleVisible, setSubtitleVisible] = useState(true);
+
+  useEffect(() => {
+    if (subtitle === displayedSubtitle) return;
+    setSubtitleVisible(false);
+    const timeout = setTimeout(() => {
+      setDisplayedSubtitle(subtitle);
+      setSubtitleVisible(true);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [subtitle, displayedSubtitle]);
+
   return (
     <Card
       className={cn(
@@ -49,8 +65,13 @@ export function VideoProgressCard({
         <CardTitle className="text-balance text-xl font-semibold tracking-tight">
           {title}
         </CardTitle>
-        <CardDescription className="mx-auto text-pretty">
-          {subtitle}
+        <CardDescription
+          className={cn(
+            "mx-auto text-pretty transition-opacity duration-300",
+            subtitleVisible ? "opacity-100" : "opacity-0"
+          )}
+        >
+          {displayedSubtitle}
         </CardDescription>
       </CardHeader>
 

@@ -617,6 +617,60 @@ RULES:
 }
 
 // ---------------------------------------------------------------------------
+// YouTube description generation
+// ---------------------------------------------------------------------------
+
+export interface VideoDescriptionRequest {
+  prompt: string;
+  voiceoverScript: string;
+  sessionId: string;
+  variant?: "video" | "short";
+}
+
+export async function generateVideoDescription({
+  prompt,
+  voiceoverScript,
+  sessionId,
+  variant,
+}: VideoDescriptionRequest): Promise<string> {
+  const systemPrompt = `You are a YouTube description expert for educational math/science videos.
+
+RULES:
+- Maximum 900 characters
+- 1-2 short paragraphs
+- Plain text only (no lists or timestamps)
+- No quotes around the description
+- Do not include calls-to-action or links
+- Output ONLY the description text, nothing else`;
+
+  const userPrompt = `Create a YouTube description for this ${
+    variant === "short" ? "vertical short" : "video"
+  }.
+
+TOPIC: ${prompt}
+
+VOICEOVER SCRIPT:
+${voiceoverScript}`;
+
+  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
+  const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
+    posthogProperties: { $ai_session_id: sessionId },
+  });
+
+  const text = await streamTextWithTracking(
+    {
+      model,
+      system: systemPrompt,
+      prompt: userPrompt,
+      temperature: 0.6,
+    },
+    googleModel,
+  );
+
+  return text.trim().replace(/^["']|["']$/g, "").slice(0, 900);
+}
+
+// ---------------------------------------------------------------------------
 // Script fixer – diff-based error correction via gemini-3.1-flash-lite
 // ---------------------------------------------------------------------------
 

@@ -673,15 +673,12 @@ export async function renderManimVideo({
       await reportProgress("sandbox", "Sandbox connected", sandbox.sandboxId);
     } else {
       await reportProgress("sandbox", "Provisioning secure rendering sandbox");
-      sandbox = await Sandbox.create(
-        "manim-ffmpeg-latex-voiceover-watermark-languages",
-        {
-          timeoutMs: 3_600_000, // 60 minutes
-          envs: {
-            ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
-          },
+      sandbox = await Sandbox.create("manim20-ffmpeg-bookmarks-latest", {
+        timeoutMs: 3_600_000, // 60 minutes
+        envs: {
+          ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
         },
-      );
+      });
       console.log("E2B sandbox created successfully", {
         sandboxId: sandbox.sandboxId,
       });
@@ -1235,8 +1232,6 @@ export async function renderManimVideo({
     }
 
     const finalVideoPath = processedVideoPath;
-
-
 
     const fileBytesArray = (await sandbox.files.read(finalVideoPath, {
       format: "bytes",
