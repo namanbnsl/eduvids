@@ -1090,21 +1090,60 @@ export async function renderManimVideo({
 
     let videoPath = renderedScenePaths[0];
     if (renderedScenePaths.length > 1) {
-      const concatListPath = `${baseVideosDir}/${moduleName}/concat.txt`;
       const mergedVideoPath = `${baseVideosDir}/${moduleName}/combined.mp4`;
-      const concatFileContents = renderedScenePaths
-        .map((scenePath) => `file '${scenePath}'`)
-        .join("\n");
+      await reportProgress(
+        "video-processing",
+        "Concatenating rendered scenes with crossfade",
+      );
 
-      await sandbox.files.write(concatListPath, concatFileContents);
-      await reportProgress("video-processing", "Concatenating rendered scenes");
+      // Get durations of each scene for xfade offset calculation
+      const XFADE_DURATION = 0.5; // seconds
+      const durations: number[] = [];
+      for (const scenePath of renderedScenePaths) {
+        const durationResult = await runCommandOrThrow(
+          `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${scenePath}`,
+          {
+            description: "Get scene duration",
+            stage: "render",
+            timeoutMs: 30_000,
+            hint: "ffprobe failed to get scene duration.",
+          },
+        );
+        durations.push(parseFloat(durationResult.stdout.trim()));
+      }
+
+      // Build xfade filter chain for crossfade transitions between scenes
+      const inputs = renderedScenePaths.map((p) => `-i ${p}`).join(" ");
+      const n = renderedScenePaths.length;
+
+      // Calculate xfade offsets: each offset = cumulative duration - cumulative crossfade overlap
+      const filterParts: string[] = [];
+      let prevLabel = "[0:v]";
+      let cumulativeDuration = durations[0];
+
+      for (let i = 1; i < n; i++) {
+        const offset = Math.max(0, cumulativeDuration - XFADE_DURATION);
+        const outLabel = i < n - 1 ? `[v${i}]` : "[vout]";
+        filterParts.push(
+          `${prevLabel}[${i}:v]xfade=transition=fade:duration=${XFADE_DURATION}:offset=${offset.toFixed(3)}${outLabel}`,
+        );
+        prevLabel = outLabel;
+        cumulativeDuration = offset + durations[i];
+      }
+
+      // Build audio concat (acrossfade is unreliable, simple concat works fine for audio)
+      const audioInputs = renderedScenePaths.map((_, i) => `[${i}:a]`).join("");
+      const audioFilter = `${audioInputs}concat=n=${n}:v=0:a=1[aout]`;
+
+      const filterComplex = [...filterParts, audioFilter].join(";");
+
       await runCommandOrThrow(
-        `ffmpeg -y -f concat -safe 0 -i ${concatListPath} -c copy ${mergedVideoPath}`,
+        `ffmpeg -y ${inputs} -filter_complex "${filterComplex}" -map "[vout]" -map "[aout]" -c:v libx264 -preset fast -crf 18 -c:a aac -b:a 192k ${mergedVideoPath}`,
         {
-          description: "Concatenate rendered scenes",
+          description: "Concatenate rendered scenes with crossfade",
           stage: "render",
           timeoutMs: 300_000,
-          hint: "ffmpeg failed while joining individual scene renders.",
+          hint: "ffmpeg failed while joining individual scene renders with crossfade.",
           streamOutput: { stdout: true, stderr: true },
         },
       );

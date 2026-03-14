@@ -94,7 +94,7 @@ export const { POST } = serve<YouTubeUploadPayload>(
     return { success: true, ...youtubeResult };
   },
   {
-    retries: 2,
+    retries: 0,
     qstashClient: qstashClientWithBypass,
     failureFunction: async ({ context, failResponse }) => {
       const { jobId } = context.requestPayload;

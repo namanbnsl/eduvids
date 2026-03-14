@@ -27,7 +27,7 @@ export const { POST } = serve<XUploadPayload>(
     return { success: true };
   },
   {
-    retries: 2,
+    retries: 0,
     qstashClient: qstashClientWithBypass,
   },
 );

@@ -109,7 +109,7 @@ export async function queryManimDocs(errorContext: string): Promise<string> {
     }
 
     // 3. Call ask_question tool
-    const question = `I'm getting this error in my Manim Community v0.19.0 script. What is the correct API usage to fix it?\n\nError:\n${errorContext.slice(0, 2000)}`;
+    const question = `I'm getting this error in my Manim Community v0.20.0 script. What is the correct API usage to fix it?\n\nError:\n${errorContext.slice(0, 2000)}`;
 
     const toolResponse = await fetch(MCP_ENDPOINT, {
       method: "POST",

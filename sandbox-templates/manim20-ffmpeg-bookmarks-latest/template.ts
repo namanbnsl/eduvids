@@ -33,23 +33,35 @@ export const template = Template()
   ]).runCmd(`
 pip install --upgrade pip setuptools wheel
 
-# torch cpu
-pip install torch --index-url https://download.pytorch.org/whl/cpu
+# ✅ lock numpy
+pip install numpy==1.26.4
 
-# whisper deps
+# ✅ torch stack
 pip install \
-  numba \
-  llvmlite \
-  numpy \
-  tqdm \
-  more-itertools \
-  tiktoken
+  torch==2.2.2 \
+  torchvision==0.17.2 \
+  torchaudio==2.2.2 \
+  --index-url https://download.pytorch.org/whl/cpu
 
+# deps compatible with numpy 1.x
+pip install numba==0.59.1 llvmlite==0.42.0
+
+pip install tqdm more-itertools tiktoken
+
+# whisper
 pip install git+https://github.com/openai/whisper.git
 
-# manim
-pip install manim
+# ✅ install manim normally but prevent numpy upgrade
+pip install manim --constraint <(echo "numpy==1.26.4")
 
-# voiceover
-pip install manim-voiceover[gtts] manim-fonts
+# voiceover stack
+pip install manim-voiceover[gtts] stable-ts --constraint <(echo "numpy==1.26.4")
+
+# verify
+python - <<EOF
+import numpy, torch, torchaudio
+print("numpy", numpy.__version__)
+print("torch", torch.__version__)
+print("torchaudio", torchaudio.__version__)
+EOF
 `);

@@ -7,7 +7,7 @@ const VOICEOVER_SERVICE_IMPORT = useElevenLabs
 
 const VOICEOVER_SERVICE_SETTER = useElevenLabs
   ? "self.set_speech_service(ElevenLabsService(transcription_model=None))"
-  : "self.set_speech_service(GTTSService())";
+  : "self.set_speech_service(GTTSService(transcription_model='base'))";
 
 // =============================================================================
 // SYSTEM PROMPT - Teacher/Planner Agent
@@ -271,7 +271,10 @@ ${VOICEOVER_SERVICE_IMPORT}
 import numpy as np
 
 Each scene class inherits VoiceoverScene, calls ${VOICEOVER_SERVICE_SETTER} first.
-For 3D: class MyScene(VoiceoverScene, ThreeDScene).
+For 3D scenes: class MyScene(VoiceoverScene, ThreeDScene).
+⚠️ INHERITANCE ORDER MATTERS: VoiceoverScene MUST come FIRST, ThreeDScene SECOND.
+   ✅ class MyScene(VoiceoverScene, ThreeDScene)
+   ❌ class MyScene(ThreeDScene, VoiceoverScene)  ← breaks voiceover; construct() is not called correctly
 Use ordered names: Scene01Intro, Scene02Definition, etc.
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -318,11 +321,39 @@ CRITICAL REQUIREMENTS
 1. Multiple small scene classes (6-14 normal, 4-8 shorts). One concept per scene.
 2. All three imports at top: manim, manim_voiceover, service. Call ${VOICEOVER_SERVICE_SETTER} first in every construct().
 3. Wrap animations in "with self.voiceover(text=...) as tracker:" blocks. Narration order must match script.
-4. ALL Text() must use font="EB Garamond". MathTex does not need it.
-5. Label every formula, shape, axis, and graph. Color-code labels to match their elements.
-6. Max 4-5 elements on screen. FadeOut old content before showing new. Use self.wait(1) between elements.
-7. Use .next_to() with buff>=0.4 for positioning.
-8. Each scene is self-contained — no shared state between scene classes.
+4. USE BOOKMARKS to sync animations precisely with narration.
+   ⚠️⚠️ CRITICAL — BOOKMARK RULE (violating this causes a FATAL runtime crash):
+   Every wait_until_bookmark("X") or time_until_bookmark("X") call in code REQUIRES a
+   matching <bookmark mark='X'/> tag INSIDE the text= string of the SAME voiceover block.
+   Bookmarks are part of the text, NOT standalone calls. You CANNOT use wait_until_bookmark()
+   for a bookmark that does not appear inside the text argument.
+
+   ❌ WRONG (will crash — no bookmark tags in text):
+     with self.voiceover(text="Let us draw a circle and label it.") as tracker:
+         self.wait_until_bookmark("A")  # CRASH: "A" is not in the text
+         self.play(Create(circle))
+
+   ✅ CORRECT (bookmark tags embedded in text):
+     with self.voiceover(
+         text="Let us start by <bookmark mark='A'/>drawing a circle and then <bookmark mark='B'/>labeling it."
+     ) as tracker:
+         self.wait_until_bookmark("A")
+         self.play(Create(circle), run_time=tracker.time_until_bookmark("B", limit=2))
+         self.wait_until_bookmark("B")
+         self.play(Write(label), run_time=tracker.get_remaining_duration())
+
+   CHECKLIST before writing each voiceover block:
+   a) Count how many wait_until_bookmark / time_until_bookmark calls you need.
+   b) Insert exactly that many <bookmark mark='...'/> tags into the text= string at the
+      natural speech positions where the animation should trigger.
+   c) Double-check: every bookmark name used in code appears as <bookmark mark='NAME'/> in text.
+   Use tracker.time_until_bookmark("X", limit=N) as run_time to auto-pace animations.
+   Use tracker.get_remaining_duration() for the last animation in a voiceover block.
+5. ALL Text() must use font="EB Garamond". MathTex does not need it.
+6. Label every formula, shape, axis, and graph. Color-code labels to match their elements.
+7. Max 4-5 elements on screen. FadeOut old content before showing new. Use self.wait(1) between elements.
+8. Use .next_to() with buff>=0.4 for positioning.
+9. Each scene is self-contained — no shared state between scene classes.
 
 ═══════════════════════════════════════════════════════════════════════════════
 ERROR PREVENTION
@@ -335,5 +366,3 @@ ERROR PREVENTION
 5. Use \\\\frac, \\\\sqrt in MathTex r-strings. Only use names you import from manim or define yourself — no undefined constants.
 6. ONLY use these color constants (from manim's global namespace): WHITE, BLACK, BLUE, BLUE_A, BLUE_B, BLUE_C, BLUE_D, BLUE_E, RED, RED_A, RED_B, RED_C, RED_D, RED_E, GREEN, GREEN_A, GREEN_B, GREEN_C, GREEN_D, GREEN_E, YELLOW, YELLOW_A, YELLOW_B, YELLOW_C, YELLOW_D, YELLOW_E, GOLD, GOLD_A, GOLD_B, GOLD_C, GOLD_D, GOLD_E, TEAL, TEAL_A, TEAL_B, TEAL_C, TEAL_D, TEAL_E, PURPLE, PURPLE_A, PURPLE_B, PURPLE_C, PURPLE_D, PURPLE_E, MAROON, MAROON_A, MAROON_B, MAROON_C, MAROON_D, MAROON_E, ORANGE, PINK, LIGHT_PINK, GRAY, GREY, DARK_BLUE, DARK_BROWN, LIGHT_BROWN, LIGHT_GRAY, LIGHT_GREY, DARKER_GRAY, DARKER_GREY, GRAY_BROWN, GREY_BROWN, PURE_RED, PURE_GREEN, PURE_BLUE. Do NOT use CYAN, MAGENTA, LIME, SILVER, AQUA, NAVY, OLIVE, or other CSS/HTML color names — they are NOT defined in Manim's default namespace. If you need a specific color not in the list above, use a hex string instead, e.g. color="#00FFFF".
 `;
-
-

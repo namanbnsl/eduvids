@@ -289,12 +289,121 @@ const PROHIBITED_MODULES = [
   "asyncio",
 ];
 
+/**
+ * Proactively inject missing <bookmark mark='X'/> tags into voiceover text
+ * when the code body references wait_until_bookmark("X") or
+ * time_until_bookmark("X") but the text= string has no matching tag.
+ * Tags are inserted at evenly-spaced word boundaries inside the text.
+ */
+function fixMissingBookmarkTags(script: string): string {
+  // Match voiceover blocks: `with self.voiceover(\n  text="..." ...) as tracker:`
+  // followed by an indented code body.
+  // We iterate by finding each `self.voiceover(` call.
+  const voiceoverStartRe =
+    /with\s+self\.voiceover\s*\(\s*text\s*=\s*(["']{1,3})/g;
+  let match: RegExpExecArray | null;
+  let updated = script;
+
+  while ((match = voiceoverStartRe.exec(updated)) !== null) {
+    const quote = match[1]; // " or ' or """ or '''
+    const textStart = match.index + match[0].length;
+
+    // Find the closing quote for the text string
+    const closingIdx = updated.indexOf(quote, textStart);
+    if (closingIdx === -1) continue;
+
+    const voiceoverText = updated.slice(textStart, closingIdx);
+
+    // Find the end of the `with` block: look for the closing `) as tracker:`
+    // then scan ahead for the indented body.
+    const blockHeaderEnd = updated.indexOf("\n", closingIdx);
+    if (blockHeaderEnd === -1) continue;
+
+    // Collect the indented body lines after the `with` header.
+    // We scan until indentation decreases back to the `with` level or EOF.
+    const withLineStart = updated.lastIndexOf("\n", match.index) + 1;
+    const withIndent =
+      updated.slice(withLineStart, match.index).match(/^(\s*)/)?.[1]?.length ??
+      0;
+    const bodyLines: string[] = [];
+    let pos = blockHeaderEnd + 1;
+    while (pos < updated.length) {
+      const lineEnd = updated.indexOf("\n", pos);
+      const line =
+        lineEnd === -1 ? updated.slice(pos) : updated.slice(pos, lineEnd);
+      const trimmed = line.trimStart();
+      if (trimmed.length === 0) {
+        // blank line inside block, keep scanning
+      } else {
+        const lineIndent = line.length - trimmed.length;
+        if (lineIndent <= withIndent) break; // exited the with-block
+      }
+      bodyLines.push(line);
+      if (lineEnd === -1) break;
+      pos = lineEnd + 1;
+    }
+    const codeBody = bodyLines.join("\n");
+
+    // Extract all bookmark names referenced in code
+    const bookmarkRefRe =
+      /(?:wait_until_bookmark|time_until_bookmark)\s*\(\s*["']([^"']+)["']/g;
+    const referencedBookmarks: string[] = [];
+    let bm: RegExpExecArray | null;
+    while ((bm = bookmarkRefRe.exec(codeBody)) !== null) {
+      referencedBookmarks.push(bm[1]);
+    }
+    if (referencedBookmarks.length === 0) continue;
+
+    // Find which ones are missing from the text
+    const missing = referencedBookmarks.filter(
+      (name) =>
+        !new RegExp(`<bookmark\\s+mark=['"]${name}['"]\\s*/>`).test(
+          voiceoverText,
+        ),
+    );
+    if (missing.length === 0) continue;
+
+    console.warn(
+      `[sanitizeManimScript] Injecting ${missing.length} missing bookmark tag(s): ${missing.join(", ")}`,
+    );
+
+    // Insert missing bookmarks at evenly-spaced word boundaries
+    const words = voiceoverText.split(/(\s+)/); // preserve whitespace tokens
+    const wordIndices: number[] = [];
+    for (let i = 0; i < words.length; i++) {
+      if (words[i].trim().length > 0) wordIndices.push(i);
+    }
+
+    if (wordIndices.length === 0) continue;
+
+    // Distribute bookmarks evenly across the text
+    const step = Math.max(1, Math.floor(wordIndices.length / (missing.length + 1)));
+    for (let i = 0; i < missing.length; i++) {
+      const insertAtWord = Math.min(
+        step * (i + 1),
+        wordIndices.length - 1,
+      );
+      const idx = wordIndices[insertAtWord];
+      words[idx] = `<bookmark mark='${missing[i]}'/>${words[idx]}`;
+    }
+
+    const fixedText = words.join("");
+    updated =
+      updated.slice(0, textStart) + fixedText + updated.slice(closingIdx);
+
+    // Reset regex lastIndex since we mutated the string
+    voiceoverStartRe.lastIndex = textStart + fixedText.length;
+  }
+
+  return updated;
+}
+
 export function sanitizeManimScript(script: string): string {
   let result = script;
 
-  // 1. Remove markdown fences and HTML tags
+  // 1. Remove markdown fences and HTML tags (but preserve <bookmark/> tags)
   result = result.replace(/```[\w]*\n?/g, "");
-  result = result.replace(/<\/?[a-zA-Z][^>]*>/g, "");
+  result = result.replace(/<\/?(?!bookmark\b)[a-zA-Z][^>]*>/g, "");
 
   // 2. Remove non-Python language blocks (JSON, JS/TS, YAML etc.)
   // Detect blocks that look like JSON objects/arrays at the top level
@@ -494,6 +603,15 @@ export function sanitizeManimScript(script: string): string {
   result = result.replace(/\n{3,}/g, "\n\n"); // collapse 3+ blank lines to 2
   result = result.replace(/\n+$/, "\n"); // single trailing newline
 
+  // 9. Fix missing bookmark tags in voiceover text
+  result = fixMissingBookmarkTags(result);
+
+  // 10. Fix ThreeDScene inheritance order: VoiceoverScene must come first
+  result = result.replace(
+    /class\s+(\w+)\s*\(\s*ThreeDScene\s*,\s*VoiceoverScene\s*\)/g,
+    "class $1(VoiceoverScene, ThreeDScene)",
+  );
+
   return result.trim();
 }
 
@@ -613,7 +731,10 @@ RULES:
     googleModel,
   );
 
-  return text.trim().replace(/^["']|["']$/g, "").slice(0, 80);
+  return text
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .slice(0, 80);
 }
 
 // ---------------------------------------------------------------------------
@@ -667,7 +788,10 @@ ${voiceoverScript}`;
     googleModel,
   );
 
-  return text.trim().replace(/^["']|["']$/g, "").slice(0, 900);
+  return text
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .slice(0, 900);
 }
 
 // ---------------------------------------------------------------------------
@@ -784,7 +908,7 @@ RULES:
 
   console.log(userPrompt);
 
-  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
+  const googleModel = await createGoogleModel("gemini-3-flash-preview");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
   });
@@ -918,6 +1042,30 @@ function fixManimScriptHeuristically(
           `replaced invalid color ${missingName} with ${colorReplacement}`,
         );
       }
+    }
+  }
+
+  // Fix missing bookmark tags: if the script uses wait_until_bookmark("X")
+  // but the voiceover text doesn't contain <bookmark mark='X'/>, strip
+  // the wait_until_bookmark calls so animations play sequentially.
+  if (/There is no <bookmark mark='/.test(errors)) {
+    // Remove standalone wait_until_bookmark lines
+    updated = updated.replace(
+      /^[ \t]*self\.wait_until_bookmark\([^)]*\)\s*\n/gm,
+      "",
+    );
+
+    // Replace tracker.time_until_bookmark("X", limit=N) with just N (the limit)
+    updated = updated.replace(
+      /tracker\.time_until_bookmark\([^,)]+,\s*limit\s*=\s*(\d+(?:\.\d+)?)\)/g,
+      "$1",
+    );
+
+    // Replace bare tracker.time_until_bookmark("X") (no limit) with 2
+    updated = updated.replace(/tracker\.time_until_bookmark\([^)]+\)/g, "2");
+
+    if (updated !== script) {
+      notes.push("removed wait_until_bookmark calls for missing bookmark tags");
     }
   }
 

@@ -1,6 +1,8 @@
 5 minutes and longer renders
 thumbnails
 
+manim plugins
+
 concatenation causes voiceover issues + its instant
 
 notification to be triggered on job and not video loaded. tell user they will be notified
