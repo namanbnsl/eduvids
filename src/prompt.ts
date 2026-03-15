@@ -326,11 +326,15 @@ CRITICAL REQUIREMENTS
    Use run_time with fixed values for crisp pacing, and use tracker.get_remaining_duration() for the final action in a block.
    When an animation should finish as the narration ends, set run_time=tracker.get_remaining_duration().
    Use brief self.wait(0.2-0.5) pauses between actions to let the viewer absorb changes.
-5. ALL Text() must use font="EB Garamond", disable_ligatures=True. MathTex does not need it.
-6. Label every formula, shape, axis, and graph. Color-code labels to match their elements.
-7. Max 4-5 elements on screen. FadeOut old content before showing new. Use self.wait(1) between elements.
-8. Use .next_to() with buff>=0.4 for positioning.
-9. Each scene is self-contained — no shared state between scene classes.
+5. Write() animations for Text and MathTex are WAY TOO SLOW if left to fill the voiceover duration.
+   ALWAYS set an explicit run_time on Write() — use run_time=1 to run_time=2 depending on text length.
+   NEVER let Write() default to tracker.get_remaining_duration() — it makes text appear painfully slowly.
+   Example: self.play(Write(formula), run_time=1.5)
+6. ALL Text() must use font="EB Garamond", disable_ligatures=True. MathTex does not need it.
+7. Label every formula, shape, axis, and graph. Color-code labels to match their elements.
+8. Max 4-5 elements on screen. FadeOut old content before showing new. Use self.wait(1) between elements.
+9. Use .next_to() with buff>=0.4 for positioning.
+10. Each scene is self-contained — no shared state between scene classes.
 
 ═══════════════════════════════════════════════════════════════════════════════
 ERROR PREVENTION
