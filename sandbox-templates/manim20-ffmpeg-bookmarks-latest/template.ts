@@ -27,6 +27,8 @@ export const template = Template()
     "portaudio19-dev",
     "python3-pyaudio",
 
+    "fonts-ebgaramond",
+
     "git",
     "curl",
     "wget",

@@ -8,6 +8,51 @@ let latexEnvironmentVerified = false;
 
 const CTA_MARKER = "# __EDUVIDS_CTA_INJECTED__";
 const SCENE_FADE_MARKER = "# __EDUVIDS_SCENE_FADE_OUT__";
+
+const SCALED_TEXT_MARKER = "# __EDUVIDS_SCALED_TEXT__";
+
+const SCALED_TEXT_HELPER = `${SCALED_TEXT_MARKER}
+_TEXT_SCALE_FACTOR = 0.3
+_TEXT_SCALE_THRESHOLD = 32
+
+class _OrigText(Text):
+    pass
+
+def Text(*args, **kwargs):
+    scale_font = False
+    if "font_size" in kwargs and kwargs["font_size"] < _TEXT_SCALE_THRESHOLD:
+        scale_font = True
+        kwargs["font_size"] = kwargs["font_size"] / _TEXT_SCALE_FACTOR
+    obj = _OrigText(*args, **kwargs)
+    if scale_font:
+        obj.scale(_TEXT_SCALE_FACTOR)
+    return obj
+`;
+
+function injectScaledTextHelper(script: string): string {
+  if (script.includes(SCALED_TEXT_MARKER)) return script;
+
+  // Insert after the last top-level import line
+  const lines = script.split("\n");
+  let lastImportIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i]?.trim() ?? "";
+    if (
+      trimmed.startsWith("import ") ||
+      trimmed.startsWith("from ") ||
+      trimmed.startsWith("#")
+    ) {
+      lastImportIndex = i;
+    } else if (trimmed.length > 0) {
+      break;
+    }
+  }
+
+  const insertAt = lastImportIndex + 1;
+  lines.splice(insertAt, 0, "", SCALED_TEXT_HELPER);
+  return lines.join("\n");
+}
+
 function injectEduvidsCallout(script: string): string {
   if (script.includes(CTA_MARKER)) {
     return script;
@@ -62,10 +107,10 @@ function injectEduvidsCallout(script: string): string {
     `${bodyIndent}existing_mobjects = list(self.mobjects)`,
     `${bodyIndent}if existing_mobjects:`,
     `${bodyIndent}    self.play(*[FadeOut(mob) for mob in existing_mobjects])`,
-    `${bodyIndent}with self.voiceover(text="Generate your own educational videos for free at eduvids dot vercel dot app"):`,
-    `${bodyIndent}    cta_title = Text("Generate your own educational videos for free!", font="Noto Serif", font_size=32)`,
+    `${bodyIndent}with self.voiceover(text="Generate your own educational videos for free at eduvids dot app"):`,
+    `${bodyIndent}    cta_title = Text("Generate your own educational videos for free!", font="EB Garamond", disable_ligatures=True, font_size=32)`,
     `${bodyIndent}    cta_title.set_color(WHITE)`,
-    `${bodyIndent}    cta_link = Text("https://eduvids.app", font="Noto Serif", font_size=28)`,
+    `${bodyIndent}    cta_link = Text("https://eduvids.app", font="EB Garamond", disable_ligatures=True, font_size=28)`,
     `${bodyIndent}    cta_link.set_color(TEAL)`,
     `${bodyIndent}    cta_link.next_to(cta_title, DOWN, buff=0.4)`,
     `${bodyIndent}    cta_content = VGroup(cta_title, cta_link)`,
@@ -800,6 +845,7 @@ export async function renderManimVideo({
     const baseVideosDir = `${mediaDir}/videos`;
 
     let enhancedScript = heuristicFixedScript;
+    enhancedScript = injectScaledTextHelper(enhancedScript);
     enhancedScript = injectSceneFadeOut(enhancedScript);
     enhancedScript = injectEduvidsCallout(enhancedScript);
 
@@ -881,6 +927,7 @@ export async function renderManimVideo({
           throw syntaxError;
         }
 
+        enhancedScript = injectScaledTextHelper(enhancedScript);
         enhancedScript = injectEduvidsCallout(enhancedScript);
         enhancedScript = injectSceneFadeOut(enhancedScript);
 
@@ -1045,6 +1092,7 @@ export async function renderManimVideo({
           throw dryRunError;
         }
 
+        currentScript = injectScaledTextHelper(currentScript);
         currentScript = injectSceneFadeOut(currentScript);
         currentScript = injectEduvidsCallout(currentScript);
 

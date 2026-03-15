@@ -1,9 +1,9 @@
 5 minutes and longer renders
 thumbnails
 
-manim plugins
+better 3d
 
-concatenation causes voiceover issues + its instant
+manim plugins
 
 notification to be triggered on job and not video loaded. tell user they will be notified
 ability to edit videos

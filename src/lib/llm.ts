@@ -108,10 +108,10 @@ function buildAugmentedSystemPrompt(base: string, language?: string): string {
     const nonEnglishHeader = `
 CRITICAL - ${langUpper} LANGUAGE DETECTED
 This video is in ${language.toUpperCase()}. IMPORTANT RULES:
-1. USE Text() FOR ALL NON-MATHEMATICAL TEXT: Text("your text", font="Noto Serif", font_size=36, color=WHITE)
+1. USE Text() FOR ALL NON-MATHEMATICAL TEXT: Text("your text", font="EB Garamond", disable_ligatures=True, font_size=36, color=WHITE)
 2. USE Tex/MathTex ONLY FOR MATH: MathTex(r"E = mc^2", font_size=44)
-3. ALWAYS use font="Noto Serif" for consistent typography
-4. For bullets in ${language}: Create Text() objects with font="Noto Serif" and arrange them manually
+3. ALWAYS use font="EB Garamond", disable_ligatures=True for consistent typography
+4. For bullets in ${language}: Create Text() objects with font="EB Garamond", disable_ligatures=True and arrange them manually
 5. Example correct usage:
    title = Text("${
      language === "spanish"
@@ -121,7 +121,7 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
          : language === "german"
            ? "Titel"
            : "Title"
-   }", font="Noto Serif", font_size=48, color=WHITE)
+   }", font="EB Garamond", disable_ligatures=True, font_size=48, color=WHITE)
    body = Text("${
      language === "spanish"
        ? "Contenido"
@@ -130,7 +130,7 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
          : language === "german"
            ? "Inhalt"
            : "Content"
-   }", font="Noto Serif", font_size=36, color=WHITE)
+   }", font="EB Garamond", disable_ligatures=True, font_size=36, color=WHITE)
 6. LaTeX will NOT work for ${language} characters - it will show garbled text or errors
 
 `;

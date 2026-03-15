@@ -30,14 +30,17 @@ export function QuickActionCards({
   }
 
   return (
-    <div className="flex justify-center w-full">
-      <Button
-        variant="outline"
-        className="h-12 w-64 rounded-full border border-border/70 bg-card/70 px-5 text-sm text-foreground shadow-[0_10px_35px_-25px_color-mix(in_oklch,var(--foreground)_55%,transparent)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent/70"
-        onClick={() => onCardClick(topics[0])}
-      >
-        {topics[0]}
-      </Button>
+    <div className="flex w-full flex-wrap items-stretch justify-center gap-5">
+      {topics.slice(0, 2).map((topic) => (
+        <Button
+          key={topic}
+          variant="outline"
+          className="h-auto min-h-11 w-full max-w-[22rem] rounded-full border border-border/70 bg-card/70 px-5 py-3 text-center text-sm font-medium text-foreground shadow-[0_8px_24px_-20px_color-mix(in_oklch,var(--foreground)_45%,transparent)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent/70 sm:w-[18rem]"
+          onClick={() => onCardClick(topic)}
+        >
+          <span className="line-clamp-2 text-balance leading-5">{topic}</span>
+        </Button>
+      ))}
     </div>
   );
 }

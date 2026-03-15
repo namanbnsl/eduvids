@@ -289,13 +289,13 @@ LAYOUT TEMPLATES (use these as starting patterns)
 ═══════════════════════════════════════════════════════════════════════════════
 
 # title_scene — title at top, subtitle below
-title = Text("Title", font="Noto Serif", font_size=48).to_edge(UP, buff=0.8)
-subtitle = Text("Subtitle", font="Noto Serif", font_size=36).next_to(title, DOWN, buff=0.6)
+title = Text("Title", font="EB Garamond", disable_ligatures=True, font_size=48).to_edge(UP, buff=0.8)
+subtitle = Text("Subtitle", font="EB Garamond", disable_ligatures=True, font_size=36).next_to(title, DOWN, buff=0.6)
 
 
 # formula_scene — formula centered, labels below
 formula = MathTex(r"E = mc^2", font_size=44).move_to(UP * 0.5)
-label = Text("energy", font="Noto Serif", font_size=28, color=YELLOW).next_to(formula, DOWN, buff=0.5)
+label = Text("energy", font="EB Garamond", disable_ligatures=True, font_size=28, color=YELLOW).next_to(formula, DOWN, buff=0.5)
 
 
 # axes_scene — axes with labeled graph
@@ -306,7 +306,7 @@ curve_label = axes.get_graph_label(graph, label="y=x^2", direction=UR)
 
 # geometry_scene — shape centered, labels outside
 shape = Circle(radius=1.5, color=BLUE, fill_opacity=0.2).move_to(ORIGIN)
-lbl = Text("r", font="Noto Serif", font_size=28, color=YELLOW).next_to(shape, RIGHT, buff=0.4)
+lbl = Text("r", font="EB Garamond", disable_ligatures=True, font_size=28, color=YELLOW).next_to(shape, RIGHT, buff=0.4)
 
 
 # split_scene — two elements side by side
@@ -326,7 +326,7 @@ CRITICAL REQUIREMENTS
    Use run_time with fixed values for crisp pacing, and use tracker.get_remaining_duration() for the final action in a block.
    When an animation should finish as the narration ends, set run_time=tracker.get_remaining_duration().
    Use brief self.wait(0.2-0.5) pauses between actions to let the viewer absorb changes.
-5. ALL Text() must use font="Noto Serif". MathTex does not need it.
+5. ALL Text() must use font="EB Garamond", disable_ligatures=True. MathTex does not need it.
 6. Label every formula, shape, axis, and graph. Color-code labels to match their elements.
 7. Max 4-5 elements on screen. FadeOut old content before showing new. Use self.wait(1) between elements.
 8. Use .next_to() with buff>=0.4 for positioning.
