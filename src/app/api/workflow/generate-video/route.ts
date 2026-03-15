@@ -116,7 +116,7 @@ export const { POST } = serve<VideoGenerationPayload>(
         renderOptions:
           variant === "short"
             ? {
-                resolution: { width: 1080, height: 1920 },
+                resolution: { width: 720, height: 1280 },
                 orientation: "portrait" as const,
               }
             : undefined,
@@ -171,7 +171,7 @@ export const { POST } = serve<VideoGenerationPayload>(
       console.warn("Description generation failed (non-fatal):", err);
     }
 
-    await context.run("finalize-and-trigger-youtube-upload", async () => {
+    await context.run("finalize-job", async () => {
       await updateJobProgress(jobId, {
         progress: 95,
         step: "finalizing",
@@ -179,7 +179,9 @@ export const { POST } = serve<VideoGenerationPayload>(
       });
       await jobStore.setReady(jobId, uploadUrl);
       await jobStore.setYoutubeStatus(jobId, { youtubeStatus: "pending" });
+    });
 
+    await context.run("trigger-youtube-upload", async () => {
       await workflowClient.trigger({
         headers: getTriggerHeaders(),
         url: `${getBaseUrl()}/api/workflow/upload-youtube`,

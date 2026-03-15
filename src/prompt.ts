@@ -7,7 +7,7 @@ const VOICEOVER_SERVICE_IMPORT = useElevenLabs
 
 const VOICEOVER_SERVICE_SETTER = useElevenLabs
   ? "self.set_speech_service(ElevenLabsService(transcription_model=None))"
-  : "self.set_speech_service(GTTSService(transcription_model='base'))";
+  : "self.set_speech_service(GTTSService())";
 
 // =============================================================================
 // SYSTEM PROMPT - Teacher/Planner Agent
@@ -289,13 +289,13 @@ LAYOUT TEMPLATES (use these as starting patterns)
 ═══════════════════════════════════════════════════════════════════════════════
 
 # title_scene — title at top, subtitle below
-title = Text("Title", font="EB Garamond", font_size=48).to_edge(UP, buff=0.8)
-subtitle = Text("Subtitle", font="EB Garamond", font_size=36).next_to(title, DOWN, buff=0.6)
+title = Text("Title", font="Noto Serif", font_size=48).to_edge(UP, buff=0.8)
+subtitle = Text("Subtitle", font="Noto Serif", font_size=36).next_to(title, DOWN, buff=0.6)
 
 
 # formula_scene — formula centered, labels below
 formula = MathTex(r"E = mc^2", font_size=44).move_to(UP * 0.5)
-label = Text("energy", font="EB Garamond", font_size=28, color=YELLOW).next_to(formula, DOWN, buff=0.5)
+label = Text("energy", font="Noto Serif", font_size=28, color=YELLOW).next_to(formula, DOWN, buff=0.5)
 
 
 # axes_scene — axes with labeled graph
@@ -306,7 +306,7 @@ curve_label = axes.get_graph_label(graph, label="y=x^2", direction=UR)
 
 # geometry_scene — shape centered, labels outside
 shape = Circle(radius=1.5, color=BLUE, fill_opacity=0.2).move_to(ORIGIN)
-lbl = Text("r", font="EB Garamond", font_size=28, color=YELLOW).next_to(shape, RIGHT, buff=0.4)
+lbl = Text("r", font="Noto Serif", font_size=28, color=YELLOW).next_to(shape, RIGHT, buff=0.4)
 
 
 # split_scene — two elements side by side
@@ -321,35 +321,12 @@ CRITICAL REQUIREMENTS
 1. Multiple small scene classes (6-14 normal, 4-8 shorts). One concept per scene.
 2. All three imports at top: manim, manim_voiceover, service. Call ${VOICEOVER_SERVICE_SETTER} first in every construct().
 3. Wrap animations in "with self.voiceover(text=...) as tracker:" blocks. Narration order must match script.
-4. USE BOOKMARKS to sync animations precisely with narration.
-   ⚠️⚠️ CRITICAL — BOOKMARK RULE (violating this causes a FATAL runtime crash):
-   Every wait_until_bookmark("X") or time_until_bookmark("X") call in code REQUIRES a
-   matching <bookmark mark='X'/> tag INSIDE the text= string of the SAME voiceover block.
-   Bookmarks are part of the text, NOT standalone calls. You CANNOT use wait_until_bookmark()
-   for a bookmark that does not appear inside the text argument.
-
-   ❌ WRONG (will crash — no bookmark tags in text):
-     with self.voiceover(text="Let us draw a circle and label it.") as tracker:
-         self.wait_until_bookmark("A")  # CRASH: "A" is not in the text
-         self.play(Create(circle))
-
-   ✅ CORRECT (bookmark tags embedded in text):
-     with self.voiceover(
-         text="Let us start by <bookmark mark='A'/>drawing a circle and then <bookmark mark='B'/>labeling it."
-     ) as tracker:
-         self.wait_until_bookmark("A")
-         self.play(Create(circle), run_time=tracker.time_until_bookmark("B", limit=2))
-         self.wait_until_bookmark("B")
-         self.play(Write(label), run_time=tracker.get_remaining_duration())
-
-   CHECKLIST before writing each voiceover block:
-   a) Count how many wait_until_bookmark / time_until_bookmark calls you need.
-   b) Insert exactly that many <bookmark mark='...'/> tags into the text= string at the
-      natural speech positions where the animation should trigger.
-   c) Double-check: every bookmark name used in code appears as <bookmark mark='NAME'/> in text.
-   Use tracker.time_until_bookmark("X", limit=N) as run_time to auto-pace animations.
-   Use tracker.get_remaining_duration() for the last animation in a voiceover block.
-5. ALL Text() must use font="EB Garamond". MathTex does not need it.
+4. DO NOT use bookmarks. Sync narration by structuring voiceover blocks to match animation beats.
+   Prefer multiple short voiceover blocks over one long block. Keep each block aligned to 1-2 key visual actions.
+   Use run_time with fixed values for crisp pacing, and use tracker.get_remaining_duration() for the final action in a block.
+   When an animation should finish as the narration ends, set run_time=tracker.get_remaining_duration().
+   Use brief self.wait(0.2-0.5) pauses between actions to let the viewer absorb changes.
+5. ALL Text() must use font="Noto Serif". MathTex does not need it.
 6. Label every formula, shape, axis, and graph. Color-code labels to match their elements.
 7. Max 4-5 elements on screen. FadeOut old content before showing new. Use self.wait(1) between elements.
 8. Use .next_to() with buff>=0.4 for positioning.

@@ -3,10 +3,11 @@ import { Buffer } from "node:buffer";
 import { RenderLogEntry, ValidationStage } from "@/lib/types";
 
 const MAX_COMMAND_OUTPUT_CHARS = 4000;
+const MAX_COMMAND_BUFFER_CHARS = 20000;
 let latexEnvironmentVerified = false;
 
 const CTA_MARKER = "# __EDUVIDS_CTA_INJECTED__";
-
+const SCENE_FADE_MARKER = "# __EDUVIDS_SCENE_FADE_OUT__";
 function injectEduvidsCallout(script: string): string {
   if (script.includes(CTA_MARKER)) {
     return script;
@@ -62,9 +63,9 @@ function injectEduvidsCallout(script: string): string {
     `${bodyIndent}if existing_mobjects:`,
     `${bodyIndent}    self.play(*[FadeOut(mob) for mob in existing_mobjects])`,
     `${bodyIndent}with self.voiceover(text="Generate your own educational videos for free at eduvids dot vercel dot app"):`,
-    `${bodyIndent}    cta_title = Text("Generate your own educational videos for free!", font="EB Garamond", font_size=32)`,
+    `${bodyIndent}    cta_title = Text("Generate your own educational videos for free!", font="Noto Serif", font_size=32)`,
     `${bodyIndent}    cta_title.set_color(WHITE)`,
-    `${bodyIndent}    cta_link = Text("https://eduvids.app", font="EB Garamond", font_size=28)`,
+    `${bodyIndent}    cta_link = Text("https://eduvids.app", font="Noto Serif", font_size=28)`,
     `${bodyIndent}    cta_link.set_color(TEAL)`,
     `${bodyIndent}    cta_link.next_to(cta_title, DOWN, buff=0.4)`,
     `${bodyIndent}    cta_content = VGroup(cta_title, cta_link)`,
@@ -88,6 +89,90 @@ function injectEduvidsCallout(script: string): string {
   const insertionLines = insertionNeedsBlankLine ? ["", ...snippet] : snippet;
 
   lines.splice(insertionIndex, 0, ...insertionLines);
+
+  return lines.join("\n");
+}
+
+function injectSceneFadeOut(script: string): string {
+  const lines = script.split("\n");
+  const constructPattern = /^\s*def\s+construct\s*\(\s*self\s*\)\s*:/;
+
+  type ConstructBlock = {
+    constructIndex: number;
+    bodyIndent: string;
+    endIndex: number;
+  };
+
+  const constructs: ConstructBlock[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!constructPattern.test(lines[i])) continue;
+
+    let bodyIndent = "        ";
+    for (let j = i + 1; j < lines.length; j++) {
+      const trimmed = lines[j]?.trim() ?? "";
+      if (!trimmed.length) continue;
+      const indentMatch = lines[j]?.match(/^\s+/);
+      if (indentMatch && indentMatch[0]) {
+        bodyIndent = indentMatch[0];
+      } else {
+        const defIndent = lines[i]?.match(/^\s*/)?.[0] ?? "";
+        bodyIndent = `${defIndent}    `;
+      }
+      break;
+    }
+
+    let endIndex = lines.length;
+    for (let k = i + 1; k < lines.length; k++) {
+      const trimmed = lines[k]?.trim() ?? "";
+      if (!trimmed.length) continue;
+      const indent = lines[k]?.match(/^\s*/)?.[0] ?? "";
+      if (indent.length < bodyIndent.length) {
+        endIndex = k;
+        break;
+      }
+    }
+
+    constructs.push({ constructIndex: i, bodyIndent, endIndex });
+  }
+
+  if (!constructs.length) {
+    return script;
+  }
+
+  const snippetForIndent = (indent: string) => [
+    `${indent}${SCENE_FADE_MARKER}`,
+    `${indent}existing_mobjects = list(self.mobjects)`,
+    `${indent}if existing_mobjects:`,
+    `${indent}    self.play(*[FadeOut(mob) for mob in existing_mobjects])`,
+    `${indent}self.wait(0.25)`,
+  ];
+
+  const inserts: { index: number; lines: string[] }[] = [];
+
+  for (const block of constructs) {
+    const alreadyInjected = lines
+      .slice(block.constructIndex + 1, block.endIndex)
+      .some((line) => line.includes(SCENE_FADE_MARKER));
+    if (alreadyInjected) continue;
+
+    const insertionNeedsBlankLine =
+      block.endIndex > block.constructIndex + 1 &&
+      (lines[block.endIndex - 1]?.trim()?.length ?? 0) > 0;
+    const snippet = snippetForIndent(block.bodyIndent);
+    const insertionLines = insertionNeedsBlankLine ? ["", ...snippet] : snippet;
+    inserts.push({ index: block.endIndex, lines: insertionLines });
+  }
+
+  if (!inserts.length) {
+    return script;
+  }
+
+  inserts
+    .sort((a, b) => b.index - a.index)
+    .forEach((insert) => {
+      lines.splice(insert.index, 0, ...insert.lines);
+    });
 
   return lines.join("\n");
 }
@@ -562,6 +647,14 @@ export async function renderManimVideo({
 
     const userStdout = onStdout;
     const userStderr = onStderr;
+    let bufferedStdout = "";
+    let bufferedStderr = "";
+
+    const appendWithLimit = (current: string, chunk: string, limit: number) => {
+      if (!chunk) return current;
+      const next = current + chunk;
+      return next.length <= limit ? next : next.slice(-limit);
+    };
 
     const defaultStdout = streamStdout
       ? (chunk: string) => {
@@ -577,6 +670,11 @@ export async function renderManimVideo({
       : undefined;
 
     const combinedStdout = (chunk: string) => {
+      bufferedStdout = appendWithLimit(
+        bufferedStdout,
+        chunk,
+        MAX_COMMAND_BUFFER_CHARS,
+      );
       recordChunk(chunk, "stdout");
       if (userStdout) {
         userStdout(chunk);
@@ -586,6 +684,11 @@ export async function renderManimVideo({
     };
 
     const combinedStderr = (chunk: string) => {
+      bufferedStderr = appendWithLimit(
+        bufferedStderr,
+        chunk,
+        MAX_COMMAND_BUFFER_CHARS,
+      );
       recordChunk(chunk, "stderr");
       if (userStderr) {
         userStderr(chunk);
@@ -607,8 +710,8 @@ export async function renderManimVideo({
       if (hint) {
         messageParts.push(hint);
       }
-      const stderr = truncateOutput(result.stderr);
-      const stdout = truncateOutput(result.stdout);
+      const stderr = truncateOutput(result.stderr || bufferedStderr);
+      const stdout = truncateOutput(result.stdout || bufferedStdout);
       if (stderr) {
         messageParts.push(`STDERR:\n${stderr}`);
         recordChunk(stderr, "stderr");
@@ -624,8 +727,8 @@ export async function renderManimVideo({
       });
       const error = new ManimValidationError(messageParts.join("\n\n"), stage, {
         exitCode: result.exitCode,
-        stderr: result.stderr,
-        stdout: result.stdout,
+        stderr: result.stderr || bufferedStderr,
+        stdout: result.stdout || bufferedStdout,
         hint,
         logs: [...renderLogs],
       });
@@ -677,6 +780,7 @@ export async function renderManimVideo({
         timeoutMs: 3_600_000, // 60 minutes
         envs: {
           ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
+          TMPDIR: "/dev/shm",
         },
       });
       console.log("E2B sandbox created successfully", {
@@ -696,6 +800,7 @@ export async function renderManimVideo({
     const baseVideosDir = `${mediaDir}/videos`;
 
     let enhancedScript = heuristicFixedScript;
+    enhancedScript = injectSceneFadeOut(enhancedScript);
     enhancedScript = injectEduvidsCallout(enhancedScript);
 
     await reportProgress("prepare", "Uploading enhanced script to sandbox");
@@ -777,6 +882,7 @@ export async function renderManimVideo({
         }
 
         enhancedScript = injectEduvidsCallout(enhancedScript);
+        enhancedScript = injectSceneFadeOut(enhancedScript);
 
         // Re-extract scene names in case the fixer renamed classes
         sceneNames = extractSceneClassNames(enhancedScript);
@@ -840,10 +946,12 @@ export async function renderManimVideo({
     const DRY_RUN_MAX_FIXES = 5;
     let currentScript = enhancedScript;
     let currentSceneNames = sceneNames;
+    const dryRunScriptPath = `/home/user/script_dry_run.py`;
 
     for (let fixAttempt = 0; fixAttempt <= DRY_RUN_MAX_FIXES; fixAttempt++) {
+      await sandbox!.files.write(dryRunScriptPath, currentScript);
       const dryRunArgs = [
-        scriptPath,
+        dryRunScriptPath,
         ...currentSceneNames,
         "-ql",
         "-s",
@@ -937,6 +1045,7 @@ export async function renderManimVideo({
           throw dryRunError;
         }
 
+        currentScript = injectSceneFadeOut(currentScript);
         currentScript = injectEduvidsCallout(currentScript);
 
         // Re-extract scene names in case the fixer renamed classes
@@ -989,7 +1098,7 @@ export async function renderManimVideo({
     if (resolution) {
       safeWidth = Math.max(1, Math.round(resolution.width));
       safeHeight = Math.max(1, Math.round(resolution.height));
-      manimArgs.push("-r", `${safeWidth},${safeHeight}`);
+      manimArgs.push("-r", `${safeHeight},${safeWidth}`);
     }
 
     const manimCmd = `manim ${manimArgs.join(" ")}`;
@@ -1013,7 +1122,13 @@ export async function renderManimVideo({
     if (safeWidth && safeHeight) {
       qualityCandidates.push(`custom_quality_${safeWidth}x${safeHeight}`);
     }
-    qualityCandidates.push("720p15", "medium_quality", "480p15", "low_quality");
+    qualityCandidates.push(
+      "720p30",
+      "medium_quality",
+      "720p15",
+      "480p15",
+      "low_quality",
+    );
 
     if (!sandbox) {
       await ensureCleanup();
@@ -1091,59 +1206,24 @@ export async function renderManimVideo({
     let videoPath = renderedScenePaths[0];
     if (renderedScenePaths.length > 1) {
       const mergedVideoPath = `${baseVideosDir}/${moduleName}/combined.mp4`;
-      await reportProgress(
-        "video-processing",
-        "Concatenating rendered scenes with crossfade",
-      );
+      await reportProgress("video-processing", "Concatenating rendered scenes");
 
-      // Get durations of each scene for xfade offset calculation
-      const XFADE_DURATION = 0.5; // seconds
-      const durations: number[] = [];
-      for (const scenePath of renderedScenePaths) {
-        const durationResult = await runCommandOrThrow(
-          `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${scenePath}`,
-          {
-            description: "Get scene duration",
-            stage: "render",
-            timeoutMs: 30_000,
-            hint: "ffprobe failed to get scene duration.",
-          },
-        );
-        durations.push(parseFloat(durationResult.stdout.trim()));
-      }
-
-      // Build xfade filter chain for crossfade transitions between scenes
+      // Build concat filter chain (no fades/delays in ffmpeg)
       const inputs = renderedScenePaths.map((p) => `-i ${p}`).join(" ");
       const n = renderedScenePaths.length;
 
-      // Calculate xfade offsets: each offset = cumulative duration - cumulative crossfade overlap
-      const filterParts: string[] = [];
-      let prevLabel = "[0:v]";
-      let cumulativeDuration = durations[0];
-
-      for (let i = 1; i < n; i++) {
-        const offset = Math.max(0, cumulativeDuration - XFADE_DURATION);
-        const outLabel = i < n - 1 ? `[v${i}]` : "[vout]";
-        filterParts.push(
-          `${prevLabel}[${i}:v]xfade=transition=fade:duration=${XFADE_DURATION}:offset=${offset.toFixed(3)}${outLabel}`,
-        );
-        prevLabel = outLabel;
-        cumulativeDuration = offset + durations[i];
-      }
-
-      // Build audio concat (acrossfade is unreliable, simple concat works fine for audio)
-      const audioInputs = renderedScenePaths.map((_, i) => `[${i}:a]`).join("");
-      const audioFilter = `${audioInputs}concat=n=${n}:v=0:a=1[aout]`;
-
-      const filterComplex = [...filterParts, audioFilter].join(";");
+      const concatInputs = renderedScenePaths
+        .map((_, i) => `[${i}:v][${i}:a]`)
+        .join("");
+      const filterComplex = `${concatInputs}concat=n=${n}:v=1:a=1[vout][aout]`;
 
       await runCommandOrThrow(
         `ffmpeg -y ${inputs} -filter_complex "${filterComplex}" -map "[vout]" -map "[aout]" -c:v libx264 -preset fast -crf 18 -c:a aac -b:a 192k ${mergedVideoPath}`,
         {
-          description: "Concatenate rendered scenes with crossfade",
+          description: "Concatenate rendered scenes",
           stage: "render",
           timeoutMs: 300_000,
-          hint: "ffmpeg failed while joining individual scene renders with crossfade.",
+          hint: "ffmpeg failed while joining individual scene renders.",
           streamOutput: { stdout: true, stderr: true },
         },
       );
