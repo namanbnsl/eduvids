@@ -154,6 +154,9 @@ COLOR GUIDELINES — Be bold and intentional with color:
 - Describe camera angles, rotations, and perspectives in the element content (e.g., "camera phi=75° theta=-45°, slow rotation").
 - Use opacity and fill to give objects a sense of volume and materiality.
 - Combine 3D objects with 2D labels and annotations overlaid for clarity.
+- Avoid checkerboard or grid patterns on 3D surfaces. Use solid or smooth gradient colors instead.
+- Always specify a clear surface/mesh color (or two-color gradient) and a tasteful stroke color; never leave 3D objects with default styling.
+- Move the camera when it helps: gentle pans, dolly-ins, or slow rotations to create cinematic depth and reveal structure.
 
 ANIMATION & TRANSITION GUIDELINES:
 - Use "write" for formulas and text to create a hand-written feel.
@@ -335,6 +338,8 @@ CRITICAL REQUIREMENTS
 8. Max 4-5 elements on screen. FadeOut old content before showing new. Use self.wait(1) between elements.
 9. Use .next_to() with buff>=0.4 for positioning.
 10. Each scene is self-contained — no shared state between scene classes.
+11. 3D objects must NOT use checkerboard patterns. For surfaces, set a solid fill color (or subtle gradient) and use set_style with fill_opacity and stroke_color. If using Surface, override checkerboard_colors to a uniform solid (e.g., [color, color]) or disable it.
+12. Use camera motion in 3D scenes when it improves clarity or aesthetics: slow orbit, tilt, or push-in timed to narration beats.
 
 ═══════════════════════════════════════════════════════════════════════════════
 ERROR PREVENTION
