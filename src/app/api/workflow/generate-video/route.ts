@@ -9,7 +9,11 @@ import {
   generateVideoTitle,
   generateVideoDescription,
 } from "@/lib/llm";
-import { renderManimVideo } from "@/lib/e2b";
+import {
+  finalizeManimRender,
+  pollManimRender,
+  startManimRender,
+} from "@/lib/e2b";
 import { uploadVideo } from "@/lib/uploadthing";
 import { jobStore } from "@/lib/job-store";
 
@@ -103,13 +107,15 @@ export const { POST } = serve<VideoGenerationPayload>(
 
     console.log("✅ Manim script generated", { length: script.length });
 
-    const renderResult = await context.run("render-video", async () => {
+    const RENDER_STEP_TIMEOUT_MS = 282_000; // ~4.7 minutes to stay under workflow limits
+
+    const renderStart = await context.run("render-video-start", async () => {
       await updateJobProgress(jobId, {
         progress: 40,
         step: "rendering video",
         details: "Bringing your animations to life",
       });
-      return renderManimVideo({
+      return startManimRender({
         script,
         prompt: generationPrompt,
         applyWatermark: true,
@@ -127,6 +133,46 @@ export const { POST } = serve<VideoGenerationPayload>(
             sessionId: chatId,
           }),
       });
+    });
+
+    let renderState = renderStart.state;
+    let pollAttempt = 0;
+    while (true) {
+      const pollResult = await context.run(
+        `render-video-wait-${pollAttempt}`,
+        async () => {
+          await updateJobProgress(jobId, {
+            progress: Math.min(80, 45 + pollAttempt * 3),
+            step: "rendering video",
+            details: "Still rendering your animation",
+          });
+          return pollManimRender({
+            state: renderState,
+            maxWaitMs: RENDER_STEP_TIMEOUT_MS,
+          });
+        },
+      );
+
+      renderState = pollResult.state;
+      if (!pollResult.complete) {
+        pollAttempt += 1;
+        continue;
+      }
+      if (pollResult.success === false) {
+        throw new WorkflowNonRetryableError(
+          pollResult.errorMessage ?? "Manim render failed.",
+        );
+      }
+      break;
+    }
+
+    const renderResult = await context.run("render-video-finalize", async () => {
+      await updateJobProgress(jobId, {
+        progress: 80,
+        step: "rendering video",
+        details: "Polishing the final video",
+      });
+      return finalizeManimRender({ state: renderState });
     });
 
     console.log("✅ Video rendered");

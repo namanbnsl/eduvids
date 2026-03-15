@@ -1,7 +1,7 @@
-5 minutes and longer renders
-thumbnails
+deepwiki only getting exit status 1
+text should be 2d even during 3d camera movements and frames
 
-better 3d
+thumbnails
 
 manim plugins
 
