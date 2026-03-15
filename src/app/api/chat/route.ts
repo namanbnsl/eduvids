@@ -38,7 +38,6 @@ export async function POST(req: Request) {
   // Create a new provider instance for each request to rotate API keys
   const result = streamText({
     model: selectGroqModel(GROQ_MODEL_IDS.gptOss),
-    toolChoice: "required",
     system: systemPrompt,
     messages: await convertToModelMessages(messages),
     tools: {
@@ -59,8 +58,6 @@ export async function POST(req: Request) {
             ),
         }),
         execute: async ({ description, variant }) => {
-          console.log("Starting video generation for:", description);
-
           const normalized = description.trim();
           const normalizedLower = normalized.toLowerCase();
 
@@ -74,12 +71,6 @@ export async function POST(req: Request) {
                     normalizedLower.includes("vertical short")
                   ? "short"
                   : "video";
-
-          console.log("Variant determination:", {
-            forceVariant,
-            toolVariant: variant,
-            inferredVariant,
-          });
 
           // Create a job in the job store (KV in prod, memory in dev)
           const job = await jobStore.create(description, {

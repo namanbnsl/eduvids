@@ -27,20 +27,12 @@ type GenerateVideoToolUIPart = ToolUIPart<AppTools>;
 type JobStatus = "generating" | "ready" | "error";
 type YoutubeStatus = "pending" | "uploaded" | "failed";
 type VideoVariant = "video" | "short";
-type VoiceoverStatus = "pending" | "approved";
 
 type JobProgressEntry = {
   progress?: number;
   step?: string;
   details?: string;
   at: string;
-};
-
-type WebSource = {
-  title: string;
-  url: string;
-  content: string;
-  score: number;
 };
 
 type VideoJob = {
@@ -54,19 +46,11 @@ type VideoJob = {
   progress?: number;
   step?: string;
   details?: string;
-  // Voiceover approval fields
-  voiceoverDraft?: string;
-  voiceoverApproved?: string;
-  voiceoverStatus?: VoiceoverStatus;
-  voiceoverUpdatedAt?: string;
-  voiceoverApprovedAt?: string;
   youtubeStatus?: YoutubeStatus;
   progressLog?: JobProgressEntry[];
   youtubeUrl?: string;
   youtubeVideoId?: string;
   youtubeError?: string;
-  // Web sources from Tavily search
-  sources?: WebSource[];
   createdAt: string;
   updatedAt: string;
 };
@@ -75,7 +59,7 @@ type VideoJob = {
 interface JobStore {
   create(
     description: string,
-    options?: { variant?: VideoVariant; userId?: string }
+    options?: { variant?: VideoVariant }
   ): Promise<VideoJob>;
   get(id: string): Promise<VideoJob | undefined>;
   setProgress(
@@ -93,11 +77,6 @@ interface JobStore {
       youtubeError?: string;
     }
   ): Promise<VideoJob | undefined>;
-  setSources(id: string, sources: WebSource[]): Promise<VideoJob | undefined>;
-  setVoiceoverPending(
-    id: string,
-    voiceoverDraft: string
-  ): Promise<VideoJob | undefined>;
 }
 
 type ValidationStage =
@@ -109,7 +88,6 @@ type ValidationStage =
   | "plugin-detection"
   | "plugin-installation"
   | "plugin-validation"
-  | "layout-injection"
   | "latex"
   | "dry-run"
   | "render"
@@ -153,7 +131,6 @@ export type {
   JobStatus,
   YoutubeStatus,
   VideoVariant,
-  VoiceoverStatus,
   VideoJob,
   JobStore,
   ValidationStage,
@@ -164,5 +141,4 @@ export type {
   HeuristicOptions,
   HeuristicSeverity,
   JobProgressEntry,
-  WebSource,
 };

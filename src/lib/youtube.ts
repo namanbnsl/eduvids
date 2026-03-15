@@ -11,7 +11,6 @@ export interface YouTubeUploadRequest {
   description?: string;
   tags?: string[];
   privacyStatus?: YouTubePrivacyStatus;
-  thumbnailDataUrl?: string;
   variant?: VideoVariant;
 }
 
@@ -96,3 +95,5 @@ export async function uploadToYouTube({
     title: title,
   };
 }
+
+

@@ -1,46 +1,67 @@
 "use server";
 
+import { generateText } from "ai";
+import { GROQ_MODEL_IDS, selectGroqModel } from "@/lib/groq-provider";
+
+function coerceTopics(text: string): string[] {
+  const trimmed = text.trim();
+  const jsonMatch = trimmed.match(/\[[\s\S]*\]/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(parsed)) {
+        const items = parsed
+          .filter((item) => typeof item === "string")
+          .map((item) => item.trim())
+          .filter(Boolean);
+        if (items.length >= 2) {
+          return items.slice(0, 2);
+        }
+      }
+    } catch {
+      // fall through to heuristic parsing
+    }
+  }
+
+  const lines = trimmed
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[\s\-*\d.)]+/, "").trim())
+    .filter(Boolean);
+
+  let candidates = lines;
+  if (candidates.length < 2) {
+    candidates = trimmed
+      .split(/[;]+/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
+
+  return candidates.slice(0, 2);
+}
+
 export async function generateTopics(): Promise<string[]> {
-  //   if (process.env.NODE_ENV === "production") {
-  //     try {
-  //       // Create a new provider instance to rotate API keys
-  //       const { text } = await generateText({
-  //         model: withTracing(
-  //           selectGroqModel(GROQ_MODEL_IDS.gptOss),
-  //           phClient,
-  //           {}
-  //         ),
-  //         prompt: `Generate 2 fun and interesting video/short topic ideas for an educational content platform focused on math, physics, and chemistry. It shouldn't be very hard. The person should have some idea on what it is about.
-  // Topics should:
-  // - Be fascinating and visually engaging
-  // - Be concise and clear (under 60 characters each)
-  // - Focus on cool phenomena, tough concepts, school related ideas or surprising facts.
-  // - Be actionable prompts like "How do X work?" or "Why does Y happen?" or "What is Z?"
-  // - Mix spectacular phenomena with fundamental concepts
-  // Examples: What is a mole?, Why is the sky blue?, How do magnets work?, What causes lightning?
-  // Return ONLY a JSON array of 2 strings, like this:
-  // ["topic 1", "topic 2"]
-  // No explanation, no markdown, just the JSON array.`,
-  //         temperature: 0.9,
-  //       });
-  //       const cleanText = text
-  //         .trim()
-  //         .replace(/```json\n?/g, "")
-  //         .replace(/```/g, "");
-  //       const topics = JSON.parse(cleanText);
-  //       if (!Array.isArray(topics)) {
-  //         throw new Error("Invalid response format");
-  //       }
-  //       return topics.slice(0, 2);
-  //     } catch (error) {
-  //       console.error("Failed to generate topics:", error);
-  //       return ["How do nuclear reactions work?", "Why do rainbows form?"];
-  //     }
-  //   } else {
-  //     console.log(
-  //       "[generateTopics] In development mode, returning hardcoded topics"
-  //     );
-  //     return ["How do nuclear reactions work?", "Why do rainbows form?"];
-  //   }
-  return ["Surprise me with a video!"];
+  const system =
+    "You generate concise, specific educational video topics for short animated explainers.";
+  const prompt = [
+    "Generate exactly two topic ideas for a 5-minute educational video that would benefit from beautiful, precise animations (e.g., relativity, Laplace transforms).",
+    "Topics should be interesting, not too common, and written in English.",
+    'Return ONLY a JSON array of two short phrases, like "The physics of black holes".',
+  ].join("\n");
+
+  const { text } = await generateText({
+    model: selectGroqModel(GROQ_MODEL_IDS.gptOss),
+    system,
+    prompt,
+    temperature: 0.7,
+  });
+
+  const topics = coerceTopics(text);
+  if (topics.length === 2) {
+    return topics;
+  }
+
+  return [
+    "The geometry of spacetime curvature",
+    "The dynamics of chaotic double pendulums",
+  ];
 }

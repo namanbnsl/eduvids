@@ -1,13 +1,14 @@
-frontend: <br />
+deepwiki only getting exit status 1
+text should be 2d even during 3d camera movements and frames
+
+thumbnails
+
+manim plugins
+
 notification to be triggered on job and not video loaded. tell user they will be notified
-<br />
+ability to edit videos
 
-backend: <br />
-create stack of all pending questions so videos are always eventually generated.
-<br />
+search for image illustrations online and then upload to sandbox for usage
 
-manim: <br />
-ability to edit videos <br />
-<br />
-
-serach for image illustrations online and then upload to sandbox for usage
+file attatchments
+projects

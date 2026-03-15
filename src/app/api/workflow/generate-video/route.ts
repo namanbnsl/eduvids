@@ -1,16 +1,39 @@
 import { serve } from "@upstash/workflow/nextjs";
+import { WorkflowNonRetryableError } from "@upstash/workflow";
 
-import { generateVoiceoverScript } from "@/lib/llm";
+import {
+  generateVoiceoverScript,
+  generateScenePlan,
+  generateManimScript,
+  fixManimScript,
+  generateVideoTitle,
+  generateVideoDescription,
+} from "@/lib/llm";
+import {
+  finalizeManimRender,
+  pollManimRender,
+  startManimRender,
+} from "@/lib/e2b";
+import { uploadVideo } from "@/lib/uploadthing";
 import { jobStore } from "@/lib/job-store";
-import { searchForTopic, formatWebResearchForPrompt } from "@/lib/tavily";
-import { updateJobProgress } from "@/lib/workflow/utils/progress";
-import { qstashClientWithBypass } from "@/lib/workflow/client";
-import { getConvexClient, api } from "@/lib/convex-server";
 
-import type { VideoGenerationPayload } from "@/lib/workflow/types";
+import { updateJobProgress } from "@/lib/workflow/utils/progress";
+import {
+  workflowClient,
+  getBaseUrl,
+  qstashClientWithBypass,
+  getTriggerHeaders,
+} from "@/lib/workflow/client";
+
+type VideoGenerationPayload = {
+  prompt: string;
+  userId: string;
+  chatId: string;
+  jobId?: string;
+  variant?: "video" | "short";
+};
 
 export const runtime = "nodejs";
-
 
 export const { POST } = serve<VideoGenerationPayload>(
   async (context) => {
@@ -22,70 +45,26 @@ export const { POST } = serve<VideoGenerationPayload>(
       variant: rawVariant,
     } = context.requestPayload;
 
+    if (!jobId) {
+      throw new WorkflowNonRetryableError("Missing jobId in workflow payload");
+    }
+
     const variant = rawVariant === "short" ? "short" : "video";
     const generationPrompt =
       variant === "short"
-        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. The layout system automatically provides larger font constants optimized for portrait (FONT_TITLE=56, FONT_HEADING=46, FONT_BODY=40, FONT_CAPTION=34, FONT_LABEL=32) - always use these constants instead of hardcoded sizes. Split copy across multiple lines for readability, keep visual groups within the safe content area, and leave proper clearance between arrows, labels, and nearby objects using the auto-calculated margins.`
+        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Use large readable typography and keep visual groups well spaced.`
         : prompt;
 
-    console.log(
-      `🎬 Starting ${
-        variant === "short" ? "vertical short" : "full video"
-      } generation for prompt: "${prompt}"`,
-    );
-
-    // Step 0: Search for information via Tavily (use original prompt, not augmented)
-    const searchResult = await context.run("search-web-sources", async () => {
-      if (jobId) {
-        await updateJobProgress(jobId, {
-          progress: 2,
-          step: "Researching topic",
-          details: "Searching the web",
-        });
-      }
-      const result = await searchForTopic(prompt);
-      console.log(
-        `🔍 Tavily search completed: ${result.sources.length} sources found`,
-      );
-      return result;
-    });
-
-    // Store concise sources in job for UI display (avoid persisting large rawContent blobs)
-    const sources = searchResult.sources.map(({ title, url, content, score }) => ({
-      title,
-      url,
-      content,
-      score,
-    }));
-    if (sources.length > 0) {
-      if (jobId) {
-        await context.run("store-sources", async () => {
-          console.log(`📚 Storing ${sources.length} sources for job ${jobId}`);
-          await jobStore.setSources(jobId, sources);
-        });
-      }
-      console.log(`🔍 Found ${sources.length} web sources for topic`);
-    } else {
-      console.log(`⚠️ No sources found from Tavily search`);
-    }
-
-    // Augment prompt with web research if available
-    const researchContext = formatWebResearchForPrompt(searchResult);
-    const augmentedPrompt = researchContext
-      ? `${generationPrompt}\n\n${researchContext}`
-      : generationPrompt;
-
-    // Step 1: Generate voiceover script
     const voiceoverScript = await context.run(
       "generate-voiceover-script",
       async () => {
         await updateJobProgress(jobId, {
           progress: 5,
-          step: "Creating narration",
-          details: "Writing script",
+          step: "generating voiceover",
+          details: "Crafting a narration that slaps",
         });
         return generateVoiceoverScript({
-          prompt: augmentedPrompt,
+          prompt: generationPrompt,
           sessionId: chatId,
         });
       },
@@ -95,44 +74,183 @@ export const { POST } = serve<VideoGenerationPayload>(
       length: voiceoverScript.length,
     });
 
-    // Step 2: Store voiceover draft and wait for user approval
-    await context.run("store-voiceover-for-approval", async () => {
-      if (jobId) {
-        // Store in KV for immediate access
-        await jobStore.setVoiceoverPending(jobId, voiceoverScript);
-
-        // Store in Convex for persistence (survives KV TTL and page reloads)
-        try {
-          const convexClient = getConvexClient();
-          await convexClient.mutation(api.videos.setVoiceoverDraft, {
-            jobId,
-            voiceoverDraft: voiceoverScript,
-            sources: sources.length > 0 ? sources : undefined,
-          });
-        } catch (err) {
-          console.error("Failed to store voiceover in Convex:", err);
-        }
-
-        await updateJobProgress(jobId, {
-          progress: 10,
-          step: "Awaiting voiceover approval",
-          details: "Review and approve the voiceover to continue",
-        });
-      }
+    const scenePlan = await context.run("generate-scene-plan", async () => {
+      await updateJobProgress(jobId, {
+        progress: 12,
+        step: "generating script",
+        details: "Storyboarding the scenes",
+      });
+      return generateScenePlan({
+        prompt: generationPrompt,
+        voiceoverScript,
+        sessionId: chatId,
+      });
     });
 
-    // Return - the workflow will be continued by the approve endpoint via /api/workflow/continue-video
-    console.log("⏸️ Workflow paused - waiting for voiceover approval");
+    console.log("✅ Scene plan generated", {
+      sceneCount: scenePlan.length,
+    });
+
+    const script = await context.run("generate-manim-script", async () => {
+      await updateJobProgress(jobId, {
+        progress: 22,
+        step: "verifying script",
+        details: "Writing the animation code",
+      });
+      return generateManimScript({
+        prompt: generationPrompt,
+        voiceoverScript,
+        sessionId: chatId,
+        scenePlan,
+      });
+    });
+
+    console.log("✅ Manim script generated", { length: script.length });
+
+    const RENDER_STEP_TIMEOUT_MS = 282_000; // ~4.7 minutes to stay under workflow limits
+
+    const renderStart = await context.run("render-video-start", async () => {
+      await updateJobProgress(jobId, {
+        progress: 40,
+        step: "rendering video",
+        details: "Bringing your animations to life",
+      });
+      return startManimRender({
+        script,
+        prompt: generationPrompt,
+        applyWatermark: true,
+        renderOptions:
+          variant === "short"
+            ? {
+                resolution: { width: 720, height: 1280 },
+                orientation: "portrait" as const,
+              }
+            : undefined,
+        scriptFixer: (currentScript, errors) =>
+          fixManimScript({
+            script: currentScript,
+            errors,
+            sessionId: chatId,
+          }),
+      });
+    });
+
+    let renderState = renderStart.state;
+    let pollAttempt = 0;
+    while (true) {
+      const pollResult = await context.run(
+        `render-video-wait-${pollAttempt}`,
+        async () => {
+          await updateJobProgress(jobId, {
+            progress: Math.min(80, 45 + pollAttempt * 3),
+            step: "rendering video",
+            details: "Still rendering your animation",
+          });
+          return pollManimRender({
+            state: renderState,
+            maxWaitMs: RENDER_STEP_TIMEOUT_MS,
+          });
+        },
+      );
+
+      renderState = pollResult.state;
+      if (!pollResult.complete) {
+        pollAttempt += 1;
+        continue;
+      }
+      if (pollResult.success === false) {
+        throw new WorkflowNonRetryableError(
+          pollResult.errorMessage ?? "Manim render failed.",
+        );
+      }
+      break;
+    }
+
+    const renderResult = await context.run("render-video-finalize", async () => {
+      await updateJobProgress(jobId, {
+        progress: 80,
+        step: "rendering video",
+        details: "Polishing the final video",
+      });
+      return finalizeManimRender({ state: renderState });
+    });
+
+    console.log("✅ Video rendered");
+
+    const uploadUrl = await context.run("upload-video", async () => {
+      await updateJobProgress(jobId, {
+        progress: 85,
+        step: "uploading video",
+        details: "Beaming your video to the cloud",
+      });
+      return uploadVideo({ videoPath: renderResult.videoPath, userId });
+    });
+
+    console.log("✅ Video uploaded:", uploadUrl);
+
+    // Generate title (best-effort)
+    let videoTitle: string | undefined;
+    let videoDescription: string | undefined;
+
+    try {
+      videoTitle = await context.run("generate-title", async () => {
+        return generateVideoTitle({ prompt, sessionId: chatId });
+      });
+      console.log("✅ Title generated:", videoTitle);
+    } catch (err) {
+      console.warn("Title generation failed (non-fatal):", err);
+    }
+
+    try {
+      videoDescription = await context.run("generate-description", async () => {
+        return generateVideoDescription({
+          prompt,
+          voiceoverScript,
+          sessionId: chatId,
+          variant,
+        });
+      });
+      console.log("✅ Description generated:", {
+        length: videoDescription.length,
+      });
+    } catch (err) {
+      console.warn("Description generation failed (non-fatal):", err);
+    }
+
+    await context.run("finalize-job", async () => {
+      await updateJobProgress(jobId, {
+        progress: 95,
+        step: "finalizing",
+        details: "Putting the finishing touches on",
+      });
+      await jobStore.setReady(jobId, uploadUrl);
+      await jobStore.setYoutubeStatus(jobId, { youtubeStatus: "pending" });
+    });
+
+    await context.run("trigger-youtube-upload", async () => {
+      await workflowClient.trigger({
+        headers: getTriggerHeaders(),
+        url: `${getBaseUrl()}/api/workflow/upload-youtube`,
+        body: {
+          videoUrl: uploadUrl,
+          title: videoTitle,
+          description: videoDescription,
+          prompt,
+          voiceoverScript,
+          jobId,
+          userId,
+          variant,
+        },
+      });
+    });
+
     return {
       success: true,
-      stage: "awaiting_voiceover_approval",
-      jobId,
+      videoUrl: uploadUrl,
       prompt,
       userId,
       chatId,
-      variant,
-      voiceoverLength: voiceoverScript.length,
-      message: "Voiceover generated and awaiting user approval",
+      generatedAt: new Date().toISOString(),
     };
   },
   {

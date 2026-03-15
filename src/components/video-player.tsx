@@ -9,56 +9,72 @@ import type {
   JobStatus,
   VideoJob,
   VideoVariant,
-  VoiceoverStatus,
   YoutubeStatus,
-  WebSource,
 } from "@/lib/types";
 
 // Components
 import { VideoProgressCard } from "@/components/ui/video-progress-card";
-import { VoiceoverApprovalCard } from "@/components/voiceover-approval-card";
 import { SubscribePrompt } from "@/components/subscribe-prompt";
-import { Sources } from "@/components/sources";
 
 // Icons
 import { Monitor, Smartphone, Youtube } from "lucide-react";
 
 // Step Lookup Table
 const STEP_TITLES: Record<string, string> = {
-  queued: "Queued",
-  "generating voiceover": "Generating Voiceover",
-  "voiceover ready": "Voiceover Ready",
-  "generating script": "Generating Script",
-  "script drafted": "Drafting Script",
-  "verifying script": "Verifying Script",
-  "script approved": "Script Approved",
-  "script ready for render": "Script Ready for Render",
-  "preparing render environment": "Preparing Render Environment",
-  "provisioning sandbox": "Provisioning Sandbox",
-  "injecting layout helpers": "Injecting Layout Helpers",
-  "uploading script to sandbox": "Uploading Script to Sandbox",
-  "running syntax check": "Running Syntax Check",
-  "enforcing safety guards": "Enforcing Safety Guards",
-  "validating scene": "Validating Scene",
-  "installing plugins": "Installing Plugins",
-  "checking latex environment": "Checking LaTeX Environment",
-  "validated script": "Validating Script",
-  "rendering frames": "Rendering Video",
-  "rendering video": "Rendering Video",
-  "render completed": "Render Complete",
-  "rendered video": "Render Complete",
-  "collecting render output": "Collecting Render Output",
-  "render warnings": "Render Warnings",
-  "validating video": "Validating Video",
-  "enhancing video": "Enhancing Video",
-  "applying watermark": "Applying Watermark",
-  "verifying watermark": "Verifying Watermark",
-  "uploading video": "Uploading Video",
-  "uploaded video": "Video Uploaded",
-  finalizing: "Finalizing",
-  completed: "Completed",
-  error: "Error",
+  queued: "Warming up the engines…",
+  "generating voiceover": "Crafting the perfect voiceover",
+  "voiceover ready": "Voiceover locked in ✓",
+  "generating script": "Cooking up the script",
+  "script drafted": "Polishing the draft",
+  "verifying script": "Double-checking the math",
+  "script approved": "Script approved ✓",
+  "script ready for render": "Ready for the big render",
+  "preparing render environment": "Setting the stage",
+  "provisioning sandbox": "Spinning up a fresh sandbox",
+  "uploading script to sandbox": "Beaming the script over",
+  "running syntax check": "Proofreading every line",
+  "enforcing safety guards": "Running safety checks",
+  "validating scene": "Making sure everything looks right",
+  "installing plugins": "Loading the toolbox",
+  "checking latex environment": "Warming up LaTeX",
+  "validated script": "All checks passed ✓",
+  "rendering frames": "Bringing your video to life",
+  "rendering video": "Rendering the magic",
+  "render completed": "Render complete ✓",
+  "rendered video": "Render complete ✓",
+  "collecting render output": "Gathering the frames",
+  "render warnings": "Minor touch-ups needed",
+  "validating video": "Quality check in progress",
+  "enhancing video": "Adding the final polish",
+  "applying watermark": "Stamping the brand",
+  "verifying watermark": "Verifying the stamp",
+  "uploading video": "Uploading to the cloud",
+  "uploaded video": "Upload complete ✓",
+  finalizing: "Almost there…",
+  completed: "All done!",
+  error: "Something went wrong",
 };
+
+const FUN_MESSAGES = [
+  "This is going to be awesome…",
+  "Mixing pixels and equations…",
+  "Teaching math to robots…",
+  "Making numbers look beautiful…",
+  "Converting caffeine to code…",
+  "Rendering at ludicrous speed…",
+  "Aligning the variables…",
+  "Doing the heavy lifting so you don't have to…",
+  "Crunching numbers like a boss…",
+  "Patience is a virtue, but this won't take long…",
+  "Almost faster than the speed of light…",
+  "Turning your idea into pixels…",
+  "Good things come to those who wait…",
+  "Worth the wait, we promise…",
+  "The math checks out, rendering now…",
+  "Your video is going to be 🔥",
+  "Frame by frame perfection…",
+  "Behind the scenes: pure magic…",
+];
 
 const formatStepName = (step?: string): string | undefined => {
   const rawStep = step?.trim();
@@ -70,7 +86,7 @@ const formatStepName = (step?: string): string | undefined => {
   return rawStep
     .split(/\s+/)
     .map((word) =>
-      word.length > 0 ? `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}` : ""
+      word.length > 0 ? `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}` : "",
     )
     .join(" ");
 };
@@ -96,7 +112,7 @@ export function VideoPlayer({
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus>(
-    status ?? (src ? "ready" : "generating")
+    status ?? (src ? "ready" : "generating"),
   );
   const [videoUrl, setVideoUrl] = useState<string | undefined>(src);
   const [error, setError] = useState<string | null>(null);
@@ -104,15 +120,15 @@ export function VideoPlayer({
   const [step, setStep] = useState<string | undefined>(undefined);
   const [progressDetails, setProgressDetails] = useState<string | undefined>();
   const [youtubeStatus, setYoutubeStatus] = useState<YoutubeStatus | undefined>(
-    undefined
+    undefined,
   );
   const [youtubeUrl, setYoutubeUrl] = useState<string | undefined>(undefined);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [youtubeError, setYoutubeError] = useState<string | undefined>(
-    undefined
+    undefined,
   );
   const [currentVariant, setCurrentVariant] = useState<VideoVariant>(
-    initialVariant ?? "video"
+    initialVariant ?? "video",
   );
   const progressHistoryRef = useRef<
     Array<{ progress: number; timestamp: number }>
@@ -120,14 +136,6 @@ export function VideoPlayer({
   const [displayProgress, setDisplayProgress] = useState<number>(0);
   // Track when we should fire a browser notification after the UI has updated
   const [notifyWhenPlayable, setNotifyWhenPlayable] = useState<boolean>(false);
-  // Web sources from Tavily search
-  const [sources, setSources] = useState<WebSource[]>([]);
-  // Voiceover approval state
-  const [voiceoverDraft, setVoiceoverDraft] = useState<string | undefined>();
-  const [voiceoverStatus, setVoiceoverStatus] = useState<
-    VoiceoverStatus | undefined
-  >();
-
   useEffect(() => {
     if (initialVariant) {
       setCurrentVariant(initialVariant);
@@ -148,7 +156,7 @@ export function VideoPlayer({
     }
 
     const recentHistory = progressHistoryRef.current.filter(
-      (entry) => now - entry.timestamp <= PROGRESS_HISTORY_WINDOW_MS
+      (entry) => now - entry.timestamp <= PROGRESS_HISTORY_WINDOW_MS,
     );
     recentHistory.push({ progress: clamped, timestamp: now });
     progressHistoryRef.current = recentHistory;
@@ -160,7 +168,7 @@ export function VideoPlayer({
 
   const normalizeJob = useCallback(
     (
-      job: unknown
+      job: unknown,
     ):
       | (Pick<
           VideoJob,
@@ -175,9 +183,6 @@ export function VideoPlayer({
           | "youtubeError"
           | "variant"
           | "progressLog"
-          | "sources"
-          | "voiceoverDraft"
-          | "voiceoverStatus"
         > & { jobId?: string })
       | null => {
       if (!job || typeof job !== "object") return null;
@@ -199,13 +204,6 @@ export function VideoPlayer({
       const rawVariant = value.variant;
       const variant: VideoVariant = rawVariant === "short" ? "short" : "video";
 
-      const rawVoiceoverStatus = value.voiceoverStatus;
-      const voiceoverStatusValue: VoiceoverStatus | undefined =
-        typeof rawVoiceoverStatus === "string" &&
-        (rawVoiceoverStatus === "pending" || rawVoiceoverStatus === "approved")
-          ? (rawVoiceoverStatus as VoiceoverStatus)
-          : undefined;
-
       const normalized: Pick<
         VideoJob,
         | "progress"
@@ -219,9 +217,6 @@ export function VideoPlayer({
         | "youtubeError"
         | "variant"
         | "progressLog"
-        | "sources"
-        | "voiceoverDraft"
-        | "voiceoverStatus"
       > & {
         jobId?: string;
       } = {
@@ -241,17 +236,12 @@ export function VideoPlayer({
             ? value.youtubeError
             : undefined,
         variant,
-        voiceoverDraft:
-          typeof value.voiceoverDraft === "string"
-            ? value.voiceoverDraft
-            : undefined,
-        voiceoverStatus: voiceoverStatusValue,
         jobId:
           typeof value.jobId === "string"
             ? value.jobId
             : typeof value.id === "string"
-            ? value.id
-            : undefined,
+              ? value.id
+              : undefined,
       };
 
       if (Array.isArray(value.progressLog)) {
@@ -280,35 +270,9 @@ export function VideoPlayer({
         }
       }
 
-      // Parse sources array
-      if (Array.isArray(value.sources)) {
-        const sanitizedSources = value.sources
-          .map((source) => {
-            if (!source || typeof source !== "object") return null;
-            const raw = source as Record<string, unknown>;
-            if (
-              typeof raw.title !== "string" ||
-              typeof raw.url !== "string" ||
-              typeof raw.content !== "string"
-            ) {
-              return null;
-            }
-            return {
-              title: raw.title,
-              url: raw.url,
-              content: raw.content,
-              score: typeof raw.score === "number" ? raw.score : 0,
-            } as WebSource;
-          })
-          .filter((s): s is WebSource => Boolean(s));
-        if (sanitizedSources.length) {
-          normalized.sources = sanitizedSources;
-        }
-      }
-
       return normalized;
     },
-    []
+    [],
   );
 
   useEffect(() => {
@@ -337,22 +301,11 @@ export function VideoPlayer({
       });
       if (parsed.step) setStep(parsed.step);
       setProgressDetails((prev) =>
-        parsed.details !== undefined ? parsed.details : prev
+        parsed.details !== undefined ? parsed.details : prev,
       );
       setYoutubeStatus(parsed.youtubeStatus);
       setYoutubeUrl(parsed.youtubeUrl);
       setYoutubeError(parsed.youtubeError);
-      if (parsed.sources && parsed.sources.length > 0) {
-        console.log("[VideoPlayer] Setting sources:", parsed.sources.length);
-        setSources(parsed.sources);
-      }
-      // Update voiceover state
-      if (parsed.voiceoverDraft !== undefined) {
-        setVoiceoverDraft(parsed.voiceoverDraft);
-      }
-      if (parsed.voiceoverStatus !== undefined) {
-        setVoiceoverStatus(parsed.voiceoverStatus);
-      }
       if (parsed.status === "ready" && parsed.videoUrl) {
         setVideoUrl(parsed.videoUrl);
         setJobStatus("ready");
@@ -545,7 +498,22 @@ export function VideoPlayer({
     }
     return STEP_TITLES["queued"];
   }, [step, jobStatus]);
-  const stageSubtitle = progressDetails ?? stageTitle;
+
+  const [funMessageIndex, setFunMessageIndex] = useState(() =>
+    Math.floor(Math.random() * FUN_MESSAGES.length),
+  );
+  useEffect(() => {
+    if (jobStatus !== "generating") return;
+    const interval = setInterval(() => {
+      setFunMessageIndex((prev) => (prev + 1) % FUN_MESSAGES.length);
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [jobStatus]);
+
+  const stageSubtitle =
+    jobStatus === "generating"
+      ? (FUN_MESSAGES[funMessageIndex] ?? stageTitle)
+      : (progressDetails ?? stageTitle);
 
   useEffect(() => {
     if (jobStatus !== "generating") {
@@ -616,12 +584,6 @@ export function VideoPlayer({
     );
   }
 
-  // Check if we're waiting for voiceover approval
-  const isAwaitingVoiceoverApproval =
-    voiceoverDraft &&
-    voiceoverStatus === "pending" &&
-    step?.toLowerCase().includes("awaiting voiceover approval");
-
   if (jobStatus !== "ready" || !videoUrl) {
     return (
       <div className="space-y-4">
@@ -639,31 +601,12 @@ export function VideoPlayer({
           )}
         </div>
 
-        {isAwaitingVoiceoverApproval ? (
-          <VoiceoverApprovalCard
-            jobId={jobId}
-            voiceoverDraft={voiceoverDraft}
-            voiceoverStatus={voiceoverStatus}
-            onApproved={() => {
-              setVoiceoverStatus("approved");
-            }}
-          />
-        ) : (
-          <VideoProgressCard
-            title={`Generating your ${
-              currentVariant == "short" ? "Short" : "Video"
-            }`}
-            subtitle={stageSubtitle}
-            stepLabel={stageTitle}
-            progress={displayProgress}
-          />
-        )}
-
-        {sources.length > 0 ? (
-          <Sources sources={sources} className="mt-2" />
-        ) : (
-          <p className="text-xs text-muted-foreground">No sources yet...</p>
-        )}
+        <VideoProgressCard
+          title={`Generating your ${currentVariant == "short" ? "Short" : "Video"}`}
+          subtitle={stageSubtitle}
+          stepLabel={stageTitle}
+          progress={displayProgress}
+        />
         <SubscribePrompt />
       </div>
     );
@@ -682,13 +625,11 @@ export function VideoPlayer({
         controls
         playsInline
         poster=""
+        preload="metadata"
         style={{ background: "#000" }}
       >
         Sorry, your browser does not support embedded videos.
       </video>
-      {sources.length > 0 && (
-        <Sources sources={sources} className="mt-2" />
-      )}
       {youtubeUrl && (
         <a
           href={youtubeUrl}

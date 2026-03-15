@@ -10,7 +10,7 @@ import {
   getTriggerHeaders,
 } from "@/lib/workflow/client";
 
-import type { VideoVariant } from "@/lib/workflow/types";
+import type { VideoVariant } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -22,6 +22,7 @@ type YouTubeUploadPayload = {
   jobId?: string;
   userId: string;
   variant?: VideoVariant;
+
 };
 
 export const { POST } = serve<YouTubeUploadPayload>(
@@ -45,7 +46,6 @@ export const { POST } = serve<YouTubeUploadPayload>(
         description,
         tags,
         variant,
-        thumbnailDataUrl: undefined,
       });
     });
 
@@ -94,7 +94,7 @@ export const { POST } = serve<YouTubeUploadPayload>(
     return { success: true, ...youtubeResult };
   },
   {
-    retries: 2,
+    retries: 0,
     qstashClient: qstashClientWithBypass,
     failureFunction: async ({ context, failResponse }) => {
       const { jobId } = context.requestPayload;

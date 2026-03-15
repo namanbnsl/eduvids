@@ -2,6 +2,42 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  apiKeys: defineTable({
+    keyIndex: v.number(),
+    provider: v.string(), // "google" | "groq" etc.
+    model: v.optional(v.string()), // e.g. "gemini-3-flash-preview"
+    status: v.union(
+      v.literal("healthy"),
+      v.literal("rate_limited"),
+      v.literal("quota_exceeded"),
+      v.literal("blocked"),
+      v.literal("error"),
+    ),
+    requestCount24h: v.number(),
+    windowStartMs: v.number(),
+    cooldownUntilMs: v.optional(v.number()),
+    quotaResetTimeMs: v.optional(v.number()),
+    consecutiveErrors: v.number(),
+    successCount: v.number(),
+    errorCount: v.number(),
+    lastError: v.optional(v.string()),
+    lastErrorTimeMs: v.optional(v.number()),
+    updatedAtMs: v.number(),
+  })
+    .index("by_provider_model_keyIndex", ["provider", "model", "keyIndex"])
+    .index("by_provider_model", ["provider", "model"])
+    .index("by_provider_keyIndex", ["provider", "keyIndex"])
+    .index("by_provider", ["provider"]),
+
+  apiKeyManagerState: defineTable({
+    provider: v.string(),
+    model: v.optional(v.string()),
+    lastUsedIndex: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_provider_model", ["provider", "model"])
+    .index("by_provider", ["provider"]),
+
   chats: defineTable({
     userId: v.string(),
     title: v.string(),
@@ -30,35 +66,12 @@ export default defineSchema({
     status: v.union(
       v.literal("generating"),
       v.literal("ready"),
-      v.literal("error")
+      v.literal("error"),
     ),
     videoUrl: v.optional(v.string()),
     error: v.optional(v.string()),
-    // Voiceover approval fields
-    voiceoverDraft: v.optional(v.string()),
-    voiceoverApproved: v.optional(v.string()),
-    voiceoverStatus: v.optional(
-      v.union(
-        v.literal("pending"),
-        v.literal("approved")
-      )
-    ),
-    voiceoverUpdatedAt: v.optional(v.number()),
-    voiceoverApprovedAt: v.optional(v.number()),
-    renderContinuationTriggeredAt: v.optional(v.number()),
-    // Web sources from research
-    sources: v.optional(v.array(v.object({
-      title: v.string(),
-      url: v.string(),
-      content: v.string(),
-      score: v.number(),
-    }))),
     youtubeStatus: v.optional(
-      v.union(
-        v.literal("pending"),
-        v.literal("uploaded"),
-        v.literal("failed")
-      )
+      v.union(v.literal("pending"), v.literal("uploaded"), v.literal("failed")),
     ),
     youtubeUrl: v.optional(v.string()),
     youtubeVideoId: v.optional(v.string()),

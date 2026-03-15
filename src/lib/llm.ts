@@ -1,14 +1,17 @@
-import { MANIM_SYSTEM_PROMPT, VOICEOVER_SYSTEM_PROMPT } from "@/prompt";
-import { generateText, LanguageModel } from "ai";
+import {
+  MANIM_SYSTEM_PROMPT,
+  VOICEOVER_SYSTEM_PROMPT,
+  SCENE_PLAN_SYSTEM_PROMPT,
+} from "@/prompt";
+import { generateText, streamText, LanguageModel } from "ai";
 import {
   createGoogleProvider,
   reportSuccess,
   reportError,
 } from "./google-provider";
-import { selectGroqModel, GROQ_MODEL_IDS } from "./groq-provider";
-import { RenderLogEntry, ValidationStage } from "@/lib/types";
-import { getRagContext, formatRagContext } from "./rag";
+import { queryManimDocs } from "./deepwiki";
 
+import { jsonrepair } from "jsonrepair";
 import { franc } from "franc";
 
 // @ts-expect-error langs has no types
@@ -19,7 +22,7 @@ import { PostHog } from "posthog-node";
 
 interface GoogleModelConfig {
   modelId: string;
-  provider: ReturnType<typeof createGoogleProvider>;
+  provider: Awaited<ReturnType<typeof createGoogleProvider>>;
 }
 
 const isDev = process.env.NODE_ENV !== "production";
@@ -32,96 +35,44 @@ const phClient = isDev
     });
 
 // Wrapper that skips tracing in development
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function maybeWithTracing(
-  model: any,
+function maybeWithTracing<T>(
+  model: T,
   options: Parameters<typeof withTracing>[2],
-) {
+): T {
   if (!phClient) return model;
-  return withTracing(model, phClient, options);
+  return withTracing(model as never, phClient, options) as T;
 }
 
-const createGoogleModel = (modelId: string): GoogleModelConfig => {
-  const provider = createGoogleProvider();
+const createGoogleModel = async (
+  modelId: string,
+): Promise<GoogleModelConfig> => {
+  const provider = await createGoogleProvider(modelId);
   return { modelId, provider };
 };
 
-async function generateTextWithTracking<
-  T extends Parameters<typeof generateText>[0],
+async function streamTextWithTracking<
+  T extends Parameters<typeof streamText>[0],
 >(
   config: T & { model: LanguageModel },
   googleConfig?: GoogleModelConfig,
-  timeoutMs: number = LLM_CALL_TIMEOUT_MS,
-): Promise<Awaited<ReturnType<typeof generateText>>> {
-  const { controller, cleanup } = createTimeoutController(timeoutMs);
-
+): Promise<string> {
   try {
-    const result = await generateText({
-      ...config,
-      abortSignal: controller.signal,
-    });
+    const result = streamText(config);
+    const text = await result.text;
 
     if (googleConfig) {
       reportSuccess(googleConfig.provider);
     }
 
-    return result;
+    return text;
   } catch (error) {
     if (googleConfig) {
       reportError(googleConfig.provider, error);
     }
 
     throw error;
-  } finally {
-    cleanup();
   }
 }
-
-// Retry helpers for Gemini calls
-const SLEEP_MIN_MS = 30_000;
-const SLEEP_MAX_MS = 40_000;
-const GEMINI_MAX_RETRIES = 3;
-const LLM_CALL_TIMEOUT_MS = 120_000; // 2 minute timeout per LLM call
-
-const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
-const randomDelayMs = () =>
-  SLEEP_MIN_MS + Math.floor(Math.random() * (SLEEP_MAX_MS - SLEEP_MIN_MS + 1));
-
-/**
- * Creates an AbortController with a timeout
- */
-function createTimeoutController(timeoutMs: number = LLM_CALL_TIMEOUT_MS): {
-  controller: AbortController;
-  cleanup: () => void;
-} {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort(new Error(`LLM call timed out after ${timeoutMs}ms`));
-  }, timeoutMs);
-
-  return {
-    controller,
-    cleanup: () => clearTimeout(timeoutId),
-  };
-}
-
-const logRetry = (
-  fnName: string,
-  attempt: number,
-  error: unknown,
-  delayMs?: number,
-) => {
-  const errorMsg = error instanceof Error ? error.message : String(error);
-  console.warn(
-    `[${fnName}] Attempt ${attempt + 1}/${
-      GEMINI_MAX_RETRIES + 1
-    } failed: ${errorMsg}${
-      delayMs
-        ? ` - retrying in ${Math.round(delayMs / 1000)}s`
-        : " - no more retries"
-    }`,
-  );
-};
 
 export async function detectLanguage(text: string): Promise<string> {
   try {
@@ -153,28 +104,15 @@ function buildAugmentedSystemPrompt(base: string, language?: string): string {
   if (language && language !== "english") {
     const langUpper = language.toUpperCase();
 
-    // 1. Replace the main LaTeX requirement line
-    modifiedBase = modifiedBase.replace(
-      /- \*\*ALL ON-SCREEN TEXT MUST BE LATEX\*\*: Use Tex\/MathTex via the provided helpers \(create_tex_label, create_text_panel\)\. NEVER use Text, MarkupText, or Paragraph directly\./g,
-      `- **FOR ${langUpper} TEXT, USE Text() INSTEAD OF LATEX**: LaTeX does not properly support ${language} characters. For all non-mathematical text, use the Text() class directly: Text("your text", font_size=FONT_BODY, color=WHITE). ONLY use Tex/MathTex for mathematical formulas and equations. Never use create_tex_label for ${language} text.`,
-    );
-
-    // 2. Modify all create_tex_label references to suggest Text() for non-English
-    modifiedBase = modifiedBase.replace(
-      /create_tex_label\(/g,
-      `Text(  # For ${language}, use Text() instead of create_tex_label(`,
-    );
-
     // 3. Add a prominent section at the beginning about non-English text handling
     const nonEnglishHeader = `
-⚠️ CRITICAL - ${langUpper} LANGUAGE DETECTED ⚠️
+CRITICAL - ${langUpper} LANGUAGE DETECTED
 This video is in ${language.toUpperCase()}. IMPORTANT RULES:
-1. **USE Text() FOR ALL NON-MATHEMATICAL TEXT**: Text("your text", font_size=FONT_BODY, color=WHITE, font=DEFAULT_FONT)
-2. **USE Tex/MathTex ONLY FOR MATH**: MathTex(r"E = mc^2", font_size=FONT_MATH)
-3. **ALWAYS use font=DEFAULT_FONT (Latin Modern Roman)** for consistent, professional typography
-4. **NEVER use create_tex_label, create_text_panel, or create_bullet_item for ${language} text**
-5. **For bullets in ${language}**: Create Text() objects and arrange them manually
-6. **Example correct usage**:
+1. USE Text() FOR ALL NON-MATHEMATICAL TEXT: Text("your text", font="EB Garamond", disable_ligatures=True, font_size=36, color=WHITE)
+2. USE Tex/MathTex ONLY FOR MATH: MathTex(r"E = mc^2", font_size=44)
+3. ALWAYS use font="EB Garamond", disable_ligatures=True for consistent typography
+4. For bullets in ${language}: Create Text() objects with font="EB Garamond", disable_ligatures=True and arrange them manually
+5. Example correct usage:
    title = Text("${
      language === "spanish"
        ? "Título"
@@ -183,7 +121,7 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
          : language === "german"
            ? "Titel"
            : "Title"
-   }", font_size=FONT_TITLE, color=WHITE, font=DEFAULT_FONT)
+   }", font="EB Garamond", disable_ligatures=True, font_size=48, color=WHITE)
    body = Text("${
      language === "spanish"
        ? "Contenido"
@@ -192,35 +130,16 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
          : language === "german"
            ? "Inhalt"
            : "Content"
-   }", font_size=FONT_BODY, color=WHITE, font=DEFAULT_FONT)
-7. **LaTeX will NOT work for ${language} characters** - it will show garbled text or errors
+   }", font="EB Garamond", disable_ligatures=True, font_size=36, color=WHITE)
+6. LaTeX will NOT work for ${language} characters - it will show garbled text or errors
 
 `;
 
     modifiedBase = nonEnglishHeader + modifiedBase;
-
-    // 4. Modify bullet point creation instructions
-    modifiedBase = modifiedBase.replace(
-      /\*\*RECOMMENDED:\*\* Use the \\`create_bullet_list\\` helper function for safe, consistent bullet points/g,
-      `**FOR ${langUpper}**: DO NOT use create_bullet_list - it uses LaTeX which doesn't support ${language}. Instead, create Text() objects and arrange them vertically`,
-    );
-
-    // 5. Update text panel instructions
-    modifiedBase = modifiedBase.replace(
-      /create_text_panel\(/g,
-      `# For ${language}, manually create Text() + Rectangle instead of create_text_panel(`,
-    );
   }
 
   return `${modifiedBase}\n\n---\n`;
 }
-
-const truncate = (value: string, max = 2000) => {
-  if (!value) return "";
-  return value.length > max
-    ? `${value.slice(0, max)}\n...[truncated ${value.length - max} chars]`
-    : value;
-};
 
 export interface VoiceoverScriptRequest {
   prompt: string;
@@ -231,28 +150,101 @@ export interface ManimScriptRequest {
   prompt: string;
   voiceoverScript: string;
   sessionId: string;
+  scenePlan?: ScenePlanEntry[];
 }
 
-export interface ManimScript {
-  code: string;
+export interface ScenePlanElement {
+  id: string;
+  type: "text" | "math" | "label" | "diagram" | "graph" | "axis" | "shape";
+  content: string;
+  color?: string;
 }
 
-export interface ManimGenerationErrorDetails {
-  message?: string;
-  stack?: string;
-  stderr?: string;
-  stdout?: string;
-  exitCode?: number;
-  stage?: ValidationStage;
-  hint?: string;
-  logs?: RenderLogEntry[];
+export interface ScenePlanLabel {
+  targetElementId: string;
+  labelText: string;
+  position: "above" | "below" | "left" | "right";
 }
 
-export interface ManimGenerationAttempt {
-  attemptNumber: number;
-  script: string;
-  error: ManimGenerationErrorDetails;
-  sessionId: string;
+export interface ScenePlanEntry {
+  sceneId: string;
+  narration: string;
+  visualType: string;
+  elements: ScenePlanElement[];
+  layout: string;
+  maxSimultaneousElements: number;
+  transitionIn: string;
+  clearPrevious: boolean;
+  labels: ScenePlanLabel[];
+}
+
+const SCENE_PLAN_MAX_RETRIES = 3;
+
+export async function generateScenePlan({
+  prompt,
+  voiceoverScript,
+  sessionId,
+}: ManimScriptRequest): Promise<ScenePlanEntry[]> {
+  const composedPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}`;
+
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < SCENE_PLAN_MAX_RETRIES; attempt++) {
+    const googleModel = await createGoogleModel("gemini-3-flash-preview");
+    const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
+      posthogProperties: { $ai_session_id: sessionId },
+    });
+
+    try {
+      const text = await streamTextWithTracking(
+        {
+          model,
+          system: SCENE_PLAN_SYSTEM_PROMPT,
+          prompt: composedPrompt,
+          temperature: 0.3,
+        },
+        googleModel,
+      );
+
+      const cleaned = text
+        .replace(/```json?\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
+
+      // Try strict parse first, then repair truncated/malformed JSON
+      let parsed: ScenePlanEntry[];
+      try {
+        parsed = JSON.parse(cleaned) as ScenePlanEntry[];
+      } catch {
+        console.warn(
+          `[generateScenePlan] Attempt ${attempt + 1}: strict JSON parse failed, trying jsonrepair`,
+        );
+        const repaired = jsonrepair(cleaned);
+        parsed = JSON.parse(repaired) as ScenePlanEntry[];
+      }
+
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        throw new Error(
+          `Scene plan returned ${Array.isArray(parsed) ? "empty array" : typeof parsed} instead of a non-empty array`,
+        );
+      }
+
+      console.log(
+        `[generateScenePlan] Success on attempt ${attempt + 1}, ${parsed.length} scenes`,
+      );
+      return parsed;
+    } catch (err) {
+      lastError = err;
+      console.error(
+        `[generateScenePlan] Attempt ${attempt + 1}/${SCENE_PLAN_MAX_RETRIES} failed:`,
+        err,
+      );
+    }
+  }
+
+  throw new Error(
+    `[generateScenePlan] All ${SCENE_PLAN_MAX_RETRIES} attempts failed. Last error: ${lastError}`,
+  );
 }
 
 export async function generateVoiceoverScript({
@@ -264,59 +256,14 @@ export async function generateVoiceoverScript({
   const composedPrompt = [
     `User request: ${prompt}`,
     `Use the language that is asked for and output text in that script`,
-    "Directive: Cover every essential idea from the request in sequence, adding as many explanatory lines as needed so no core step is skipped.",
-    "Directive: Keep the narration purely educational—no jokes, sound effects, or entertainment filler.",
-    "Directive: Focus on a single clearly defined topic drawn from the user request—do not introduce unrelated hooks, metaphors, or tangents.",
-    "Directive: Start with an engaging hook that immediately connects to the topic and states the learning objective; avoid vague rhetorical questions that are never answered.",
-    "Directive: Develop each explanation with concrete definitions, reasoning, and worked steps so the listener learns how and why—not just what.",
-    "Directive: Ensure the worked example and reflection lines explicitly reference the same core concept and build on prior steps.",
-    "Directive: Maintain smooth flow by referencing prior steps and previewing what comes next.",
-    "Directive: Do NOT force a fixed section template. Write a natural teaching flow that would help a complete beginner understand the topic end-to-end.",
-    "Directive: Explain enough detail to be truly educational: define terms, show why steps are valid, and include concrete examples or counterexamples when useful.",
     "Directive: When you mention an acronym, initialism, or all-caps mnemonic, write ONLY the phonetic pronunciation in lowercase without showing the uppercase form or parentheses, so TTS reads it naturally once (e.g., write 'soah caah toa' instead of 'SOH CAH TOA', write 'dee en ay' instead of 'DNA'). For well-known acronyms that TTS handles correctly (like 'NASA' or 'FBI'), you may use the standard form.",
     "Draft the narration voiceover:",
   ].join("\n\n");
 
-  // for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-  //   const googleModel = createGoogleModel("gemini-2.5-flash-preview-09-2025");
-  //   try {
-  //     const { text } = await generateTextWithTracking(
-  //       {
-  //         model: googleModel.provider(googleModel.modelId),
-  //         system: systemPrompt,
-  //         prompt: composedPrompt,
-  //       },
-  //       googleModel
-  //     );
-
-  //     return text.trim();
-  //   } catch (err) {
-  //     if (attempt === GEMINI_MAX_RETRIES) {
-  //       logRetry("generateVoiceoverScript", attempt, err);
-  //       break;
-  //     }
-  //     const delayMs = randomDelayMs();
-  //     logRetry("generateVoiceoverScript", attempt, err, delayMs);
-  //     await sleep(delayMs);
-  //   }
-  // }
-
-  // // Fallback to Gemini 2.5 Pro if Gemini Flash fails after retries
-  // const proModel = createGoogleModel("gemini-3-flash-preview");
-  // const { text: proText } = await generateTextWithTracking(
-  //   {
-  //     model: proModel.provider(proModel.modelId),
-  //     system: systemPrompt,
-  //     prompt: composedPrompt,
-  //   },
-  //   proModel
-  // );
-  // return proText.trim();
-
-  const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
+  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
 
   const { text } = await generateText({
-    model: maybeWithTracing(model, {
+    model: maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     }),
     system: systemPrompt,
@@ -327,69 +274,283 @@ export async function generateVoiceoverScript({
   return text.trim();
 }
 
+const PROHIBITED_MODULES = [
+  "os",
+  "sys",
+  "subprocess",
+  "pathlib",
+  "shutil",
+  "socket",
+  "requests",
+  "http",
+  "urllib",
+  "multiprocessing",
+  "psutil",
+  "asyncio",
+];
+
+export function sanitizeManimScript(script: string): string {
+  let result = script;
+
+  // 1. Remove markdown fences and HTML tags
+  result = result.replace(/```[\w]*\n?/g, "");
+  result = result.replace(/<\/?[a-zA-Z][^>]*>/g, "");
+
+  // 2. Remove non-Python language blocks (JSON, JS/TS, YAML etc.)
+  // Detect blocks that look like JSON objects/arrays at the top level
+  result = result.replace(
+    /^[ \t]*(\{[\s\S]*?"[\w]+"[\s\S]*?\}|^\[[\s\S]*?\])[ \t]*$/gm,
+    (match) => {
+      // Only remove if it looks like JSON (has quoted keys with colons)
+      if (
+        /"[\w]+"[\t ]*:/.test(match) &&
+        !/^[ \t]*(#|def |class |from |import )/.test(match)
+      ) {
+        console.warn("[sanitizeManimScript] Removed JSON-like block");
+        return "";
+      }
+      return match;
+    },
+  );
+  // Remove lines that look like JS/TS (const/let/var declarations, =>, function keyword with braces)
+  const jsPatterns =
+    /^[ \t]*(const |let |var |function \w+\s*\(|export (default |))/;
+  result = result
+    .split("\n")
+    .filter((line) => {
+      if (jsPatterns.test(line)) {
+        console.warn(
+          `[sanitizeManimScript] Removed non-Python line: ${line.slice(0, 80)}`,
+        );
+        return false;
+      }
+      return true;
+    })
+    .join("\n");
+
+  // 3. Fix common syntax issues
+
+  // 3a. Fix unmatched parentheses/brackets
+  const lines = result.split("\n");
+  const openChars: Record<string, string> = { "(": ")", "[": "]", "{": "}" };
+  const closeChars = new Set([")", "]", "}"]);
+  let parenStack: string[] = [];
+  let inString = false;
+  let stringChar = "";
+
+  for (const line of lines) {
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inString) {
+        if (ch === stringChar && line[i - 1] !== "\\") {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        // Check for triple quotes
+        if (line.slice(i, i + 3) === ch.repeat(3)) {
+          // Skip triple-quoted strings for simplicity (multi-line)
+          continue;
+        }
+        inString = true;
+        stringChar = ch;
+        continue;
+      }
+      if (ch === "#") break; // rest of line is comment
+      if (openChars[ch]) {
+        parenStack.push(openChars[ch]);
+      } else if (closeChars.has(ch)) {
+        if (parenStack.length > 0 && parenStack[parenStack.length - 1] === ch) {
+          parenStack.pop();
+        }
+      }
+    }
+  }
+
+  if (parenStack.length > 0) {
+    console.warn(
+      `[sanitizeManimScript] Closing ${parenStack.length} unmatched bracket(s): ${parenStack.join("")}`,
+    );
+    result = result + "\n" + parenStack.reverse().join("");
+  }
+
+  // 3b. Remove trailing incomplete lines (lines ending with an operator or opening bracket mid-expression, at the very end)
+  const trimmedLines = result.split("\n");
+  while (trimmedLines.length > 0) {
+    const lastLine = trimmedLines[trimmedLines.length - 1].trim();
+    if (
+      lastLine === "" ||
+      /[+\-*/=,\\]$/.test(lastLine) ||
+      /[\(\[\{]$/.test(lastLine)
+    ) {
+      // Don't remove if it's a closing bracket we just added
+      if (/^[)\]\}]+$/.test(lastLine)) break;
+      // Don't remove blank lines that are mid-file
+      if (lastLine === "" && trimmedLines.length > 1) {
+        trimmedLines.pop();
+        continue;
+      }
+      if (lastLine !== "") {
+        console.warn(
+          `[sanitizeManimScript] Removed trailing incomplete line: ${lastLine.slice(0, 80)}`,
+        );
+        trimmedLines.pop();
+        continue;
+      }
+    }
+    break;
+  }
+  result = trimmedLines.join("\n");
+
+  // 4. Validate and fix imports
+  if (
+    !/from\s+manim\s+import\s/.test(result) &&
+    !/import\s+manim/.test(result)
+  ) {
+    console.warn("[sanitizeManimScript] Added missing 'from manim import *'");
+    result = "from manim import *\n" + result;
+  }
+  if (
+    !/from\s+manim_voiceover\s+import\s/.test(result) &&
+    !/import\s+manim_voiceover/.test(result)
+  ) {
+    console.warn("[sanitizeManimScript] Added missing manim_voiceover import");
+    // Insert after the manim import line
+    result = result.replace(
+      /(from\s+manim\s+import\s+[^\n]+)/,
+      "$1\nfrom manim_voiceover import VoiceoverScene",
+    );
+  }
+
+  // Remove duplicate import lines
+  const seenImports = new Set<string>();
+  result = result
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (/^(from\s+\S+\s+import\s|import\s+)/.test(trimmed)) {
+        if (seenImports.has(trimmed)) {
+          console.warn(
+            `[sanitizeManimScript] Removed duplicate import: ${trimmed}`,
+          );
+          return false;
+        }
+        seenImports.add(trimmed);
+      }
+      return true;
+    })
+    .join("\n");
+
+  // 5. Remove disallowed imports
+  result = result
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      // Match "import X" or "from X import ..."
+      const importMatch = trimmed.match(
+        /^(?:from\s+(\S+)\s+import|import\s+(\S+))/,
+      );
+      if (importMatch) {
+        const mod = (importMatch[1] || importMatch[2]).split(".")[0];
+        if (PROHIBITED_MODULES.includes(mod)) {
+          console.warn(
+            `[sanitizeManimScript] Removed prohibited import: ${trimmed}`,
+          );
+          return false;
+        }
+      }
+      return true;
+    })
+    .join("\n");
+
+  // 6. Ensure scene class structure (just verify, don't modify if missing)
+  const hasSceneClass =
+    /class\s+\w+\s*\([^)]*(?:Scene|VoiceoverScene)[^)]*\)\s*:/.test(result);
+  if (!hasSceneClass) {
+    console.warn(
+      "[sanitizeManimScript] No Scene/VoiceoverScene class found; leaving script as-is for downstream error",
+    );
+  }
+
+  // 7. Fix indentation: normalize mixed tabs/spaces to 4 spaces
+  if (/\t/.test(result)) {
+    console.warn(
+      "[sanitizeManimScript] Normalized tabs to 4-space indentation",
+    );
+    result = result
+      .split("\n")
+      .map((line) => {
+        // Replace leading tabs with 4 spaces each
+        const leadingWhitespace = line.match(/^[\t ]*/)![0];
+        const rest = line.slice(leadingWhitespace.length);
+        const normalized = leadingWhitespace.replace(/\t/g, "    ");
+        return normalized + rest;
+      })
+      .join("\n");
+  }
+
+  // 8. Remove empty/orphan trailing lines
+  result = result.replace(/\n{3,}/g, "\n\n"); // collapse 3+ blank lines to 2
+  result = result.replace(/\n+$/, "\n"); // single trailing newline
+
+  // 9. Fix ThreeDScene inheritance order: VoiceoverScene must come first
+  result = result.replace(
+    /class\s+(\w+)\s*\(\s*ThreeDScene\s*,\s*VoiceoverScene\s*\)/g,
+    "class $1(VoiceoverScene, ThreeDScene)",
+  );
+
+  return result.trim();
+}
+
+const MANIM_SCRIPT_MAX_RETRIES = 3;
+
 export async function generateManimScript({
   prompt,
   voiceoverScript,
   sessionId,
+  scenePlan,
 }: ManimScriptRequest): Promise<string> {
   // Detect language from voiceover script using LLM
   const detectedLanguage = await detectLanguage(voiceoverScript);
   console.log(`Detected language: ${detectedLanguage}`);
 
-  // Get relevant examples and schemas via RAG
-  let ragContext = "";
-  try {
-    const ragResult = await getRagContext(prompt);
-    ragContext = formatRagContext(ragResult);
-    if (ragContext) {
-      console.log(
-        `RAG retrieved: ${ragResult.exampleDocs.length} examples, ${ragResult.schemaDocs.length} schemas`,
-      );
-    }
-  } catch (err) {
-    console.warn("RAG retrieval failed, continuing without examples:", err);
-  }
-
   // Build system prompt with language adjustments
-  let augmentedSystemPrompt = buildAugmentedSystemPrompt(
+  const augmentedSystemPrompt = buildAugmentedSystemPrompt(
     MANIM_SYSTEM_PROMPT,
     detectedLanguage,
   );
 
-  // Append RAG context (relevant examples and schemas)
-  if (ragContext) {
-    augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${ragContext}`;
+  const generationPromptParts = [
+    `User request: ${prompt}`,
+    `Voiceover narration:\n${voiceoverScript}`,
+    `Generate a complete Manim script as MULTIPLE ORDERED SCENE CLASSES (6-14 for videos, 4-8 for shorts). One concept per scene. Each scene is self-contained.`,
+    `Use the layout templates from the system prompt.`,
+  ];
+
+  if (scenePlan) {
+    generationPromptParts.push(
+      `SCENE PLAN (follow this structure exactly):\n${JSON.stringify(scenePlan, null, 2)}`,
+    );
   }
 
-  const generationPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nGenerate the complete Manim script that follows the narration with purposeful, step-by-step visuals that directly reinforce each narrated idea while staying on the same core topic.
+  const generationPrompt = generationPromptParts.join("\n\n");
 
-Geometry and diagram accuracy requirements (always apply when relevant):
-- Angle arcs must represent the intended angle region exactly (interior/reflex/acute/obtuse) and labels must match the highlighted region.
-- Shared edges or touching polygons should have zero visual gap unless separation is explicitly requested.
-- Adjacent or congruent shapes must preserve stated relationships (equal side lengths, equal angles, parallel/perpendicular markers).
-- Place measurement labels outside shapes with clear pointers when needed; avoid ambiguous label placement.
-- If a diagram could be ambiguous, add visual cues (ticks, right-angle markers, color-coded corresponding parts) before explaining conclusions.
+  let lastError: unknown;
 
-Before finalizing each diagram, verify by code that positions and geometry reflect the narrated claim (not just approximate visuals).
-
-3D quality and readability requirements:
-- If the concept is inherently spatial, use real 3D constructs (e.g., ThreeDAxes, surfaces, Arrow3D) instead of flattening to 2D.
-- Compose camera motion deliberately (stable orientation changes and purposeful reveals), not random spinning.
-- For portrait shorts, prioritize legibility over density: keep fewer objects on screen and use large text constants only.`;
-
-  for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-    const googleModel = createGoogleModel("gemini-3-flash-preview");
+  for (let attempt = 0; attempt < MANIM_SCRIPT_MAX_RETRIES; attempt++) {
+    const googleModel = await createGoogleModel("gemini-3-flash-preview");
     const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     });
 
     try {
-      const { text } = await generateTextWithTracking(
+      const text = await streamTextWithTracking(
         {
           model: model,
           system: augmentedSystemPrompt,
           prompt: generationPrompt,
-          temperature: 1,
+          temperature: 0.2,
         },
         googleModel,
       );
@@ -399,470 +560,465 @@ Before finalizing each diagram, verify by code that positions and geometry refle
         .replace(/```\n?/g, "")
         .trim();
 
-      return code;
+      return sanitizeManimScript(code);
     } catch (err) {
-      if (attempt === GEMINI_MAX_RETRIES) {
-        logRetry("generateManimScript", attempt, err);
-        break;
-      }
-      const delayMs = randomDelayMs();
-      logRetry("generateManimScript", attempt, err, delayMs);
-      await sleep(delayMs);
+      lastError = err;
+      console.error(
+        `[generateManimScript] Attempt ${attempt + 1}/${MANIM_SCRIPT_MAX_RETRIES} failed:`,
+        err,
+      );
+      // reportError is already called inside streamTextWithTracking,
+      // so the failed key is marked and the next createGoogleModel call
+      // will select a different unblocked key.
     }
   }
 
-  // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
-  const flashModel = createGoogleModel("gemini-2.5-flash");
-  const { text: flashText } = await generateTextWithTracking(
-    {
-      model: maybeWithTracing(flashModel.provider(flashModel.modelId), {
-        posthogProperties: { $ai_session_id: sessionId },
-      }),
-      system: augmentedSystemPrompt,
-      prompt: generationPrompt,
-      temperature: 1,
-    },
-    flashModel,
+  console.error(
+    `[generateManimScript] All ${MANIM_SCRIPT_MAX_RETRIES} attempts exhausted`,
+    lastError,
   );
-  const code = flashText
-    .replace(/```python?\n?/g, "")
-    .replace(/```\n?/g, "")
-    .trim();
-  return code;
-
-  // const { text } = await generateText({
-  //   model: cerebras("zai-glm-4.7"),
-  //   system: augmentedSystemPrompt,
-  //   prompt: generationPrompt,
-  //   temperature: 0.1,
-  // });
-
-  // const code = text
-  //   .replace(/```python?\n?/g, "")
-  //   .replace(/```\n?/g, "")
-  //   .trim();
-
-  // return code;
+  return "Script Generation Failed";
 }
 
-export async function generateYoutubeTitle({
-  prompt,
-  voiceoverScript,
-  sessionId,
-}: ManimScriptRequest) {
-  const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
+// ---------------------------------------------------------------------------
+// YouTube title generation
+// ---------------------------------------------------------------------------
 
-  const systemPrompt = `You are a YouTube title expert who writes highly clickable, engaging titles for educational math and science videos. Your titles should:
-- Create curiosity and intrigue while staying truthful to the content
-- Use power words that grab attention (e.g., "Why", "How", "The Secret", "Finally Explained", "Mind-Blowing")
-- Make viewers feel like they'll miss out if they don't click
-- Keep it under 80 characters
-- Respond with only the final title—no quotes or extra text
-- Angled brackets are not allowed
-- Don't mention video duration
-
-Examples of great titles:
-- "Why Nobody Can Solve This Simple Math Problem"
-- "The Equation That Stumped Einstein"
-- "This One Trick Makes Calculus Click Instantly"
-- "I Finally Understand Quantum Physics (And You Will Too)"`;
-  const { text } = await generateText({
-    model: maybeWithTracing(model, {
-      posthogProperties: { $ai_session_id: sessionId },
-    }),
-    system: systemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite an irresistible YouTube title that sparks curiosity, promises value, and makes viewers NEED to click. Use emotional hooks, create a knowledge gap, or pose an intriguing question. Stay under 80 characters:`,
-    temperature: 0.5,
-  });
-
-  return text.trim();
-}
-
-export async function generateYoutubeDescription({
-  prompt,
-  voiceoverScript,
-  sessionId,
-}: ManimScriptRequest) {
-  const model = selectGroqModel(GROQ_MODEL_IDS.gptOss);
-
-  const systemPrompt = `You are a YouTube description expert who writes engaging, click-worthy descriptions for educational math and science videos. Your descriptions should:
-- Start with a compelling hook in the first line (this shows in search results!)
-- Create excitement about what viewers will learn
-- Use conversational, enthusiastic language
-- Include a subtle call-to-action encouraging likes/subscribes
-- Keep it 2-4 short paragraphs
-- Respond only with plain text
-- Angled brackets, emojis, and hashtags are not allowed
-- Don't mention video duration
-
-Structure:
-1. Hook line that makes them want to watch
-2. What mind-blowing thing they'll understand
-3. Why this matters or how it connects to bigger ideas
-4. Soft CTA (e.g., "If this clicked for you, you'll love our other videos!")`;
-  const { text } = await generateText({
-    model: maybeWithTracing(model, {
-      posthogProperties: { $ai_session_id: sessionId },
-    }),
-    system: systemPrompt,
-    prompt: `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite an engaging YouTube description that hooks viewers immediately, builds excitement about the concepts, and makes them eager to watch. Be conversational and enthusiastic without being cheesy:`,
-    temperature: 0.5,
-  });
-
-  return text.trim();
-}
-
-export interface RegenerateManimScriptRequest {
+export interface VideoTitleRequest {
   prompt: string;
-  voiceoverScript: string;
-  previousScript: string;
-  error: string; // human-readable message
-  errorDetails?: ManimGenerationErrorDetails;
-  attemptNumber: number;
-  attemptHistory?: ManimGenerationAttempt[];
-  blockedScripts?: string[];
-  forceRewrite?: boolean;
-  forcedReason?: string;
-  repeatedErrorCount?: number;
   sessionId: string;
 }
 
-export async function regenerateManimScriptWithError({
+export async function generateVideoTitle({
+  prompt,
+  sessionId,
+}: VideoTitleRequest): Promise<string> {
+  const systemPrompt = `You are a YouTube title expert. Generate a single catchy, concise video title.
+
+RULES:
+- Maximum 80 characters
+- No quotes around the title
+- Make it engaging and descriptive
+- Use title case
+- Output ONLY the title text, nothing else`;
+
+  const userPrompt = `Generate a YouTube title for a math/science animation video about: "${prompt}"`;
+
+  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
+  const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
+    posthogProperties: { $ai_session_id: sessionId },
+  });
+
+  const text = await streamTextWithTracking(
+    {
+      model,
+      system: systemPrompt,
+      prompt: userPrompt,
+      temperature: 0.7,
+    },
+    googleModel,
+  );
+
+  return text
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .slice(0, 80);
+}
+
+// ---------------------------------------------------------------------------
+// YouTube description generation
+// ---------------------------------------------------------------------------
+
+export interface VideoDescriptionRequest {
+  prompt: string;
+  voiceoverScript: string;
+  sessionId: string;
+  variant?: "video" | "short";
+}
+
+export async function generateVideoDescription({
   prompt,
   voiceoverScript,
-  previousScript,
-  error,
-  errorDetails,
-  attemptNumber,
-  attemptHistory = [],
-  blockedScripts = [],
-  forceRewrite = false,
-  forcedReason,
-  repeatedErrorCount = 0,
   sessionId,
-}: RegenerateManimScriptRequest): Promise<string> {
-  // Detect language from voiceover script using LLM
-  const detectedLanguage = await detectLanguage(voiceoverScript);
-  console.log(`Detected language for regeneration: ${detectedLanguage}`);
+  variant,
+}: VideoDescriptionRequest): Promise<string> {
+  const systemPrompt = `You are a YouTube description expert for educational math/science videos.
 
-  const previousAttemptsSummary = (() => {
-    if (!attemptHistory.length) return "";
-    const blocks = attemptHistory.map((attempt) => {
-      const lines: string[] = [`Attempt #${attempt.attemptNumber}`];
-      if (attempt.error.message) {
-        lines.push(`- Message: ${attempt.error.message}`);
-      }
-      if (typeof attempt.error.exitCode === "number") {
-        lines.push(`- Exit code: ${attempt.error.exitCode}`);
-      }
-      if (attempt.error.stderr) {
-        lines.push(`- STDERR snippet:\n${truncate(attempt.error.stderr)}`);
-      }
-      if (attempt.error.stdout) {
-        lines.push(`- STDOUT snippet:\n${truncate(attempt.error.stdout)}`);
-      }
-      if (attempt.error.stack) {
-        lines.push(`- Stack snippet:\n${truncate(attempt.error.stack)}`);
-      }
-      return lines.join("\n");
-    });
-    return `\nSummary of previous failed attempts:\n${blocks.join("\n\n")}`;
-  })();
+RULES:
+- Maximum 900 characters
+- 1-2 short paragraphs
+- Plain text only (no lists or timestamps)
+- No quotes around the description
+- Do not include calls-to-action or links
+- Output ONLY the description text, nothing else`;
 
-  const structuredErrorSection = (() => {
-    if (!errorDetails) return "";
-    const parts: string[] = [];
-    if (typeof errorDetails.exitCode === "number") {
-      parts.push(`Exit code: ${errorDetails.exitCode}`);
-    }
-    if (errorDetails.stderr && errorDetails.stderr.trim().length > 0) {
-      parts.push(
-        `STDERR (truncated to 2k chars):\n${errorDetails.stderr.slice(0, 2000)}`,
-      );
-    }
-    if (errorDetails.stdout && errorDetails.stdout.trim().length > 0) {
-      parts.push(
-        `STDOUT (truncated to 2k chars):\n${errorDetails.stdout.slice(0, 2000)}`,
-      );
-    }
-    if (errorDetails.stack && errorDetails.stack.trim().length > 0) {
-      parts.push(
-        `Stack (truncated to 2k chars):\n${errorDetails.stack.slice(0, 2000)}`,
-      );
-    }
-    if (errorDetails.message && errorDetails.message.trim().length > 0) {
-      parts.push(`Error message: ${errorDetails.message}`);
-    }
-    return parts.length
-      ? `\nAdditional structured error details:\n${parts.join("\n\n")}\n`
-      : "";
-  })();
+  const userPrompt = `Create a YouTube description for this ${
+    variant === "short" ? "vertical short" : "video"
+  }.
 
-  const normalizedError = error?.trim().length
-    ? error
-    : (errorDetails?.message ?? "Unknown error");
+TOPIC: ${prompt}
 
-  const blockedScriptsSection = (() => {
-    if (!blockedScripts.length) return "";
-    const unique = Array.from(
-      new Map(
-        blockedScripts.map((script) => {
-          const trimmed = script.trim();
-          return [trimmed, truncate(trimmed, 6000)];
-        }),
-      ).values(),
-    );
-    if (!unique.length) return "";
-    const blocks = unique
-      .map(
-        (script, idx) => `--- Failed Script Variant #${idx + 1} ---\n${script}`,
-      )
-      .join("\n\n");
-    return `\nThe following script variants are known to fail. You must not reuse them verbatim or with superficial edits. Study them to understand and avoid the mistakes:\n${blocks}\n`;
-  })();
+VOICEOVER SCRIPT:
+${voiceoverScript}`;
 
-  const rewriteDirective = forceRewrite
-    ? `\nThis is a forced rewrite because the last regeneration did not resolve the issue. ${
-        forcedReason ??
-        "Produce a substantially different script that fixes the problem."
-      }`
-    : "";
+  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
+  const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
+    posthogProperties: { $ai_session_id: sessionId },
+  });
 
-  const repetitionDirective =
-    repeatedErrorCount > 1
-      ? `\nThe same error (or a very similar one) has occurred ${repeatedErrorCount} times. You must eliminate the root cause immediately.`
-      : "";
-
-  const promptSections = [
-    `User request: ${prompt}`,
-    `Voiceover narration:\n${voiceoverScript}`,
-    previousAttemptsSummary.trim(),
-    `⚠️ PREVIOUS ATTEMPT #${attemptNumber} FAILED ⚠️`,
-    `The previous Manim script failed with the following error:\n\`\`\`\n${normalizedError}\n\`\`\`${structuredErrorSection}`,
-    `The broken script was:\n\`\`\`python\n${previousScript}\n\`\`\`${blockedScriptsSection}${rewriteDirective}${repetitionDirective}`,
-    "You must analyze the failure, apply all necessary fixes, and generate a corrected Manim script that:\n1. Resolves the specific error\n2. Follows the narration timeline\n3. Uses proper Manim syntax and best practices\n4. Avoids repeating any previous mistakes or failing scripts\n5. Differs meaningfully from the broken script when required\n\nReturn ONLY the fully corrected Python code with no commentary, no analysis, and no Markdown fences. Provide just the executable script:",
-  ].filter((section) => section && section.trim().length > 0);
-
-  const regenerationPrompt = promptSections.join("\n\n");
-
-  // for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-  //   const googleModel = createGoogleModel("gemini-3-flash-preview");
-  //   try {
-  //     const { text } = await generateTextWithTracking(
-  //       {
-  //         model: googleModel.provider(googleModel.modelId),
-  //         system: augmentedSystemPrompt,
-  //         prompt: regenerationPrompt,
-  //         temperature: 0.1,
-  //       },
-  //       googleModel
-  //     );
-
-  //     const code = text
-  //       .replace(/```python?\n?/g, "")
-  //       .replace(/```\n?/g, "")
-  //       .trim();
-
-  //     return code;
-  //   } catch (err) {
-  //     if (attempt === GEMINI_MAX_RETRIES) {
-  //       logRetry("regenerateManimScriptWithError", attempt, err);
-  //       break;
-  //     }
-  //     const delayMs = randomDelayMs();
-  //     logRetry("regenerateManimScriptWithError", attempt, err, delayMs);
-  //     await sleep(delayMs);
-  //   }
-  // }
-
-  // // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
-  // const flashModel = createGoogleModel("gemini-2.5-flash");
-  // const { text: flashText } = await generateTextWithTracking(
-  //   {
-  //     model: flashModel.provider(flashModel.modelId),
-  //     system: augmentedSystemPrompt,
-  //     prompt: regenerationPrompt,
-  //     temperature: 0.1,
-  //   },
-  //   flashModel
-  // );
-  // const code = flashText
-  //   .replace(/```python?\n?/g, "")
-  //   .replace(/```\n?/g, "")
-  //   .trim();
-
-  // return code;
-
-  const regenerationSystemPrompt = `You are a Manim error-fixing expert. Fix all errors and generate a corrected Manim script. DO NOT CHANGE THE SCRIPT's INTENDED BEHAVIOR OR THE SEQUENCE OF VISUALS UNLESS NECESSARY TO RESOLVE THE ERROR.
-
-═══════════════════════════════════════════════════════════════════════════════
-MANDATORY REQUIREMENTS
-═══════════════════════════════════════════════════════════════════════════════
-
-1. CLASS NAME: Must be exactly "MyScene" inheriting from VoiceoverScene
-2. OUTPUT FORMAT: Pure Python code only. NO markdown fences, NO commentary, NO explanations.
-
-═══════════════════════════════════════════════════════════════════════════════
-SCREEN & SIZING CONSTRAINTS (14.2 x 8.0 Manim units)
-═══════════════════════════════════════════════════════════════════════════════
-
-SAFE BOUNDARIES:
-- X: -6.5 to 6.5 (leave 0.6 unit margin on each side)
-- Y: -3.5 to 3.5 (leave 0.5 unit margin top/bottom)
-
-FONT SIZES (never exceed these):
-- FONT_TITLE = 56  (titles only, never larger)
-- FONT_HEADING = 46
-- FONT_BODY = 40
-- FONT_MATH = 44
-- FONT_CAPTION = 32
-- FONT_LABEL = 30
-
-FONT FAMILY:
-- DEFAULT_FONT = "Latin Modern Roman" (use for all Text() objects)
-- Example: Text("Hello", font_size=FONT_BODY, font=DEFAULT_FONT)
-- Or use create_label() which applies Latin Modern Roman automatically
-
-ELEMENT LIMITS:
-- Max 4 visible elements at once
-- Max 3 bullet points per scene
-- Max 40 characters per text line (use line breaks for longer text)
-- Minimum buff=0.5 in all .next_to() calls
-
-═══════════════════════════════════════════════════════════════════════════════
-COMMON ERRORS TO FIX
-═══════════════════════════════════════════════════════════════════════════════
-
-1. OVERLAPPING ELEMENTS:
-   - Never use move_to(ORIGIN) for multiple objects
-   - Always use .next_to(other, DIRECTION, buff=0.5) for positioning
-   - Place labels OUTSIDE shapes, not inside
-
-2. ATTRIBUTE ERRORS:
-   - VoiceoverScene has no self.camera.frame - don't use it
-   - Use x_range/y_range for Axes, NOT x_min/x_max
-
-3. LATEX ERRORS:
-   - For non-English text, use Text() not Tex/MathTex
-   - Always use raw strings for MathTex: r"\\frac{1}{2}"
-   - Never use \\color{} in LaTeX - use color= parameter
-
-4. NAME ERRORS:
-   - Never shadow builtins: str, list, dict, int, float, len, max, min, sum
-   - Check len() before indexing MathTex submobjects
-
-5. MISSING ANIMATIONS:
-   - Always FadeOut previous content before adding new content
-   - Never use self.add() for content - always animate
-
-6. RUNTIME ERRORS:
-   - Always call ensure_fits_screen(mobject) before animating
-   - Use Group(*self.mobjects) not VGroup for mixed types
-
-═══════════════════════════════════════════════════════════════════════════════
-HELPER FUNCTIONS (these are available, use them)
-═══════════════════════════════════════════════════════════════════════════════
-
-- get_title_position(): Returns safe title position at top
-- get_content_center(): Returns safe center position for content
-- ensure_fits_screen(mobject): Auto-scales to fit viewport
-- create_title(text): Creates properly positioned title
-- create_label(text, style="body"): Creates text with proper sizing
-- create_bullet_list_mixed(items): Creates bullet list (max 3 items!)
-- simple_center(mobject): Centers and scales to fit
-- simple_two_column(left, right): Side-by-side layout
-- create_side_by_side_layout(left, right, spacing=1.5): Two-column layout
-
-OUTPUT ONLY THE CORRECTED PYTHON CODE. NO EXPLANATIONS.`;
-
-  // Get relevant examples and schemas via RAG
-  let ragContext = "";
-  try {
-    const ragResult = await getRagContext(prompt);
-    ragContext = formatRagContext(ragResult);
-    if (ragContext) {
-      console.log(
-        `RAG retrieved: ${ragResult.exampleDocs.length} examples, ${ragResult.schemaDocs.length} schemas`,
-      );
-    }
-  } catch (err) {
-    console.warn("RAG retrieval failed, continuing without examples:", err);
-  }
-
-  // Build system prompt with language adjustments
-  let augmentedSystemPrompt = buildAugmentedSystemPrompt(
-    regenerationSystemPrompt,
-    detectedLanguage,
-  );
-
-  // Append RAG context (relevant examples and schemas)
-  if (ragContext) {
-    augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${ragContext}`;
-  }
-
-  // const { text } = await generateText({
-  //   model: cerebras("zai-glm-4.7"),
-  //   system: regenerationSystemPrompt,
-  //   prompt: regenerationPrompt,
-  //   temperature: 0.1,
-  // });
-
-  // const code = text
-  //   .replace(/```python?\n?/g, "")
-  //   .replace(/```\n?/g, "")
-  //   .trim();
-
-  for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
-    const googleModel = createGoogleModel("gemini-3-flash-preview");
-    const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
-      posthogProperties: { $ai_session_id: sessionId },
-    });
-
-    try {
-      const { text } = await generateTextWithTracking(
-        {
-          model: model,
-          system: augmentedSystemPrompt,
-          prompt: regenerationPrompt,
-          temperature: 1,
-        },
-        googleModel,
-      );
-
-      const code = text
-        .replace(/```python?\n?/g, "")
-        .replace(/```\n?/g, "")
-        .trim();
-
-      return code;
-    } catch (err) {
-      if (attempt === GEMINI_MAX_RETRIES) {
-        logRetry("regenerateManimScriptWithError", attempt, err);
-        break;
-      }
-      const delayMs = randomDelayMs();
-      logRetry("regenerateManimScriptWithError", attempt, err, delayMs);
-      await sleep(delayMs);
-    }
-  }
-
-  // Fallback to Gemini 2.5 Flash if Gemini Pro fails after retries
-  const flashModel = createGoogleModel("gemini-2.5-flash");
-  const { text: flashText } = await generateTextWithTracking(
+  const text = await streamTextWithTracking(
     {
-      model: maybeWithTracing(flashModel.provider(flashModel.modelId), {
-        posthogProperties: { $ai_session_id: sessionId },
-      }),
-      system: regenerationSystemPrompt,
-      prompt: regenerationPrompt,
-      temperature: 1,
+      model,
+      system: systemPrompt,
+      prompt: userPrompt,
+      temperature: 0.6,
     },
-    flashModel,
+    googleModel,
   );
-  const code = flashText
-    .replace(/```python?\n?/g, "")
-    .replace(/```\n?/g, "")
-    .trim();
 
-  return code;
+  return text
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .slice(0, 900);
+}
+
+// ---------------------------------------------------------------------------
+// Script fixer – diff-based error correction via gemini-3.1-flash-lite
+// ---------------------------------------------------------------------------
+
+const SEARCH_REPLACE_MARKERS = {
+  search: "<<<<<<< SEARCH",
+  divider: "=======",
+  replace: ">>>>>>> REPLACE",
+} as const;
+
+function applySearchReplaceDiffs(script: string, diffOutput: string): string {
+  if (!diffOutput.includes(SEARCH_REPLACE_MARKERS.search)) {
+    // Model returned the full script instead of diffs
+    const code = diffOutput
+      .replace(/```python?\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+    if (code.includes("from manim import") && /class\s+\w+.*Scene/.test(code)) {
+      return code;
+    }
+    // Unrecognised output – return original
+    console.warn(
+      "[fixManimScript] Output has no diff markers and doesn't look like a full script; returning original",
+    );
+    return script;
+  }
+
+  const blocks = diffOutput.split(SEARCH_REPLACE_MARKERS.search);
+  let result = script;
+
+  for (const block of blocks.slice(1)) {
+    const divIdx = block.indexOf(SEARCH_REPLACE_MARKERS.divider);
+    if (divIdx === -1) continue;
+
+    const searchPart = block.slice(0, divIdx);
+    const rest = block.slice(divIdx + SEARCH_REPLACE_MARKERS.divider.length);
+    const replaceEndIdx = rest.indexOf(SEARCH_REPLACE_MARKERS.replace);
+    if (replaceEndIdx === -1) continue;
+
+    const replacePart = rest.slice(0, replaceEndIdx);
+
+    // Strip only the first and last newline to preserve inner whitespace
+    const search = searchPart.replace(/^\n/, "").replace(/\n$/, "");
+    const replace = replacePart.replace(/^\n/, "").replace(/\n$/, "");
+
+    if (result.includes(search)) {
+      result = result.replace(search, replace);
+    } else {
+      console.warn(
+        "[fixManimScript] Could not locate SEARCH block in script – skipping",
+      );
+    }
+  }
+
+  return result;
+}
+
+export interface FixManimScriptRequest {
+  script: string;
+  errors: string;
+  sessionId: string;
+}
+
+export async function fixManimScript({
+  script,
+  errors,
+  sessionId,
+}: FixManimScriptRequest): Promise<string> {
+  const heuristicFixed = fixManimScriptHeuristically(script, errors);
+  if (heuristicFixed.changed) {
+    console.warn(
+      "[fixManimScript] Applied heuristic fix before LLM:",
+      heuristicFixed.notes.join("; "),
+    );
+    return heuristicFixed.script;
+  }
+
+  // Fetch relevant manim docs from DeepWiki (best-effort)
+  const manimDocs = await queryManimDocs(errors);
+
+  const systemPrompt = `You are a Manim Community v0.19.0 debugging expert.
+You receive a Manim script and the errors produced when running it.
+Your job is to output ONLY search/replace diff blocks that fix the errors.
+
+OUTPUT FORMAT — output NOTHING else:
+<<<<<<< SEARCH
+exact lines from the current script that need to change
+=======
+the corrected replacement lines
+>>>>>>> REPLACE
+
+RULES:
+- Make MINIMAL changes — fix only what the errors indicate.
+- The SEARCH block must match the script EXACTLY (including indentation).
+- You may output multiple diff blocks.
+- Do NOT add commentary, markdown fences, or explanations.
+- Do NOT refactor or rewrite unrelated code.
+- Preserve all existing imports, class names, and voiceover text.
+
+`;
+
+  const userPrompt = [
+    "ERRORS:",
+    errors.slice(0, 6000),
+    "",
+    manimDocs ? `RELEVANT MANIM DOCUMENTATION:\n${manimDocs}\n` : "",
+    "CURRENT SCRIPT:",
+    "```python",
+    script,
+    "```",
+  ].join("\n");
+
+  console.log(userPrompt);
+
+  const googleModel = await createGoogleModel("gemini-3-flash-preview");
+  const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
+    posthogProperties: { $ai_session_id: sessionId },
+  });
+
+  try {
+    const text = await streamTextWithTracking(
+      {
+        model,
+        system: systemPrompt,
+        prompt: userPrompt,
+        temperature: 0,
+      },
+      googleModel,
+    );
+
+    console.log(text.trim());
+    const fixed = applySearchReplaceDiffs(script, text.trim());
+    if (fixed !== script) return fixed;
+
+    const heuristicAfter = fixManimScriptHeuristically(script, errors);
+    if (heuristicAfter.changed) {
+      console.warn(
+        "[fixManimScript] Applied heuristic fix after LLM:",
+        heuristicAfter.notes.join("; "),
+      );
+      return heuristicAfter.script;
+    }
+
+    return script;
+  } catch (err) {
+    console.error("[fixManimScript] LLM call failed:", err);
+    // Return original script so the caller can decide whether to retry
+    const heuristicAfter = fixManimScriptHeuristically(script, errors);
+    if (heuristicAfter.changed) {
+      console.warn(
+        "[fixManimScript] Applied heuristic fix after LLM failure:",
+        heuristicAfter.notes.join("; "),
+      );
+      return heuristicAfter.script;
+    }
+    return script;
+  }
+}
+
+type HeuristicFixResult = {
+  script: string;
+  changed: boolean;
+  notes: string[];
+};
+
+function fixManimScriptHeuristically(
+  script: string,
+  errors: string,
+): HeuristicFixResult {
+  let updated = script;
+  const notes: string[] = [];
+
+  const nameErrorMatch = /NameError:\s+name\s+'([^']+)' is not defined/.exec(
+    errors,
+  );
+  if (nameErrorMatch) {
+    const missingName = nameErrorMatch[1];
+    const rateFuncMap: Record<string, string> = {
+      slow_into_fast: "rate_functions.smooth",
+      slow_into: "rate_functions.smooth",
+      rush_into: "rate_functions.rush_into",
+      rush_from: "rate_functions.rush_from",
+      there_and_back: "rate_functions.there_and_back",
+      there_and_back_with_pause: "rate_functions.there_and_back_with_pause",
+      linear: "rate_functions.linear",
+      smooth: "rate_functions.smooth",
+      double_smooth: "rate_functions.double_smooth",
+    };
+
+    const replacement = rateFuncMap[missingName];
+    if (replacement) {
+      const nameRegex = new RegExp(`\\b${missingName}\\b`, "g");
+      if (nameRegex.test(updated)) {
+        updated = updated.replace(nameRegex, replacement);
+        notes.push(`replaced ${missingName} with ${replacement}`);
+      }
+
+      if (
+        updated !== script &&
+        !/from\s+manim\s+import\s+.*\brate_functions\b/.test(updated) &&
+        !/import\s+manim\s+as\s+\w+/.test(updated)
+      ) {
+        const importMatch = /from\s+manim\s+import\s+([^\n]+)/.exec(updated);
+        if (importMatch) {
+          const existing = importMatch[1];
+          if (!existing.includes("rate_functions")) {
+            const patched = existing.trim().endsWith(",")
+              ? `${existing} rate_functions`
+              : `${existing}, rate_functions`;
+            updated = updated.replace(
+              importMatch[0],
+              `from manim import ${patched}`,
+            );
+            notes.push("added rate_functions to manim import");
+          }
+        } else if (updated.includes("import manim as")) {
+          // Prefer explicit import for rate_functions if using manim alias elsewhere
+          updated = `from manim import rate_functions\n${updated}`;
+          notes.push("added explicit rate_functions import");
+        } else {
+          updated = `from manim import rate_functions\n${updated}`;
+          notes.push("added rate_functions import");
+        }
+      }
+    }
+
+    // Map invalid color names to valid Manim default-namespace colors
+    const colorMap: Record<string, string> = {
+      CYAN: "TEAL",
+      MAGENTA: "PINK",
+      LIME: "GREEN",
+      SILVER: "GRAY",
+      AQUA: "TEAL_A",
+      NAVY: "DARK_BLUE",
+      OLIVE: "GREEN_D",
+      BROWN: "DARK_BROWN",
+      INDIGO: "PURPLE_E",
+      VIOLET: "PURPLE_A",
+    };
+    const colorReplacement = colorMap[missingName];
+    if (colorReplacement) {
+      const colorRegex = new RegExp(`\\b${missingName}\\b`, "g");
+      if (colorRegex.test(updated)) {
+        updated = updated.replace(colorRegex, colorReplacement);
+        notes.push(
+          `replaced invalid color ${missingName} with ${colorReplacement}`,
+        );
+      }
+    }
+  }
+
+  return { script: updated, changed: updated !== script, notes };
+}
+
+// ---------------------------------------------------------------------------
+// Frame review – vision-based quality check of rendered frames
+// ---------------------------------------------------------------------------
+
+export interface ReviewRenderedFramesRequest {
+  frames: string[];
+  script: string;
+  sessionId: string;
+}
+
+export interface ReviewRenderedFramesResult {
+  issues: string[];
+  overallQuality: "good" | "needs_fixes";
+  suggestedFixes: string;
+}
+
+export async function reviewRenderedFrames({
+  frames,
+  script,
+  sessionId,
+}: ReviewRenderedFramesRequest): Promise<ReviewRenderedFramesResult> {
+  const systemPrompt = `You are a visual quality reviewer for educational math/science animation frames rendered by Manim.
+You will receive rendered frames as images and the script that produced them.
+Evaluate the frames for the following issues:
+- Overlapping elements (text over text, shapes over shapes)
+- Off-screen or clipped content (elements cut off at edges)
+- Text too small to read
+- Missing labels (unlabeled axes, shapes, or formula parts)
+- Too many elements on screen at once (more than 5-6 simultaneously)
+- Poor spacing (elements too close together, cramped layout)
+
+OUTPUT FORMAT — output ONLY valid JSON, no markdown fences:
+{
+  "issues": ["description of issue 1", "description of issue 2"],
+  "overallQuality": "good" or "needs_fixes",
+  "suggestedFixes": "brief description of how to fix the issues"
+}
+
+If there are no issues, return:
+{
+  "issues": [],
+  "overallQuality": "good",
+  "suggestedFixes": ""
+}`;
+
+  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
+  const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
+    posthogProperties: { $ai_session_id: sessionId },
+  });
+
+  // Frames are 640px-wide PNGs (1 per scene), small enough to send all of them
+  // so the vision model can evaluate every scene's layout.
+  const content: Array<
+    { type: "text"; text: string } | { type: "image"; image: string }
+  > = [
+    { type: "text", text: `SCRIPT:\n${script}` },
+    ...frames.map((frame) => ({ type: "image" as const, image: frame })),
+    {
+      type: "text",
+      text: `Review all ${frames.length} frames above (one per scene) for visual quality issues.`,
+    },
+  ];
+
+  try {
+    const { text } = await generateText({
+      model,
+      system: systemPrompt,
+      messages: [{ role: "user", content }],
+      temperature: 0.2,
+    });
+
+    const cleaned = text
+      .replace(/```json?\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+
+    return JSON.parse(cleaned) as ReviewRenderedFramesResult;
+  } catch (err) {
+    console.error("[reviewRenderedFrames] Failed:", err);
+    return {
+      issues: [],
+      overallQuality: "good",
+      suggestedFixes: "",
+    };
+  }
 }
