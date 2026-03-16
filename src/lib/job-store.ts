@@ -8,6 +8,32 @@ import {
   YoutubeStatus,
 } from "@/lib/types";
 
+/**
+ * Stores large intermediate workflow artifacts in KV to avoid
+ * exceeding the QStash 1 MB message-size limit.
+ */
+class KVArtifactStore {
+  private ttlSeconds = 60 * 60 * 24; // 24 hours
+
+  private key(jobId: string, name: string) {
+    return `artifact:${jobId}:${name}`;
+  }
+
+  async set(jobId: string, name: string, value: string): Promise<void> {
+    await kv.set(this.key(jobId, name), value, { ex: this.ttlSeconds });
+  }
+
+  async get(jobId: string, name: string): Promise<string> {
+    const v = await kv.get<string>(this.key(jobId, name));
+    if (v === null || v === undefined) {
+      throw new Error(`Artifact not found: ${name} for job ${jobId}`);
+    }
+    return v;
+  }
+}
+
+export const artifactStore = new KVArtifactStore();
+
 class KVJobStore implements JobStore {
   private ttlSeconds = 60 * 60 * 24; // 24 hours
   private maxProgressEntries = 50;

@@ -15,7 +15,7 @@ import {
   startManimRender,
 } from "@/lib/e2b";
 import { uploadVideo } from "@/lib/uploadthing";
-import { jobStore } from "@/lib/job-store";
+import { jobStore, artifactStore } from "@/lib/job-store";
 
 import { updateJobProgress } from "@/lib/workflow/utils/progress";
 import {
@@ -55,61 +55,64 @@ export const { POST } = serve<VideoGenerationPayload>(
         ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Use large readable typography and keep visual groups well spaced.`
         : prompt;
 
-    const voiceoverScript = await context.run(
-      "generate-voiceover-script",
-      async () => {
-        await updateJobProgress(jobId, {
-          progress: 5,
-          step: "generating voiceover",
-          details: "Crafting a narration that slaps",
-        });
-        return generateVoiceoverScript({
-          prompt: generationPrompt,
-          sessionId: chatId,
-        });
-      },
-    );
-
-    console.log("✅ Voiceover script generated", {
-      length: voiceoverScript.length,
+    await context.run("generate-voiceover-script", async () => {
+      await updateJobProgress(jobId, {
+        progress: 5,
+        step: "generating voiceover",
+        details: "Crafting a narration that slaps",
+      });
+      const voiceoverScript = await generateVoiceoverScript({
+        prompt: generationPrompt,
+        sessionId: chatId,
+      });
+      await artifactStore.set(jobId, "voiceoverScript", voiceoverScript);
+      console.log("✅ Voiceover script generated", {
+        length: voiceoverScript.length,
+      });
     });
 
-    const scenePlan = await context.run("generate-scene-plan", async () => {
+    await context.run("generate-scene-plan", async () => {
+      const voiceoverScript = await artifactStore.get(jobId, "voiceoverScript");
       await updateJobProgress(jobId, {
         progress: 12,
         step: "generating script",
         details: "Storyboarding the scenes",
       });
-      return generateScenePlan({
+      const scenePlan = await generateScenePlan({
         prompt: generationPrompt,
         voiceoverScript,
         sessionId: chatId,
       });
+      await artifactStore.set(jobId, "scenePlan", JSON.stringify(scenePlan));
+      console.log("✅ Scene plan generated", {
+        sceneCount: scenePlan.length,
+      });
     });
 
-    console.log("✅ Scene plan generated", {
-      sceneCount: scenePlan.length,
-    });
-
-    const script = await context.run("generate-manim-script", async () => {
+    await context.run("generate-manim-script", async () => {
+      const voiceoverScript = await artifactStore.get(jobId, "voiceoverScript");
+      const scenePlan = JSON.parse(
+        await artifactStore.get(jobId, "scenePlan"),
+      );
       await updateJobProgress(jobId, {
         progress: 22,
         step: "verifying script",
         details: "Writing the animation code",
       });
-      return generateManimScript({
+      const script = await generateManimScript({
         prompt: generationPrompt,
         voiceoverScript,
         sessionId: chatId,
         scenePlan,
       });
+      await artifactStore.set(jobId, "manimScript", script);
+      console.log("✅ Manim script generated", { length: script.length });
     });
-
-    console.log("✅ Manim script generated", { length: script.length });
 
     const RENDER_STEP_TIMEOUT_MS = 282_000; // ~4.7 minutes to stay under workflow limits
 
     const renderStart = await context.run("render-video-start", async () => {
+      const script = await artifactStore.get(jobId, "manimScript");
       await updateJobProgress(jobId, {
         progress: 40,
         step: "rendering video",
@@ -203,6 +206,7 @@ export const { POST } = serve<VideoGenerationPayload>(
 
     try {
       videoDescription = await context.run("generate-description", async () => {
+        const voiceoverScript = await artifactStore.get(jobId, "voiceoverScript");
         return generateVideoDescription({
           prompt,
           voiceoverScript,
@@ -236,7 +240,6 @@ export const { POST } = serve<VideoGenerationPayload>(
           title: videoTitle,
           description: videoDescription,
           prompt,
-          voiceoverScript,
           jobId,
           userId,
           variant,
