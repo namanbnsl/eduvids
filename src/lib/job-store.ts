@@ -24,11 +24,11 @@ class KVArtifactStore {
   }
 
   async get(jobId: string, name: string): Promise<string> {
-    const v = await kv.get<string>(this.key(jobId, name));
+    const v = await kv.get(this.key(jobId, name));
     if (v === null || v === undefined) {
       throw new Error(`Artifact not found: ${name} for job ${jobId}`);
     }
-    return v;
+    return typeof v === "string" ? v : JSON.stringify(v);
   }
 }
 
