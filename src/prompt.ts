@@ -157,6 +157,7 @@ COLOR GUIDELINES — Be bold and intentional with color:
 - Avoid checkerboard or grid patterns on 3D surfaces. Use solid or smooth gradient colors instead.
 - Always specify a clear surface/mesh color (or two-color gradient) and a tasteful stroke color; never leave 3D objects with default styling.
 - Move the camera when it helps: gentle pans, dolly-ins, or slow rotations to create cinematic depth and reveal structure.
+- ALL Text() and MathTex() in 3D scenes MUST be registered with self.add_fixed_in_frame_mobjects(mobject) so they stay 2D (flat, facing the camera) during camera movements. Without this, text rotates with the 3D camera and becomes unreadable. Do NOT use .fix_in_frame() — that method does not exist in Manim Community.
 
 ANIMATION & TRANSITION GUIDELINES:
 - Use "write" for formulas and text to create a hand-written feel.
@@ -340,6 +341,8 @@ CRITICAL REQUIREMENTS
 10. Each scene is self-contained — no shared state between scene classes.
 11. 3D objects must NOT use checkerboard patterns. For surfaces, set a solid fill color (or subtle gradient) and use set_style with fill_opacity and stroke_color. If using Surface, override checkerboard_colors to a uniform solid (e.g., [color, color]) or disable it.
 12. Use camera motion in 3D scenes when it improves clarity or aesthetics: slow orbit, tilt, or push-in timed to narration beats.
+13. In 3D scenes (ThreeDScene), call self.add_fixed_in_frame_mobjects(mobject) on every Text() and MathTex() mobject immediately after creation so they render as flat 2D overlays that always face the camera, even during camera rotations. Do NOT use .fix_in_frame() — it does not exist in Manim Community.
+    Example: title = Text("Title", font="EB Garamond", disable_ligatures=True, font_size=48).to_edge(UP); self.add_fixed_in_frame_mobjects(title)
 
 ═══════════════════════════════════════════════════════════════════════════════
 ERROR PREVENTION
@@ -347,7 +350,7 @@ ERROR PREVENTION
 
 1. Axes: use x_range=[min,max,step], y_range=[min,max,step] — NOT x_min/x_max
 2. Do not shadow built-ins (str, list, dict, len, max, min, etc.)
-3. No SVGs, external images, emojis, or self.camera.frame (causes AttributeError)
+3. No SVGs, external images, emojis, or self.camera.frame (causes AttributeError). Never use .fix_in_frame() — it does not exist in Manim Community; use self.add_fixed_in_frame_mobjects(mobject) instead.
 4. Use Group(*self.mobjects) not VGroup when clearing mixed types; check len() before indexing MathTex submobjects
 5. Use \\\\frac, \\\\sqrt in MathTex r-strings. Only use names you import from manim or define yourself — no undefined constants.
 6. ONLY use these color constants (from manim's global namespace): WHITE, BLACK, BLUE, BLUE_A, BLUE_B, BLUE_C, BLUE_D, BLUE_E, RED, RED_A, RED_B, RED_C, RED_D, RED_E, GREEN, GREEN_A, GREEN_B, GREEN_C, GREEN_D, GREEN_E, YELLOW, YELLOW_A, YELLOW_B, YELLOW_C, YELLOW_D, YELLOW_E, GOLD, GOLD_A, GOLD_B, GOLD_C, GOLD_D, GOLD_E, TEAL, TEAL_A, TEAL_B, TEAL_C, TEAL_D, TEAL_E, PURPLE, PURPLE_A, PURPLE_B, PURPLE_C, PURPLE_D, PURPLE_E, MAROON, MAROON_A, MAROON_B, MAROON_C, MAROON_D, MAROON_E, ORANGE, PINK, LIGHT_PINK, GRAY, GREY, DARK_BLUE, DARK_BROWN, LIGHT_BROWN, LIGHT_GRAY, LIGHT_GREY, DARKER_GRAY, DARKER_GREY, GRAY_BROWN, GREY_BROWN, PURE_RED, PURE_GREEN, PURE_BLUE. Do NOT use CYAN, MAGENTA, LIME, SILVER, AQUA, NAVY, OLIVE, or other CSS/HTML color names — they are NOT defined in Manim's default namespace. If you need a specific color not in the list above, use a hex string instead, e.g. color="#00FFFF".

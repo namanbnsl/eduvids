@@ -1,6 +1,3 @@
-deepwiki only getting exit status 1
-text should be 2d even during 3d camera movements and frames
-
 thumbnails
 
 manim plugins

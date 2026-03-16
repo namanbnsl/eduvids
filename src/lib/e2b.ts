@@ -15,8 +15,7 @@ const SCALED_TEXT_HELPER = `${SCALED_TEXT_MARKER}
 _TEXT_SCALE_FACTOR = 0.3
 _TEXT_SCALE_THRESHOLD = 32
 
-class _OrigText(Text):
-    pass
+_OrigText = Text
 
 def Text(*args, **kwargs):
     scale_font = False
@@ -982,10 +981,17 @@ export async function startManimRender({
             { logs: [...renderLogs] },
           );
         }
-        const errorMessage =
-          dryRunError instanceof ManimValidationError
-            ? dryRunError.message
-            : String(dryRunError);
+        let errorMessage: string;
+        if (dryRunError instanceof ManimValidationError) {
+          errorMessage = dryRunError.message;
+        } else if (dryRunError instanceof CommandExitError) {
+          const parts: string[] = [`Manim command exited with code ${dryRunError.exitCode}`];
+          if (dryRunError.stderr?.trim()) parts.push(`STDERR:\n${dryRunError.stderr}`);
+          if (dryRunError.stdout?.trim()) parts.push(`STDOUT:\n${dryRunError.stdout}`);
+          errorMessage = parts.join("\n\n");
+        } else {
+          errorMessage = String(dryRunError);
+        }
         await reportProgress(
           "script-fix",
           `Dry-run failed (attempt ${attempt + 1}/${DRY_RUN_MAX_FIXES + 1}), requesting LLM fix`,
@@ -1274,10 +1280,23 @@ export async function pollManimRender({
     }
 
     if (outcome.type === "error") {
-      const stderr = truncateOutput(handle.stderr || "");
-      const stdout = truncateOutput(handle.stdout || "");
+      const err = outcome.error;
+      const errStderr =
+        err instanceof CommandExitError ? err.stderr ?? "" : "";
+      const errStdout =
+        err instanceof CommandExitError ? err.stdout ?? "" : "";
+      const stderr = truncateOutput(
+        handle.stderr || errStderr || "",
+      );
+      const stdout = truncateOutput(
+        handle.stdout || errStdout || "",
+      );
+      const exitCode =
+        err instanceof CommandExitError ? err.exitCode : undefined;
       const messageParts = [
-        "Manim render failed",
+        typeof exitCode === "number"
+          ? `Manim render failed with exit code ${exitCode}`
+          : "Manim render failed",
         "Review the traceback to resolve errors inside your Manim scene.",
       ];
       if (stderr) {
@@ -1285,6 +1304,17 @@ export async function pollManimRender({
       }
       if (stdout) {
         messageParts.push(`STDOUT:\n${stdout}`);
+      }
+      // Fall back to streamed render logs if handle/result had no output
+      if (!stderr && !stdout) {
+        const logLines = renderLogs
+          .filter((l) => l.level === "stderr" || l.level === "stdout")
+          .map((l) => l.message);
+        if (logLines.length) {
+          messageParts.push(
+            `OUTPUT (from streamed logs):\n${truncateOutput(logLines.join("\n"))}`,
+          );
+        }
       }
       return {
         complete: true,
@@ -1297,8 +1327,8 @@ export async function pollManimRender({
 
     const result = outcome.result;
     if (result.exitCode !== 0) {
-      const stderr = truncateOutput(result.stderr || "");
-      const stdout = truncateOutput(result.stdout || "");
+      const stderr = truncateOutput(result.stderr || handle.stderr || "");
+      const stdout = truncateOutput(result.stdout || handle.stdout || "");
       const messageParts = [
         `Manim render failed with exit code ${result.exitCode}`,
         "Review the traceback to resolve errors inside your Manim scene.",
@@ -1308,6 +1338,17 @@ export async function pollManimRender({
       }
       if (stdout) {
         messageParts.push(`STDOUT:\n${stdout}`);
+      }
+      // Fall back to streamed render logs if result/handle had no output
+      if (!stderr && !stdout) {
+        const logLines = renderLogs
+          .filter((l) => l.level === "stderr" || l.level === "stdout")
+          .map((l) => l.message);
+        if (logLines.length) {
+          messageParts.push(
+            `OUTPUT (from streamed logs):\n${truncateOutput(logLines.join("\n"))}`,
+          );
+        }
       }
       return {
         complete: true,

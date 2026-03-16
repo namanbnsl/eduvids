@@ -854,6 +854,22 @@ function fixManimScriptHeuristically(
   let updated = script;
   const notes: string[] = [];
 
+  // fix_in_frame() is ManimGL-only; Manim Community uses self.add_fixed_in_frame_mobjects()
+  if (/has no attribute 'fix_in_frame'/.test(errors) || /fix_in_frame/.test(updated)) {
+    const fixInFrameRegex = /^([ \t]*)(\w+)\.fix_in_frame\(\)/gm;
+    let match: RegExpExecArray | null;
+    while ((match = fixInFrameRegex.exec(updated)) !== null) {
+      // We need to find the correct self reference — look for the class method context
+      const indent = match[1];
+      const varName = match[2];
+      updated = updated.replace(
+        match[0],
+        `${indent}self.add_fixed_in_frame_mobjects(${varName})`,
+      );
+      notes.push(`replaced ${varName}.fix_in_frame() with self.add_fixed_in_frame_mobjects(${varName})`);
+    }
+  }
+
   const nameErrorMatch = /NameError:\s+name\s+'([^']+)' is not defined/.exec(
     errors,
   );
