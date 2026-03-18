@@ -8,13 +8,14 @@ import {
   fixManimScript,
   generateVideoTitle,
   generateVideoDescription,
+  generateThumbnailHtml,
 } from "@/lib/llm";
 import {
   finalizeManimRender,
   pollManimRender,
   startManimRender,
 } from "@/lib/e2b";
-import { uploadVideo } from "@/lib/uploadthing";
+import { uploadVideo, uploadImage } from "@/lib/uploadthing";
 import { jobStore, artifactStore } from "@/lib/job-store";
 
 import { updateJobProgress } from "@/lib/workflow/utils/progress";
@@ -121,6 +122,8 @@ export const { POST } = serve<VideoGenerationPayload>(
       return startManimRender({
         script,
         prompt: generationPrompt,
+        sessionId: chatId,
+        variant,
         applyWatermark: true,
         renderOptions:
           variant === "short"
@@ -169,57 +172,138 @@ export const { POST } = serve<VideoGenerationPayload>(
       break;
     }
 
-    const renderResult = await context.run("render-video-finalize", async () => {
-      await updateJobProgress(jobId, {
-        progress: 80,
-        step: "rendering video",
-        details: "Polishing the final video",
-      });
-      return finalizeManimRender({ state: renderState });
+    // Finalize render AND upload inside a single step so the huge base64 data
+    // URL (~5 MB) is never serialized into QStash workflow state (which has a
+    // body-size limit and would silently drop the workflow).
+    const uploadUrl = await context.run(
+      "render-video-finalize-and-upload",
+      async () => {
+        await updateJobProgress(jobId, {
+          progress: 80,
+          step: "rendering video",
+          details: "Polishing the final video",
+        });
+        const renderResult = await finalizeManimRender({
+          state: renderState,
+        });
+
+        console.log("✅ Video rendered");
+
+        await updateJobProgress(jobId, {
+          progress: 85,
+          step: "uploading video",
+          details: "Beaming your video to the cloud",
+        });
+        const videoUrl = await uploadVideo({
+          videoPath: renderResult.videoPath,
+          userId,
+        });
+        console.log("✅ Video uploaded:", videoUrl);
+
+        return videoUrl;
+      },
+    );
+
+    console.log("✅ Video rendered & uploaded:", uploadUrl);
+
+    // Generate thumbnail via LLM (best-effort). Error handling is inside the
+    // callback because Upstash Workflow uses thrown WorkflowAbort errors for
+    // step replay — wrapping context.run in try/catch breaks step sequencing.
+    const thumbnailUrl = await context.run("generate-thumbnail", async () => {
+      try {
+        await updateJobProgress(jobId, {
+          progress: 87,
+          step: "generating thumbnail",
+          details: "Creating your custom thumbnail",
+        });
+
+        const thumbnailHtml = await generateThumbnailHtml({
+          prompt: generationPrompt,
+          sessionId: chatId,
+          variant,
+        });
+
+        const { html: satoriHtml } = await import("satori-html");
+        const satori = (await import("satori")).default;
+        const { Resvg } = await import("@resvg/resvg-js");
+        const { readFile } = await import("fs/promises");
+        const { join } = await import("path");
+
+        const fontsDir = join(process.cwd(), "public", "fonts");
+        const [lexendBold, lexendRegular, notoSansMath] = await Promise.all([
+          readFile(join(fontsDir, "Lexend-Bold.ttf")),
+          readFile(join(fontsDir, "Lexend-Regular.ttf")),
+          readFile(join(fontsDir, "NotoSansMath-Regular.ttf")),
+        ]);
+
+        const markup = satoriHtml(thumbnailHtml);
+        const svg = await satori(markup as Parameters<typeof satori>[0], {
+          width: 1280,
+          height: 720,
+          fonts: [
+            { name: "Lexend", data: lexendBold, weight: 700, style: "normal" },
+            { name: "Lexend", data: lexendRegular, weight: 400, style: "normal" },
+            { name: "Noto Sans Math", data: notoSansMath, weight: 400, style: "normal" },
+          ],
+        });
+
+        const resvg = new Resvg(svg, {
+          fitTo: { mode: "width", value: 1280 },
+        });
+        const pngData = resvg.render();
+        const thumbBytes = pngData.asPng();
+
+        if (!thumbBytes || thumbBytes.length === 0) {
+          console.warn("Thumbnail PNG was empty after render");
+          return undefined;
+        }
+
+        const thumbBase64 = Buffer.from(thumbBytes).toString("base64");
+        const thumbnailDataUrl = `data:image/png;base64,${thumbBase64}`;
+
+        const thumbUrl = await uploadImage({
+          imagePath: thumbnailDataUrl,
+          userId,
+        });
+        console.log("✅ Thumbnail uploaded:", thumbUrl);
+        return thumbUrl;
+      } catch (err) {
+        console.warn("Thumbnail generation failed (non-fatal):", err);
+        return undefined;
+      }
     });
-
-    console.log("✅ Video rendered");
-
-    const uploadUrl = await context.run("upload-video", async () => {
-      await updateJobProgress(jobId, {
-        progress: 85,
-        step: "uploading video",
-        details: "Beaming your video to the cloud",
-      });
-      return uploadVideo({ videoPath: renderResult.videoPath, userId });
-    });
-
-    console.log("✅ Video uploaded:", uploadUrl);
 
     // Generate title (best-effort)
     let videoTitle: string | undefined;
     let videoDescription: string | undefined;
 
-    try {
-      videoTitle = await context.run("generate-title", async () => {
-        return generateVideoTitle({ prompt, sessionId: chatId });
-      });
-      console.log("✅ Title generated:", videoTitle);
-    } catch (err) {
-      console.warn("Title generation failed (non-fatal):", err);
-    }
+    videoTitle = await context.run("generate-title", async () => {
+      try {
+        const title = await generateVideoTitle({ prompt, sessionId: chatId });
+        console.log("✅ Title generated:", title);
+        return title;
+      } catch (err) {
+        console.warn("Title generation failed (non-fatal):", err);
+        return undefined;
+      }
+    });
 
-    try {
-      videoDescription = await context.run("generate-description", async () => {
+    videoDescription = await context.run("generate-description", async () => {
+      try {
         const voiceoverScript = await artifactStore.get(jobId, "voiceoverScript");
-        return generateVideoDescription({
+        const desc = await generateVideoDescription({
           prompt,
           voiceoverScript,
           sessionId: chatId,
           variant,
         });
-      });
-      console.log("✅ Description generated:", {
-        length: videoDescription.length,
-      });
-    } catch (err) {
-      console.warn("Description generation failed (non-fatal):", err);
-    }
+        console.log("✅ Description generated:", { length: desc.length });
+        return desc;
+      } catch (err) {
+        console.warn("Description generation failed (non-fatal):", err);
+        return undefined;
+      }
+    });
 
     await context.run("finalize-job", async () => {
       await updateJobProgress(jobId, {
@@ -243,6 +327,7 @@ export const { POST } = serve<VideoGenerationPayload>(
           jobId,
           userId,
           variant,
+          thumbnailUrl,
         },
       });
     });

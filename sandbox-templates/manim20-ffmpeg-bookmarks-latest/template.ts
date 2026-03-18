@@ -32,7 +32,9 @@ export const template = Template()
     "git",
     "curl",
     "wget",
-  ]).runCmd(`
+  ])
+  .runCmd(
+    `
 pip install --upgrade pip setuptools wheel
 
 # ✅ lock numpy
@@ -66,4 +68,5 @@ print("numpy", numpy.__version__)
 print("torch", torch.__version__)
 print("torchaudio", torchaudio.__version__)
 EOF
-`);
+`,
+  );

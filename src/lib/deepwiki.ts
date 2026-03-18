@@ -109,7 +109,7 @@ export async function queryManimDocs(errorContext: string): Promise<string> {
     }
 
     // 3. Call ask_question tool
-    const question = `I'm getting this error in my Manim Community v0.20.0 script. What is the correct API usage to fix it?\n\nError:\n${errorContext.slice(0, 2000)}`;
+    const question = `I'm getting this error in my Manim Community v0.18.0 script. Please note that this is a dry-run so its fine if the traceback shows played animations as 0% progress since we're only rendering the last frame. What is the correct API usage to fix it?\n\nError:\n${errorContext.slice(0, 2000)}`;
 
     const toolResponse = await fetch(MCP_ENDPOINT, {
       method: "POST",

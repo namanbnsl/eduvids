@@ -158,6 +158,7 @@ COLOR GUIDELINES — Be bold and intentional with color:
 - Always specify a clear surface/mesh color (or two-color gradient) and a tasteful stroke color; never leave 3D objects with default styling.
 - Move the camera when it helps: gentle pans, dolly-ins, or slow rotations to create cinematic depth and reveal structure.
 - ALL Text() and MathTex() in 3D scenes MUST be registered with self.add_fixed_in_frame_mobjects(mobject) so they stay 2D (flat, facing the camera) during camera movements. Without this, text rotates with the 3D camera and becomes unreadable. Do NOT use .fix_in_frame() — that method does not exist in Manim Community.
+- EXCEPTION: Labels that annotate a vector, arrow, or geometric element (e.g. "v", "F", "x̂") should NOT use add_fixed_in_frame_mobjects — they must move and rotate with the object they label. Only fix standalone titles, explanations, and formulas in frame.
 
 ANIMATION & TRANSITION GUIDELINES:
 - Use "write" for formulas and text to create a hand-written feel.
@@ -334,14 +335,21 @@ CRITICAL REQUIREMENTS
    ALWAYS set an explicit run_time on Write() — use run_time=1 to run_time=2 depending on text length.
    NEVER let Write() default to tracker.get_remaining_duration() — it makes text appear painfully slowly.
    Example: self.play(Write(formula), run_time=1.5)
-6. ALL Text() must use font="EB Garamond", disable_ligatures=True. MathTex does not need it.
-7. Label every formula, shape, axis, and graph. Color-code labels to match their elements.
-8. Max 4-5 elements on screen. FadeOut old content before showing new. Use self.wait(1) between elements.
-9. Use .next_to() with buff>=0.4 for positioning.
-10. Each scene is self-contained — no shared state between scene classes.
-11. 3D objects must NOT use checkerboard patterns. For surfaces, set a solid fill color (or subtle gradient) and use set_style with fill_opacity and stroke_color. If using Surface, override checkerboard_colors to a uniform solid (e.g., [color, color]) or disable it.
-12. Use camera motion in 3D scenes when it improves clarity or aesthetics: slow orbit, tilt, or push-in timed to narration beats.
-13. In 3D scenes (ThreeDScene), call self.add_fixed_in_frame_mobjects(mobject) on every Text() and MathTex() mobject immediately after creation so they render as flat 2D overlays that always face the camera, even during camera rotations. Do NOT use .fix_in_frame() — it does not exist in Manim Community.
+6. ALL Text() must use font="EB Garamond", disable_ligatures=True. MathTex does not need it. Text() must NEVER contain digits or numeric content.
+7. NEVER use Text() for any visible numeric content on screen. Any on-screen number, coordinate, measurement, exponent, fraction, decimal, percentage, or mixed math-and-number token must use MathTex(). If a label mixes words and numbers, use a VGroup of Text() + MathTex() arranged with .arrange(RIGHT, buff=0.12).
+   Examples:
+   ✅ label = VGroup(Text("Step", font="EB Garamond", disable_ligatures=True, font_size=28), MathTex("1", font_size=28)).arrange(RIGHT, buff=0.12)
+   ✅ speed = VGroup(Text("Speed", font="EB Garamond", disable_ligatures=True, font_size=28), MathTex("= 10", font_size=28)).arrange(RIGHT, buff=0.12)
+   ❌ Text("Step 1", ...)
+   ❌ Text("x = 2", ...)
+   ❌ Text("100%", ...)
+8. Label every formula, shape, axis, and graph. Color-code labels to match their elements.
+9. Max 4-5 elements on screen. FadeOut old content before showing new. Use self.wait(1) between elements.
+10. Use .next_to() with buff>=0.4 for positioning.
+11. Each scene is self-contained — no shared state between scene classes.
+12. 3D objects must NOT use checkerboard patterns. For surfaces, set a solid fill color (or subtle gradient) and use set_style with fill_opacity and stroke_color. If using Surface, override checkerboard_colors to a uniform solid (e.g., [color, color]) or disable it.
+13. Use camera motion in 3D scenes when it improves clarity or aesthetics: slow orbit, tilt, or push-in timed to narration beats.
+14. In 3D scenes (ThreeDScene), call self.add_fixed_in_frame_mobjects(mobject) on every Text() and MathTex() mobject immediately after creation so they render as flat 2D overlays that always face the camera, even during camera rotations. Do NOT use .fix_in_frame() — it does not exist in Manim Community.
     Example: title = Text("Title", font="EB Garamond", disable_ligatures=True, font_size=48).to_edge(UP); self.add_fixed_in_frame_mobjects(title)
 
 ═══════════════════════════════════════════════════════════════════════════════

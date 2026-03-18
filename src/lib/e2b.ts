@@ -106,6 +106,11 @@ function injectEduvidsCallout(script: string): string {
     `${bodyIndent}existing_mobjects = list(self.mobjects)`,
     `${bodyIndent}if existing_mobjects:`,
     `${bodyIndent}    self.play(*[FadeOut(mob) for mob in existing_mobjects])`,
+    `${bodyIndent}# Reset 3D camera to a flat 2D view so text is always visible`,
+    `${bodyIndent}if hasattr(self, 'renderer') and hasattr(self.renderer, 'camera') and hasattr(self.renderer.camera, 'set_euler_angles'):`,
+    `${bodyIndent}    self.renderer.camera.set_euler_angles(phi=0, theta=-90 * DEGREES, gamma=0)`,
+    `${bodyIndent}    self.renderer.camera.frame.move_to(ORIGIN)`,
+    `${bodyIndent}    self.renderer.camera.frame.set(width=14)`,
     `${bodyIndent}with self.voiceover(text="Generate your own educational videos for free at eduvids dot app"):`,
     `${bodyIndent}    cta_title = Text("Generate your own educational videos for free!", font="EB Garamond", disable_ligatures=True, font_size=32)`,
     `${bodyIndent}    cta_title.set_color(WHITE)`,
@@ -252,6 +257,7 @@ interface ValidationWarning {
 
 export interface RenderResult {
   videoPath: string;
+  thumbnailPath?: string;
 
   warnings: ValidationWarning[];
   logs: RenderLogEntry[];
@@ -447,6 +453,8 @@ const buildAstValidationCommand = (scriptPath: string) =>
 export interface RenderRequest {
   script: string;
   prompt: string;
+  sessionId?: string;
+  variant?: "video" | "short";
   applyWatermark?: boolean;
   renderOptions?: RenderOptions;
   onProgress?: (update: RenderProgressUpdate) => Promise<void> | void;
@@ -478,6 +486,9 @@ export interface RenderState {
   logs: RenderLogEntry[];
   applyWatermark: boolean;
   existingSandboxId?: string;
+  prompt?: string;
+  sessionId?: string;
+  variant?: "video" | "short";
 }
 
 export interface RenderPollResult {
@@ -496,7 +507,9 @@ export interface StartRenderResult {
 
 export async function startManimRender({
   script,
-  prompt: _prompt,
+  prompt,
+  sessionId,
+  variant,
   applyWatermark = true,
   renderOptions,
   onProgress,
@@ -747,21 +760,16 @@ export async function startManimRender({
       }
     };
 
-    const result = await sandbox.commands.run(command, {
-      timeoutMs,
-      onStdout: streamStdout || onStdout ? combinedStdout : undefined,
-      onStderr: streamStderr || onStderr ? combinedStderr : undefined,
-    });
-    if (result.exitCode !== 0) {
+    const buildManimError = (exitCode: number, rawStderr: string, rawStdout: string) => {
       const label = description ?? command;
+      const stderr = truncateOutput(rawStderr);
+      const stdout = truncateOutput(rawStdout);
       const messageParts = [
-        `${label} failed with exit code ${result.exitCode}`,
+        `${label} failed with exit code ${exitCode}`,
       ];
       if (hint) {
         messageParts.push(hint);
       }
-      const stderr = truncateOutput(result.stderr || bufferedStderr);
-      const stdout = truncateOutput(result.stdout || bufferedStdout);
       if (stderr) {
         messageParts.push(`STDERR:\n${stderr}`);
         recordChunk(stderr, "stderr");
@@ -772,13 +780,13 @@ export async function startManimRender({
       }
       pushLog({
         level: "error",
-        message: `${label} failed with exit code ${result.exitCode}`,
+        message: `${label} failed with exit code ${exitCode}`,
         context: contextLabel,
       });
       const error = new ManimValidationError(messageParts.join("\n\n"), stage, {
-        exitCode: result.exitCode,
-        stderr: result.stderr || bufferedStderr,
-        stdout: result.stdout || bufferedStdout,
+        exitCode,
+        stderr: rawStderr,
+        stdout: rawStdout,
         hint,
         logs: [...renderLogs],
       });
@@ -786,7 +794,32 @@ export async function startManimRender({
         command,
         description: label,
       });
-      throw error;
+      return error;
+    };
+
+    let result: Awaited<ReturnType<typeof sandbox.commands.run>>;
+    try {
+      result = await sandbox.commands.run(command, {
+        timeoutMs,
+        onStdout: streamStdout || onStdout ? combinedStdout : undefined,
+        onStderr: streamStderr || onStderr ? combinedStderr : undefined,
+      });
+    } catch (cmdErr) {
+      if (cmdErr instanceof CommandExitError) {
+        throw buildManimError(
+          cmdErr.exitCode,
+          cmdErr.stderr || bufferedStderr,
+          cmdErr.stdout || bufferedStdout,
+        );
+      }
+      throw cmdErr;
+    }
+    if (result.exitCode !== 0) {
+      throw buildManimError(
+        result.exitCode,
+        result.stderr || bufferedStderr,
+        result.stdout || bufferedStdout,
+      );
     }
     const elapsedSeconds = Math.round((Date.now() - startedAt) / 1000);
     console.log(`${description ?? command} succeeded in ${elapsedSeconds}s`);
@@ -981,17 +1014,9 @@ export async function startManimRender({
             { logs: [...renderLogs] },
           );
         }
-        let errorMessage: string;
-        if (dryRunError instanceof ManimValidationError) {
-          errorMessage = dryRunError.message;
-        } else if (dryRunError instanceof CommandExitError) {
-          const parts: string[] = [`Manim command exited with code ${dryRunError.exitCode}`];
-          if (dryRunError.stderr?.trim()) parts.push(`STDERR:\n${dryRunError.stderr}`);
-          if (dryRunError.stdout?.trim()) parts.push(`STDOUT:\n${dryRunError.stdout}`);
-          errorMessage = parts.join("\n\n");
-        } else {
-          errorMessage = String(dryRunError);
-        }
+        const errorMessage = dryRunError instanceof ManimValidationError
+          ? dryRunError.message
+          : String(dryRunError);
         await reportProgress(
           "script-fix",
           `Dry-run failed (attempt ${attempt + 1}/${DRY_RUN_MAX_FIXES + 1}), requesting LLM fix`,
@@ -1097,6 +1122,9 @@ export async function startManimRender({
         logs: [...renderLogs],
         applyWatermark,
         existingSandboxId,
+        prompt,
+        sessionId,
+        variant,
       },
       processId: renderHandle.pid,
     };
@@ -1561,21 +1589,16 @@ export async function finalizeManimRender({
       }
     };
 
-    const result = await sandbox.commands.run(command, {
-      timeoutMs,
-      onStdout: streamStdout || onStdout ? combinedStdout : undefined,
-      onStderr: streamStderr || onStderr ? combinedStderr : undefined,
-    });
-    if (result.exitCode !== 0) {
+    const buildManimError = (exitCode: number, rawStderr: string, rawStdout: string) => {
       const label = description ?? command;
+      const stderr = truncateOutput(rawStderr);
+      const stdout = truncateOutput(rawStdout);
       const messageParts = [
-        `${label} failed with exit code ${result.exitCode}`,
+        `${label} failed with exit code ${exitCode}`,
       ];
       if (hint) {
         messageParts.push(hint);
       }
-      const stderr = truncateOutput(result.stderr || bufferedStderr);
-      const stdout = truncateOutput(result.stdout || bufferedStdout);
       if (stderr) {
         messageParts.push(`STDERR:\n${stderr}`);
         recordChunk(stderr, "stderr");
@@ -1586,13 +1609,13 @@ export async function finalizeManimRender({
       }
       pushLog({
         level: "error",
-        message: `${label} failed with exit code ${result.exitCode}`,
+        message: `${label} failed with exit code ${exitCode}`,
         context: contextLabel,
       });
       const error = new ManimValidationError(messageParts.join("\n\n"), stage, {
-        exitCode: result.exitCode,
-        stderr: result.stderr || bufferedStderr,
-        stdout: result.stdout || bufferedStdout,
+        exitCode,
+        stderr: rawStderr,
+        stdout: rawStdout,
         hint,
         logs: [...renderLogs],
       });
@@ -1600,7 +1623,32 @@ export async function finalizeManimRender({
         command,
         description: label,
       });
-      throw error;
+      return error;
+    };
+
+    let result: Awaited<ReturnType<typeof sandbox.commands.run>>;
+    try {
+      result = await sandbox.commands.run(command, {
+        timeoutMs,
+        onStdout: streamStdout || onStdout ? combinedStdout : undefined,
+        onStderr: streamStderr || onStderr ? combinedStderr : undefined,
+      });
+    } catch (cmdErr) {
+      if (cmdErr instanceof CommandExitError) {
+        throw buildManimError(
+          cmdErr.exitCode,
+          cmdErr.stderr || bufferedStderr,
+          cmdErr.stdout || bufferedStdout,
+        );
+      }
+      throw cmdErr;
+    }
+    if (result.exitCode !== 0) {
+      throw buildManimError(
+        result.exitCode,
+        result.stderr || bufferedStderr,
+        result.stdout || bufferedStdout,
+      );
     }
     const elapsedSeconds = Math.round((Date.now() - startedAt) / 1000);
     console.log(`${description ?? command} succeeded in ${elapsedSeconds}s`);
@@ -1897,7 +1945,7 @@ export async function finalizeManimRender({
 
     return {
       videoPath: dataUrl,
-
+      thumbnailPath: undefined,
       warnings,
       logs: [...renderLogs],
       sandboxId: sandbox.sandboxId,
