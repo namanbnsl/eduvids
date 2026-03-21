@@ -13,7 +13,8 @@ import {
 import {
   finalizeManimRender,
   pollManimRender,
-  startManimRender,
+  prepareManimSandbox,
+  launchManimRender,
 } from "@/lib/e2b";
 import { uploadVideo, uploadImage } from "@/lib/uploadthing";
 import { jobStore, artifactStore } from "@/lib/job-store";
@@ -112,14 +113,14 @@ export const { POST } = serve<VideoGenerationPayload>(
 
     const RENDER_STEP_TIMEOUT_MS = 282_000; // ~4.7 minutes to stay under workflow limits
 
-    const renderStart = await context.run("render-video-start", async () => {
+    const prepared = await context.run("prepare-sandbox", async () => {
       const script = await artifactStore.get(jobId, "manimScript");
       await updateJobProgress(jobId, {
-        progress: 40,
-        step: "rendering video",
-        details: "Bringing your animations to life",
+        progress: 35,
+        step: "validating script",
+        details: "Setting up sandbox and validating your animation code",
       });
-      return startManimRender({
+      return prepareManimSandbox({
         script,
         prompt: generationPrompt,
         sessionId: chatId,
@@ -139,6 +140,15 @@ export const { POST } = serve<VideoGenerationPayload>(
             sessionId: chatId,
           }),
       });
+    });
+
+    const renderStart = await context.run("launch-render", async () => {
+      await updateJobProgress(jobId, {
+        progress: 40,
+        step: "rendering video",
+        details: "Bringing your animations to life",
+      });
+      return launchManimRender({ prepared });
     });
 
     let renderState = renderStart.state;

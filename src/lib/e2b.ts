@@ -505,6 +505,26 @@ export interface StartRenderResult {
   processId: number;
 }
 
+/**
+ * Serializable state returned by prepareManimSandbox, holding everything
+ * needed to kick off the actual render in a separate workflow step.
+ */
+export interface PreparedSandboxState {
+  sandboxId: string;
+  scriptPath: string;
+  mediaDir: string;
+  baseVideosDir: string;
+  sceneNames: string[];
+  renderOptions?: RenderOptions;
+  warnings: ValidationWarning[];
+  logs: RenderLogEntry[];
+  applyWatermark: boolean;
+  existingSandboxId?: string;
+  prompt?: string;
+  sessionId?: string;
+  variant?: "video" | "short";
+}
+
 export async function startManimRender({
   script,
   prompt,
@@ -958,14 +978,14 @@ export async function startManimRender({
 
     await runCommandOrThrow(buildAstValidationCommand(scriptPath), {
       description: "AST validation",
-      stage: "ast",
+      stage: "ast-guard",
       timeoutMs: 120_000,
       hint: "Remove disallowed imports or builtins from the Manim script before rendering.",
     });
 
     await runCommandOrThrow(buildSceneValidationCommand(scriptPath), {
       description: "Scene validation",
-      stage: "scene",
+      stage: "scene-validation",
       timeoutMs: 120_000,
       hint: "Ensure each scene imports correctly, inherits from manim.Scene, and defines construct(self).",
     });
@@ -998,7 +1018,7 @@ export async function startManimRender({
         await runCommandOrThrow(dryRunCmd, {
           description: "Manim dry-run validation",
           stage: "dry-run",
-          timeoutMs: 600_000, // 10 minutes
+          timeoutMs: 240_000, // 4 minutes to stay within Vercel step limits
           hint: "Review the traceback to resolve errors inside your Manim scene.",
           streamOutput: true,
         });
@@ -1200,6 +1220,513 @@ export async function startManimRender({
       await ensureCleanup();
     }
   }
+}
+
+/**
+ * Phase 1: Create sandbox, upload script, run all validations and dry-run
+ * with fix loops. Returns a serializable PreparedSandboxState so the actual
+ * render can be kicked off in a separate workflow step.
+ */
+export async function prepareManimSandbox({
+  script,
+  prompt,
+  sessionId,
+  variant,
+  applyWatermark = true,
+  renderOptions,
+  onProgress,
+  existingSandboxId,
+  scriptFixer,
+}: RenderRequest): Promise<PreparedSandboxState> {
+  const normalizedScript = script.trim();
+  let sceneNames = extractSceneClassNames(normalizedScript);
+  const renderLogs: RenderLogEntry[] = [];
+
+  const reportProgress = async (
+    stage: RenderLifecycleStage,
+    message: string,
+    sandboxId?: string,
+  ) => {
+    if (!onProgress) return;
+    try {
+      await onProgress({ stage, message, sandboxId });
+    } catch (error) {
+      console.warn("Failed to deliver render progress update", {
+        stage,
+        message,
+        sandboxId,
+        error,
+      });
+    }
+  };
+
+  const pushLog = (
+    entry: Omit<RenderLogEntry, "timestamp"> & { timestamp?: string },
+  ) => {
+    const timestamp = entry.timestamp ?? new Date().toISOString();
+    renderLogs.push({ ...entry, timestamp });
+  };
+
+  pushLog({
+    level: "info",
+    message: "Beginning render pipeline (prepare phase)",
+    context: "render",
+  });
+  if (!normalizedScript.length) {
+    throw new ManimValidationError(
+      "Manim script is empty. Please provide a scene before rendering.",
+      "input",
+      { logs: [...renderLogs] },
+    );
+  }
+  if (!hasExpectedSceneClass(normalizedScript)) {
+    throw new ManimValidationError(
+      "Manim script must declare at least one renderable scene class before rendering.",
+      "input",
+      { logs: [...renderLogs] },
+    );
+  }
+  let heuristicFixedScript = normalizedScript;
+  const heuristicResult = runHeuristicChecks(heuristicFixedScript);
+  if (heuristicResult.errors.length) {
+    const summary = heuristicResult.errors
+      .map((issue) => `- ${issue.message}`)
+      .join("\n");
+    if (scriptFixer) {
+      await reportProgress(
+        "script-fix",
+        "Fixing heuristic issues before render",
+      );
+      heuristicFixedScript = await scriptFixer(
+        heuristicFixedScript,
+        `Heuristic validation failed:\n${summary}`,
+      );
+      sceneNames = extractSceneClassNames(heuristicFixedScript);
+    } else {
+      throw new ManimValidationError(
+        `Heuristic validation failed:\n${summary}`,
+        "heuristic",
+        { logs: [...renderLogs] },
+      );
+    }
+  }
+
+  const warnings: ValidationWarning[] = [...heuristicResult.warnings];
+  let sandbox: Sandbox | null = null;
+
+  const ensureCleanup = async () => {
+    if (sandbox) {
+      try {
+        await sandbox.kill();
+      } catch (cleanupError) {
+        console.warn("Sandbox cleanup error (non-fatal):", cleanupError);
+      }
+    }
+  };
+
+  const runCommandOrThrow = async (
+    command: string,
+    options: {
+      description?: string;
+      stage?: ValidationStage;
+      timeoutMs?: number;
+      hint?: string;
+      streamOutput?:
+        | boolean
+        | {
+            stdout?: boolean;
+            stderr?: boolean;
+          };
+    } = {},
+  ) => {
+    if (!sandbox) {
+      throw new Error("Sandbox not initialised before running command");
+    }
+    const {
+      description,
+      stage = "render",
+      timeoutMs,
+      hint,
+      streamOutput,
+    } = options;
+    const startedAt = Date.now();
+    const contextLabel = description ?? command;
+    let streamStdout = false;
+    let streamStderr = false;
+    if (typeof streamOutput === "boolean") {
+      streamStdout = streamOutput;
+      streamStderr = streamOutput;
+    } else if (streamOutput) {
+      streamStdout = Boolean(streamOutput.stdout);
+      streamStderr =
+        streamOutput.stderr !== undefined
+          ? Boolean(streamOutput.stderr)
+          : streamStdout;
+    }
+
+    pushLog({
+      level: "info",
+      message: `Running command: ${contextLabel}`,
+      context: contextLabel,
+    });
+
+    let bufferedStdout = "";
+    let bufferedStderr = "";
+
+    const appendWithLimit = (current: string, chunk: string, limit: number) => {
+      if (!chunk) return current;
+      const next = current + chunk;
+      return next.length <= limit ? next : next.slice(-limit);
+    };
+
+    const recordChunk = (chunk: string, level: "stdout" | "stderr") => {
+      if (!chunk) return;
+      const trimmed = chunk.replace(/\u001b\[[0-9;]*m/g, "");
+      const pieces = trimmed
+        .split(/\r?\n/)
+        .filter((line) => line.trim().length > 0);
+      for (const piece of pieces) {
+        const text =
+          piece.length > MAX_COMMAND_OUTPUT_CHARS
+            ? `${piece.slice(0, MAX_COMMAND_OUTPUT_CHARS)}…`
+            : piece;
+        pushLog({ level, message: text, context: contextLabel });
+      }
+    };
+
+    const combinedStdout = (chunk: string) => {
+      bufferedStdout = appendWithLimit(
+        bufferedStdout,
+        chunk,
+        MAX_COMMAND_BUFFER_CHARS,
+      );
+      recordChunk(chunk, "stdout");
+      if (streamStdout) {
+        console.log(`[${contextLabel}][stdout] ${chunk}`);
+      }
+    };
+
+    const combinedStderr = (chunk: string) => {
+      bufferedStderr = appendWithLimit(
+        bufferedStderr,
+        chunk,
+        MAX_COMMAND_BUFFER_CHARS,
+      );
+      recordChunk(chunk, "stderr");
+      if (streamStderr) {
+        console.error(`[${contextLabel}][stderr] ${chunk}`);
+      }
+    };
+
+    const buildManimError = (exitCode: number, rawStderr: string, rawStdout: string) => {
+      const label = description ?? command;
+      const stderr = truncateOutput(rawStderr);
+      const stdout = truncateOutput(rawStdout);
+      const messageParts = [
+        `${label} failed with exit code ${exitCode}`,
+      ];
+      if (hint) messageParts.push(hint);
+      if (stderr) messageParts.push(`STDERR:\n${stderr}`);
+      if (stdout) messageParts.push(`STDOUT:\n${stdout}`);
+      return new ManimValidationError(messageParts.join("\n\n"), stage, {
+        exitCode,
+        stderr: rawStderr,
+        stdout: rawStdout,
+        hint,
+        logs: [...renderLogs],
+      });
+    };
+
+    let result: Awaited<ReturnType<typeof sandbox.commands.run>>;
+    try {
+      result = await sandbox.commands.run(command, {
+        timeoutMs,
+        onStdout: streamStdout ? combinedStdout : undefined,
+        onStderr: streamStderr ? combinedStderr : undefined,
+      });
+    } catch (cmdErr) {
+      if (cmdErr instanceof CommandExitError) {
+        throw buildManimError(
+          cmdErr.exitCode,
+          cmdErr.stderr || bufferedStderr,
+          cmdErr.stdout || bufferedStdout,
+        );
+      }
+      throw cmdErr;
+    }
+    if (result.exitCode !== 0) {
+      throw buildManimError(
+        result.exitCode,
+        result.stderr || bufferedStderr,
+        result.stdout || bufferedStdout,
+      );
+    }
+    const elapsedSeconds = Math.round((Date.now() - startedAt) / 1000);
+    console.log(`${description ?? command} succeeded in ${elapsedSeconds}s`);
+    return result;
+  };
+
+  try {
+    if (existingSandboxId) {
+      await reportProgress(
+        "sandbox",
+        "Connecting to existing rendering sandbox",
+      );
+      sandbox = await Sandbox.connect(existingSandboxId, {
+        timeoutMs: 3_600_000,
+      });
+    } else {
+      await reportProgress("sandbox", "Provisioning secure rendering sandbox");
+      sandbox = await Sandbox.create("manim20-ffmpeg-bookmarks-latest", {
+        timeoutMs: 3_600_000,
+        envs: {
+          ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
+          TMPDIR: "/dev/shm",
+        },
+      });
+    }
+    await reportProgress("sandbox", "Sandbox ready", sandbox.sandboxId);
+
+    const scriptPath = `/home/user/script.py`;
+    const mediaDir = `/home/user/media`;
+    const baseVideosDir = `${mediaDir}/videos`;
+
+    let enhancedScript = heuristicFixedScript;
+    enhancedScript = injectScaledTextHelper(enhancedScript);
+    enhancedScript = injectSceneFadeOut(enhancedScript);
+    enhancedScript = injectEduvidsCallout(enhancedScript);
+
+    await sandbox.files.write(scriptPath, enhancedScript);
+
+    // Pre-render validation
+    let currentScript = enhancedScript;
+    let currentSceneNames = sceneNames;
+    const PRE_RENDER_MAX_FIXES = 3;
+    for (
+      let preFixAttempt = 0;
+      preFixAttempt <= PRE_RENDER_MAX_FIXES;
+      preFixAttempt += 1
+    ) {
+      try {
+        await runCommandOrThrow(`python -m py_compile ${scriptPath}`, {
+          description: "Syntax check",
+          stage: "syntax",
+          timeoutMs: 120_000,
+          hint: "Fix Python syntax errors reported above before rendering with Manim.",
+        });
+        break;
+      } catch (syntaxError) {
+        if (!scriptFixer || preFixAttempt === PRE_RENDER_MAX_FIXES) {
+          throw syntaxError instanceof ManimValidationError
+            ? syntaxError
+            : new ManimValidationError(
+                `Syntax check failed: ${String(syntaxError)}`,
+                "syntax",
+                { logs: [...renderLogs] },
+              );
+        }
+        const errorMessage =
+          syntaxError instanceof ManimValidationError
+            ? syntaxError.message
+            : String(syntaxError);
+        const fixedScript = await scriptFixer(currentScript, errorMessage);
+        currentScript = fixedScript;
+        currentSceneNames = extractSceneClassNames(currentScript);
+        if (!currentSceneNames.length) throw syntaxError;
+        await sandbox.files.write(scriptPath, currentScript);
+        await runCommandOrThrow(`python -m py_compile ${scriptPath}`, {
+          description: "Syntax check (post-fix)",
+          stage: "syntax",
+          timeoutMs: 120_000,
+        });
+      }
+    }
+
+    await runCommandOrThrow(buildAstValidationCommand(scriptPath), {
+      description: "AST validation",
+      stage: "ast-guard",
+      timeoutMs: 120_000,
+    });
+
+    await runCommandOrThrow(buildSceneValidationCommand(scriptPath), {
+      description: "Scene validation",
+      stage: "scene-validation",
+      timeoutMs: 120_000,
+    });
+
+    if (!latexEnvironmentVerified) {
+      await runCommandOrThrow(`latex --version`, {
+        description: "Check LaTeX",
+        stage: "latex",
+        timeoutMs: 120_000,
+      });
+      latexEnvironmentVerified = true;
+    }
+
+    // Dry-run validation
+    const dryRunArgs = [
+      scriptPath,
+      ...currentSceneNames,
+      "-s",
+      "--disable_caching",
+    ];
+    const dryRunCmd = `manim ${dryRunArgs.join(" ")}`;
+    const DRY_RUN_MAX_FIXES = 2;
+    for (let attempt = 0; attempt <= DRY_RUN_MAX_FIXES; attempt += 1) {
+      try {
+        await runCommandOrThrow(dryRunCmd, {
+          description: "Manim dry-run validation",
+          stage: "dry-run",
+          timeoutMs: 240_000, // 4 min per attempt to stay within 5 min step
+          streamOutput: true,
+        });
+        break;
+      } catch (dryRunError) {
+        if (!scriptFixer || attempt === DRY_RUN_MAX_FIXES) {
+          throw dryRunError instanceof ManimValidationError
+            ? dryRunError
+            : new ManimValidationError(
+                `Dry-run validation failed: ${String(dryRunError)}`,
+                "dry-run",
+                { logs: [...renderLogs] },
+              );
+        }
+        const errorMessage =
+          dryRunError instanceof ManimValidationError
+            ? dryRunError.message
+            : String(dryRunError);
+        const fixedScript = await scriptFixer(currentScript, errorMessage);
+        currentScript = fixedScript;
+        currentSceneNames = extractSceneClassNames(currentScript);
+        if (!currentSceneNames.length) throw dryRunError;
+        await sandbox.files.write(scriptPath, currentScript);
+        await runCommandOrThrow(`python -m py_compile ${scriptPath}`, {
+          description: "Syntax check (post-fix)",
+          stage: "syntax",
+          timeoutMs: 120_000,
+        });
+      }
+    }
+
+    return {
+      sandboxId: sandbox.sandboxId,
+      scriptPath,
+      mediaDir,
+      baseVideosDir,
+      sceneNames: currentSceneNames,
+      renderOptions,
+      warnings,
+      logs: [...renderLogs],
+      applyWatermark,
+      existingSandboxId,
+      prompt,
+      sessionId,
+      variant,
+    };
+  } catch (err: unknown) {
+    console.error("E2B prepare error:", err);
+    await ensureCleanup();
+    if (err instanceof ManimValidationError) {
+      err.logs = err.logs ?? [...renderLogs];
+      throw err;
+    }
+    if (err instanceof Error) {
+      (err as ManimValidationError).logs = [...renderLogs];
+      throw err;
+    }
+    throw new ManimValidationError(String(err), "render", {
+      logs: [...renderLogs],
+    });
+  }
+}
+
+/**
+ * Phase 2: Kick off the background Manim render command on an already-prepared
+ * sandbox. This is fast (just starts the process) and returns immediately.
+ */
+export async function launchManimRender({
+  prepared,
+}: {
+  prepared: PreparedSandboxState;
+}): Promise<StartRenderResult> {
+  const renderLogs: RenderLogEntry[] = [...prepared.logs];
+  const pushLog = (
+    entry: Omit<RenderLogEntry, "timestamp"> & { timestamp?: string },
+  ) => {
+    const timestamp = entry.timestamp ?? new Date().toISOString();
+    renderLogs.push({ ...entry, timestamp });
+  };
+
+  const recordChunk = (chunk: string, level: "stdout" | "stderr") => {
+    if (!chunk) return;
+    const trimmed = chunk.replace(/\u001b\[[0-9;]*m/g, "");
+    const pieces = trimmed
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0);
+    for (const piece of pieces) {
+      const text =
+        piece.length > MAX_COMMAND_OUTPUT_CHARS
+          ? `${piece.slice(0, MAX_COMMAND_OUTPUT_CHARS)}…`
+          : piece;
+      pushLog({ level, message: text, context: "Manim render" });
+    }
+  };
+
+  const sandbox = await Sandbox.connect(prepared.sandboxId, {
+    timeoutMs: 3_600_000,
+  });
+
+  const resolution = prepared.renderOptions?.resolution;
+  const manimArgs = [
+    prepared.scriptPath,
+    ...prepared.sceneNames,
+    "--media_dir",
+    prepared.mediaDir,
+    "--disable_caching",
+    "--format=mp4",
+    "-qm",
+  ];
+  if (resolution) {
+    const safeWidth = Math.max(1, Math.round(resolution.width));
+    const safeHeight = Math.max(1, Math.round(resolution.height));
+    manimArgs.push("-r", `${safeHeight},${safeWidth}`);
+  }
+
+  const manimCmd = `manim ${manimArgs.join(" ")}`;
+  console.log("Starting manim render with command:", manimCmd);
+
+  const renderHandle = await sandbox.commands.run(manimCmd, {
+    background: true,
+    timeoutMs: 3_600_000,
+    onStdout: (chunk) => recordChunk(chunk, "stdout"),
+    onStderr: (chunk) => recordChunk(chunk, "stderr"),
+  });
+
+  pushLog({
+    level: "info",
+    message: `Manim render started (pid ${renderHandle.pid})`,
+    context: "render",
+  });
+
+  return {
+    state: {
+      sandboxId: prepared.sandboxId,
+      processId: renderHandle.pid,
+      scriptPath: prepared.scriptPath,
+      mediaDir: prepared.mediaDir,
+      baseVideosDir: prepared.baseVideosDir,
+      sceneNames: prepared.sceneNames,
+      renderOptions: prepared.renderOptions,
+      warnings: prepared.warnings,
+      logs: [...renderLogs],
+      applyWatermark: prepared.applyWatermark,
+      existingSandboxId: prepared.existingSandboxId,
+      prompt: prepared.prompt,
+      sessionId: prepared.sessionId,
+      variant: prepared.variant,
+    },
+    processId: renderHandle.pid,
+  };
 }
 
 export async function pollManimRender({
