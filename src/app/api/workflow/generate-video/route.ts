@@ -8,7 +8,6 @@ import {
   fixManimScript,
   generateVideoTitle,
   generateVideoDescription,
-  generateThumbnailHtml,
 } from "@/lib/llm";
 import {
   finalizeManimRender,
@@ -16,7 +15,7 @@ import {
   prepareManimSandbox,
   launchManimRender,
 } from "@/lib/e2b";
-import { uploadVideo, uploadImage } from "@/lib/uploadthing";
+import { uploadVideo } from "@/lib/uploadthing";
 import { jobStore, artifactStore } from "@/lib/job-store";
 
 import { updateJobProgress } from "@/lib/workflow/utils/progress";
@@ -216,74 +215,6 @@ export const { POST } = serve<VideoGenerationPayload>(
 
     console.log("✅ Video rendered & uploaded:", uploadUrl);
 
-    // Generate thumbnail via LLM (best-effort). Error handling is inside the
-    // callback because Upstash Workflow uses thrown WorkflowAbort errors for
-    // step replay — wrapping context.run in try/catch breaks step sequencing.
-    const thumbnailUrl = await context.run("generate-thumbnail", async () => {
-      try {
-        await updateJobProgress(jobId, {
-          progress: 87,
-          step: "generating thumbnail",
-          details: "Creating your custom thumbnail",
-        });
-
-        const thumbnailHtml = await generateThumbnailHtml({
-          prompt: generationPrompt,
-          sessionId: chatId,
-          variant,
-        });
-
-        const { html: satoriHtml } = await import("satori-html");
-        const satori = (await import("satori")).default;
-        const { Resvg } = await import("@resvg/resvg-js");
-        const { readFile } = await import("fs/promises");
-        const { join } = await import("path");
-
-        const fontsDir = join(process.cwd(), "public", "fonts");
-        const [lexendBold, lexendRegular, notoSansMath] = await Promise.all([
-          readFile(join(fontsDir, "Lexend-Bold.ttf")),
-          readFile(join(fontsDir, "Lexend-Regular.ttf")),
-          readFile(join(fontsDir, "NotoSansMath-Regular.ttf")),
-        ]);
-
-        const markup = satoriHtml(thumbnailHtml);
-        const svg = await satori(markup as Parameters<typeof satori>[0], {
-          width: 1280,
-          height: 720,
-          fonts: [
-            { name: "Lexend", data: lexendBold, weight: 700, style: "normal" },
-            { name: "Lexend", data: lexendRegular, weight: 400, style: "normal" },
-            { name: "Noto Sans Math", data: notoSansMath, weight: 400, style: "normal" },
-          ],
-        });
-
-        const resvg = new Resvg(svg, {
-          fitTo: { mode: "width", value: 1280 },
-        });
-        const pngData = resvg.render();
-        const thumbBytes = pngData.asPng();
-
-        if (!thumbBytes || thumbBytes.length === 0) {
-          console.warn("Thumbnail PNG was empty after render");
-          return undefined;
-        }
-
-        const thumbBase64 = Buffer.from(thumbBytes).toString("base64");
-        const thumbnailDataUrl = `data:image/png;base64,${thumbBase64}`;
-
-        const thumbUrl = await uploadImage({
-          imagePath: thumbnailDataUrl,
-          userId,
-        });
-        console.log("✅ Thumbnail uploaded:", thumbUrl);
-        return thumbUrl;
-      } catch (err) {
-        console.warn("Thumbnail generation failed (non-fatal):", err);
-        return undefined;
-      }
-    });
-
-    // Generate title (best-effort)
     let videoTitle: string | undefined;
     let videoDescription: string | undefined;
 
@@ -337,7 +268,6 @@ export const { POST } = serve<VideoGenerationPayload>(
           jobId,
           userId,
           variant,
-          thumbnailUrl,
         },
       });
     });

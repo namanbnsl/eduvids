@@ -69,7 +69,7 @@ export async function uploadToYouTube({
       snippet: {
         title: title,
         description: description
-          ? `n\nGenerate your own videos for free at https://eduvids.app\n\n ${description}`
+          ? `Generate your own videos for free at https://eduvids.app\n\n ${description}`
           : `Generate your own videos for free at https://eduvids.app`,
         tags,
         categoryId: "27",
@@ -96,31 +96,4 @@ export async function uploadToYouTube({
   };
 }
 
-export async function setYouTubeThumbnail({
-  videoId,
-  thumbnailUrl,
-}: {
-  videoId: string;
-  thumbnailUrl: string;
-}): Promise<void> {
-  const auth = getOAuth2Client();
-  const youtube = google.youtube({ version: "v3", auth });
 
-  const res = await fetch(thumbnailUrl);
-  if (!res.ok) {
-    throw new Error(
-      `Failed to fetch thumbnail: ${res.status} ${res.statusText}`,
-    );
-  }
-
-  const arrayBuffer = await res.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  await youtube.thumbnails.set({
-    videoId,
-    media: {
-      mimeType: "image/png",
-      body: Readable.from(buffer),
-    },
-  });
-}

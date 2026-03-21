@@ -594,13 +594,14 @@ export async function generateVideoTitle({
   prompt,
   sessionId,
 }: VideoTitleRequest): Promise<string> {
-  const systemPrompt = `You are a YouTube title expert. Generate a single catchy, concise video title.
+  const systemPrompt = `You are a YouTube title expert for a math/science education channel. Generate a single catchy, concise video title.
 
 RULES:
 - Maximum 80 characters
 - No quotes around the title
-- Make it engaging and descriptive
 - Use title case
+- Make the title catchy and descriptive
+- Examples: "Neural Networks Explained" / "The Hidden Beauty of Prime Numbers" / "Why Gravity Bends Light"
 - Output ONLY the title text, nothing else`;
 
   const userPrompt = `Generate a YouTube title for a math/science animation video about: "${prompt}"`;
@@ -681,149 +682,6 @@ ${voiceoverScript}`;
     .trim()
     .replace(/^["']|["']$/g, "")
     .slice(0, 900);
-}
-
-// ---------------------------------------------------------------------------
-// Thumbnail HTML generation
-// ---------------------------------------------------------------------------
-
-export interface ThumbnailHtmlRequest {
-  prompt: string;
-  sessionId: string;
-  variant?: "video" | "short";
-}
-
-export async function generateThumbnailHtml({
-  prompt,
-  sessionId,
-  variant,
-}: ThumbnailHtmlRequest): Promise<string> {
-  const systemPrompt = `You are a world-class editorial designer creating YouTube thumbnails for a premium math/science education channel. Generate HTML markup rendered to a 1280×720 PNG via Satori.
-
-CRITICAL SATORI CONSTRAINTS:
-- ONLY inline styles (style attribute). NO <style> tags, CSS classes, or selectors.
-- Flexbox ONLY layout. Every container defaults to display:flex. No grid/float/table.
-- camelCase CSS in style attributes (e.g. fontSize: 72px; fontWeight: 700).
-- Allowed elements: div, span, p, img, svg, path. NO html/head/body/h1/h2/etc.
-- Root MUST be: <div style="width: 1280px; height: 720px; display: flex; ...">
-- Fonts available: "Lexend" (weights: 400, 700) for text, "Noto Sans Math" (weight: 400) for math symbols. Set fontFamily: "Lexend" on root. For elements containing math Unicode symbols (∞, Σ, ∫, √, Δ, φ, θ, π, etc.), set fontFamily: "Noto Sans Math, Lexend" on that element.
-- Supported CSS: flexbox props, position (relative/absolute), color, background, backgroundImage (linear-gradient), padding, margin, border, borderRadius, fontSize, fontWeight, fontStyle, lineHeight, letterSpacing, textAlign, textTransform, textShadow, opacity, overflow, boxShadow, filter, objectFit.
-- NOT supported: z-index (use DOM order), calc(), animations, transitions, pseudo-elements.
-- NO <script>, @import, or external URLs.
-
-DESIGN DIRECTION — AVOID GENERIC AI AESTHETICS:
-You must NOT produce the typical AI thumbnail look. That means:
-- NO dark purple/blue backgrounds with neon cyan/pink accents.
-- NO generic "glowing orbs" floating around. NO generic gradient blobs.
-- NO pill-shaped category badges. NO thin gradient accent lines at the bottom.
-- NO cookie-cutter layouts with text-left, floating-symbol-right.
-
-Instead, design like a real human editorial designer with INTENTIONAL choices:
-
-COLOR PALETTES — pick ONE per thumbnail and commit fully:
-  • Warm editorial: cream (#F5F0E8) background, charcoal (#1C1917) text, burnt sienna (#C2410C) accent
-  • Bold contrast: pure black (#000000) background, stark white text, single vivid accent (pick ONE: vermillion #E53935, emerald #059669, amber #D97706)
-  • Muted sophistication: slate (#334155) background, warm white (#FAFAF9) text, muted gold (#B45309) accent
-  • Scientific paper: off-white (#FEFCE8) background, deep navy (#1E293B) text, oxide red (#991B1B) accent
-  • Chalkboard: dark forest green (#14532D) background, chalk white text, pale yellow (#FDE68A) highlight
-  • High contrast modern: deep ink (#0F172A) background, crisp white text, single saturated accent
-  Do NOT default to the same palette every time. Pick based on the topic's mood.
-
-TYPOGRAPHY — THIS IS CRITICAL FOR READABILITY:
-- Headline: 64-84px, fontWeight: 700. Let the text BE the design — fill the frame.
-- Maximum 2-5 words. Rewrite the prompt into a provocative question or bold claim.
-- letterSpacing MUST be between 0px and 3px. NEVER use negative letterSpacing — it smashes letters together and makes text unreadable.
-- lineHeight: use 1.1 to 1.2 so lines don't overlap.
-- Put EACH WORD in its own <span> or <div> so words are clearly separated. Add spacing between words.
-- Consider ALL-CAPS for impact or mixed-case for elegance — vary per topic.
-
-POSITIONING & ACCURACY — THIS IS CRITICAL:
-- DO NOT use complex overlapping positioned elements. Keep layouts simple and predictable.
-- If you place a label (like "A", "B", "C", ∠, etc.) next to a geometric shape, the label MUST be visually adjacent to the correct vertex/edge. Use flexbox alignment (alignItems, justifyContent) to position labels — NOT absolute positioning with guessed pixel values.
-- DO NOT place angle symbols or labels at random positions. If you show an angle, the ∠ symbol must be AT the angle's vertex.
-- Prefer simple, bold compositions over intricate diagrams. A large symbol + bold text is better than a complex geometric diagram with misplaced labels.
-- When showing geometric shapes (triangles, circles, etc.), keep them simple and decorative. Do NOT try to create precise technical diagrams with labeled vertices — Satori's layout makes this unreliable. Instead, use shapes as large background/accent elements.
-
-COMPOSITION — vary these approaches:
-  • Full-bleed typography: Text fills 70%+ of the frame. Minimal decoration. Let whitespace breathe.
-  • Asymmetric split: Strong color block division. Content on one side, bold color/shape on the other.
-  • Centered monumental: One large symbol or equation dead center, text above/below in smaller size.
-  • Overlapping layers: 2-3 large simple shapes with text in front.
-
-VISUAL ELEMENTS — keep it simple and bold:
-- ONE or TWO large Unicode math symbols (∞, Σ, ∫, √, Δ, φ, θ, π, ∠) rendered at 200-400px as decorative background elements. IMPORTANT: always set fontFamily: "Noto Sans Math, Lexend" on elements containing these symbols.
-- Simple geometric shapes: circles, rectangles, triangles using border/borderRadius — as accent elements only, NOT as technical diagrams.
-- Simple SVG <path> curves (sine wave, parabola) as decorative accents — keep path data short and simple.
-- Use opacity (0.1-0.3) on decorative elements so they don't compete with the headline text.
-- Prefer clean lines and solid shapes over gradients and glows.
-
-WHAT NOT TO DO:
-- Do NOT create complex geometric diagrams with multiple labeled points/vertices.
-- Do NOT use absolute positioning with guessed pixel values for labels — they WILL be wrong.
-- Do NOT try to show precise mathematical relationships visually (angle measures, side lengths) — just suggest the topic.
-- Do NOT crowd the thumbnail with many small elements. Less is more.
-
-CRITICAL: Every thumbnail must look like it was designed by a human with taste. Think Vox, NYT graphics, Nature journal covers. The thumbnail should suggest the topic at a glance — it does NOT need to be a technical diagram.
-${variant === "short" ? "- This is for a YouTube Short. Make the thumbnail extra bold and punchy." : ""}
-
-OUTPUT ONLY THE RAW HTML. No markdown fences, no backticks, no commentary.`;
-
-  const userPrompt = `Create a stunning, scroll-stopping YouTube thumbnail for an educational math/science video about: "${prompt}"
-
-Design a unique visual concept that captures the essence of this topic. Use relevant mathematical symbols, geometric shapes, or scientific visual motifs built with HTML/SVG elements.`;
-
-  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
-  const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
-    posthogProperties: { $ai_session_id: sessionId },
-  });
-
-  const text = await streamTextWithTracking(
-    {
-      model,
-      system: systemPrompt,
-      prompt: userPrompt,
-      temperature: 0.9,
-    },
-    googleModel,
-  );
-
-  let html = text
-    .replace(/```html?\n?/g, "")
-    .replace(/```\n?/g, "")
-    .trim();
-
-  // Validate: reject scripts, external URLs, @import, <style> tags
-  if (/<script/i.test(html) || /@import/i.test(html) || /<style[\s>]/i.test(html)) {
-    console.warn("[generateThumbnailHtml] LLM output contained forbidden elements, using fallback");
-    html = buildFallbackThumbnailHtml(prompt);
-  }
-
-  // Remove any http/https URLs that slipped through
-  html = html.replace(/https?:\/\/[^\s"'<>]+/g, "");
-
-  // Satori requires every element with multiple children to have explicit
-  // display: flex | contents | none.  LLM output sometimes misses this on
-  // inner divs.  Inject "display:flex" into any <div style="..."> that lacks it.
-  html = html.replace(
-    /<div\s+style="((?!display\s*:)[^"]*)"/gi,
-    '<div style="display:flex;$1"',
-  );
-
-  return html;
-}
-
-function buildFallbackThumbnailHtml(prompt: string): string {
-  const headline = prompt.length > 50 ? prompt.slice(0, 47) + "..." : prompt;
-  return `<div style="width: 1280px; height: 720px; display: flex; position: relative; overflow: hidden; fontFamily: Lexend; background: #0F172A;">
-  <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; background: linear-gradient(160deg, #0F172A 0%, #1E293B 100%);"></div>
-  <div style="position: absolute; bottom: 60px; right: 80px; width: 320px; height: 320px; borderRadius: 50%; border: 2px solid rgba(255,255,255,0.06); display: flex;"></div>
-  <div style="position: absolute; bottom: 120px; right: 140px; width: 200px; height: 200px; borderRadius: 50%; border: 2px solid rgba(255,255,255,0.04); display: flex;"></div>
-  <div style="display: flex; flexDirection: column; justifyContent: center; width: 100%; height: 100%; padding: 80px 100px; position: relative;">
-    <div style="color: #94A3B8; fontSize: 20px; fontWeight: 400; letterSpacing: 4px; textTransform: uppercase; marginBottom: 32px; display: flex;">Explained</div>
-    <div style="color: #FAFAF9; fontSize: 76px; fontWeight: 700; lineHeight: 0.95; letterSpacing: -1px;">${headline}</div>
-    <div style="display: flex; marginTop: 40px;"><div style="width: 60px; height: 3px; background: #E53935;"></div></div>
-  </div>
-</div>`;
 }
 
 // ---------------------------------------------------------------------------

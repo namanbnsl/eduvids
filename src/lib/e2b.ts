@@ -257,8 +257,6 @@ interface ValidationWarning {
 
 export interface RenderResult {
   videoPath: string;
-  thumbnailPath?: string;
-
   warnings: ValidationWarning[];
   logs: RenderLogEntry[];
   sandboxId: string;
@@ -462,16 +460,6 @@ export interface RenderRequest {
   /** Called when dry-run fails — receives the current script and error output,
    *  returns the fixed script. Omit to skip the fix loop. */
   scriptFixer?: (script: string, errors: string) => Promise<string>;
-}
-
-export interface ThumbnailResult {
-  imagePath: string;
-}
-
-export interface ThumbnailRequest {
-  script: string;
-  prompt: string;
-  renderOptions?: RenderOptions;
 }
 
 export interface RenderState {
@@ -2472,7 +2460,6 @@ export async function finalizeManimRender({
 
     return {
       videoPath: dataUrl,
-      thumbnailPath: undefined,
       warnings,
       logs: [...renderLogs],
       sandboxId: sandbox.sandboxId,

@@ -1,6 +1,6 @@
 import { serve } from "@upstash/workflow/nextjs";
 
-import { uploadToYouTube, setYouTubeThumbnail } from "@/lib/youtube";
+import { uploadToYouTube } from "@/lib/youtube";
 import { jobStore } from "@/lib/job-store";
 import { getConvexClient, api } from "@/lib/convex-server";
 import {
@@ -22,12 +22,11 @@ type YouTubeUploadPayload = {
   jobId?: string;
   userId: string;
   variant?: VideoVariant;
-  thumbnailUrl?: string;
 };
 
 export const { POST } = serve<YouTubeUploadPayload>(
   async (context) => {
-    const { videoUrl, title, description, prompt, jobId, variant, thumbnailUrl } =
+    const { videoUrl, title, description, prompt, jobId, variant } =
       context.requestPayload;
 
     const isShort = variant === "short";
@@ -48,21 +47,6 @@ export const { POST } = serve<YouTubeUploadPayload>(
         variant,
       });
     });
-
-    // Set custom thumbnail (best-effort, no try/catch around context.run)
-    if (thumbnailUrl) {
-      await context.run("set-youtube-thumbnail", async () => {
-        try {
-          await setYouTubeThumbnail({
-            videoId: youtubeResult.videoId,
-            thumbnailUrl,
-          });
-          console.log("✅ YouTube thumbnail set");
-        } catch (err) {
-          console.warn("YouTube thumbnail set failed (non-fatal):", err);
-        }
-      });
-    }
 
     // Trigger X (Twitter) post workflow
     await context.run("trigger-x-upload", async () => {
