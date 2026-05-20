@@ -191,7 +191,7 @@ export async function generateScenePlan({
   let lastError: unknown;
 
   for (let attempt = 0; attempt < SCENE_PLAN_MAX_RETRIES; attempt++) {
-    const googleModel = await createGoogleModel("gemini-3-flash-preview");
+    const googleModel = await createGoogleModel("gemini-3.5-flash");
     const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     });
@@ -540,7 +540,7 @@ export async function generateManimScript({
   let lastError: unknown;
 
   for (let attempt = 0; attempt < MANIM_SCRIPT_MAX_RETRIES; attempt++) {
-    const googleModel = await createGoogleModel("gemini-3-flash-preview");
+    const googleModel = await createGoogleModel("gemini-3.5-flash");
     const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     });
@@ -798,7 +798,7 @@ RULES:
 
   console.log(userPrompt);
 
-  const googleModel = await createGoogleModel("gemini-3-flash-preview");
+  const googleModel = await createGoogleModel("gemini-3.5-flash");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
   });
@@ -857,7 +857,10 @@ function fixManimScriptHeuristically(
   const notes: string[] = [];
 
   // fix_in_frame() is ManimGL-only; Manim Community uses self.add_fixed_in_frame_mobjects()
-  if (/has no attribute 'fix_in_frame'/.test(errors) || /fix_in_frame/.test(updated)) {
+  if (
+    /has no attribute 'fix_in_frame'/.test(errors) ||
+    /fix_in_frame/.test(updated)
+  ) {
     const fixInFrameRegex = /^([ \t]*)(\w+)\.fix_in_frame\(\)/gm;
     let match: RegExpExecArray | null;
     while ((match = fixInFrameRegex.exec(updated)) !== null) {
@@ -868,7 +871,9 @@ function fixManimScriptHeuristically(
         match[0],
         `${indent}self.add_fixed_in_frame_mobjects(${varName})`,
       );
-      notes.push(`replaced ${varName}.fix_in_frame() with self.add_fixed_in_frame_mobjects(${varName})`);
+      notes.push(
+        `replaced ${varName}.fix_in_frame() with self.add_fixed_in_frame_mobjects(${varName})`,
+      );
     }
   }
 

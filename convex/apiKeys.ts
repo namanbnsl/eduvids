@@ -21,6 +21,22 @@ type ModelPolicy = {
 
 const MODEL_POLICIES: Record<string, ModelPolicy> = {
   // Higher quality model – free tier: 5 RPM, 250K TPM, 20 RPD
+  "gemini-flash-latest": {
+    maxRequestsPer24hPerKey: 20,
+    rateLimitCooldownMs: 90_000,
+    quotaResetDelayMs: 3_600_000,
+    errorCooldownMs: 45_000,
+    maxConsecutiveErrors: 3,
+  },
+  // Higher quality model – free tier: 5 RPM, 250K TPM, 20 RPD
+  "gemini-3.5-flash": {
+    maxRequestsPer24hPerKey: 20,
+    rateLimitCooldownMs: 90_000,
+    quotaResetDelayMs: 3_600_000,
+    errorCooldownMs: 45_000,
+    maxConsecutiveErrors: 3,
+  },
+  // Higher quality model – free tier: 5 RPM, 250K TPM, 20 RPD
   "gemini-3-flash-preview": {
     maxRequestsPer24hPerKey: 20,
     rateLimitCooldownMs: 90_000,
@@ -174,17 +190,21 @@ export const selectKey = mutation({
       state = (await ctx.db.get(stateId))!;
     }
 
-    const keys = (await ctx.db
-      .query("apiKeys")
-      .withIndex("by_provider_model", (q) =>
-        q.eq("provider", args.provider).eq("model", args.model),
-      )
-      .collect())
+    const keys = (
+      await ctx.db
+        .query("apiKeys")
+        .withIndex("by_provider_model", (q) =>
+          q.eq("provider", args.provider).eq("model", args.model),
+        )
+        .collect()
+    )
       .filter((k) => k.keyIndex < args.numKeys)
       .sort((a, b) => a.keyIndex - b.keyIndex);
 
     if (keys.length === 0) {
-      throw new Error(`No API keys registered for ${args.provider}/${args.model}`);
+      throw new Error(
+        `No API keys registered for ${args.provider}/${args.model}`,
+      );
     }
 
     const available: typeof keys = [];
@@ -214,26 +234,41 @@ export const selectKey = mutation({
         updated = true;
       }
 
-      if (key.status === "rate_limited" && key.cooldownUntilMs && now >= key.cooldownUntilMs) {
+      if (
+        key.status === "rate_limited" &&
+        key.cooldownUntilMs &&
+        now >= key.cooldownUntilMs
+      ) {
         key.status = "healthy";
         key.cooldownUntilMs = undefined;
         updated = true;
       }
 
-      if (key.status === "error" && key.cooldownUntilMs && now >= key.cooldownUntilMs) {
+      if (
+        key.status === "error" &&
+        key.cooldownUntilMs &&
+        now >= key.cooldownUntilMs
+      ) {
         key.status = "healthy";
         key.consecutiveErrors = 0;
         key.cooldownUntilMs = undefined;
         updated = true;
       }
 
-      if (key.status === "quota_exceeded" && key.quotaResetTimeMs && now >= key.quotaResetTimeMs) {
+      if (
+        key.status === "quota_exceeded" &&
+        key.quotaResetTimeMs &&
+        now >= key.quotaResetTimeMs
+      ) {
         key.status = "healthy";
         key.quotaResetTimeMs = undefined;
         updated = true;
       }
 
-      if (key.requestCount24h >= policy.maxRequestsPer24hPerKey && key.status !== "blocked") {
+      if (
+        key.requestCount24h >= policy.maxRequestsPer24hPerKey &&
+        key.status !== "blocked"
+      ) {
         key.status = "quota_exceeded";
         key.quotaResetTimeMs = key.windowStartMs + WINDOW_24H_MS;
         updated = true;
