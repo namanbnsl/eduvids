@@ -261,7 +261,7 @@ export async function generateVoiceoverScript({
     "Draft the narration voiceover:",
   ].join("\n\n");
 
-  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
+  const googleModel = await createGoogleModel("gemini-3.1-flash-lite");
 
   const { text } = await generateText({
     model: maybeWithTracing(googleModel.provider(googleModel.modelId), {
@@ -606,7 +606,7 @@ RULES:
 
   const userPrompt = `Generate a YouTube title for a math/science animation video about: "${prompt}"`;
 
-  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
+  const googleModel = await createGoogleModel("gemini-3.1-flash-lite");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
   });
@@ -663,7 +663,7 @@ TOPIC: ${prompt}
 VOICEOVER SCRIPT:
 ${voiceoverScript}`;
 
-  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
+  const googleModel = await createGoogleModel("gemini-3.1-flash-lite");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
   });
@@ -1006,7 +1006,7 @@ If there are no issues, return:
   "suggestedFixes": ""
 }`;
 
-  const googleModel = await createGoogleModel("gemini-3.1-flash-lite-preview");
+  const googleModel = await createGoogleModel("gemini-3.1-flash-lite");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
   });

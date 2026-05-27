@@ -45,7 +45,7 @@ const MODEL_POLICIES: Record<string, ModelPolicy> = {
     maxConsecutiveErrors: 3,
   },
   // Faster/cheaper fallback model – free tier: 15 RPM, 250K TPM, 500 RPD
-  "gemini-3.1-flash-lite-preview": {
+  "gemini-3.1-flash-lite": {
     maxRequestsPer24hPerKey: 500,
     rateLimitCooldownMs: 45_000,
     quotaResetDelayMs: 1_800_000,
@@ -69,7 +69,7 @@ function resolveModelPolicy(model: string): ModelPolicy {
     return MODEL_POLICIES["gemini-3-flash-preview"];
   }
   if (model.includes("3.1-flash-lite")) {
-    return MODEL_POLICIES["gemini-3.1-flash-lite-preview"];
+    return MODEL_POLICIES["gemini-3.1-flash-lite"];
   }
 
   return DEFAULT_MODEL_POLICY;
