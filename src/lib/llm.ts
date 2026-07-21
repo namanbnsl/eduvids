@@ -191,7 +191,7 @@ export async function generateScenePlan({
   let lastError: unknown;
 
   for (let attempt = 0; attempt < SCENE_PLAN_MAX_RETRIES; attempt++) {
-    const googleModel = await createGoogleModel("gemini-3.5-flash");
+    const googleModel = await createGoogleModel("gemini-3.6-flash");
     const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     });
@@ -261,7 +261,7 @@ export async function generateVoiceoverScript({
     "Draft the narration voiceover:",
   ].join("\n\n");
 
-  const googleModel = await createGoogleModel("gemini-3.1-flash-lite");
+  const googleModel = await createGoogleModel("gemini-3.5-flash-lite");
 
   const { text } = await generateText({
     model: maybeWithTracing(googleModel.provider(googleModel.modelId), {
@@ -540,7 +540,7 @@ export async function generateManimScript({
   let lastError: unknown;
 
   for (let attempt = 0; attempt < MANIM_SCRIPT_MAX_RETRIES; attempt++) {
-    const googleModel = await createGoogleModel("gemini-3.5-flash");
+    const googleModel = await createGoogleModel("gemini-3.6-flash");
     const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     });
@@ -606,7 +606,7 @@ RULES:
 
   const userPrompt = `Generate a YouTube title for a math/science animation video about: "${prompt}"`;
 
-  const googleModel = await createGoogleModel("gemini-3.1-flash-lite");
+  const googleModel = await createGoogleModel("gemini-3.5-flash-lite");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
   });
@@ -663,7 +663,7 @@ TOPIC: ${prompt}
 VOICEOVER SCRIPT:
 ${voiceoverScript}`;
 
-  const googleModel = await createGoogleModel("gemini-3.1-flash-lite");
+  const googleModel = await createGoogleModel("gemini-3.5-flash-lite");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
   });
@@ -685,7 +685,7 @@ ${voiceoverScript}`;
 }
 
 // ---------------------------------------------------------------------------
-// Script fixer – diff-based error correction via gemini-3.1-flash-lite
+// Script fixer – diff-based error correction via gemini-3.5-flash-lite
 // ---------------------------------------------------------------------------
 
 const SEARCH_REPLACE_MARKERS = {
@@ -798,7 +798,7 @@ RULES:
 
   console.log(userPrompt);
 
-  const googleModel = await createGoogleModel("gemini-3.5-flash");
+  const googleModel = await createGoogleModel("gemini-3.6-flash");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
   });
@@ -1006,7 +1006,7 @@ If there are no issues, return:
   "suggestedFixes": ""
 }`;
 
-  const googleModel = await createGoogleModel("gemini-3.1-flash-lite");
+  const googleModel = await createGoogleModel("gemini-3.5-flash-lite");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
   });
