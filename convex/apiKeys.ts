@@ -21,15 +21,7 @@ type ModelPolicy = {
 
 const MODEL_POLICIES: Record<string, ModelPolicy> = {
   // Higher quality model – free tier: 5 RPM, 250K TPM, 20 RPD
-  "gemini-flash-latest": {
-    maxRequestsPer24hPerKey: 20,
-    rateLimitCooldownMs: 90_000,
-    quotaResetDelayMs: 3_600_000,
-    errorCooldownMs: 45_000,
-    maxConsecutiveErrors: 3,
-  },
-  // Higher quality model – free tier: 5 RPM, 250K TPM, 20 RPD
-  "gemini-3.5-flash": {
+  "gemini-3.6-flash": {
     maxRequestsPer24hPerKey: 20,
     rateLimitCooldownMs: 90_000,
     quotaResetDelayMs: 3_600_000,
@@ -45,7 +37,7 @@ const MODEL_POLICIES: Record<string, ModelPolicy> = {
     maxConsecutiveErrors: 3,
   },
   // Faster/cheaper fallback model – free tier: 15 RPM, 250K TPM, 500 RPD
-  "gemini-3.1-flash-lite": {
+  "gemini-3.5-flash-lite": {
     maxRequestsPer24hPerKey: 500,
     rateLimitCooldownMs: 45_000,
     quotaResetDelayMs: 1_800_000,
@@ -65,11 +57,11 @@ const DEFAULT_MODEL_POLICY: ModelPolicy = {
 function resolveModelPolicy(model: string): ModelPolicy {
   if (MODEL_POLICIES[model]) return MODEL_POLICIES[model];
 
-  if (model.includes("3-flash")) {
-    return MODEL_POLICIES["gemini-3-flash-preview"];
+  if (model.includes("3.6-flash")) {
+    return MODEL_POLICIES["gemini-3.6-flash"];
   }
-  if (model.includes("3.1-flash-lite")) {
-    return MODEL_POLICIES["gemini-3.1-flash-lite"];
+  if (model.includes("3.5-flash-lite")) {
+    return MODEL_POLICIES["gemini-3.5-flash-lite"];
   }
 
   return DEFAULT_MODEL_POLICY;
