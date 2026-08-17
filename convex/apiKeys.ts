@@ -21,7 +21,7 @@ type ModelPolicy = {
 
 const MODEL_POLICIES: Record<string, ModelPolicy> = {
   // Higher quality model – free tier: 5 RPM, 250K TPM, 20 RPD
-  "gemini-3.6-flash": {
+  "gemini-3.7-flash": {
     maxRequestsPer24hPerKey: 20,
     rateLimitCooldownMs: 90_000,
     quotaResetDelayMs: 3_600_000,
@@ -57,8 +57,8 @@ const DEFAULT_MODEL_POLICY: ModelPolicy = {
 function resolveModelPolicy(model: string): ModelPolicy {
   if (MODEL_POLICIES[model]) return MODEL_POLICIES[model];
 
-  if (model.includes("3.6-flash")) {
-    return MODEL_POLICIES["gemini-3.6-flash"];
+  if (model.includes("3.7-flash")) {
+    return MODEL_POLICIES["gemini-3.7-flash"];
   }
   if (model.includes("3.5-flash-lite")) {
     return MODEL_POLICIES["gemini-3.5-flash-lite"];
