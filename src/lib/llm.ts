@@ -191,7 +191,7 @@ export async function generateScenePlan({
   let lastError: unknown;
 
   for (let attempt = 0; attempt < SCENE_PLAN_MAX_RETRIES; attempt++) {
-    const googleModel = await createGoogleModel("gemini-3.6-flash");
+    const googleModel = await createGoogleModel("gemini-3.7-flash");
     const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     });
@@ -540,7 +540,7 @@ export async function generateManimScript({
   let lastError: unknown;
 
   for (let attempt = 0; attempt < MANIM_SCRIPT_MAX_RETRIES; attempt++) {
-    const googleModel = await createGoogleModel("gemini-3.6-flash");
+    const googleModel = await createGoogleModel("gemini-3.7-flash");
     const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     });
@@ -798,7 +798,7 @@ RULES:
 
   console.log(userPrompt);
 
-  const googleModel = await createGoogleModel("gemini-3.6-flash");
+  const googleModel = await createGoogleModel("gemini-3.7-flash");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
   });
