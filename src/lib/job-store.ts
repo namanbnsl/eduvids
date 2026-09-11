@@ -1,5 +1,30 @@
 import { randomUUID } from "crypto";
-import { kv } from "@vercel/kv";
+import { VercelKV } from "@vercel/kv";
+
+// This SDK version has no request timeout option. Supply its supported requester
+// so a stalled storage call aborts instead of consuming the function deadline.
+const kv = new VercelKV({
+  request: async ({ body, path }) => {
+    const url = process.env.KV_REST_API_URL;
+    const token = process.env.KV_REST_API_TOKEN;
+    if (!url || !token) throw new Error("KV storage is not configured");
+    const response = await fetch(
+      `${url.replace(/\/$/, "")}/${(path ?? []).join("/")}`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    if (!response.ok) throw new Error(`KV request failed (${response.status})`);
+    return response.json();
+  },
+});
 import {
   JobStore,
   JobProgressEntry,
@@ -23,6 +48,24 @@ class KVArtifactStore {
     await kv.set(this.key(jobId, name), value, { ex: this.ttlSeconds });
   }
 
+  async claim(jobId: string, name: string): Promise<boolean> {
+    return (
+      (await kv.set(this.key(jobId, name), "started", {
+        nx: true,
+        ex: this.ttlSeconds,
+      })) === "OK"
+    );
+  }
+
+  async find(jobId: string, name: string): Promise<string | undefined> {
+    const value = await kv.get(this.key(jobId, name));
+    return value == null
+      ? undefined
+      : typeof value === "string"
+        ? value
+        : JSON.stringify(value);
+  }
+
   async get(jobId: string, name: string): Promise<string> {
     const v = await kv.get(this.key(jobId, name));
     if (v === null || v === undefined) {
@@ -38,19 +81,14 @@ class KVJobStore implements JobStore {
   private ttlSeconds = 60 * 60 * 24; // 24 hours
   private maxProgressEntries = 50;
 
-  private appendProgressLog(
-    job: VideoJob,
-    atTimestamp?: string
-  ): VideoJob {
+  private appendProgressLog(job: VideoJob, atTimestamp?: string): VideoJob {
     const entry: JobProgressEntry = {
       progress: job.progress,
       step: job.step,
       details: job.details,
       at: atTimestamp ?? new Date().toISOString(),
     };
-    const history = Array.isArray(job.progressLog)
-      ? [...job.progressLog]
-      : [];
+    const history = Array.isArray(job.progressLog) ? [...job.progressLog] : [];
     history.push(entry);
     if (history.length > this.maxProgressEntries) {
       history.splice(0, history.length - this.maxProgressEntries);
@@ -60,7 +98,7 @@ class KVJobStore implements JobStore {
 
   async create(
     description: string,
-    options?: { variant?: VideoVariant }
+    options?: { variant?: VideoVariant },
   ): Promise<VideoJob> {
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -88,7 +126,7 @@ class KVJobStore implements JobStore {
 
   async setProgress(
     id: string,
-    update: { progress?: number; step?: string; details?: string }
+    update: { progress?: number; step?: string; details?: string },
   ): Promise<VideoJob | undefined> {
     const job = await this.get(id);
     if (!job) return undefined;
@@ -123,7 +161,7 @@ class KVJobStore implements JobStore {
 
   async setError(id: string, message: string): Promise<VideoJob | undefined> {
     const job = await this.get(id);
-    if (!job) return undefined;
+    if (!job || job.status === "ready") return job;
     const updated: VideoJob = {
       ...job,
       status: "error",
@@ -144,7 +182,7 @@ class KVJobStore implements JobStore {
       youtubeUrl?: string;
       youtubeVideoId?: string;
       youtubeError?: string;
-    }
+    },
   ): Promise<VideoJob | undefined> {
     const job = await this.get(id);
     if (!job) return undefined;

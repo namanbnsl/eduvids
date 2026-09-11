@@ -322,6 +322,7 @@ export function VideoPlayer({
     };
 
     const startPolling = () => {
+      if (cancelled || pollInterval) return;
       const poll = async () => {
         try {
           const res = await fetch(`/api/jobs/${jobId}`, { cache: "no-store" });

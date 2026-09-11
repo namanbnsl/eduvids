@@ -37,6 +37,8 @@ export async function POST(req: Request) {
 
   // Create a new provider instance for each request to rotate API keys
   const result = streamText({
+    abortSignal: AbortSignal.any([req.signal, AbortSignal.timeout(90_000)]),
+    maxRetries: 0,
     model: selectGroqModel(GROQ_MODEL_IDS.gptOss),
     system: systemPrompt,
     messages: await convertToModelMessages(messages),
@@ -95,6 +97,9 @@ export async function POST(req: Request) {
 
           // Dispatch background job to Upstash Workflow
           await workflowClient.trigger({
+            workflowRunId: `video-${job.id}`,
+            retries: 3,
+            retryDelay: "(1 + retried) * 10000",
             headers: getTriggerHeaders(),
             url: `${getBaseUrl()}/api/workflow/generate-video`,
             body: {

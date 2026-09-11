@@ -51,7 +51,8 @@ export async function uploadToYouTube({
     (process.env.YOUTUBE_PRIVACY_STATUS as YouTubePrivacyStatus) ??
     "unlisted";
 
-  const res = await fetch(videoUrl);
+  const signal = AbortSignal.timeout(240_000);
+  const res = await fetch(videoUrl, { signal });
   if (!res.ok) {
     throw new Error(
       `Failed to fetch video from UploadThing URL: ${res.status} ${res.statusText}`,
@@ -63,26 +64,29 @@ export async function uploadToYouTube({
   const mediaBuffer = Buffer.from(arrayBuffer);
   const mediaBody = Readable.from(mediaBuffer);
 
-  const insertRes = await youtube.videos.insert({
-    part: ["snippet", "status"],
-    requestBody: {
-      snippet: {
-        title: title,
-        description: description
-          ? `Generate your own videos for free at https://eduvids.app\n\n ${description}`
-          : `Generate your own videos for free at https://eduvids.app`,
-        tags,
-        categoryId: "27",
+  const insertRes = await youtube.videos.insert(
+    {
+      part: ["snippet", "status"],
+      requestBody: {
+        snippet: {
+          title: title,
+          description: description
+            ? `Generate your own videos for free at https://eduvids.app\n\n ${description}`
+            : `Generate your own videos for free at https://eduvids.app`,
+          tags,
+          categoryId: "27",
+        },
+        status: {
+          privacyStatus: privacy,
+        },
       },
-      status: {
-        privacyStatus: privacy,
+      media: {
+        mimeType: "video/mp4",
+        body: mediaBody,
       },
     },
-    media: {
-      mimeType: "video/mp4",
-      body: mediaBody,
-    },
-  });
+    { signal, timeout: 240_000, retry: false },
+  );
 
   const videoId = insertRes.data.id;
   if (!videoId) {
@@ -95,5 +99,3 @@ export async function uploadToYouTube({
     title: title,
   };
 }
-
-

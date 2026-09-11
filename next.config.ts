@@ -14,9 +14,6 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   skipTrailingSlashRedirect: true,
 };
 

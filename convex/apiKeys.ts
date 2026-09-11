@@ -2,7 +2,6 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
 const WINDOW_24H_MS = 86_400_000; // 24 hours
-const AUTO_HEAL_AFTER_MS = 900_000; // 15 minutes
 
 type KeyStatus =
   | "healthy"
@@ -98,6 +97,8 @@ function classifyError(
     lower.includes("401") ||
     lower.includes("403") ||
     lower.includes("unauthorized") ||
+    lower.includes("permission denied") ||
+    lower.includes("suspended") ||
     lower.includes("api key not valid") ||
     lower.includes("api key invalid")
   ) {
@@ -137,6 +138,13 @@ export const selectKey = mutation({
     numKeys: v.number(),
   },
   handler: async (ctx, args) => {
+    if (
+      !Number.isInteger(args.numKeys) ||
+      args.numKeys < 1 ||
+      args.numKeys > 100
+    ) {
+      throw new Error("numKeys must be an integer between 1 and 100");
+    }
     const now = Date.now();
     const policy = resolveModelPolicy(args.model);
 
@@ -150,11 +158,19 @@ export const selectKey = mutation({
     const existingIndexes = new Set(existingKeys.map((k) => k.keyIndex));
     for (let i = 0; i < args.numKeys; i++) {
       if (!existingIndexes.has(i)) {
+        const siblings = await ctx.db
+          .query("apiKeys")
+          .withIndex("by_provider_keyIndex", (q) =>
+            q.eq("provider", args.provider).eq("keyIndex", i),
+          )
+          .collect();
         await ctx.db.insert("apiKeys", {
           keyIndex: i,
           provider: args.provider,
           model: args.model,
-          status: "healthy",
+          status: siblings.some((k) => k.status === "blocked")
+            ? "blocked"
+            : "healthy",
           requestCount24h: 0,
           windowStartMs: now,
           consecutiveErrors: 0,
@@ -211,18 +227,6 @@ export const selectKey = mutation({
         if (key.status === "quota_exceeded") {
           key.status = "healthy";
         }
-        updated = true;
-      }
-
-      if (
-        key.status !== "healthy" &&
-        key.lastErrorTimeMs &&
-        now - key.lastErrorTimeMs > AUTO_HEAL_AFTER_MS
-      ) {
-        key.status = "healthy";
-        key.consecutiveErrors = 0;
-        key.cooldownUntilMs = undefined;
-        key.quotaResetTimeMs = undefined;
         updated = true;
       }
 
@@ -388,16 +392,15 @@ export const reportError = mutation({
     const classification = classifyError(args.errorMessage, policy);
 
     const newConsecutiveErrors = key.consecutiveErrors + 1;
-    let status = classification.status;
-
-    if (newConsecutiveErrors >= policy.maxConsecutiveErrors) {
-      status = "blocked";
-    }
+    // Transient errors stay recoverable. Only credential failures block a key.
+    const status = key.status === "blocked" ? "blocked" : classification.status;
 
     const updates: Record<string, unknown> = {
       errorCount: key.errorCount + 1,
       consecutiveErrors: newConsecutiveErrors,
-      lastError: args.errorMessage.slice(0, 500),
+      lastError: args.errorMessage
+        .replace(/AIza[\w-]+/g, "[REDACTED]")
+        .slice(0, 500),
       lastErrorTimeMs: now,
       status,
       updatedAtMs: now,
@@ -412,6 +415,24 @@ export const reportError = mutation({
     }
 
     await ctx.db.patch(key._id, updates);
+
+    // Credential suspension affects every model using this key.
+    if (classification.status === "blocked") {
+      const siblings = await ctx.db
+        .query("apiKeys")
+        .withIndex("by_provider_keyIndex", (q) =>
+          q.eq("provider", args.provider).eq("keyIndex", args.keyIndex),
+        )
+        .collect();
+      for (const sibling of siblings) {
+        if (sibling._id !== key._id)
+          await ctx.db.patch(sibling._id, {
+            status: "blocked",
+            lastErrorTimeMs: now,
+            updatedAtMs: now,
+          });
+      }
+    }
   },
 });
 

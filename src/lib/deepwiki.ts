@@ -47,6 +47,8 @@ async function parseMCPResponse(response: Response): Promise<MCPResponse> {
  * to get context for fixing Manim script errors.
  */
 export async function queryManimDocs(errorContext: string): Promise<string> {
+  // One budget for the entire optional docs lookup, including session setup.
+  const signal = AbortSignal.timeout(15_000);
   try {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -68,7 +70,7 @@ export async function queryManimDocs(errorContext: string): Promise<string> {
         },
         id: 1,
       }),
-      signal: AbortSignal.timeout(15_000),
+      signal,
     });
 
     if (!initResponse.ok) {
@@ -97,7 +99,7 @@ export async function queryManimDocs(errorContext: string): Promise<string> {
         jsonrpc: "2.0",
         method: "notifications/initialized",
       }),
-      signal: AbortSignal.timeout(10_000),
+      signal,
     });
     if (!initializedResponse.ok) {
       console.warn(
@@ -109,7 +111,7 @@ export async function queryManimDocs(errorContext: string): Promise<string> {
     }
 
     // 3. Call ask_question tool
-    const question = `I'm getting this error in my Manim Community v0.18.0 script. Please note that this is a dry-run so its fine if the traceback shows played animations as 0% progress since we're only rendering the last frame. What is the correct API usage to fix it?\n\nError:\n${errorContext.slice(0, 2000)}`;
+    const question = `I'm getting this error in my Manim Community v0.20 script. What is the correct API usage to fix it?\n\nError:\n${errorContext.slice(0, 2000)}`;
 
     const toolResponse = await fetch(MCP_ENDPOINT, {
       method: "POST",
@@ -126,7 +128,7 @@ export async function queryManimDocs(errorContext: string): Promise<string> {
         },
         id: 2,
       }),
-      signal: AbortSignal.timeout(30_000),
+      signal,
     });
 
     if (!toolResponse.ok) {

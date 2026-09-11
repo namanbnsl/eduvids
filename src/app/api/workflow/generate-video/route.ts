@@ -10,11 +10,21 @@ import {
   generateVideoDescription,
 } from "@/lib/llm";
 import {
-  finalizeManimRender,
-  pollManimRender,
   prepareManimSandbox,
-  launchManimRender,
+  ManimValidationError,
+  type PreparedSandboxState,
 } from "@/lib/e2b";
+import {
+  startSandboxJob,
+  pollSandboxJob,
+  renderCommand,
+  startPostprocess,
+  downloadVideo,
+  cleanupSandbox,
+  type SandboxJob,
+} from "@/lib/workflow/sandbox-jobs";
+import { generationFailureMessage, safeError } from "@/lib/workflow/errors";
+import { getConvexClient, api } from "@/lib/convex-server";
 import { uploadVideo } from "@/lib/uploadthing";
 import { jobStore, artifactStore } from "@/lib/job-store";
 
@@ -35,6 +45,7 @@ type VideoGenerationPayload = {
 };
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 export const { POST } = serve<VideoGenerationPayload>(
   async (context) => {
@@ -57,6 +68,7 @@ export const { POST } = serve<VideoGenerationPayload>(
         : prompt;
 
     await context.run("generate-voiceover-script", async () => {
+      if (await artifactStore.find(jobId, "voiceoverScript")) return;
       await updateJobProgress(jobId, {
         progress: 5,
         step: "generating voiceover",
@@ -73,6 +85,7 @@ export const { POST } = serve<VideoGenerationPayload>(
     });
 
     await context.run("generate-scene-plan", async () => {
+      if (await artifactStore.find(jobId, "scenePlan")) return;
       const voiceoverScript = await artifactStore.get(jobId, "voiceoverScript");
       await updateJobProgress(jobId, {
         progress: 12,
@@ -91,10 +104,9 @@ export const { POST } = serve<VideoGenerationPayload>(
     });
 
     await context.run("generate-manim-script", async () => {
+      if (await artifactStore.find(jobId, "manimScript")) return;
       const voiceoverScript = await artifactStore.get(jobId, "voiceoverScript");
-      const scenePlan = JSON.parse(
-        await artifactStore.get(jobId, "scenePlan"),
-      );
+      const scenePlan = JSON.parse(await artifactStore.get(jobId, "scenePlan"));
       await updateJobProgress(jobId, {
         progress: 22,
         step: "verifying script",
@@ -110,115 +122,166 @@ export const { POST } = serve<VideoGenerationPayload>(
       console.log("✅ Manim script generated", { length: script.length });
     });
 
-    const RENDER_STEP_TIMEOUT_MS = 282_000; // ~4.7 minutes to stay under workflow limits
+    const waitForJob = async (name: string, job: SandboxJob) => {
+      for (let poll = 0; poll < 190; poll++) {
+        const result = await context.run(`${name}-poll-${poll}`, () =>
+          pollSandboxJob(job),
+        );
+        if (result.complete) return result;
+        await context.sleep(`${name}-sleep-${poll}`, 10);
+      }
+      throw new WorkflowNonRetryableError("Sandbox job timed out");
+    };
 
-    const prepared = await context.run("prepare-sandbox", async () => {
-      const script = await artifactStore.get(jobId, "manimScript");
-      await updateJobProgress(jobId, {
-        progress: 35,
-        step: "validating script",
-        details: "Setting up sandbox and validating your animation code",
-      });
-      return prepareManimSandbox({
-        script,
-        prompt: generationPrompt,
-        sessionId: chatId,
-        variant,
-        applyWatermark: true,
-        renderOptions:
-          variant === "short"
-            ? {
-                resolution: { width: 720, height: 1280 },
-                orientation: "portrait" as const,
-              }
-            : undefined,
-        scriptFixer: (currentScript, errors) =>
-          fixManimScript({
-            script: currentScript,
-            errors,
-            sessionId: chatId,
-          }),
-      });
-    });
-
-    const renderStart = await context.run("launch-render", async () => {
-      await updateJobProgress(jobId, {
-        progress: 40,
-        step: "rendering video",
-        details: "Bringing your animations to life",
-      });
-      return launchManimRender({ prepared });
-    });
-
-    let renderState = renderStart.state;
-    let pollAttempt = 0;
-    while (true) {
-      const pollResult = await context.run(
-        `render-video-wait-${pollAttempt}`,
+    let prepared: PreparedSandboxState | undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      // Validation failures are data here, so the repair runs in its own invocation.
+      const preparation = await context.run(
+        `prepare-sandbox-${attempt}`,
         async () => {
           await updateJobProgress(jobId, {
-            progress: Math.min(80, 45 + pollAttempt * 3),
-            step: "rendering video",
-            details: "Still rendering your animation",
+            progress: 35,
+            step: "validating script",
+            details: "Checking animation code",
           });
-          return pollManimRender({
-            state: renderState,
-            maxWaitMs: RENDER_STEP_TIMEOUT_MS,
-          });
+          const cached = await artifactStore.find(jobId, `prepared-${attempt}`);
+          if (cached)
+            return {
+              state: JSON.parse(cached) as PreparedSandboxState,
+              error: null,
+            };
+          try {
+            const state = await prepareManimSandbox({
+              script: await artifactStore.get(jobId, "manimScript"),
+              prompt: generationPrompt,
+              sessionId: chatId,
+              variant,
+              applyWatermark: true,
+              skipDryRun: true,
+              renderOptions:
+                variant === "short"
+                  ? {
+                      resolution: { width: 720, height: 1280 },
+                      orientation: "portrait",
+                    }
+                  : undefined,
+              onProgress: async ({ sandboxId }) => {
+                if (sandboxId)
+                  await artifactStore.set(jobId, "sandboxId", sandboxId);
+              },
+            });
+            // Keep diagnostic logs out of the repeatedly serialized workflow history.
+            const compact = { ...state, logs: [] };
+            await artifactStore.set(
+              jobId,
+              `prepared-${attempt}`,
+              JSON.stringify(compact),
+            );
+            return { state: compact, error: null };
+          } catch (error) {
+            if (!(error instanceof ManimValidationError)) throw error;
+            return { state: null, error: safeError(error) };
+          }
         },
       );
-
-      renderState = pollResult.state;
-      if (!pollResult.complete) {
-        pollAttempt += 1;
-        continue;
-      }
-      if (pollResult.success === false) {
-        throw new WorkflowNonRetryableError(
-          pollResult.errorMessage ?? "Manim render failed.",
+      let error = preparation.error;
+      if (preparation.state) {
+        prepared = preparation.state;
+        const renderJob = await context.run(
+          `launch-render-${attempt}`,
+          async () => {
+            await updateJobProgress(jobId, {
+              progress: 45,
+              step: "rendering video",
+              details: "Rendering animation",
+            });
+            return startSandboxJob(
+              preparation.state!.sandboxId,
+              "render-job",
+              renderCommand(preparation.state!),
+            );
+          },
         );
+        const rendered = await waitForJob(`render-${attempt}`, renderJob);
+        if (rendered.exitCode === 0) break;
+        error = rendered.error ?? "Manim render failed";
+        await context.run(`cleanup-failed-render-${attempt}`, () =>
+          cleanupSandbox(preparation.state!.sandboxId),
+        );
+        prepared = undefined;
       }
-      break;
+      if (attempt === 2)
+        throw new WorkflowNonRetryableError(
+          `Manim validation failed after repairs: ${error}`,
+        );
+      await context.run(`repair-script-${attempt}`, async () => {
+        await updateJobProgress(jobId, {
+          step: "repairing script",
+          details: "Repairing animation errors",
+        });
+        const cached = await artifactStore.find(jobId, `repaired-${attempt}`);
+        if (cached) {
+          await artifactStore.set(jobId, "manimScript", cached);
+          return;
+        }
+        const script = await artifactStore.get(jobId, "manimScript");
+        const fixed = await fixManimScript({
+          script,
+          errors: error ?? "No renderable scene class",
+          sessionId: chatId,
+        });
+        if (fixed === script) throw new Error("Script repair made no changes");
+        await artifactStore.set(jobId, `repaired-${attempt}`, fixed);
+        await artifactStore.set(jobId, "manimScript", fixed);
+      });
     }
+    if (!prepared)
+      throw new WorkflowNonRetryableError("No validated render available");
 
-    // Finalize render AND upload inside a single step so the huge base64 data
-    // URL (~5 MB) is never serialized into QStash workflow state (which has a
-    // body-size limit and would silently drop the workflow).
-    const uploadUrl = await context.run(
-      "render-video-finalize-and-upload",
-      async () => {
-        await updateJobProgress(jobId, {
-          progress: 80,
-          step: "rendering video",
-          details: "Polishing the final video",
-        });
-        const renderResult = await finalizeManimRender({
-          state: renderState,
-        });
+    const processing = await context.run("launch-postprocess", () =>
+      startPostprocess(prepared!),
+    );
+    const processed = await waitForJob("postprocess", processing);
+    if (processed.exitCode !== 0)
+      throw new WorkflowNonRetryableError(
+        `Video processing failed: ${processed.error}`,
+      );
 
-        console.log("✅ Video rendered");
+    const uploadUrl = await context.run("upload-video", async () => {
+      const existing = await artifactStore.find(jobId, "uploadUrl");
+      if (existing) return existing;
+      await updateJobProgress(jobId, {
+        progress: 85,
+        step: "uploading video",
+        details: "Saving your video",
+      });
+      const videoUrl = await uploadVideo({
+        videoPath: await downloadVideo(prepared!.sandboxId),
+        userId,
+        jobId,
+      });
+      await artifactStore.set(jobId, "uploadUrl", videoUrl);
+      return videoUrl;
+    });
+    await context.run("finalize-job", async () => {
+      await jobStore.setReady(jobId, uploadUrl);
+    });
+    await context.run("persist-video", async () => {
+      await getConvexClient().mutation(api.videos.saveCompleted, {
+        jobId,
+        userId,
+        description: prompt,
+        variant,
+        videoUrl: uploadUrl,
+      });
+    });
 
-        await updateJobProgress(jobId, {
-          progress: 85,
-          step: "uploading video",
-          details: "Beaming your video to the cloud",
-        });
-        const videoUrl = await uploadVideo({
-          videoPath: renderResult.videoPath,
-          userId,
-        });
-        console.log("✅ Video uploaded:", videoUrl);
-
-        return videoUrl;
-      },
+    // Cleanup is separate from both upload and marking the video ready.
+    await context.run("cleanup-sandbox", () =>
+      cleanupSandbox(prepared!.sandboxId),
     );
 
-    console.log("✅ Video rendered & uploaded:", uploadUrl);
-
-    let videoTitle: string | undefined;
-    let videoDescription: string | undefined;
-
-    videoTitle = await context.run("generate-title", async () => {
+    const videoTitle = await context.run("generate-title", async () => {
       try {
         const title = await generateVideoTitle({ prompt, sessionId: chatId });
         console.log("✅ Title generated:", title);
@@ -229,35 +292,39 @@ export const { POST } = serve<VideoGenerationPayload>(
       }
     });
 
-    videoDescription = await context.run("generate-description", async () => {
-      try {
-        const voiceoverScript = await artifactStore.get(jobId, "voiceoverScript");
-        const desc = await generateVideoDescription({
-          prompt,
-          voiceoverScript,
-          sessionId: chatId,
-          variant,
-        });
-        console.log("✅ Description generated:", { length: desc.length });
-        return desc;
-      } catch (err) {
-        console.warn("Description generation failed (non-fatal):", err);
-        return undefined;
-      }
-    });
-
-    await context.run("finalize-job", async () => {
-      await updateJobProgress(jobId, {
-        progress: 95,
-        step: "finalizing",
-        details: "Putting the finishing touches on",
-      });
-      await jobStore.setReady(jobId, uploadUrl);
-      await jobStore.setYoutubeStatus(jobId, { youtubeStatus: "pending" });
-    });
+    const videoDescription = await context.run(
+      "generate-description",
+      async () => {
+        try {
+          const voiceoverScript = await artifactStore.get(
+            jobId,
+            "voiceoverScript",
+          );
+          const desc = await generateVideoDescription({
+            prompt,
+            voiceoverScript,
+            sessionId: chatId,
+            variant,
+          });
+          console.log("✅ Description generated:", { length: desc.length });
+          return desc;
+        } catch (err) {
+          console.warn("Description generation failed (non-fatal):", err);
+          return undefined;
+        }
+      },
+    );
 
     await context.run("trigger-youtube-upload", async () => {
+      if (
+        !process.env.GOOGLE_CLIENT_ID ||
+        !process.env.GOOGLE_CLIENT_SECRET ||
+        !process.env.GOOGLE_REFRESH_TOKEN
+      )
+        return;
+      await jobStore.setYoutubeStatus(jobId, { youtubeStatus: "pending" });
       await workflowClient.trigger({
+        workflowRunId: `youtube-${jobId}`,
         headers: getTriggerHeaders(),
         url: `${getBaseUrl()}/api/workflow/upload-youtube`,
         body: {
@@ -282,17 +349,36 @@ export const { POST } = serve<VideoGenerationPayload>(
     };
   },
   {
-    retries: 0,
+    retries: 3,
+    retryDelay: "(1 + retried) * 10000",
     qstashClient: qstashClientWithBypass,
     failureFunction: async ({ context, failStatus, failResponse }) => {
       const { jobId } = context.requestPayload;
-      console.error("Workflow failed:", { failStatus, failResponse });
+      console.error("Workflow failed:", {
+        jobId,
+        runId: context.workflowRunId,
+        failStatus,
+        error: safeError(failResponse),
+      });
 
       if (jobId) {
-        await jobStore.setError(
-          jobId,
-          "Video generation failed. Please try again.",
-        );
+        const job = await jobStore.get(jobId);
+        if (job?.status === "ready") {
+          if (job.youtubeStatus === "pending")
+            await jobStore.setYoutubeStatus(jobId, {
+              youtubeStatus: "failed",
+              youtubeError: "Could not schedule YouTube upload",
+            });
+        } else {
+          const message = generationFailureMessage(failResponse);
+          await jobStore.setError(jobId, message);
+          await getConvexClient().mutation(api.videos.setError, {
+            jobId,
+            error: message,
+          });
+        }
+        const sandboxId = await artifactStore.find(jobId, "sandboxId");
+        if (sandboxId) await cleanupSandbox(sandboxId);
       }
     },
   },

@@ -226,7 +226,7 @@ function injectSceneFadeOut(script: string): string {
   return lines.join("\n");
 }
 
-class ManimValidationError extends Error {
+export class ManimValidationError extends Error {
   constructor(
     message: string,
     readonly stage: ValidationStage,
@@ -457,6 +457,8 @@ export interface RenderRequest {
   renderOptions?: RenderOptions;
   onProgress?: (update: RenderProgressUpdate) => Promise<void> | void;
   existingSandboxId?: string;
+  /** Skip the synchronous dry run when rendering in a durable sandbox job. */
+  skipDryRun?: boolean;
   /** Called when dry-run fails — receives the current script and error output,
    *  returns the fixed script. Omit to skip the fix loop. */
   scriptFixer?: (script: string, errors: string) => Promise<string>;
@@ -1225,6 +1227,7 @@ export async function prepareManimSandbox({
   onProgress,
   existingSandboxId,
   scriptFixer,
+  skipDryRun = false,
 }: RenderRequest): Promise<PreparedSandboxState> {
   const normalizedScript = script.trim();
   let sceneNames = extractSceneClassNames(normalizedScript);
@@ -1462,11 +1465,13 @@ export async function prepareManimSandbox({
       );
       sandbox = await Sandbox.connect(existingSandboxId, {
         timeoutMs: 3_600_000,
+        requestTimeoutMs: 15_000,
       });
     } else {
       await reportProgress("sandbox", "Provisioning secure rendering sandbox");
       sandbox = await Sandbox.create("manim20-ffmpeg-bookmarks-latest", {
         timeoutMs: 3_600_000,
+        requestTimeoutMs: 15_000,
         envs: {
           ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
           TMPDIR: "/dev/shm",
@@ -1499,7 +1504,7 @@ export async function prepareManimSandbox({
         await runCommandOrThrow(`python -m py_compile ${scriptPath}`, {
           description: "Syntax check",
           stage: "syntax",
-          timeoutMs: 120_000,
+          timeoutMs: 20_000,
           hint: "Fix Python syntax errors reported above before rendering with Manim.",
         });
         break;
@@ -1525,7 +1530,7 @@ export async function prepareManimSandbox({
         await runCommandOrThrow(`python -m py_compile ${scriptPath}`, {
           description: "Syntax check (post-fix)",
           stage: "syntax",
-          timeoutMs: 120_000,
+          timeoutMs: 20_000,
         });
       }
     }
@@ -1533,66 +1538,68 @@ export async function prepareManimSandbox({
     await runCommandOrThrow(buildAstValidationCommand(scriptPath), {
       description: "AST validation",
       stage: "ast-guard",
-      timeoutMs: 120_000,
+      timeoutMs: 20_000,
     });
 
     await runCommandOrThrow(buildSceneValidationCommand(scriptPath), {
       description: "Scene validation",
       stage: "scene-validation",
-      timeoutMs: 120_000,
+      timeoutMs: 20_000,
     });
 
     if (!latexEnvironmentVerified) {
       await runCommandOrThrow(`latex --version`, {
         description: "Check LaTeX",
         stage: "latex",
-        timeoutMs: 120_000,
+        timeoutMs: 20_000,
       });
       latexEnvironmentVerified = true;
     }
 
-    // Dry-run validation
-    const dryRunArgs = [
-      scriptPath,
-      ...currentSceneNames,
-      "-s",
-      "--disable_caching",
-    ];
-    const dryRunCmd = `manim ${dryRunArgs.join(" ")}`;
-    const DRY_RUN_MAX_FIXES = 2;
-    for (let attempt = 0; attempt <= DRY_RUN_MAX_FIXES; attempt += 1) {
-      try {
-        await runCommandOrThrow(dryRunCmd, {
-          description: "Manim dry-run validation",
-          stage: "dry-run",
-          timeoutMs: 240_000, // 4 min per attempt to stay within 5 min step
-          streamOutput: true,
-        });
-        break;
-      } catch (dryRunError) {
-        if (!scriptFixer || attempt === DRY_RUN_MAX_FIXES) {
-          throw dryRunError instanceof ManimValidationError
-            ? dryRunError
-            : new ManimValidationError(
-                `Dry-run validation failed: ${String(dryRunError)}`,
-                "dry-run",
-                { logs: [...renderLogs] },
-              );
+    if (!skipDryRun) {
+      // Dry-run validation
+      const dryRunArgs = [
+        scriptPath,
+        ...currentSceneNames,
+        "-s",
+        "--disable_caching",
+      ];
+      const dryRunCmd = `manim ${dryRunArgs.join(" ")}`;
+      const DRY_RUN_MAX_FIXES = 2;
+      for (let attempt = 0; attempt <= DRY_RUN_MAX_FIXES; attempt += 1) {
+        try {
+          await runCommandOrThrow(dryRunCmd, {
+            description: "Manim dry-run validation",
+            stage: "dry-run",
+            timeoutMs: 240_000, // 4 min per attempt to stay within 5 min step
+            streamOutput: true,
+          });
+          break;
+        } catch (dryRunError) {
+          if (!scriptFixer || attempt === DRY_RUN_MAX_FIXES) {
+            throw dryRunError instanceof ManimValidationError
+              ? dryRunError
+              : new ManimValidationError(
+                  `Dry-run validation failed: ${String(dryRunError)}`,
+                  "dry-run",
+                  { logs: [...renderLogs] },
+                );
+          }
+          const errorMessage =
+            dryRunError instanceof ManimValidationError
+              ? dryRunError.message
+              : String(dryRunError);
+          const fixedScript = await scriptFixer(currentScript, errorMessage);
+          currentScript = fixedScript;
+          currentSceneNames = extractSceneClassNames(currentScript);
+          if (!currentSceneNames.length) throw dryRunError;
+          await sandbox.files.write(scriptPath, currentScript);
+          await runCommandOrThrow(`python -m py_compile ${scriptPath}`, {
+            description: "Syntax check (post-fix)",
+            stage: "syntax",
+            timeoutMs: 20_000,
+          });
         }
-        const errorMessage =
-          dryRunError instanceof ManimValidationError
-            ? dryRunError.message
-            : String(dryRunError);
-        const fixedScript = await scriptFixer(currentScript, errorMessage);
-        currentScript = fixedScript;
-        currentSceneNames = extractSceneClassNames(currentScript);
-        if (!currentSceneNames.length) throw dryRunError;
-        await sandbox.files.write(scriptPath, currentScript);
-        await runCommandOrThrow(`python -m py_compile ${scriptPath}`, {
-          description: "Syntax check (post-fix)",
-          stage: "syntax",
-          timeoutMs: 120_000,
-        });
       }
     }
 

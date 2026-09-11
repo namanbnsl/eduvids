@@ -1,9 +1,10 @@
+import { safeError } from "./workflow/errors";
 import {
   MANIM_SYSTEM_PROMPT,
   VOICEOVER_SYSTEM_PROMPT,
   SCENE_PLAN_SYSTEM_PROMPT,
 } from "@/prompt";
-import { generateText, streamText, LanguageModel } from "ai";
+import { streamText, LanguageModel } from "ai";
 import {
   createGoogleProvider,
   reportSuccess,
@@ -28,7 +29,7 @@ interface GoogleModelConfig {
 const isDev = process.env.NODE_ENV !== "production";
 
 // Only initialize PostHog in production
-const phClient = isDev
+const phClient = isDev || !process.env.NEXT_PUBLIC_POSTHOG_KEY
   ? null
   : new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
       host: process.env.NEXT_PUBLIC_POSTHOG_HOST!,
@@ -50,27 +51,46 @@ const createGoogleModel = async (
   return { modelId, provider };
 };
 
-async function streamTextWithTracking<
+export async function streamTextWithTracking<
   T extends Parameters<typeof streamText>[0],
 >(
   config: T & { model: LanguageModel },
   googleConfig?: GoogleModelConfig,
 ): Promise<string> {
+  let streamError: unknown;
   try {
-    const result = streamText(config);
+    const result = streamText({
+      ...config,
+      maxRetries: 0, // Upstash retries in a fresh invocation with a freshly selected key.
+      abortSignal: AbortSignal.any([
+        ...(config.abortSignal ? [config.abortSignal] : []),
+        AbortSignal.timeout(180_000),
+      ]),
+      onError: ({ error }) => {
+        streamError = error; // Redact before surfacing.
+      },
+    });
     const text = await result.text;
+    if (streamError) throw streamError;
+    if (
+      !text.trim() ||
+      ["length", "error", "other"].includes(await result.finishReason)
+    ) {
+      throw new Error("AI response was empty or truncated; retry generation");
+    }
 
     if (googleConfig) {
-      reportSuccess(googleConfig.provider);
+      await reportSuccess(googleConfig.provider);
     }
 
     return text;
   } catch (error) {
+    const failure = streamError ?? error;
     if (googleConfig) {
-      reportError(googleConfig.provider, error);
+      await reportError(googleConfig.provider, failure);
     }
 
-    throw error;
+    throw new Error(safeError(failure));
   }
 }
 
@@ -179,7 +199,7 @@ export interface ScenePlanEntry {
   labels: ScenePlanLabel[];
 }
 
-const SCENE_PLAN_MAX_RETRIES = 3;
+const SCENE_PLAN_MAX_RETRIES = 1; // Durable workflow retries, never nested model retries.
 
 export async function generateScenePlan({
   prompt,
@@ -263,14 +283,14 @@ export async function generateVoiceoverScript({
 
   const googleModel = await createGoogleModel("gemini-3.5-flash-lite");
 
-  const { text } = await generateText({
+  const text = await streamTextWithTracking({
     model: maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     }),
     system: systemPrompt,
     prompt: composedPrompt,
     temperature: 0.5,
-  });
+  }, googleModel);
 
   return text.trim();
 }
@@ -295,7 +315,7 @@ export function sanitizeManimScript(script: string): string {
 
   // 1. Remove markdown fences and HTML tags
   result = result.replace(/```[\w]*\n?/g, "");
-  result = result.replace(/<\/?[a-zA-Z][^>]*>/g, "");
+  // Do not strip HTML-like substrings: Python comparisons and string labels can contain them.
 
   // 2. Remove non-Python language blocks (JSON, JS/TS, YAML etc.)
   // Detect blocks that look like JSON objects/arrays at the top level
@@ -335,7 +355,7 @@ export function sanitizeManimScript(script: string): string {
   const lines = result.split("\n");
   const openChars: Record<string, string> = { "(": ")", "[": "]", "{": "}" };
   const closeChars = new Set([")", "]", "}"]);
-  let parenStack: string[] = [];
+  const parenStack: string[] = [];
   let inString = false;
   let stringChar = "";
 
@@ -504,7 +524,7 @@ export function sanitizeManimScript(script: string): string {
   return result.trim();
 }
 
-const MANIM_SCRIPT_MAX_RETRIES = 3;
+const MANIM_SCRIPT_MAX_RETRIES = 1;
 
 export async function generateManimScript({
   prompt,
@@ -561,7 +581,11 @@ export async function generateManimScript({
         .replace(/```\n?/g, "")
         .trim();
 
-      return sanitizeManimScript(code);
+      const sanitized = sanitizeManimScript(code);
+      if (!/^class\s+\w+\s*\([^)]*Scene[^)]*\)\s*:/m.test(sanitized)) {
+        throw new Error("Manim script generation returned no renderable scene class");
+      }
+      return sanitized;
     } catch (err) {
       lastError = err;
       console.error(
@@ -578,7 +602,7 @@ export async function generateManimScript({
     `[generateManimScript] All ${MANIM_SCRIPT_MAX_RETRIES} attempts exhausted`,
     lastError,
   );
-  return "Script Generation Failed";
+  throw new Error(`Manim script generation failed: ${safeError(lastError)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -796,7 +820,7 @@ RULES:
     "```",
   ].join("\n");
 
-  console.log(userPrompt);
+
 
   const googleModel = await createGoogleModel("gemini-3.8-flash");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
@@ -814,7 +838,7 @@ RULES:
       googleModel,
     );
 
-    console.log(text.trim());
+
     const fixed = applySearchReplaceDiffs(script, text.trim());
     if (fixed !== script) return fixed;
 
@@ -1025,12 +1049,12 @@ If there are no issues, return:
   ];
 
   try {
-    const { text } = await generateText({
+    const text = await streamTextWithTracking({
       model,
       system: systemPrompt,
       messages: [{ role: "user", content }],
       temperature: 0.2,
-    });
+    }, googleModel);
 
     const cleaned = text
       .replace(/```json?\n?/g, "")

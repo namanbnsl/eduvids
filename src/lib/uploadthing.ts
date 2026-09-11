@@ -1,14 +1,13 @@
 import { UTApi, UTFile } from "uploadthing/server";
 
-const utapi = new UTApi();
-
 export interface UploadRequest {
   videoPath: string;
   userId: string;
+  jobId?: string;
 }
 
 const isUploadResponseData = (
-  data: unknown
+  data: unknown,
 ): data is { ufsUrl?: string; url?: string } => {
   if (!data || typeof data !== "object") {
     return false;
@@ -22,8 +21,17 @@ const isUploadResponseData = (
 export async function uploadVideo({
   videoPath,
   userId,
+  jobId,
 }: UploadRequest): Promise<string> {
+  const signal = AbortSignal.timeout(150_000);
+  const utapi = new UTApi({
+    fetch: (input, init) => fetch(input, { ...init, signal }),
+  });
   try {
+    if (jobId) {
+      const existing = await utapi.getFileUrls(jobId, { keyType: "customId" });
+      if (existing.data[0]?.url) return existing.data[0].url;
+    }
     if (!videoPath.startsWith("data:video/mp4;base64,")) {
       throw new Error("Expected base64 MP4 data URL for upload");
     }
@@ -35,6 +43,7 @@ export async function uploadVideo({
     const fileName = `manim_video_${userId}_${Date.now()}.mp4`;
     const file = new UTFile([new Uint8Array(buffer)], fileName, {
       type: "video/mp4",
+      customId: jobId,
     });
 
     console.log("Starting upload to UploadThing...");
@@ -69,4 +78,3 @@ export async function uploadVideo({
     throw new Error(`Video upload failed: ${(error as Error).message}`);
   }
 }
-

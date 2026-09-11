@@ -2,6 +2,9 @@ import { serve } from "@upstash/workflow/nextjs";
 import { TwitterApi } from "twitter-api-v2";
 import { qstashClientWithBypass } from "@/lib/workflow/client";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 type XUploadPayload = {
   videoUrl: string;
   title: string;
@@ -19,9 +22,13 @@ export const { POST } = serve<XUploadPayload>(
         accessSecret: process.env.X_ACCESS_TOKEN_SECRET!,
       });
 
-      await twitterClient.v2.tweet({
-        text: `${title} \n \n \n Generated for free at https://eduvids.app ${videoUrl}`,
-      });
+      await twitterClient.v2.post(
+        "tweets",
+        {
+          text: `${title} \n \n \n Generated for free at https://eduvids.app ${videoUrl}`,
+        },
+        { timeout: 30_000 },
+      );
     });
 
     return { success: true };

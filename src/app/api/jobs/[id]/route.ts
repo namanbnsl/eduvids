@@ -11,7 +11,7 @@ export async function GET(
   const { id } = await ctx.params;
 
   // Try KV first (has progress info for in-flight jobs)
-  const kvJob = await jobStore.get(id);
+  const kvJob = await jobStore.get(id).catch(() => undefined);
   if (kvJob) {
     return new Response(JSON.stringify(kvJob), {
       status: 200,

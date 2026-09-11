@@ -1,7 +1,9 @@
+import { WorkflowNonRetryableError } from "@upstash/workflow";
+import { safeError } from "@/lib/workflow/errors";
 import { serve } from "@upstash/workflow/nextjs";
 
 import { uploadToYouTube } from "@/lib/youtube";
-import { jobStore } from "@/lib/job-store";
+import { jobStore, artifactStore } from "@/lib/job-store";
 import { getConvexClient, api } from "@/lib/convex-server";
 import {
   workflowClient,
@@ -13,6 +15,7 @@ import {
 import type { VideoVariant } from "@/lib/types";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 type YouTubeUploadPayload = {
   videoUrl: string;
@@ -39,25 +42,31 @@ export const { POST } = serve<YouTubeUploadPayload>(
     ];
 
     const youtubeResult = await context.run("upload-to-youtube", async () => {
-      return uploadToYouTube({
-        videoUrl,
-        title: title ?? prompt.slice(0, 100),
-        description,
-        tags,
-        variant,
-      });
-    });
-
-    // Trigger X (Twitter) post workflow
-    await context.run("trigger-x-upload", async () => {
-      await workflowClient.trigger({
-        headers: getTriggerHeaders(),
-        url: `${getBaseUrl()}/api/workflow/upload-x`,
-        body: {
-          videoUrl: youtubeResult.watchUrl,
-          title: youtubeResult.title,
-        },
-      });
+      const key = jobId ?? context.workflowRunId;
+      const saved = await artifactStore.find(key, "youtubeResult");
+      if (saved)
+        return JSON.parse(saved) as Awaited<ReturnType<typeof uploadToYouTube>>;
+      // YouTube insert has no idempotency key. Never duplicate a possibly accepted upload.
+      if (!(await artifactStore.claim(key, "youtubeUploadStarted"))) {
+        throw new WorkflowNonRetryableError(
+          "YouTube upload outcome is unknown; check the channel before retrying",
+        );
+      }
+      try {
+        const result = await uploadToYouTube({
+          videoUrl,
+          title: title ?? prompt.slice(0, 100),
+          description,
+          tags,
+          variant,
+        });
+        await artifactStore.set(key, "youtubeResult", JSON.stringify(result));
+        return result;
+      } catch (error) {
+        throw new WorkflowNonRetryableError(
+          `YouTube upload could not be confirmed: ${safeError(error)}`,
+        );
+      }
     });
 
     if (jobId) {
@@ -73,36 +82,54 @@ export const { POST } = serve<YouTubeUploadPayload>(
       const { userId } = context.requestPayload;
       if (userId) {
         await context.run("save-to-convex", async () => {
-          try {
-            await getConvexClient().mutation(api.videos.saveCompleted, {
-              jobId,
-              userId,
-              description: prompt,
-              variant: variant ?? "video",
-              videoUrl,
-              youtubeUrl: youtubeResult.watchUrl,
-              youtubeVideoId: youtubeResult.videoId,
-            });
-          } catch (err) {
-            console.error("[workflow] Failed to save video to Convex:", err);
-          }
+          await getConvexClient().mutation(api.videos.saveCompleted, {
+            jobId,
+            userId,
+            description: prompt,
+            variant: variant ?? "video",
+            videoUrl,
+            youtubeUrl: youtubeResult.watchUrl,
+            youtubeVideoId: youtubeResult.videoId,
+          });
         });
       }
     }
 
+    // Trigger X (Twitter) post workflow
+    await context.run("trigger-x-upload", async () => {
+      if (
+        !process.env.X_API_KEY ||
+        !process.env.X_API_KEY_SECRET ||
+        !process.env.X_ACCESS_TOKEN ||
+        !process.env.X_ACCESS_TOKEN_SECRET
+      )
+        return;
+      await workflowClient.trigger({
+        workflowRunId: `x-${youtubeResult.videoId}`,
+        retries: 0,
+        headers: getTriggerHeaders(),
+        url: `${getBaseUrl()}/api/workflow/upload-x`,
+        body: {
+          videoUrl: youtubeResult.watchUrl,
+          title: youtubeResult.title,
+        },
+      });
+    });
+
     return { success: true, ...youtubeResult };
   },
   {
-    retries: 0,
+    retries: 3,
     qstashClient: qstashClientWithBypass,
     failureFunction: async ({ context, failResponse }) => {
       const { jobId } = context.requestPayload;
-      console.error("YouTube upload workflow failed:", failResponse);
+      console.error("YouTube upload workflow failed:", safeError(failResponse));
 
-      if (jobId) {
+      if (jobId && (await jobStore.get(jobId))?.youtubeStatus !== "uploaded") {
         await jobStore.setYoutubeStatus(jobId, {
           youtubeStatus: "failed",
-          youtubeError: "YouTube upload failed after retries",
+          youtubeError:
+            "YouTube upload could not be confirmed. Check the channel before retrying.",
         });
       }
     },

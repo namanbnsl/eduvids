@@ -2,6 +2,7 @@ import {
   createGoogleGenerativeAI,
   type GoogleGenerativeAIProvider,
 } from "@ai-sdk/google";
+import { safeError } from "./workflow/errors";
 import { getConvexClient, api } from "./convex-server";
 
 const GOOGLE_KEY_PREFIX = "GOOGLE_GENERATIVE_AI_API_KEY_";
@@ -16,12 +17,6 @@ const googleApiKeys = Object.entries(process.env)
   .map(([, value]) => value!.trim())
   .filter((value) => value.length > 0);
 
-if (!googleApiKeys.length) {
-  throw new Error(
-    "Missing Google Generative AI API keys. Configure GOOGLE_GENERATIVE_AI_API_KEY_1 in the environment.",
-  );
-}
-
 // Track which key/model was used for each provider instance.
 const providerKeyMetadataMap = new WeakMap<
   GoogleGenerativeAIProvider,
@@ -35,6 +30,8 @@ const providerKeyMetadataMap = new WeakMap<
 export const createGoogleProvider = async (
   model: string,
 ): Promise<GoogleGenerativeAIProvider> => {
+  if (!googleApiKeys.length)
+    throw new Error("Missing Google Generative AI API keys");
   const convex = getConvexClient();
   const { keyIndex } = await convex.mutation(apiKeysApi.selectKey, {
     provider: PROVIDER_NAME,
@@ -46,8 +43,7 @@ export const createGoogleProvider = async (
 
   if (process.env.DEBUG_API_KEYS === "true") {
     console.log(
-      `[Google Provider] Using API key ${keyIndex + 1}/${googleApiKeys.length} ` +
-        `(${apiKey.slice(0, 8)}...)`,
+      `[Google Provider] Using API key ${keyIndex + 1}/${googleApiKeys.length} `,
     );
   }
 
@@ -58,13 +54,15 @@ export const createGoogleProvider = async (
 };
 
 /**
- * Report a successful API call (fire-and-forget)
+ * Report a successful API call (awaited before returning from the serverless invocation)
  */
-export const reportSuccess = (provider: GoogleGenerativeAIProvider): void => {
+export const reportSuccess = async (
+  provider: GoogleGenerativeAIProvider,
+): Promise<void> => {
   const metadata = providerKeyMetadataMap.get(provider);
   if (!metadata) return;
 
-  void getConvexClient()
+  await getConvexClient()
     .mutation(apiKeysApi.reportSuccess, {
       provider: PROVIDER_NAME,
       model: metadata.model,
@@ -76,18 +74,18 @@ export const reportSuccess = (provider: GoogleGenerativeAIProvider): void => {
 };
 
 /**
- * Report an API error (fire-and-forget)
+ * Report an API error (awaited before returning from the serverless invocation)
  */
-export const reportError = (
+export const reportError = async (
   provider: GoogleGenerativeAIProvider,
   error: unknown,
-): void => {
+): Promise<void> => {
   const metadata = providerKeyMetadataMap.get(provider);
   if (!metadata) return;
 
-  const errorMessage = error instanceof Error ? error.message : String(error);
+  const errorMessage = safeError(error);
 
-  void getConvexClient()
+  await getConvexClient()
     .mutation(apiKeysApi.reportError, {
       provider: PROVIDER_NAME,
       model: metadata.model,
