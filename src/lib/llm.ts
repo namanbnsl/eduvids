@@ -1,4 +1,5 @@
 import { safeError } from "./workflow/errors";
+import { withOverloadFallback } from "./workflow/model-fallback";
 import {
   MANIM_SYSTEM_PROMPT,
   VOICEOVER_SYSTEM_PROMPT,
@@ -57,15 +58,39 @@ export async function streamTextWithTracking<
   config: T & { model: LanguageModel },
   googleConfig?: GoogleModelConfig,
 ): Promise<string> {
+  const abortSignal = AbortSignal.any([
+    ...(config.abortSignal ? [config.abortSignal] : []),
+    AbortSignal.timeout(180_000),
+  ]);
+  return withOverloadFallback(
+    () => streamTextOnceWithTracking({ ...config, abortSignal }, googleConfig),
+    googleConfig?.modelId === "gemini-3.8-flash"
+      ? async () => {
+          console.warn("[Google Provider] Model overloaded; switching to gemini-3.5-flash-lite");
+          const fallback = await createGoogleModel("gemini-3.5-flash-lite");
+          abortSignal.throwIfAborted();
+          return streamTextOnceWithTracking(
+            { ...config, model: fallback.provider(fallback.modelId), abortSignal },
+            fallback,
+          );
+        }
+      : undefined,
+    abortSignal,
+  );
+}
+
+async function streamTextOnceWithTracking<
+  T extends Parameters<typeof streamText>[0],
+>(
+  config: T & { model: LanguageModel },
+  googleConfig?: GoogleModelConfig,
+): Promise<string> {
   let streamError: unknown;
   try {
     const result = streamText({
       ...config,
       maxRetries: 0, // Upstash retries in a fresh invocation with a freshly selected key.
-      abortSignal: AbortSignal.any([
-        ...(config.abortSignal ? [config.abortSignal] : []),
-        AbortSignal.timeout(180_000),
-      ]),
+      abortSignal: config.abortSignal,
       onError: ({ error }) => {
         streamError = error; // Redact before surfacing.
       },

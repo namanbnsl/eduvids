@@ -13,12 +13,21 @@ export function isCredentialError(message: string): boolean {
   );
 }
 
+export function isModelOverloaded(error: unknown): boolean {
+  const message = safeError(error);
+  return !isCredentialError(message) &&
+    /high demand|overloaded|temporarily unavailable|service unavailable|\b503\b|\bUNAVAILABLE\b/i.test(message);
+}
+
 export function generationFailureMessage(message: string): string {
   if (isCredentialError(message) || /all keys are blocked/i.test(message)) {
     return "Video generation is unavailable because the AI provider rejected its credentials. The site operator needs to check the provider account and API keys.";
   }
   if (/timeout|timed out|deadline/i.test(message)) {
     return "Video generation exceeded its time limit after recovery attempts. Please try a shorter or simpler video.";
+  }
+  if (isModelOverloaded(message)) {
+    return "The AI provider is temporarily overloaded. Video generation could not complete after recovery attempts. Please try again later.";
   }
   if (/Manim|scene|syntax|script validation/i.test(message)) {
     return "The animation script could not be rendered after automatic repair. Please try simplifying the request.";
