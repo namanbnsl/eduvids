@@ -102,6 +102,72 @@ export async function postYouTubeComment({
   return { commentThreadId: result.data.id ?? undefined };
 }
 
+export async function addVideoToPlaylist({
+  videoId,
+  playlistId,
+}: {
+  videoId: string;
+  playlistId: string;
+}): Promise<{ playlistItemId?: string; alreadyPresent: boolean }> {
+  const youtube = getYouTubeClient();
+  const existing = await youtube.playlistItems.list({
+    part: ["id"],
+    playlistId,
+    videoId,
+    maxResults: 1,
+  });
+  const existingId = existing.data.items?.[0]?.id;
+  if (existingId) {
+    return { playlistItemId: existingId, alreadyPresent: true };
+  }
+
+  const result = await youtube.playlistItems.insert({
+    part: ["snippet"],
+    requestBody: {
+      snippet: {
+        playlistId,
+        resourceId: {
+          kind: "youtube#video",
+          videoId,
+        },
+      },
+    },
+  });
+
+  return {
+    playlistItemId: result.data.id ?? undefined,
+    alreadyPresent: false,
+  };
+}
+
+export async function setYouTubeThumbnail({
+  videoId,
+  thumbnailUrl,
+}: {
+  videoId: string;
+  thumbnailUrl: string;
+}): Promise<void> {
+  const youtube = getYouTubeClient();
+  const signal = AbortSignal.timeout(120_000);
+  const response = await fetch(thumbnailUrl, { signal });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch thumbnail: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  await youtube.thumbnails.set(
+    {
+      videoId,
+      media: {
+        mimeType: "image/png",
+        body: Readable.from(Buffer.from(await response.arrayBuffer())),
+      },
+    },
+    { signal, timeout: 120_000, retry: false },
+  );
+}
+
 export async function uploadToYouTube({
   videoUrl,
   title,

@@ -7,6 +7,12 @@ export interface UploadRequest {
   jobId?: string;
 }
 
+export interface ImageUploadRequest {
+  imagePath: string;
+  userId: string;
+  customId?: string;
+}
+
 const isUploadResponseData = (
   data: unknown,
 ): data is { ufsUrl?: string; url?: string } => {
@@ -94,5 +100,50 @@ export async function uploadVideo({
     const message = safeError(error);
     console.error("Upload failed:", message);
     throw new Error(`Video upload failed: ${message}`);
+  }
+}
+
+export async function uploadImage({
+  imagePath,
+  userId,
+  customId,
+}: ImageUploadRequest): Promise<string> {
+  const utapi = new UTApi({ fetch: uploadThingFetch });
+  try {
+    if (customId) {
+      const existing = await utapi.getFileUrls(customId, {
+        keyType: "customId",
+      });
+      if (existing.data[0]?.url) return existing.data[0].url;
+    }
+    if (!imagePath.startsWith("data:image/png;base64,")) {
+      throw new Error("Expected base64 PNG data URL for upload");
+    }
+
+    const buffer = Buffer.from(
+      imagePath.replace("data:image/png;base64,", ""),
+      "base64",
+    );
+    const file = new UTFile(
+      [new Uint8Array(buffer)],
+      `thumbnail_${userId}_${Date.now()}.png`,
+      { type: "image/png", customId },
+    );
+    const response = await utapi.uploadFiles([file]);
+    const uploadResult = response[0];
+    if (!uploadResult?.data) {
+      throw new Error(
+        uploadResult?.error?.message ?? "No thumbnail upload result",
+      );
+    }
+    if (!isUploadResponseData(uploadResult.data)) {
+      throw new Error("Thumbnail upload succeeded but missing URL");
+    }
+    const uploadUrl = uploadResult.data.ufsUrl ?? uploadResult.data.url;
+    if (!uploadUrl)
+      throw new Error("Thumbnail upload succeeded but missing URL");
+    return uploadUrl;
+  } catch (error) {
+    throw new Error(`Thumbnail upload failed: ${safeError(error)}`);
   }
 }

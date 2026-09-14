@@ -2,6 +2,8 @@ import { Sandbox } from "@e2b/code-interpreter";
 import type { PreparedSandboxState } from "@/lib/e2b";
 
 export const SANDBOX_JOB_TIMEOUT_SECONDS = 1_800;
+export const SANDBOX_POLL_WINDOW_MS = 150_000;
+export const MAX_SANDBOX_POLL_WINDOWS = 12;
 const REQUEST_TIMEOUT_MS = 15_000;
 
 export type SandboxJob = {
@@ -49,6 +51,7 @@ export async function startSandboxJob(
   sandboxId: string,
   name: string,
   command: string[],
+  envs?: Record<string, string>,
 ): Promise<SandboxJob> {
   if (!/^[a-z0-9-]+$/.test(name)) throw new Error("Invalid sandbox job name");
   const sandbox = await connectSandbox(sandboxId);
@@ -56,6 +59,7 @@ export async function startSandboxJob(
   await sandbox.files.write(`${prefix}.py`, buildJobRunner(prefix, command));
   const handle = await sandbox.commands.run(`python ${prefix}.py`, {
     background: true,
+    envs,
     timeoutMs: (SANDBOX_JOB_TIMEOUT_SECONDS + 30) * 1000,
     requestTimeoutMs: REQUEST_TIMEOUT_MS,
   });
@@ -98,6 +102,42 @@ PY`,
     };
   }
   return status;
+}
+
+type PollWindowOptions = {
+  windowMs?: number;
+  intervalMs?: number;
+  now?: () => number;
+  delay?: (milliseconds: number) => Promise<void>;
+  poll?: (job: SandboxJob) => Promise<SandboxJobResult>;
+};
+
+/**
+ * Poll several times inside one bounded workflow invocation. This keeps E2B
+ * rendering durable without spending one Upstash step on every poll and sleep.
+ */
+export async function pollSandboxJobWindow(
+  job: SandboxJob,
+  options: PollWindowOptions = {},
+): Promise<SandboxJobResult> {
+  const windowMs = options.windowMs ?? SANDBOX_POLL_WINDOW_MS;
+  const intervalMs = options.intervalMs ?? 10_000;
+  const now = options.now ?? Date.now;
+  const delay =
+    options.delay ??
+    ((milliseconds: number) =>
+      new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+  const poll = options.poll ?? pollSandboxJob;
+  const deadline = now() + windowMs;
+
+  while (true) {
+    const result = await poll(job);
+    if (result.complete) return result;
+
+    const remaining = deadline - now();
+    if (remaining <= 0) return result;
+    await delay(Math.min(intervalMs, remaining));
+  }
 }
 
 export function renderCommand(prepared: PreparedSandboxState): string[] {

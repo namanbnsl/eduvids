@@ -4,6 +4,8 @@ import {
   MANIM_SYSTEM_PROMPT,
   VOICEOVER_SYSTEM_PROMPT,
   SCENE_PLAN_SYSTEM_PROMPT,
+  VOICEOVER_SERVICE_IMPORT_TOKEN,
+  VOICEOVER_SERVICE_SETTER_TOKEN,
 } from "@/prompt";
 import { streamText, LanguageModel } from "ai";
 import {
@@ -28,14 +30,22 @@ interface GoogleModelConfig {
   provider: Awaited<ReturnType<typeof createGoogleProvider>>;
 }
 
+class RetryableModelOutputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RetryableModelOutputError";
+  }
+}
+
 const isDev = process.env.NODE_ENV !== "production";
 
 // Only initialize PostHog in production
-const phClient = isDev || !process.env.NEXT_PUBLIC_POSTHOG_KEY
-  ? null
-  : new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
-      host: process.env.NEXT_PUBLIC_POSTHOG_HOST!,
-    });
+const phClient =
+  isDev || !process.env.NEXT_PUBLIC_POSTHOG_KEY
+    ? null
+    : new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
+        host: process.env.NEXT_PUBLIC_POSTHOG_HOST!,
+      });
 
 // Wrapper that skips tracing in development
 function maybeWithTracing<T>(
@@ -67,11 +77,17 @@ export async function streamTextWithTracking<
     () => streamTextOnceWithTracking({ ...config, abortSignal }, googleConfig),
     googleConfig?.modelId === "gemini-3.8-flash"
       ? async () => {
-          console.warn("[Google Provider] Model overloaded; switching to gemini-3.5-flash-lite");
+          console.warn(
+            "[Google Provider] Primary response failed; switching to gemini-3.5-flash-lite",
+          );
           const fallback = await createGoogleModel("gemini-3.5-flash-lite");
           abortSignal.throwIfAborted();
           return streamTextOnceWithTracking(
-            { ...config, model: fallback.provider(fallback.modelId), abortSignal },
+            {
+              ...config,
+              model: fallback.provider(fallback.modelId),
+              abortSignal,
+            },
             fallback,
           );
         }
@@ -98,11 +114,24 @@ async function streamTextOnceWithTracking<
     });
     const text = await result.text;
     if (streamError) throw streamError;
-    if (
-      !text.trim() ||
-      ["length", "error", "other"].includes(await result.finishReason)
-    ) {
-      throw new Error("AI response was empty or truncated; retry generation");
+    const finishReason = await result.finishReason;
+    const usage = await result.usage;
+    const isEmpty = !text.trim();
+    const isTruncated = finishReason === "length";
+    const isProviderError = finishReason === "error";
+    if (isEmpty || isTruncated || isProviderError) {
+      console.warn("[AI generation] Unusable model response", {
+        finishReason,
+        textCharacters: text.length,
+        usage,
+      });
+      if (googleConfig) {
+        await reportSuccess(googleConfig.provider);
+      }
+      const state = isEmpty ? "empty" : "truncated";
+      throw new RetryableModelOutputError(
+        `AI response was ${state} (finish reason: ${finishReason}, ${text.length} characters); retry generation`,
+      );
     }
 
     if (googleConfig) {
@@ -112,7 +141,7 @@ async function streamTextOnceWithTracking<
     return text;
   } catch (error) {
     const failure = streamError ?? error;
-    if (googleConfig) {
+    if (googleConfig && !(failure instanceof RetryableModelOutputError)) {
       await reportError(googleConfig.provider, failure);
     }
 
@@ -188,6 +217,357 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
   return `${modifiedBase}\n\n---\n`;
 }
 
+function titleCaseLanguage(language: string): string {
+  return language
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function gttsLanguageCode(language: string): string {
+  const languageData = langs.where("name", titleCaseLanguage(language)) as
+    | Record<string, string>
+    | undefined;
+  return languageData?.["1"] ?? "en";
+}
+
+export type VoiceoverProvider = "deepgram-aura-openrouter-gtts" | "gtts";
+
+type VoiceoverServiceSpec = {
+  provider: VoiceoverProvider;
+  serviceImport: string;
+  serviceExpression: string;
+};
+
+function resolveVoiceoverService(language: string): VoiceoverServiceSpec {
+  const normalizedLanguage = language.trim().toLowerCase();
+  if (normalizedLanguage === "english") {
+    return {
+      provider: "deepgram-aura-openrouter-gtts",
+      serviceImport: "from eduvids_tts import EduvidsTTSService",
+      serviceExpression: "EduvidsTTSService()",
+    };
+  }
+
+  return {
+    provider: "gtts",
+    serviceImport: "from manim_voiceover.services.gtts import GTTSService",
+    serviceExpression: `GTTSService(lang=${JSON.stringify(gttsLanguageCode(language))})`,
+  };
+}
+
+function replaceSpeechServiceCalls(
+  script: string,
+  serviceExpression: string,
+): string {
+  const needle = "self.set_speech_service(";
+  let result = script;
+  let searchFrom = 0;
+
+  while (true) {
+    const callStart = result.indexOf(needle, searchFrom);
+    if (callStart === -1) return result;
+
+    const openingParen = callStart + needle.length - 1;
+    let depth = 0;
+    let quote: "'" | '"' | null = null;
+    let escaped = false;
+    let closingParen = -1;
+
+    for (let index = openingParen; index < result.length; index++) {
+      const character = result[index];
+
+      if (quote) {
+        if (escaped) {
+          escaped = false;
+        } else if (character === "\\") {
+          escaped = true;
+        } else if (character === quote) {
+          quote = null;
+        }
+        continue;
+      }
+
+      if (character === "'" || character === '"') {
+        quote = character;
+      } else if (character === "(") {
+        depth += 1;
+      } else if (character === ")") {
+        depth -= 1;
+        if (depth === 0) {
+          closingParen = index;
+          break;
+        }
+      }
+    }
+
+    if (closingParen === -1) {
+      throw new Error("Malformed self.set_speech_service(...) call");
+    }
+
+    const replacement = `self.set_speech_service(${serviceExpression})`;
+    result =
+      result.slice(0, callStart) + replacement + result.slice(closingParen + 1);
+    searchFrom = callStart + replacement.length;
+  }
+}
+
+function indentationWidth(line: string): number {
+  const whitespace = line.match(/^[ \t]*/)?.[0] ?? "";
+  return [...whitespace].reduce(
+    (width, character) => width + (character === "\t" ? 4 : 1),
+    0,
+  );
+}
+
+function voiceoverConstructRanges(lines: string[]): Array<{
+  className: string;
+  constructLine: number;
+  bodyEnd: number;
+  bodyIndent: string;
+}> {
+  const ranges: Array<{
+    className: string;
+    constructLine: number;
+    bodyEnd: number;
+    bodyIndent: string;
+  }> = [];
+
+  for (let classLine = 0; classLine < lines.length; classLine++) {
+    const classMatch = /^([ \t]*)class\s+([A-Za-z_]\w*)\s*\(([^)]*)\)\s*:/.exec(
+      lines[classLine],
+    );
+    if (!classMatch || !/\bVoiceoverScene\b/.test(classMatch[3])) continue;
+
+    const classIndent = indentationWidth(classMatch[1]);
+    let classEnd = lines.length;
+    for (let index = classLine + 1; index < lines.length; index++) {
+      const trimmed = lines[index].trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      if (indentationWidth(lines[index]) <= classIndent) {
+        classEnd = index;
+        break;
+      }
+    }
+
+    let constructLine = -1;
+    let constructIndent = -1;
+    let constructWhitespace = "";
+    for (let index = classLine + 1; index < classEnd; index++) {
+      const constructMatch =
+        /^([ \t]*)def\s+construct\s*\(\s*self\s*\)\s*:/.exec(lines[index]);
+      if (!constructMatch) continue;
+      constructLine = index;
+      constructWhitespace = constructMatch[1];
+      constructIndent = indentationWidth(constructWhitespace);
+      break;
+    }
+
+    if (constructLine === -1) {
+      throw new Error(
+        `Voiceover scene ${classMatch[2]} has no construct(self) method`,
+      );
+    }
+
+    let bodyEnd = classEnd;
+    let bodyIndent = `${constructWhitespace}    `;
+    for (let index = constructLine + 1; index < classEnd; index++) {
+      const trimmed = lines[index].trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const lineIndent = indentationWidth(lines[index]);
+      if (lineIndent <= constructIndent) {
+        bodyEnd = index;
+        break;
+      }
+      bodyIndent = lines[index].match(/^[ \t]*/)?.[0] ?? bodyIndent;
+      break;
+    }
+
+    ranges.push({
+      className: classMatch[2],
+      constructLine,
+      bodyEnd,
+      bodyIndent,
+    });
+    classLine = classEnd - 1;
+  }
+
+  return ranges;
+}
+
+export function enforceVoiceoverService(
+  script: string,
+  language: string,
+): { script: string; provider: VoiceoverProvider } {
+  const service = resolveVoiceoverService(language);
+  let normalized = script.replace(
+    /^[ \t]*from[ \t]+(?:eduvids_[A-Za-z0-9_]*tts|manim_voiceover\.services\.(?:gtts|elevenlabs))[ \t]+import[^\n]*(?:\n|$)/gm,
+    "",
+  );
+
+  const lines = normalized.split("\n");
+  let voiceoverImportLine = lines.findIndex((line) =>
+    /^\s*from\s+manim_voiceover\s+import\s+.*\bVoiceoverScene\b/.test(line),
+  );
+  if (voiceoverImportLine === -1) {
+    const manimImportLine = lines.findIndex((line) =>
+      /^\s*from\s+manim\s+import\b/.test(line),
+    );
+    voiceoverImportLine = manimImportLine === -1 ? 0 : manimImportLine + 1;
+    lines.splice(
+      voiceoverImportLine,
+      0,
+      "from manim_voiceover import VoiceoverScene",
+    );
+  }
+  lines.splice(voiceoverImportLine + 1, 0, service.serviceImport);
+  normalized = replaceSpeechServiceCalls(
+    lines.join("\n"),
+    service.serviceExpression,
+  );
+
+  const normalizedLines = normalized.split("\n");
+  const ranges = voiceoverConstructRanges(normalizedLines);
+  if (ranges.length === 0) {
+    throw new Error("Manim script has no VoiceoverScene class");
+  }
+
+  for (const range of [...ranges].reverse()) {
+    const method = normalizedLines
+      .slice(range.constructLine + 1, range.bodyEnd)
+      .join("\n");
+    if (!method.includes("self.set_speech_service(")) {
+      normalizedLines.splice(
+        range.constructLine + 1,
+        0,
+        `${range.bodyIndent}self.set_speech_service(${service.serviceExpression})`,
+      );
+    }
+  }
+
+  normalized = normalizedLines.join("\n").trim();
+  const expectedSetter = `self.set_speech_service(${service.serviceExpression})`;
+  const finalLines = normalized.split("\n");
+  const finalRanges = voiceoverConstructRanges(finalLines);
+  const importCount = finalLines.filter(
+    (line) => line.trim() === service.serviceImport,
+  ).length;
+  const setterCount = normalized.split("self.set_speech_service(").length - 1;
+  const expectedSetterCount = normalized.split(expectedSetter).length - 1;
+
+  if (importCount !== 1 || setterCount !== expectedSetterCount) {
+    throw new Error(
+      `Voiceover provider enforcement failed for ${service.provider}`,
+    );
+  }
+  for (const range of finalRanges) {
+    const method = finalLines
+      .slice(range.constructLine + 1, range.bodyEnd)
+      .join("\n");
+    if (!method.includes(expectedSetter)) {
+      throw new Error(
+        `Voiceover scene ${range.className} does not use ${service.provider}`,
+      );
+    }
+  }
+
+  return { script: normalized, provider: service.provider };
+}
+
+export function configureVoiceoverServicePrompt(
+  prompt: string,
+  language: string,
+): string {
+  const service = resolveVoiceoverService(language);
+
+  return prompt
+    .replaceAll(VOICEOVER_SERVICE_IMPORT_TOKEN, service.serviceImport)
+    .replaceAll(
+      VOICEOVER_SERVICE_SETTER_TOKEN,
+      `self.set_speech_service(${service.serviceExpression})`,
+    );
+}
+
+export function manimVoiceoverTimingIssues(
+  script: string,
+  expectedBeatCount = 0,
+): string[] {
+  const lines = script.split("\n");
+  const issues: string[] = [];
+  let timedBlockCount = 0;
+  let voiceoverBlockCount = 0;
+
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    if (!/\bwith\s+self\.voiceover\(/.test(line)) continue;
+    voiceoverBlockCount += 1;
+
+    const header =
+      /^(\s*)with\s+self\.voiceover\(\s*text\s*=([\s\S]+)\)\s+as\s+(\w+)\s*:\s*$/.exec(
+        line,
+      );
+    if (!header) {
+      issues.push(
+        `voiceover block ${voiceoverBlockCount} has no timing tracker`,
+      );
+      continue;
+    }
+
+    timedBlockCount += 1;
+    const blockIndent = indentationWidth(header[1]);
+    const tracker = header[3];
+    let bodyEnd = lines.length;
+    for (let candidate = index + 1; candidate < lines.length; candidate++) {
+      const trimmed = lines[candidate].trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      if (indentationWidth(lines[candidate]) <= blockIndent) {
+        bodyEnd = candidate;
+        break;
+      }
+    }
+
+    const narrationLiteral = header[2].trim();
+    const narration =
+      narrationLiteral.length >= 2
+        ? narrationLiteral.slice(1, -1).replace(/\\[nrt]/g, " ")
+        : narrationLiteral;
+    const wordCount = narration.split(/\s+/).filter(Boolean).length;
+    const body = lines.slice(index + 1, bodyEnd).join("\n");
+    const playCount = body.match(/\bself\.play\s*\(/g)?.length ?? 0;
+    const alignedWait = new RegExp(
+      `self\\.wait\\(\\s*max\\(\\s*0(?:\\.0+)?\\s*,\\s*${tracker}\\.get_remaining_duration\\(\\)\\s*\\)\\s*\\)`,
+    ).test(body);
+
+    if (wordCount > 22) {
+      issues.push(
+        `voiceover block ${voiceoverBlockCount} has ${wordCount} words; maximum is 22`,
+      );
+    }
+    if (playCount === 0) {
+      issues.push(
+        `voiceover block ${voiceoverBlockCount} has no visual action`,
+      );
+    }
+    if (!alignedWait) {
+      issues.push(
+        `voiceover block ${voiceoverBlockCount} does not align its final duration`,
+      );
+    }
+
+    index = bodyEnd - 1;
+  }
+
+  if (voiceoverBlockCount === 0) {
+    issues.push("script has no voiceover blocks");
+  } else if (timedBlockCount < expectedBeatCount) {
+    issues.push(
+      `script has ${timedBlockCount} timed voiceover blocks for ${expectedBeatCount} planned beats`,
+    );
+  }
+
+  return issues;
+}
+
 export interface VoiceoverScriptRequest {
   prompt: string;
   sessionId: string;
@@ -198,6 +578,7 @@ export interface ManimScriptRequest {
   voiceoverScript: string;
   sessionId: string;
   scenePlan?: ScenePlanEntry[];
+  voiceoverLanguage?: string;
 }
 
 export interface ScenePlanElement {
@@ -213,6 +594,11 @@ export interface ScenePlanLabel {
   position: "above" | "below" | "left" | "right";
 }
 
+export interface ScenePlanBeat {
+  narration: string;
+  focusElementIds: string[];
+}
+
 export interface ScenePlanEntry {
   sceneId: string;
   narration: string;
@@ -223,6 +609,51 @@ export interface ScenePlanEntry {
   transitionIn: string;
   clearPrevious: boolean;
   labels: ScenePlanLabel[];
+  beats: ScenePlanBeat[];
+}
+
+export function splitNarrationIntoTimingBeats(
+  narration: string,
+  maxWords = 18,
+): string[] {
+  const words = narration.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+
+  const beats: string[] = [];
+  for (let start = 0; start < words.length; ) {
+    let end = Math.min(start + maxWords, words.length);
+    if (end < words.length) {
+      const earliestNaturalBreak = Math.min(start + 8, end);
+      for (let candidate = end; candidate > earliestNaturalBreak; candidate--) {
+        if (/[.!?;,:]$/.test(words[candidate - 1])) {
+          end = candidate;
+          break;
+        }
+      }
+    }
+    beats.push(words.slice(start, end).join(" "));
+    start = end;
+  }
+  return beats;
+}
+
+export function normalizeScenePlanTiming(
+  scenePlan: ScenePlanEntry[],
+): ScenePlanEntry[] {
+  return scenePlan.map((scene) => {
+    const elementIds = scene.elements.map((element) => element.id);
+    const narrationBeats = splitNarrationIntoTimingBeats(scene.narration);
+    return {
+      ...scene,
+      beats: narrationBeats.map((narration, index) => ({
+        narration,
+        focusElementIds:
+          elementIds.length === 0
+            ? []
+            : [elementIds[Math.min(index, elementIds.length - 1)]],
+      })),
+    };
+  });
 }
 
 const SCENE_PLAN_MAX_RETRIES = 1; // Durable workflow retries, never nested model retries.
@@ -279,7 +710,7 @@ export async function generateScenePlan({
       console.log(
         `[generateScenePlan] Success on attempt ${attempt + 1}, ${parsed.length} scenes`,
       );
-      return parsed;
+      return normalizeScenePlanTiming(parsed);
     } catch (err) {
       lastError = err;
       console.error(
@@ -309,14 +740,17 @@ export async function generateVoiceoverScript({
 
   const googleModel = await createGoogleModel("gemini-3.5-flash-lite");
 
-  const text = await streamTextWithTracking({
-    model: maybeWithTracing(googleModel.provider(googleModel.modelId), {
-      posthogProperties: { $ai_session_id: sessionId },
-    }),
-    system: systemPrompt,
-    prompt: composedPrompt,
-    temperature: 0.5,
-  }, googleModel);
+  const text = await streamTextWithTracking(
+    {
+      model: maybeWithTracing(googleModel.provider(googleModel.modelId), {
+        posthogProperties: { $ai_session_id: sessionId },
+      }),
+      system: systemPrompt,
+      prompt: composedPrompt,
+      temperature: 0.5,
+    },
+    googleModel,
+  );
 
   return text.trim();
 }
@@ -557,16 +991,21 @@ export async function generateManimScript({
   voiceoverScript,
   sessionId,
   scenePlan,
+  voiceoverLanguage,
 }: ManimScriptRequest): Promise<string> {
   // Detect language from voiceover script using LLM
-  const detectedLanguage = await detectLanguage(voiceoverScript);
+  const detectedLanguage =
+    voiceoverLanguage ?? (await detectLanguage(voiceoverScript));
   console.log(`Detected language: ${detectedLanguage}`);
 
   // Build system prompt with language adjustments
   const augmentedSystemPrompt = buildAugmentedSystemPrompt(
-    MANIM_SYSTEM_PROMPT,
+    configureVoiceoverServicePrompt(MANIM_SYSTEM_PROMPT, detectedLanguage),
     detectedLanguage,
   );
+  const timedScenePlan = scenePlan
+    ? normalizeScenePlanTiming(scenePlan)
+    : undefined;
 
   const generationPromptParts = [
     `User request: ${prompt}`,
@@ -575,9 +1014,9 @@ export async function generateManimScript({
     `Use the layout templates from the system prompt.`,
   ];
 
-  if (scenePlan) {
+  if (timedScenePlan) {
     generationPromptParts.push(
-      `SCENE PLAN (follow this structure exactly):\n${JSON.stringify(scenePlan, null, 2)}`,
+      `SCENE PLAN (follow this structure exactly):\n${JSON.stringify(timedScenePlan, null, 2)}`,
     );
   }
 
@@ -598,6 +1037,7 @@ export async function generateManimScript({
           system: augmentedSystemPrompt,
           prompt: generationPrompt,
           temperature: 0.2,
+          maxOutputTokens: 32_768,
         },
         googleModel,
       );
@@ -609,9 +1049,32 @@ export async function generateManimScript({
 
       const sanitized = sanitizeManimScript(code);
       if (!/^class\s+\w+\s*\([^)]*Scene[^)]*\)\s*:/m.test(sanitized)) {
-        throw new Error("Manim script generation returned no renderable scene class");
+        throw new Error(
+          "Manim script generation returned no renderable scene class",
+        );
       }
-      return sanitized;
+      const enforced = enforceVoiceoverService(sanitized, detectedLanguage);
+      const expectedBeatCount =
+        timedScenePlan?.reduce(
+          (count, scene) => count + (scene.beats?.length ?? 0),
+          0,
+        ) ?? 0;
+      const timingIssues = manimVoiceoverTimingIssues(
+        enforced.script,
+        expectedBeatCount,
+      );
+      if (timingIssues.length > 0) {
+        throw new Error(
+          `Manim voiceover timing validation failed: ${timingIssues
+            .slice(0, 6)
+            .join("; ")}`,
+        );
+      }
+      console.log("[generateManimScript] Voiceover service enforced", {
+        language: detectedLanguage,
+        provider: enforced.provider,
+      });
+      return enforced.script;
     } catch (err) {
       lastError = err;
       console.error(
@@ -797,20 +1260,24 @@ export interface FixManimScriptRequest {
   script: string;
   errors: string;
   sessionId: string;
+  voiceoverLanguage: string;
 }
 
 export async function fixManimScript({
   script,
   errors,
   sessionId,
+  voiceoverLanguage,
 }: FixManimScriptRequest): Promise<string> {
+  const enforceProvider = (candidate: string) =>
+    enforceVoiceoverService(candidate, voiceoverLanguage).script;
   const heuristicFixed = fixManimScriptHeuristically(script, errors);
   if (heuristicFixed.changed) {
     console.warn(
       "[fixManimScript] Applied heuristic fix before LLM:",
       heuristicFixed.notes.join("; "),
     );
-    return heuristicFixed.script;
+    return enforceProvider(heuristicFixed.script);
   }
 
   // Fetch relevant manim docs from DeepWiki (best-effort)
@@ -848,8 +1315,6 @@ RULES:
     "```",
   ].join("\n");
 
-
-
   const googleModel = await createGoogleModel("gemini-3.8-flash");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
@@ -866,9 +1331,8 @@ RULES:
       googleModel,
     );
 
-
     const fixed = applySearchReplaceDiffs(script, text.trim());
-    if (fixed !== script) return fixed;
+    if (fixed !== script) return enforceProvider(fixed);
 
     const heuristicAfter = fixManimScriptHeuristically(script, errors);
     if (heuristicAfter.changed) {
@@ -876,10 +1340,10 @@ RULES:
         "[fixManimScript] Applied heuristic fix after LLM:",
         heuristicAfter.notes.join("; "),
       );
-      return heuristicAfter.script;
+      return enforceProvider(heuristicAfter.script);
     }
 
-    return script;
+    return enforceProvider(script);
   } catch (err) {
     console.error("[fixManimScript] LLM call failed:", err);
     // Return original script so the caller can decide whether to retry
@@ -889,9 +1353,9 @@ RULES:
         "[fixManimScript] Applied heuristic fix after LLM failure:",
         heuristicAfter.notes.join("; "),
       );
-      return heuristicAfter.script;
+      return enforceProvider(heuristicAfter.script);
     }
-    return script;
+    return enforceProvider(script);
   }
 }
 
@@ -1077,12 +1541,15 @@ If there are no issues, return:
   ];
 
   try {
-    const text = await streamTextWithTracking({
-      model,
-      system: systemPrompt,
-      messages: [{ role: "user", content }],
-      temperature: 0.2,
-    }, googleModel);
+    const text = await streamTextWithTracking(
+      {
+        model,
+        system: systemPrompt,
+        messages: [{ role: "user", content }],
+        temperature: 0.2,
+      },
+      googleModel,
+    );
 
     const cleaned = text
       .replace(/```json?\n?/g, "")

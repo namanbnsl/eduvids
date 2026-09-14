@@ -1,7 +1,7 @@
 "use client";
 
 // Hooks
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -24,6 +24,7 @@ import { StyledResponse } from "@/components/ui/styled-response";
 // Icons
 import { Monitor, Smartphone } from "lucide-react";
 import { QuickActionCards } from "@/components/quick-action-cards";
+import { generateTopics } from "@/lib/actions/generate-topics";
 
 // Types
 import type {
@@ -47,13 +48,12 @@ const isGenerateVideoToolPart = (
 ): part is Extract<GenerateVideoToolUIPart, { type: "tool-generate_video" }> =>
   part.type === "tool-generate_video";
 
-const SUGGESTED_TOPICS = [
-  "Why Does Gravity Bend Light? Visualized in 3D",
-  "How Fourier Transforms Reveal Hidden Frequencies",
-];
+const TOPIC_HISTORY_KEY = "eduvids-recent-topics";
 
 export function GeneratorHome() {
   const [input, setInput] = useState("");
+  const [suggestedTopics, setSuggestedTopics] = useState<string[]>([]);
+  const [areTopicsLoading, setAreTopicsLoading] = useState(true);
   const [generationMode, setGenerationMode] = useState<
     "video" | "short" | null
   >(null);
@@ -65,6 +65,48 @@ export function GeneratorHome() {
 
   const { messages, status, sendMessage } = useChat<ChatMessage>();
   const hasMessages = messages.length > 0;
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadTopics() {
+      let recentTopics: string[] = [];
+
+      try {
+        const storedTopics = JSON.parse(
+          window.sessionStorage.getItem(TOPIC_HISTORY_KEY) ?? "[]",
+        );
+        if (Array.isArray(storedTopics)) {
+          recentTopics = storedTopics.filter(
+            (topic): topic is string => typeof topic === "string",
+          );
+        }
+      } catch {
+        // A malformed or unavailable session store should not block suggestions.
+      }
+
+      try {
+        const topics = await generateTopics(recentTopics);
+        if (!isActive) return;
+
+        setSuggestedTopics(topics);
+        window.sessionStorage.setItem(
+          TOPIC_HISTORY_KEY,
+          JSON.stringify([...recentTopics, ...topics].slice(-12)),
+        );
+      } catch (error) {
+        console.error("Failed to load suggested topics", error);
+      } finally {
+        if (isActive) setAreTopicsLoading(false);
+      }
+    }
+
+    void loadTopics();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const handleGenerationModeToggle = (mode: "video" | "short") => {
     setGenerationMode((current) => (current === mode ? null : mode));
@@ -280,7 +322,8 @@ export function GeneratorHome() {
                   onCardClick={(text) => {
                     setInput(text);
                   }}
-                  topics={SUGGESTED_TOPICS}
+                  topics={suggestedTopics}
+                  isLoading={areTopicsLoading}
                 />
               </div>
             </div>

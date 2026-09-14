@@ -3,8 +3,10 @@ import { safeError } from "@/lib/workflow/errors";
 import { serve } from "@upstash/workflow/nextjs";
 
 import {
+  addVideoToPlaylist,
   findPreviousYouTubeVideo,
   postYouTubeComment,
+  setYouTubeThumbnail,
   uploadToYouTube,
 } from "@/lib/youtube";
 import {
@@ -14,12 +16,7 @@ import {
 } from "@/lib/youtube-metadata";
 import { jobStore, artifactStore } from "@/lib/job-store";
 import { getConvexClient, api } from "@/lib/convex-server";
-import {
-  workflowClient,
-  getBaseUrl,
-  qstashClientWithBypass,
-  getTriggerHeaders,
-} from "@/lib/workflow/client";
+import { qstashClientWithBypass } from "@/lib/workflow/client";
 
 import type { VideoVariant } from "@/lib/types";
 
@@ -34,12 +31,20 @@ type YouTubeUploadPayload = {
   jobId?: string;
   userId: string;
   variant?: VideoVariant;
+  thumbnailUrl?: string;
 };
 
 export const { POST } = serve<YouTubeUploadPayload>(
   async (context) => {
-    const { videoUrl, title, description, prompt, jobId, variant } =
-      context.requestPayload;
+    const {
+      videoUrl,
+      title,
+      description,
+      prompt,
+      jobId,
+      variant,
+      thumbnailUrl,
+    } = context.requestPayload;
 
     const isShort = variant === "short";
     const tags = [
@@ -110,6 +115,38 @@ export const { POST } = serve<YouTubeUploadPayload>(
       }
     });
 
+    if (thumbnailUrl) {
+      await context.run("set-youtube-thumbnail", async () => {
+        const saved = await artifactStore.find(key, "youtubeThumbnailResult");
+        if (saved) return JSON.parse(saved);
+        try {
+          await setYouTubeThumbnail({
+            videoId: youtubeResult.videoId,
+            thumbnailUrl,
+          });
+          const result = { success: true };
+          await artifactStore.set(
+            key,
+            "youtubeThumbnailResult",
+            JSON.stringify(result),
+          );
+          return result;
+        } catch (error) {
+          const result = { error: safeError(error) };
+          console.warn(
+            "Custom thumbnail failed; upload remains successful:",
+            result.error,
+          );
+          await artifactStore.set(
+            key,
+            "youtubeThumbnailResult",
+            JSON.stringify(result),
+          );
+          return result;
+        }
+      });
+    }
+
     if (jobId) {
       await context.run("update-job-youtube-status", async () => {
         await jobStore.setYoutubeStatus(jobId, {
@@ -161,6 +198,39 @@ export const { POST } = serve<YouTubeUploadPayload>(
             "youtubeCommentResult",
             JSON.stringify({ error: safeError(error) }),
           );
+        }
+      });
+    }
+
+    const playlistId = process.env.YOUTUBE_PLAYLIST_ID?.trim();
+    if (playlistId) {
+      await context.run("add-youtube-playlist-item", async () => {
+        const saved = await artifactStore.find(key, "youtubePlaylistResult");
+        if (saved) return JSON.parse(saved);
+
+        try {
+          const result = await addVideoToPlaylist({
+            videoId: youtubeResult.videoId,
+            playlistId,
+          });
+          await artifactStore.set(
+            key,
+            "youtubePlaylistResult",
+            JSON.stringify(result),
+          );
+          return result;
+        } catch (error) {
+          const result = { error: safeError(error) };
+          console.warn(
+            "Playlist insertion failed; upload remains successful:",
+            result.error,
+          );
+          await artifactStore.set(
+            key,
+            "youtubePlaylistResult",
+            JSON.stringify(result),
+          );
+          return result;
         }
       });
     }

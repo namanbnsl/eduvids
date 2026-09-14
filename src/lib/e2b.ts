@@ -1,6 +1,17 @@
 import { CommandExitError, Sandbox } from "@e2b/code-interpreter";
 import { Buffer } from "node:buffer";
 import { RenderLogEntry, ValidationStage } from "@/lib/types";
+import {
+  EDUVIDS_TTS_SERVICE_PATH,
+  EDUVIDS_TTS_SERVICE_SOURCE,
+  eduvidsTTSSandboxEnvironment,
+} from "@/lib/eduvids-tts-service";
+import type { RelatedYouTubeVideo } from "@/lib/youtube-metadata";
+import type { VideoTitleSet } from "@/lib/youtube-metadata";
+import {
+  buildThumbnailManimScript,
+  THUMBNAIL_CLASS_NAMES,
+} from "@/lib/youtube-thumbnail";
 
 const MAX_COMMAND_OUTPUT_CHARS = 4000;
 const MAX_COMMAND_BUFFER_CHARS = 20000;
@@ -52,7 +63,10 @@ function injectScaledTextHelper(script: string): string {
   return lines.join("\n");
 }
 
-function injectEduvidsCallout(script: string): string {
+export function injectEduvidsCallout(
+  script: string,
+  previousVideo?: RelatedYouTubeVideo,
+): string {
   if (script.includes(CTA_MARKER)) {
     return script;
   }
@@ -100,6 +114,41 @@ function injectEduvidsCallout(script: string): string {
     }
   }
 
+  const previousTitle = previousVideo?.title.trim().slice(0, 100);
+  const narration = previousTitle
+    ? `Continue with our previous video, ${previousTitle}. The link is in the description and top comment.`
+    : "Generate your own educational videos for free at eduvids dot app";
+  const narrationLiteral = JSON.stringify(narration);
+
+  const contentLines = previousTitle
+    ? [
+        `${bodyIndent}    end_card = RoundedRectangle(width=11.8, height=4.8, corner_radius=0.25, stroke_color=TEAL, stroke_width=2, fill_color=BLACK, fill_opacity=0.92)`,
+        `${bodyIndent}    eyebrow = Text("PREVIOUS VIDEO", font="EB Garamond", disable_ligatures=True, font_size=24, color=TEAL)`,
+        `${bodyIndent}    previous_title = Text(${JSON.stringify(previousTitle)}, font="EB Garamond", disable_ligatures=True, font_size=42, color=WHITE)`,
+        `${bodyIndent}    if previous_title.width > 10.5:`,
+        `${bodyIndent}        previous_title.scale_to_fit_width(10.5)`,
+        `${bodyIndent}    link_hint = Text("Link in description and top comment", font="EB Garamond", disable_ligatures=True, font_size=27, color=GRAY_A)`,
+        `${bodyIndent}    subscribe_hint = Text("Subscribe for the next visual", font="EB Garamond", disable_ligatures=True, font_size=25, color=YELLOW)`,
+        `${bodyIndent}    end_content = VGroup(eyebrow, previous_title, link_hint, subscribe_hint).arrange(DOWN, buff=0.42)`,
+        `${bodyIndent}    end_content.move_to(end_card.get_center())`,
+        `${bodyIndent}    self.play(FadeIn(end_card), FadeIn(eyebrow, shift=UP * 0.15), run_time=max(0.4, tracker.duration * 0.20))`,
+        `${bodyIndent}    self.play(FadeIn(previous_title, shift=UP * 0.15), FadeIn(link_hint), run_time=max(0.4, tracker.duration * 0.25))`,
+        `${bodyIndent}    self.play(FadeIn(subscribe_hint), run_time=max(0.4, tracker.duration * 0.15))`,
+        `${bodyIndent}    self.wait(max(0, tracker.get_remaining_duration()))`,
+      ]
+    : [
+        `${bodyIndent}    cta_title = Text("Generate your own educational videos for free!", font="EB Garamond", disable_ligatures=True, font_size=32)`,
+        `${bodyIndent}    cta_title.set_color(WHITE)`,
+        `${bodyIndent}    cta_link = Text("https://eduvids.app", font="EB Garamond", disable_ligatures=True, font_size=28)`,
+        `${bodyIndent}    cta_link.set_color(TEAL)`,
+        `${bodyIndent}    cta_link.next_to(cta_title, DOWN, buff=0.4)`,
+        `${bodyIndent}    cta_content = VGroup(cta_title, cta_link).move_to(ORIGIN)`,
+        `${bodyIndent}    self.play(FadeIn(cta_title, shift=UP * 0.3), FadeIn(cta_link, shift=UP * 0.3), run_time=max(0.4, tracker.duration * 0.35))`,
+        `${bodyIndent}    self.play(cta_link.animate.scale(1.08), run_time=max(0.3, tracker.duration * 0.20))`,
+        `${bodyIndent}    self.play(cta_link.animate.scale(1.0), run_time=max(0.3, tracker.duration * 0.20))`,
+        `${bodyIndent}    self.wait(max(0, tracker.get_remaining_duration()))`,
+      ];
+
   const snippet = [
     `${bodyIndent}${CTA_MARKER}`,
     `${bodyIndent}# Clear scene and prepare for CTA (Call-to-Action)`,
@@ -111,24 +160,8 @@ function injectEduvidsCallout(script: string): string {
     `${bodyIndent}    self.renderer.camera.set_euler_angles(phi=0, theta=-90 * DEGREES, gamma=0)`,
     `${bodyIndent}    self.renderer.camera.frame.move_to(ORIGIN)`,
     `${bodyIndent}    self.renderer.camera.frame.set(width=14)`,
-    `${bodyIndent}with self.voiceover(text="Generate your own educational videos for free at eduvids dot app"):`,
-    `${bodyIndent}    cta_title = Text("Generate your own educational videos for free!", font="EB Garamond", disable_ligatures=True, font_size=32)`,
-    `${bodyIndent}    cta_title.set_color(WHITE)`,
-    `${bodyIndent}    cta_link = Text("https://eduvids.app", font="EB Garamond", disable_ligatures=True, font_size=28)`,
-    `${bodyIndent}    cta_link.set_color(TEAL)`,
-    `${bodyIndent}    cta_link.next_to(cta_title, DOWN, buff=0.4)`,
-    `${bodyIndent}    cta_content = VGroup(cta_title, cta_link)`,
-    `${bodyIndent}    cta_content.move_to(ORIGIN)`,
-    ``,
-    `${bodyIndent}    cta_title.set_z_index(101)`,
-    `${bodyIndent}    cta_link.set_z_index(101)`,
-    ``,
-    `${bodyIndent}    self.play(FadeIn(cta_title, shift=UP*0.3), FadeIn(cta_link, shift=UP*0.3), run_time=1.0)`,
-    `${bodyIndent}    self.wait(0.5)`,
-    ``,
-    `${bodyIndent}    self.play(cta_link.animate.scale(1.08), run_time=0.4)`,
-    `${bodyIndent}    self.play(cta_link.animate.scale(1.0), run_time=0.4)`,
-    `${bodyIndent}    self.wait(0.8)`,
+    `${bodyIndent}with self.voiceover(text=${narrationLiteral}) as tracker:`,
+    ...contentLines,
   ];
 
   const insertionNeedsBlankLine =
@@ -457,6 +490,7 @@ export interface RenderRequest {
   renderOptions?: RenderOptions;
   onProgress?: (update: RenderProgressUpdate) => Promise<void> | void;
   existingSandboxId?: string;
+  previousVideo?: RelatedYouTubeVideo;
   /** Skip the synchronous dry run when rendering in a durable sandbox job. */
   skipDryRun?: boolean;
   /** Called when dry-run fails — receives the current script and error output,
@@ -479,6 +513,7 @@ export interface RenderState {
   prompt?: string;
   sessionId?: string;
   variant?: "video" | "short";
+  previousVideo?: RelatedYouTubeVideo;
 }
 
 export interface RenderPollResult {
@@ -513,6 +548,80 @@ export interface PreparedSandboxState {
   prompt?: string;
   sessionId?: string;
   variant?: "video" | "short";
+  previousVideo?: RelatedYouTubeVideo;
+}
+
+export async function renderThumbnailCandidates({
+  prepared,
+  titles,
+  topic,
+}: {
+  prepared: PreparedSandboxState;
+  titles: VideoTitleSet;
+  topic: string;
+}): Promise<[string, string, string]> {
+  const sandbox = await Sandbox.connect(prepared.sandboxId, {
+    timeoutMs: 3_600_000,
+    requestTimeoutMs: 180_000,
+  });
+  const scriptPath = "/home/user/eduvids_thumbnails.py";
+  const runnerPath = "/home/user/render_eduvids_thumbnails.py";
+  const mediaDir = "/home/user/thumbnail-media";
+  const outputPaths = THUMBNAIL_CLASS_NAMES.map(
+    (_, index) => `/home/user/thumbnail-${index}.png`,
+  );
+
+  await sandbox.files.write(
+    scriptPath,
+    buildThumbnailManimScript({ titles, topic }),
+  );
+  await sandbox.files.write(
+    runnerPath,
+    [
+      "from pathlib import Path",
+      "import shutil",
+      "import subprocess",
+      `script_path = ${JSON.stringify(scriptPath)}`,
+      `media_dir = ${JSON.stringify(mediaDir)}`,
+      `classes = ${JSON.stringify([...THUMBNAIL_CLASS_NAMES])}`,
+      `outputs = ${JSON.stringify(outputPaths)}`,
+      "for scene_class, output_path in zip(classes, outputs):",
+      "    result = subprocess.run([",
+      "        'manim', script_path, scene_class, '-s', '-ql',",
+      "        '--disable_caching', '--media_dir', media_dir, '-r', '1280,720'",
+      "    ], text=True, capture_output=True)",
+      "    if result.returncode != 0:",
+      "        print(result.stdout)",
+      "        print(result.stderr)",
+      "        raise SystemExit(result.returncode)",
+      "    matches = list(Path(media_dir).rglob(scene_class + '*.png'))",
+      "    if not matches:",
+      "        raise RuntimeError('No thumbnail output found for ' + scene_class)",
+      "    newest = max(matches, key=lambda path: path.stat().st_mtime)",
+      "    shutil.copyfile(newest, output_path)",
+    ].join("\n"),
+  );
+
+  const result = await sandbox.commands.run(`python ${runnerPath}`, {
+    timeoutMs: 180_000,
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Thumbnail render failed: ${(result.stderr || result.stdout).slice(-2_000)}`,
+    );
+  }
+
+  const images = await Promise.all(
+    outputPaths.map(async (path) => {
+      const bytes = (await sandbox.files.read(path, {
+        format: "bytes",
+      })) as Uint8Array;
+      if (!bytes.length) throw new Error(`Thumbnail output is empty: ${path}`);
+      return `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`;
+    }),
+  );
+
+  return images as [string, string, string];
 }
 
 export async function startManimRender({
@@ -524,6 +633,7 @@ export async function startManimRender({
   renderOptions,
   onProgress,
   existingSandboxId,
+  previousVideo,
   scriptFixer,
 }: RenderRequest): Promise<StartRenderResult> {
   const normalizedScript = script.trim();
@@ -770,13 +880,15 @@ export async function startManimRender({
       }
     };
 
-    const buildManimError = (exitCode: number, rawStderr: string, rawStdout: string) => {
+    const buildManimError = (
+      exitCode: number,
+      rawStderr: string,
+      rawStdout: string,
+    ) => {
       const label = description ?? command;
       const stderr = truncateOutput(rawStderr);
       const stdout = truncateOutput(rawStdout);
-      const messageParts = [
-        `${label} failed with exit code ${exitCode}`,
-      ];
+      const messageParts = [`${label} failed with exit code ${exitCode}`];
       if (hint) {
         messageParts.push(hint);
       }
@@ -810,6 +922,7 @@ export async function startManimRender({
     let result: Awaited<ReturnType<typeof sandbox.commands.run>>;
     try {
       result = await sandbox.commands.run(command, {
+        envs: eduvidsTTSSandboxEnvironment(),
         timeoutMs,
         onStdout: streamStdout || onStdout ? combinedStdout : undefined,
         onStderr: streamStderr || onStderr ? combinedStderr : undefined,
@@ -874,7 +987,7 @@ export async function startManimRender({
       sandbox = await Sandbox.create("manim20-ffmpeg-bookmarks-latest", {
         timeoutMs: 3_600_000, // 60 minutes
         envs: {
-          ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
+          ...eduvidsTTSSandboxEnvironment(),
           TMPDIR: "/dev/shm",
         },
       });
@@ -894,10 +1007,15 @@ export async function startManimRender({
     const mediaDir = `/home/user/media`;
     const baseVideosDir = `${mediaDir}/videos`;
 
+    await sandbox.files.write(
+      EDUVIDS_TTS_SERVICE_PATH,
+      EDUVIDS_TTS_SERVICE_SOURCE,
+    );
+
     let enhancedScript = heuristicFixedScript;
     enhancedScript = injectScaledTextHelper(enhancedScript);
     enhancedScript = injectSceneFadeOut(enhancedScript);
-    enhancedScript = injectEduvidsCallout(enhancedScript);
+    enhancedScript = injectEduvidsCallout(enhancedScript, previousVideo);
 
     await reportProgress("prepare", "Uploading enhanced script to sandbox");
     await sandbox.files.write(scriptPath, enhancedScript);
@@ -1024,9 +1142,10 @@ export async function startManimRender({
             { logs: [...renderLogs] },
           );
         }
-        const errorMessage = dryRunError instanceof ManimValidationError
-          ? dryRunError.message
-          : String(dryRunError);
+        const errorMessage =
+          dryRunError instanceof ManimValidationError
+            ? dryRunError.message
+            : String(dryRunError);
         await reportProgress(
           "script-fix",
           `Dry-run failed (attempt ${attempt + 1}/${DRY_RUN_MAX_FIXES + 1}), requesting LLM fix`,
@@ -1107,6 +1226,7 @@ export async function startManimRender({
     await reportProgress("render", "Rendering frames");
     const renderHandle = await sandbox.commands.run(manimCmd, {
       background: true,
+      envs: eduvidsTTSSandboxEnvironment(),
       timeoutMs: 3_600_000, // 60 minutes
       onStdout: (chunk) => recordChunk(chunk, "stdout"),
       onStderr: (chunk) => recordChunk(chunk, "stderr"),
@@ -1135,6 +1255,7 @@ export async function startManimRender({
         prompt,
         sessionId,
         variant,
+        previousVideo,
       },
       processId: renderHandle.pid,
     };
@@ -1226,6 +1347,7 @@ export async function prepareManimSandbox({
   renderOptions,
   onProgress,
   existingSandboxId,
+  previousVideo,
   scriptFixer,
   skipDryRun = false,
 }: RenderRequest): Promise<PreparedSandboxState> {
@@ -1409,13 +1531,15 @@ export async function prepareManimSandbox({
       }
     };
 
-    const buildManimError = (exitCode: number, rawStderr: string, rawStdout: string) => {
+    const buildManimError = (
+      exitCode: number,
+      rawStderr: string,
+      rawStdout: string,
+    ) => {
       const label = description ?? command;
       const stderr = truncateOutput(rawStderr);
       const stdout = truncateOutput(rawStdout);
-      const messageParts = [
-        `${label} failed with exit code ${exitCode}`,
-      ];
+      const messageParts = [`${label} failed with exit code ${exitCode}`];
       if (hint) messageParts.push(hint);
       if (stderr) messageParts.push(`STDERR:\n${stderr}`);
       if (stdout) messageParts.push(`STDOUT:\n${stdout}`);
@@ -1431,6 +1555,7 @@ export async function prepareManimSandbox({
     let result: Awaited<ReturnType<typeof sandbox.commands.run>>;
     try {
       result = await sandbox.commands.run(command, {
+        envs: eduvidsTTSSandboxEnvironment(),
         timeoutMs,
         onStdout: streamStdout ? combinedStdout : undefined,
         onStderr: streamStderr ? combinedStderr : undefined,
@@ -1473,7 +1598,7 @@ export async function prepareManimSandbox({
         timeoutMs: 3_600_000,
         requestTimeoutMs: 15_000,
         envs: {
-          ELEVEN_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
+          ...eduvidsTTSSandboxEnvironment(),
           TMPDIR: "/dev/shm",
         },
       });
@@ -1484,10 +1609,15 @@ export async function prepareManimSandbox({
     const mediaDir = `/home/user/media`;
     const baseVideosDir = `${mediaDir}/videos`;
 
+    await sandbox.files.write(
+      EDUVIDS_TTS_SERVICE_PATH,
+      EDUVIDS_TTS_SERVICE_SOURCE,
+    );
+
     let enhancedScript = heuristicFixedScript;
     enhancedScript = injectScaledTextHelper(enhancedScript);
     enhancedScript = injectSceneFadeOut(enhancedScript);
-    enhancedScript = injectEduvidsCallout(enhancedScript);
+    enhancedScript = injectEduvidsCallout(enhancedScript, previousVideo);
 
     await sandbox.files.write(scriptPath, enhancedScript);
 
@@ -1617,6 +1747,7 @@ export async function prepareManimSandbox({
       prompt,
       sessionId,
       variant,
+      previousVideo,
     };
   } catch (err: unknown) {
     console.error("E2B prepare error:", err);
@@ -1692,6 +1823,7 @@ export async function launchManimRender({
 
   const renderHandle = await sandbox.commands.run(manimCmd, {
     background: true,
+    envs: eduvidsTTSSandboxEnvironment(),
     timeoutMs: 3_600_000,
     onStdout: (chunk) => recordChunk(chunk, "stdout"),
     onStderr: (chunk) => recordChunk(chunk, "stderr"),
@@ -1832,15 +1964,11 @@ export async function pollManimRender({
     if (outcome.type === "error") {
       const err = outcome.error;
       const errStderr =
-        err instanceof CommandExitError ? err.stderr ?? "" : "";
+        err instanceof CommandExitError ? (err.stderr ?? "") : "";
       const errStdout =
-        err instanceof CommandExitError ? err.stdout ?? "" : "";
-      const stderr = truncateOutput(
-        handle.stderr || errStderr || "",
-      );
-      const stdout = truncateOutput(
-        handle.stdout || errStdout || "",
-      );
+        err instanceof CommandExitError ? (err.stdout ?? "") : "";
+      const stderr = truncateOutput(handle.stderr || errStderr || "");
+      const stdout = truncateOutput(handle.stdout || errStdout || "");
       const exitCode =
         err instanceof CommandExitError ? err.exitCode : undefined;
       const messageParts = [
@@ -2111,13 +2239,15 @@ export async function finalizeManimRender({
       }
     };
 
-    const buildManimError = (exitCode: number, rawStderr: string, rawStdout: string) => {
+    const buildManimError = (
+      exitCode: number,
+      rawStderr: string,
+      rawStdout: string,
+    ) => {
       const label = description ?? command;
       const stderr = truncateOutput(rawStderr);
       const stdout = truncateOutput(rawStdout);
-      const messageParts = [
-        `${label} failed with exit code ${exitCode}`,
-      ];
+      const messageParts = [`${label} failed with exit code ${exitCode}`];
       if (hint) {
         messageParts.push(hint);
       }
@@ -2318,7 +2448,9 @@ export async function finalizeManimRender({
 
     const outputDirIndex = videoPath.lastIndexOf("/");
     const outputDir =
-      outputDirIndex > 0 ? videoPath.slice(0, outputDirIndex) : state.baseVideosDir;
+      outputDirIndex > 0
+        ? videoPath.slice(0, outputDirIndex)
+        : state.baseVideosDir;
 
     console.log("Video file candidate:", videoPath);
     pushLog({

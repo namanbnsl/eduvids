@@ -1,22 +1,29 @@
 import { serve } from "@upstash/workflow/nextjs";
 import { WorkflowNonRetryableError } from "@upstash/workflow";
+import { createHash } from "node:crypto";
 
 import {
+  detectLanguage,
+  enforceVoiceoverService,
   generateVoiceoverScript,
   generateScenePlan,
   generateManimScript,
   fixManimScript,
   generateVideoTitles,
   generateVideoDescription,
+  manimVoiceoverTimingIssues,
+  normalizeScenePlanTiming,
 } from "@/lib/llm";
 import {
   prepareManimSandbox,
+  renderThumbnailCandidates,
   ManimValidationError,
   type PreparedSandboxState,
 } from "@/lib/e2b";
 import {
   startSandboxJob,
-  pollSandboxJob,
+  pollSandboxJobWindow,
+  MAX_SANDBOX_POLL_WINDOWS,
   renderCommand,
   startPostprocess,
   downloadVideo,
@@ -25,8 +32,17 @@ import {
 } from "@/lib/workflow/sandbox-jobs";
 import { generationFailureMessage, safeError } from "@/lib/workflow/errors";
 import { getConvexClient, api } from "@/lib/convex-server";
-import { uploadVideo } from "@/lib/uploadthing";
+import { uploadImage, uploadVideo } from "@/lib/uploadthing";
 import { jobStore, artifactStore } from "@/lib/job-store";
+import { findPreviousYouTubeVideo } from "@/lib/youtube";
+import type {
+  RelatedYouTubeVideo,
+  VideoTitleSet,
+} from "@/lib/youtube-metadata";
+import {
+  EDUVIDS_TTS_SERVICE_SOURCE,
+  eduvidsTTSSandboxEnvironment,
+} from "@/lib/eduvids-tts-service";
 
 import { updateJobProgress } from "@/lib/workflow/utils/progress";
 import {
@@ -43,6 +59,19 @@ type VideoGenerationPayload = {
   jobId?: string;
   variant?: "video" | "short";
 };
+
+type CachedPreparedSandbox = {
+  scriptHash: string;
+  state: PreparedSandboxState;
+};
+
+function manimScriptHash(script: string): string {
+  return createHash("sha256")
+    .update(script)
+    .update("\0")
+    .update(EDUVIDS_TTS_SERVICE_SOURCE)
+    .digest("hex");
+}
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -84,6 +113,19 @@ export const { POST } = serve<VideoGenerationPayload>(
       });
     });
 
+    const voiceoverLanguage = await context.run(
+      "detect-voiceover-language",
+      async () => {
+        const saved = await artifactStore.find(jobId, "voiceoverLanguage");
+        if (saved) return saved;
+        const language = await detectLanguage(
+          await artifactStore.get(jobId, "voiceoverScript"),
+        );
+        await artifactStore.set(jobId, "voiceoverLanguage", language);
+        return language;
+      },
+    );
+
     await context.run("generate-scene-plan", async () => {
       if (await artifactStore.find(jobId, "scenePlan")) return;
       const voiceoverScript = await artifactStore.get(jobId, "voiceoverScript");
@@ -117,18 +159,111 @@ export const { POST } = serve<VideoGenerationPayload>(
         voiceoverScript,
         sessionId: chatId,
         scenePlan,
+        voiceoverLanguage,
       });
       await artifactStore.set(jobId, "manimScript", script);
       console.log("✅ Manim script generated", { length: script.length });
     });
 
+    await context.run("ensure-manim-voiceover-timing-v3", async () => {
+      const [currentScript, voiceoverScript, storedScenePlan] =
+        await Promise.all([
+          artifactStore.get(jobId, "manimScript"),
+          artifactStore.get(jobId, "voiceoverScript"),
+          artifactStore.get(jobId, "scenePlan"),
+        ]);
+      const scenePlan = normalizeScenePlanTiming(JSON.parse(storedScenePlan));
+      const expectedBeatCount = scenePlan.reduce(
+        (count, scene) => count + scene.beats.length,
+        0,
+      );
+      const timingIssues = manimVoiceoverTimingIssues(
+        currentScript,
+        expectedBeatCount,
+      );
+      await artifactStore.set(jobId, "scenePlan", JSON.stringify(scenePlan));
+      if (timingIssues.length === 0) return;
+
+      await updateJobProgress(jobId, {
+        progress: 25,
+        step: "improving voiceover timing",
+        details: "Matching visual beats to narration",
+      });
+      console.warn("Regenerating a poorly synchronized Manim script", {
+        issueCount: timingIssues.length,
+        expectedBeatCount,
+      });
+      const regenerated = await generateManimScript({
+        prompt: generationPrompt,
+        voiceoverScript,
+        sessionId: chatId,
+        scenePlan,
+        voiceoverLanguage,
+      });
+      await artifactStore.set(jobId, "manimScript", regenerated);
+    });
+
+    const voiceoverSelection = await context.run(
+      "enforce-voiceover-service-v3",
+      async () => {
+        const currentScript = await artifactStore.get(jobId, "manimScript");
+        const enforced = enforceVoiceoverService(
+          currentScript,
+          voiceoverLanguage,
+        );
+        await artifactStore.set(jobId, "manimScript", enforced.script);
+        await artifactStore.set(jobId, "voiceoverProvider", enforced.provider);
+        console.log("✅ Voiceover service verified", {
+          language: voiceoverLanguage,
+          provider: enforced.provider,
+          normalized: enforced.script !== currentScript,
+        });
+        return { language: voiceoverLanguage, provider: enforced.provider };
+      },
+    );
+
+    const previousVideo = await context.run(
+      "resolve-previous-youtube-video",
+      async () => {
+        const saved = await artifactStore.find(jobId, "previousYoutubeVideo");
+        if (saved) {
+          return JSON.parse(saved) as RelatedYouTubeVideo | null;
+        }
+        if (
+          !process.env.GOOGLE_CLIENT_ID ||
+          !process.env.GOOGLE_CLIENT_SECRET ||
+          !process.env.GOOGLE_REFRESH_TOKEN
+        ) {
+          await artifactStore.set(jobId, "previousYoutubeVideo", "null");
+          return null;
+        }
+
+        try {
+          const result = await findPreviousYouTubeVideo();
+          await artifactStore.set(
+            jobId,
+            "previousYoutubeVideo",
+            JSON.stringify(result ?? null),
+          );
+          return result ?? null;
+        } catch (error) {
+          console.warn(
+            "Previous-video lookup failed; using the standard outro:",
+            safeError(error),
+          );
+          await artifactStore.set(jobId, "previousYoutubeVideo", "null");
+          return null;
+        }
+      },
+    );
+
     const waitForJob = async (name: string, job: SandboxJob) => {
-      for (let poll = 0; poll < 190; poll++) {
-        const result = await context.run(`${name}-poll-${poll}`, () =>
-          pollSandboxJob(job),
+      for (let window = 0; window < MAX_SANDBOX_POLL_WINDOWS; window++) {
+        const result = await context.run(
+          `${name}-poll-window-v2-${window}`,
+          () => pollSandboxJobWindow(job),
         );
         if (result.complete) return result;
-        await context.sleep(`${name}-sleep-${poll}`, 10);
       }
       throw new WorkflowNonRetryableError("Sandbox job timed out");
     };
@@ -137,25 +272,33 @@ export const { POST } = serve<VideoGenerationPayload>(
     for (let attempt = 0; attempt < 3; attempt++) {
       // Validation failures are data here, so the repair runs in its own invocation.
       const preparation = await context.run(
-        `prepare-sandbox-${attempt}`,
+        `prepare-sandbox-tts-v3-${attempt}`,
         async () => {
           await updateJobProgress(jobId, {
             progress: 35,
             step: "validating script",
             details: "Checking animation code",
           });
+          const script = await artifactStore.get(jobId, "manimScript");
+          const scriptHash = manimScriptHash(script);
           const cached = await artifactStore.find(jobId, `prepared-${attempt}`);
-          if (cached)
-            return {
-              state: JSON.parse(cached) as PreparedSandboxState,
-              error: null,
-            };
+          if (cached) {
+            const parsed = JSON.parse(cached) as Partial<CachedPreparedSandbox>;
+            if (parsed.scriptHash === scriptHash && parsed.state) {
+              return { state: parsed.state, error: null };
+            }
+            console.warn("Ignoring stale prepared sandbox artifact", {
+              attempt,
+              provider: voiceoverSelection.provider,
+            });
+          }
           try {
             const state = await prepareManimSandbox({
-              script: await artifactStore.get(jobId, "manimScript"),
+              script,
               prompt: generationPrompt,
               sessionId: chatId,
               variant,
+              previousVideo: previousVideo ?? undefined,
               applyWatermark: true,
               skipDryRun: true,
               renderOptions:
@@ -175,7 +318,7 @@ export const { POST } = serve<VideoGenerationPayload>(
             await artifactStore.set(
               jobId,
               `prepared-${attempt}`,
-              JSON.stringify(compact),
+              JSON.stringify({ scriptHash, state: compact }),
             );
             return { state: compact, error: null };
           } catch (error) {
@@ -188,7 +331,7 @@ export const { POST } = serve<VideoGenerationPayload>(
       if (preparation.state) {
         prepared = preparation.state;
         const renderJob = await context.run(
-          `launch-render-${attempt}`,
+          `launch-render-tts-v3-${attempt}`,
           async () => {
             await updateJobProgress(jobId, {
               progress: 45,
@@ -197,12 +340,16 @@ export const { POST } = serve<VideoGenerationPayload>(
             });
             return startSandboxJob(
               preparation.state!.sandboxId,
-              "render-job",
+              "render-job-tts-v3",
               renderCommand(preparation.state!),
+              eduvidsTTSSandboxEnvironment(),
             );
           },
         );
-        const rendered = await waitForJob(`render-${attempt}`, renderJob);
+        const rendered = await waitForJob(
+          `render-tts-v3-${attempt}`,
+          renderJob,
+        );
         if (rendered.exitCode === 0) break;
         error = rendered.error ?? "Manim render failed";
         await context.run(`cleanup-failed-render-${attempt}`, () =>
@@ -221,7 +368,12 @@ export const { POST } = serve<VideoGenerationPayload>(
         });
         const cached = await artifactStore.find(jobId, `repaired-${attempt}`);
         if (cached) {
-          await artifactStore.set(jobId, "manimScript", cached);
+          const enforced = enforceVoiceoverService(
+            cached,
+            voiceoverLanguage,
+          ).script;
+          await artifactStore.set(jobId, `repaired-${attempt}`, enforced);
+          await artifactStore.set(jobId, "manimScript", enforced);
           return;
         }
         const script = await artifactStore.get(jobId, "manimScript");
@@ -229,6 +381,7 @@ export const { POST } = serve<VideoGenerationPayload>(
           script,
           errors: error ?? "No renderable scene class",
           sessionId: chatId,
+          voiceoverLanguage,
         });
         if (fixed === script) throw new Error("Script repair made no changes");
         await artifactStore.set(jobId, `repaired-${attempt}`, fixed);
@@ -276,15 +429,10 @@ export const { POST } = serve<VideoGenerationPayload>(
       });
     });
 
-    // Cleanup is separate from both upload and marking the video ready.
-    await context.run("cleanup-sandbox", () =>
-      cleanupSandbox(prepared!.sandboxId),
-    );
-
     const videoTitleSet = await context.run("generate-titles", async () => {
       try {
         const saved = await artifactStore.find(jobId, "videoTitleSet");
-        if (saved) return JSON.parse(saved);
+        if (saved) return JSON.parse(saved) as VideoTitleSet;
         const titles = await generateVideoTitles({ prompt, sessionId: chatId });
         await artifactStore.set(jobId, "videoTitleSet", JSON.stringify(titles));
         console.log("✅ Title candidates generated:", titles.candidates);
@@ -294,6 +442,56 @@ export const { POST } = serve<VideoGenerationPayload>(
         return undefined;
       }
     });
+
+    const thumbnailUrls = await context.run(
+      "generate-thumbnail-candidates",
+      async () => {
+        if (!videoTitleSet) return undefined;
+        const saved = await artifactStore.find(jobId, "thumbnailPairs");
+        if (saved) {
+          const pairs = JSON.parse(saved) as Array<{
+            title: string;
+            thumbnailUrl: string;
+          }>;
+          return pairs.map((pair) => pair.thumbnailUrl);
+        }
+
+        try {
+          const images = await renderThumbnailCandidates({
+            prepared: prepared!,
+            titles: videoTitleSet,
+            topic: prompt,
+          });
+          const urls = await Promise.all(
+            images.map((imagePath, index) =>
+              uploadImage({
+                imagePath,
+                userId,
+                customId: `${jobId}-thumbnail-${index}`,
+              }),
+            ),
+          );
+          const pairs = videoTitleSet.candidates.map(
+            (candidateTitle, index) => ({
+              title: candidateTitle,
+              thumbnailUrl: urls[index]!,
+            }),
+          );
+          await artifactStore.set(
+            jobId,
+            "thumbnailPairs",
+            JSON.stringify(pairs),
+          );
+          return urls;
+        } catch (error) {
+          console.warn(
+            "Thumbnail generation failed; continuing with YouTube defaults:",
+            safeError(error),
+          );
+          return undefined;
+        }
+      },
+    );
 
     const videoDescription = await context.run(
       "generate-description",
@@ -338,9 +536,15 @@ export const { POST } = serve<VideoGenerationPayload>(
           jobId,
           userId,
           variant,
+          thumbnailUrl: thumbnailUrls?.[0],
         },
       });
     });
+
+    // Cleanup is separate from upload, persistence, packaging, and publishing.
+    await context.run("cleanup-sandbox", () =>
+      cleanupSandbox(prepared!.sandboxId),
+    );
 
     return {
       success: true,

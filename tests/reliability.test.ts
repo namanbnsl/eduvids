@@ -11,15 +11,34 @@ import {
   buildJobRunner,
   buildPostprocessScript,
   pollSandboxJob,
+  pollSandboxJobWindow,
   renderCommand,
 } from "../src/lib/workflow/sandbox-jobs";
-import { streamTextWithTracking, sanitizeManimScript } from "../src/lib/llm";
+import {
+  configureVoiceoverServicePrompt,
+  enforceVoiceoverService,
+  fixManimScript,
+  manimVoiceoverTimingIssues,
+  normalizeScenePlanTiming,
+  streamTextWithTracking,
+  sanitizeManimScript,
+} from "../src/lib/llm";
+import { injectEduvidsCallout } from "../src/lib/e2b";
+import {
+  VOICEOVER_SERVICE_IMPORT_TOKEN,
+  VOICEOVER_SERVICE_SETTER_TOKEN,
+} from "../src/prompt";
+import {
+  buildThumbnailManimScript,
+  THUMBNAIL_CLASS_NAMES,
+} from "../src/lib/youtube-thumbnail";
 import {
   safeError,
   generationFailureMessage,
 } from "../src/lib/workflow/errors";
 import type { PreparedSandboxState } from "../src/lib/e2b";
 import { uploadThingFetch } from "../src/lib/uploadthing";
+import { EDUVIDS_TTS_SERVICE_SOURCE } from "../src/lib/eduvids-tts-service";
 
 const exec = promisify(execFile);
 const state = (folder: string): PreparedSandboxState => ({
@@ -87,6 +106,32 @@ test("polling never treats a missing result as success and enforces the job dead
   } finally {
     connection.mock.restore();
   }
+});
+
+test("a polling window batches repeated E2B checks into one workflow step", async () => {
+  let clock = 0;
+  let polls = 0;
+  const result = await pollSandboxJobWindow(
+    {
+      sandboxId: "test",
+      prefix: "/tmp/test",
+      startedAt: Date.now(),
+    },
+    {
+      windowMs: 30,
+      intervalMs: 10,
+      now: () => clock,
+      delay: async (milliseconds) => {
+        clock += milliseconds;
+      },
+      poll: async () => {
+        polls += 1;
+        return { complete: polls === 3, exitCode: polls === 3 ? 0 : undefined };
+      },
+    },
+  );
+  assert.deepEqual(result, { complete: true, exitCode: 0 });
+  assert.equal(polls, 3);
 });
 
 test("postprocessing joins real scene fixtures, watermarks, and validates an MP4", async () => {
@@ -183,6 +228,70 @@ test("partial output followed by a stream error is rejected", async () => {
   );
 });
 
+test("nonempty output with an uncategorized finish reason remains usable", async () => {
+  const model = new MockLanguageModelV3({
+    doStream: async () => ({
+      stream: simulateReadableStream({
+        chunks: [
+          { type: "text-start", id: "t" },
+          { type: "text-delta", id: "t", delta: "class Complete(Scene): pass" },
+          { type: "text-end", id: "t" },
+          {
+            type: "finish",
+            finishReason: { unified: "other", raw: "OTHER" },
+            logprobs: undefined,
+            usage: {
+              inputTokens: {
+                total: 1,
+                noCache: 1,
+                cacheRead: undefined,
+                cacheWrite: undefined,
+              },
+              outputTokens: { total: 5, text: 5, reasoning: undefined },
+            },
+          },
+        ],
+      }),
+    }),
+  });
+  assert.equal(
+    await streamTextWithTracking({ model, prompt: "test" }),
+    "class Complete(Scene): pass",
+  );
+});
+
+test("length-limited output reports diagnostic metadata", async () => {
+  const model = new MockLanguageModelV3({
+    doStream: async () => ({
+      stream: simulateReadableStream({
+        chunks: [
+          { type: "text-start", id: "t" },
+          { type: "text-delta", id: "t", delta: "class Partial" },
+          { type: "text-end", id: "t" },
+          {
+            type: "finish",
+            finishReason: { unified: "length", raw: "MAX_TOKENS" },
+            logprobs: undefined,
+            usage: {
+              inputTokens: {
+                total: 1,
+                noCache: 1,
+                cacheRead: undefined,
+                cacheWrite: undefined,
+              },
+              outputTokens: { total: 2, text: 2, reasoning: undefined },
+            },
+          },
+        ],
+      }),
+    }),
+  });
+  await assert.rejects(
+    streamTextWithTracking({ model, prompt: "test" }),
+    /truncated \(finish reason: length, 13 characters\)/,
+  );
+});
+
 test("error messages distinguish credentials, deadlines, and script failures", () => {
   assert.match(
     generationFailureMessage("Permission denied; consumer suspended"),
@@ -228,6 +337,312 @@ test("UploadThing fetch removes content-length and preserves cancellation", asyn
     assert.equal(receivedInit?.signal?.aborted, true);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("voice routing uses the managed fallback chain only for English", () => {
+  const template = `${VOICEOVER_SERVICE_IMPORT_TOKEN}\n${VOICEOVER_SERVICE_SETTER_TOKEN}`;
+
+  assert.match(
+    configureVoiceoverServicePrompt(template, "english"),
+    /EduvidsTTSService/,
+  );
+  assert.match(
+    configureVoiceoverServicePrompt(template, "french"),
+    /GTTSService\(lang="fr"\)/,
+  );
+});
+
+test("scene narration is split into short visual timing beats", () => {
+  const narration =
+    "A long explanation starts with one familiar idea, then connects it to a second idea that appears on screen, before ending with the result.";
+  const [scene] = normalizeScenePlanTiming([
+    {
+      sceneId: "Scene01",
+      narration,
+      visualType: "comparison",
+      elements: [
+        { id: "first", type: "shape", content: "first shape" },
+        { id: "second", type: "shape", content: "second shape" },
+      ],
+      layout: "left_right_split",
+      maxSimultaneousElements: 2,
+      transitionIn: "create",
+      clearPrevious: false,
+      labels: [],
+      beats: [],
+    },
+  ]);
+  assert.ok(scene.beats.length >= 2);
+  assert.ok(
+    scene.beats.every((beat) => beat.narration.split(/\s+/).length <= 18),
+  );
+  assert.equal(scene.beats.map((beat) => beat.narration).join(" "), narration);
+  assert.deepEqual(scene.beats[0].focusElementIds, ["first"]);
+  assert.deepEqual(scene.beats.at(-1)?.focusElementIds, ["second"]);
+});
+
+test("voiceover timing rejects long idle blocks before rendering", () => {
+  const good = `class Scene01(VoiceoverScene):
+    def construct(self):
+        with self.voiceover(text="A short explanation appears with the diagram.") as tracker:
+            self.play(FadeIn(diagram), run_time=max(0.4, tracker.duration * 0.8))
+            self.wait(max(0, tracker.get_remaining_duration()))`;
+  assert.deepEqual(manimVoiceoverTimingIssues(good, 1), []);
+
+  const idle = `class Scene01(VoiceoverScene):
+    def construct(self):
+        with self.voiceover(text="This narration keeps going for far too long while the only visual action finishes almost immediately and leaves the viewer staring at a completely static screen without any useful visual progression.") as tracker:
+            self.play(FadeIn(diagram), run_time=1)
+            self.wait(tracker.get_remaining_duration())`;
+  const issues = manimVoiceoverTimingIssues(idle, 2);
+  assert.ok(issues.some((issue) => issue.includes("maximum is 22")));
+  assert.ok(issues.some((issue) => issue.includes("final duration")));
+  assert.ok(issues.some((issue) => issue.includes("2 planned beats")));
+});
+
+test("voiceover enforcement replaces model-selected gTTS and fills missing scene setters", () => {
+  const generated = `from manim import *
+from manim_voiceover import VoiceoverScene
+from manim_voiceover.services.gtts import GTTSService
+
+class Scene01Intro(VoiceoverScene, ThreeDScene):
+    def construct(self):
+        self.set_speech_service(GTTSService())
+        self.wait(1)
+
+class Scene02Summary(VoiceoverScene, ThreeDScene):
+    def construct(self):
+        self.wait(1)`;
+
+  const english = enforceVoiceoverService(generated, "english");
+  assert.equal(english.provider, "deepgram-aura-openrouter-gtts");
+  assert.equal(
+    english.script.match(/from eduvids_tts import EduvidsTTSService/g)?.length,
+    1,
+  );
+  assert.equal(
+    english.script.match(/self\.set_speech_service\(EduvidsTTSService\(\)\)/g)
+      ?.length,
+    2,
+  );
+  assert.doesNotMatch(english.script, /GTTSService/);
+
+  const staleService = english.script
+    .replace(
+      "from eduvids_tts import EduvidsTTSService",
+      "from eduvids_legacy_tts import LegacyTTSService",
+    )
+    .replaceAll("EduvidsTTSService()", "LegacyTTSService()");
+  const french = enforceVoiceoverService(staleService, "french");
+  assert.equal(french.provider, "gtts");
+  assert.equal(
+    french.script.match(/self\.set_speech_service\(GTTSService\(lang="fr"\)\)/g)
+      ?.length,
+    2,
+  );
+  assert.doesNotMatch(french.script, /LegacyTTSService|EduvidsTTSService/);
+});
+
+test("script repairs cannot switch an English job back to gTTS", async () => {
+  const script = `from manim import *
+from manim_voiceover import VoiceoverScene
+from manim_voiceover.services.gtts import GTTSService
+
+class Scene01(VoiceoverScene):
+    def construct(self):
+        self.set_speech_service(GTTSService())
+        label = Text("test")
+        label.fix_in_frame()`;
+
+  const fixed = await fixManimScript({
+    script,
+    errors: "AttributeError: Text has no attribute 'fix_in_frame'",
+    sessionId: "test-session",
+    voiceoverLanguage: "english",
+  });
+  assert.match(fixed, /EduvidsTTSService/);
+  assert.doesNotMatch(fixed, /GTTSService/);
+  assert.match(fixed, /self\.add_fixed_in_frame_mobjects\(label\)/);
+});
+
+test("English TTS adapter prefers Aura-2 and locks one voice for the render", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "eduvids-tts-adapter-"));
+  const adapter = join(folder, "eduvids_tts.py");
+  const harness = join(folder, "verify_fallbacks.py");
+  try {
+    await writeFile(adapter, EDUVIDS_TTS_SERVICE_SOURCE);
+    await exec("python3", ["-m", "py_compile", adapter]);
+    assert.match(
+      EDUVIDS_TTS_SERVICE_SOURCE,
+      /if self\.deepgram_key:\s+providers\.append\("deepgram"\)\s+if self\.openrouter_key:\s+providers\.append\("openrouter"\)\s+providers\.append\("gtts"\)/,
+    );
+    assert.match(EDUVIDS_TTS_SERVICE_SOURCE, /deepgram\/flux-tts:free/);
+    assert.match(EDUVIDS_TTS_SERVICE_SOURCE, /aura-2-hera-en/);
+    assert.match(EDUVIDS_TTS_SERVICE_SOURCE, /LOCKED_PROVIDER/);
+    assert.match(EDUVIDS_TTS_SERVICE_SOURCE, /"provider": provider/);
+    assert.match(EDUVIDS_TTS_SERVICE_SOURCE, /"original_audio": filename/);
+
+    await writeFile(
+      harness,
+      `import importlib.util
+import os
+import sys
+import types
+import urllib.error
+
+cache_dir = ${JSON.stringify(folder)}
+
+class SpeechService:
+    cache_lookups = []
+
+    def __init__(self, global_speed=1.0, **kwargs):
+        self.cache_dir = cache_dir
+        self.global_speed = global_speed
+
+    def get_cached_result(self, input_data, cache_root):
+        self.cache_lookups.append(input_data["provider"])
+        return None
+
+    def get_audio_basename(self, input_data):
+        return "voiceover"
+
+class FakeGTTS:
+    calls = []
+
+    def __init__(self, text, lang):
+        self.calls.append((text, lang))
+
+    def save(self, path):
+        with open(path, "wb") as output:
+            output.write(b"ID3" + b"g" * 256)
+
+helper = types.ModuleType("manim_voiceover.helper")
+helper.remove_bookmarks = lambda text: text
+base = types.ModuleType("manim_voiceover.services.base")
+base.SpeechService = SpeechService
+sys.modules["manim_voiceover"] = types.ModuleType("manim_voiceover")
+sys.modules["manim_voiceover.helper"] = helper
+sys.modules["manim_voiceover.services"] = types.ModuleType("manim_voiceover.services")
+sys.modules["manim_voiceover.services.base"] = base
+gtts = types.ModuleType("gtts")
+gtts.gTTS = FakeGTTS
+sys.modules["gtts"] = gtts
+
+spec = importlib.util.spec_from_file_location("eduvids_tts", ${JSON.stringify(adapter)})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+class Response:
+    headers = {"Content-Type": "audio/mpeg"}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def read(self):
+        return b"ID3" + b"d" * 256
+
+calls = []
+def urlopen(request, timeout):
+    calls.append(request.full_url)
+    if request.full_url == module.OPENROUTER_SPEECH_URL:
+        raise urllib.error.HTTPError(request.full_url, 429, "limited", {}, None)
+    return Response()
+
+os.environ["OPENROUTER_API_KEY"] = "openrouter-key"
+os.environ["DEEPGRAM_API_KEY"] = "deepgram-key"
+os.environ["DEEPGRAM_TTS_BASE_URL"] = "https://api.deepgram.test"
+os.environ["DEEPGRAM_TTS_MODEL"] = "aura-2-hera-en"
+os.environ["DEEPGRAM_TTS_SPEED"] = "1.0"
+module.urllib.request.urlopen = urlopen
+service = module.EduvidsTTSService()
+result = service.generate_from_text("Use the primary narrator")
+service.generate_from_text("Keep the same narrator")
+assert calls == [
+    "https://api.deepgram.test/v1/speak?model=aura-2-hera-en&encoding=mp3&speed=1.00",
+    "https://api.deepgram.test/v1/speak?model=aura-2-hera-en&encoding=mp3&speed=1.00",
+]
+assert result["original_audio"].endswith(".mp3")
+assert FakeGTTS.calls == []
+assert SpeechService.cache_lookups == ["deepgram", "deepgram"]
+assert module.LOCKED_PROVIDER == "deepgram"
+
+module.LOCKED_PROVIDER = None
+os.environ.pop("OPENROUTER_API_KEY")
+os.environ.pop("DEEPGRAM_API_KEY")
+fallback = module.EduvidsTTSService()
+fallback.generate_from_text("Use the final fallback", path="fallback.mp3")
+assert FakeGTTS.calls == [("Use the final fallback", "en")]
+assert SpeechService.cache_lookups[-1] == "gtts"
+`,
+    );
+    await exec("python3", [harness]);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("the deterministic outro names the previous video only in the final scene", async () => {
+  const source = `from manim import *
+class First(Scene):
+    def construct(self):
+        self.play(Wait(1))
+
+class Last(Scene):
+    def construct(self):
+        self.play(Wait(1))`;
+  const enhanced = injectEduvidsCallout(source, {
+    videoId: "previous123",
+    title: 'Why "Impossible" Equations Actually Work',
+    watchUrl: "https://www.youtube.com/watch?v=previous123",
+  });
+  const folder = await mkdtemp(join(tmpdir(), "eduvids-outro-"));
+  const script = join(folder, "outro.py");
+
+  try {
+    await writeFile(script, enhanced);
+    await exec("python3", ["-m", "py_compile", script]);
+    assert.equal(enhanced.match(/PREVIOUS VIDEO/g)?.length, 1);
+    assert.ok(
+      enhanced.indexOf("PREVIOUS VIDEO") > enhanced.indexOf("class Last"),
+    );
+    assert.match(enhanced, /Link in description and top comment/);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("thumbnail packaging creates three title-paired Manim scenes", async () => {
+  const candidates: [string, string, string] = [
+    "What Even Is a Tensor? Visualized From 0D to 3D",
+    "Why Tensors Actually Change Shape Between Coordinates",
+    "How Tensors Describe the World Without Breaking Physics",
+  ];
+  const source = buildThumbnailManimScript({
+    topic: "Explain tensors geometrically",
+    titles: { selected: candidates[0], candidates },
+  });
+  const expectedThumbnailText = [
+    "TENSOR 0D → 3D",
+    "TENSORS CHANGE",
+    "TENSORS DESCRIBE",
+  ];
+  const folder = await mkdtemp(join(tmpdir(), "eduvids-thumbnails-"));
+  const script = join(folder, "thumbnails.py");
+
+  try {
+    await writeFile(script, source);
+    await exec("python3", ["-m", "py_compile", script]);
+    for (const [index, sceneClass] of THUMBNAIL_CLASS_NAMES.entries()) {
+      assert.match(source, new RegExp(`class ${sceneClass}\\(Scene\\)`));
+      assert.ok(source.includes(expectedThumbnailText[index]!));
+    }
+    assert.doesNotMatch(source, /voiceover|bookmark/i);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
   }
 });
 

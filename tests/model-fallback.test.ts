@@ -16,6 +16,24 @@ test("overload switches models once and returns the fallback result", async () =
   assert.equal(calls, 1);
 });
 
+test("empty or truncated model output switches to the fallback model", async () => {
+  let calls = 0;
+  const result = await withOverloadFallback(
+    async () => {
+      throw new Error(
+        "AI response was truncated (finish reason: length, 8192 characters); retry generation",
+      );
+    },
+    async () => {
+      calls++;
+      return "complete Manim script";
+    },
+    new AbortController().signal,
+  );
+  assert.equal(result, "complete Manim script");
+  assert.equal(calls, 1);
+});
+
 test("success, credential failures and malformed output never trigger fallback", async () => {
   let calls = 0;
   const fallback = async () => { calls++; return "unexpected"; };

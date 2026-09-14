@@ -1,13 +1,7 @@
-const useElevenLabs =
-  (process.env.USE_ELEVEN_LABS ?? "").toLowerCase() === "true";
-
-const VOICEOVER_SERVICE_IMPORT = useElevenLabs
-  ? "from manim_voiceover.services.elevenlabs import ElevenLabsService"
-  : "from manim_voiceover.services.gtts import GTTSService";
-
-const VOICEOVER_SERVICE_SETTER = useElevenLabs
-  ? "self.set_speech_service(ElevenLabsService(transcription_model=None))"
-  : "self.set_speech_service(GTTSService())";
+export const VOICEOVER_SERVICE_IMPORT_TOKEN =
+  "__EDUVIDS_VOICEOVER_SERVICE_IMPORT__";
+export const VOICEOVER_SERVICE_SETTER_TOKEN =
+  "__EDUVIDS_VOICEOVER_SERVICE_SETTER__";
 
 // =============================================================================
 // SYSTEM PROMPT - Teacher/Planner Agent
@@ -54,7 +48,9 @@ Your goal is that a viewer with zero prior knowledge fully understands the conce
 OUTPUT FORMAT
 - Plain text only. No Markdown, bullets, headers, or special formatting.
 - Write as a continuous, flowing teaching script in concise lines.
-- Keep each line under 220 characters.
+- Treat each line as one animation beat: 8-18 words and one clear visual idea.
+- Keep the delivery calm, warm, and professional from beginning to end.
+- Avoid exclamation marks, ellipses, and abrupt rhetorical shifts that make TTS delivery jump between emotion levels.
 - No special characters: no plus, minus, equals, times, divide, caret, superscript, slash, asterisk, or backtick.
 
 PEDAGOGICAL STRUCTURE
@@ -186,6 +182,7 @@ The output is an array of scene objects. Each object has:
 - "transitionIn": one of "write", "fade_in", "create"
 - "clearPrevious": boolean
 - "labels": array of {targetElementId, labelText, position} where position is "above"|"below"|"left"|"right"
+- "beats": array of {narration, focusElementIds}. Split the scene narration into consecutive 8-18 word chunks. Each chunk must map to one visible action and use element ids from this scene.
 
 ═══════════════════════════════════════════════════════════════════════════════
 EXAMPLES
@@ -207,6 +204,9 @@ EXAMPLE 1 — formula scene with rich color-coding:
     "maxSimultaneousElements": 4,
     "transitionIn": "write",
     "clearPrevious": false,
+    "beats": [
+      {"narration": "The area of a circle is pi times the radius squared.", "focusElementIds": ["circle_diagram", "formula"]}
+    ],
     "labels": [
       {"targetElementId": "formula", "labelText": "A is area", "position": "below"},
       {"targetElementId": "radius_line", "labelText": "r = radius", "position": "right"}
@@ -230,6 +230,9 @@ EXAMPLE 2 — graph scene with vibrant colors:
     "maxSimultaneousElements": 4,
     "transitionIn": "create",
     "clearPrevious": true,
+    "beats": [
+      {"narration": "Here is the parabola y equals x squared, with the area under the curve shaded.", "focusElementIds": ["curve", "shaded_area"]}
+    ],
     "labels": [
       {"targetElementId": "curve", "labelText": "y = x²", "position": "right"},
       {"targetElementId": "shaded_area", "labelText": "Area ≈ 2.67", "position": "below"}
@@ -252,6 +255,9 @@ EXAMPLE 3 — 3D visualization:
     "maxSimultaneousElements": 3,
     "transitionIn": "create",
     "clearPrevious": true,
+    "beats": [
+      {"narration": "Let's visualize this function as a three-dimensional surface.", "focusElementIds": ["surface", "axes3d"]}
+    ],
     "labels": [
       {"targetElementId": "surface", "labelText": "z = sin(x)cos(y)", "position": "above"}
     ]
@@ -272,10 +278,10 @@ MANDATORY STRUCTURE
 
 from manim import *
 from manim_voiceover import VoiceoverScene
-${VOICEOVER_SERVICE_IMPORT}
+${VOICEOVER_SERVICE_IMPORT_TOKEN}
 import numpy as np
 
-Each scene class inherits VoiceoverScene, calls ${VOICEOVER_SERVICE_SETTER} first.
+Each scene class inherits VoiceoverScene, calls ${VOICEOVER_SERVICE_SETTER_TOKEN} first.
 For 3D scenes: class MyScene(VoiceoverScene, ThreeDScene).
 ⚠️ INHERITANCE ORDER MATTERS: VoiceoverScene MUST come FIRST, ThreeDScene SECOND.
    ✅ class MyScene(VoiceoverScene, ThreeDScene)
@@ -287,7 +293,8 @@ SCENE PLAN
 ═══════════════════════════════════════════════════════════════════════════════
 
 You will receive a scene plan as JSON. Follow it exactly for scene structure,
-element types, and layout choices. Map each plan entry to a scene class.
+element types, layout choices, and timing beats. Map each plan entry to a scene class.
+Create exactly one voiceover block per beat, using that beat's narration verbatim.
 
 ═══════════════════════════════════════════════════════════════════════════════
 LAYOUT TEMPLATES (use these as starting patterns)
@@ -324,16 +331,18 @@ CRITICAL REQUIREMENTS
 ═══════════════════════════════════════════════════════════════════════════════
 
 1. Multiple small scene classes (6-14 normal, 4-8 shorts). One concept per scene.
-2. All three imports at top: manim, manim_voiceover, service. Call ${VOICEOVER_SERVICE_SETTER} first in every construct().
+2. All three imports at top: manim, manim_voiceover, service. Call ${VOICEOVER_SERVICE_SETTER_TOKEN} first in every construct().
 3. Wrap animations in "with self.voiceover(text=...) as tracker:" blocks. Narration order must match script.
-4. DO NOT use bookmarks. Sync narration by structuring voiceover blocks to match animation beats.
-   Prefer multiple short voiceover blocks over one long block. Keep each block aligned to 1-2 key visual actions.
-   Use run_time with fixed values for crisp pacing, and use tracker.get_remaining_duration() for the final action in a block.
-   When an animation should finish as the narration ends, set run_time=tracker.get_remaining_duration().
-   Use brief self.wait(0.2-0.5) pauses between actions to let the viewer absorb changes.
+4. DO NOT use bookmarks. Timing is beat-driven, not scene-driven.
+   Create exactly one "with self.voiceover(text=...) as tracker:" block for every scene-plan beat.
+   Never merge beats into a long narration block. Each block must contain 1-2 visible actions tied to its focusElementIds.
+   Allocate about 80 percent of tracker.duration across those actions, proportional to their complexity.
+   Example with two actions: run_time=max(0.4, tracker.duration * 0.35), then run_time=max(0.4, tracker.duration * 0.45).
+   End every block with self.wait(max(0, tracker.get_remaining_duration())) so narration and visuals finish together.
+   Never use tracker.get_remaining_duration() as the run_time of Write(), Create(), or FadeIn; that makes a single animation unnaturally slow.
 5. Write() animations for Text and MathTex are WAY TOO SLOW if left to fill the voiceover duration.
    ALWAYS set an explicit run_time on Write() — use run_time=1 to run_time=2 depending on text length.
-   NEVER let Write() default to tracker.get_remaining_duration() — it makes text appear painfully slowly.
+   NEVER let Write() use tracker.get_remaining_duration() — it makes text appear painfully slowly.
    Example: self.play(Write(formula), run_time=1.5)
 6. ALL Text() must use font="EB Garamond", disable_ligatures=True. MathTex does not need it. Text() must NEVER contain digits or numeric content.
 7. NEVER use Text() for any visible numeric content on screen. Any on-screen number, coordinate, measurement, exponent, fraction, decimal, percentage, or mixed math-and-number token must use MathTex(). If a label mixes words and numbers, use a VGroup of Text() + MathTex() arranged with .arrange(RIGHT, buff=0.12).

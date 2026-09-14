@@ -20,6 +20,10 @@ export function isModelOverloaded(error: unknown): boolean {
     /high demand|overloaded|temporarily unavailable|service unavailable|\b503\b|\bUNAVAILABLE\b/i.test(message);
 }
 
+export function isRetryableModelOutputError(error: unknown): boolean {
+  return /AI response was (?:empty|truncated)/i.test(safeError(error));
+}
+
 export function generationFailureMessage(message: string): string {
   if (isCredentialError(message) || /all keys are blocked/i.test(message)) {
     return "Video generation is unavailable because the AI provider rejected its credentials. The site operator needs to check the provider account and API keys.";

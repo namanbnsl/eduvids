@@ -1,4 +1,7 @@
-import { isModelOverloaded } from "./errors";
+import {
+  isModelOverloaded,
+  isRetryableModelOutputError,
+} from "./errors";
 
 /** Both calls share a deadline; fallback must never restart the invocation clock. */
 export async function withOverloadFallback<T>(
@@ -10,7 +13,9 @@ export async function withOverloadFallback<T>(
   try {
     return await primary();
   } catch (error) {
-    if (!fallback || signal.aborted || !isModelOverloaded(error)) throw error;
+    const shouldFallback =
+      isModelOverloaded(error) || isRetryableModelOutputError(error);
+    if (!fallback || signal.aborted || !shouldFallback) throw error;
     return await fallback();
   }
 }
