@@ -3,10 +3,15 @@ import { Lexend } from "next/font/google";
 
 import { ClerkProvider } from "@clerk/nextjs";
 
-import ConvexClientProvider from "@/components/providers/ConvexClientProvider";
-import { PostHogUserIdentifier } from "@/components/providers/PostHogUserIdentifier";
-
 import { shadcn } from "@clerk/themes";
+import {
+  GITHUB_URL,
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_URL,
+  X_URL,
+  YOUTUBE_CHANNEL_URL,
+} from "@/lib/site";
 import "./globals.css";
 
 const defaultFont = Lexend({
@@ -14,28 +19,34 @@ const defaultFont = Lexend({
   subsets: ["latin"],
 });
 
-const siteUrl = new URL("https://eduvids.app");
+const siteUrl = new URL(SITE_URL);
 const structuredData = {
   "@context": "https://schema.org",
   "@graph": [
     {
       "@type": "WebSite",
-      name: "eduvids",
-      url: "https://eduvids.app",
-      potentialAction: {
-        "@type": "SearchAction",
-        target: "https://eduvids.app/?q={search_term_string}",
-        "query-input": "required name=search_term_string",
-      },
+      "@id": `${SITE_URL}/#website`,
+      name: SITE_NAME,
+      url: SITE_URL,
+      description: SITE_DESCRIPTION,
+      publisher: { "@id": `${SITE_URL}/#organization` },
+    },
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: `${SITE_URL}/favicon.png`,
+      sameAs: [YOUTUBE_CHANNEL_URL, X_URL, GITHUB_URL],
     },
     {
       "@type": "SoftwareApplication",
+      "@id": `${SITE_URL}/#application`,
       name: "eduvids",
       applicationCategory: "EducationalApplication",
       operatingSystem: "Web",
-      url: "https://eduvids.app",
-      description:
-        "AI educational video generator that creates accurate visual explanations from text prompts.",
+      url: SITE_URL,
+      description: SITE_DESCRIPTION,
       offers: {
         "@type": "Offer",
         price: "0",
@@ -51,8 +62,7 @@ export const metadata: Metadata = {
     default: "eduvids | AI Educational Video Generator",
     template: "%s | eduvids",
   },
-  description:
-    "Generate high-quality educational videos with code-accurate animations for math, science, and more. Free, multilingual, and simple to use with absolutely no sign-up required.",
+  description: SITE_DESCRIPTION,
   applicationName: "eduvids",
   keywords: [
     "educational videos",
@@ -62,7 +72,7 @@ export const metadata: Metadata = {
     "math video generator",
     "science video generator",
     "learning videos",
-    "youtube shorts education",
+    "educational animation generator",
   ],
   alternates: {
     canonical: "/",
@@ -72,14 +82,14 @@ export const metadata: Metadata = {
     url: "/",
     siteName: "eduvids",
     title: "eduvids | AI Educational Video Generator",
-    description:
-      "Create accurate educational videos from text prompts for math, science, and more.",
+    description: SITE_DESCRIPTION,
+    images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
     title: "eduvids | AI Educational Video Generator",
-    description:
-      "Create accurate educational videos from text prompts for math, science, and more.",
+    description: SITE_DESCRIPTION,
+    images: ["/twitter-image"],
   },
   robots: {
     index: true,
@@ -116,12 +126,9 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
         <ClerkProvider appearance={{ theme: shadcn }}>
-          <ConvexClientProvider>
-            <PostHogUserIdentifier />
-            <div className="flex flex-col h-svh overflow-hidden">
-              <div className="flex-1 overflow-hidden">{children}</div>
-            </div>
-          </ConvexClientProvider>
+          <div className="flex h-svh flex-col overflow-hidden">
+            <div className="flex-1 overflow-hidden">{children}</div>
+          </div>
         </ClerkProvider>
       </body>
     </html>

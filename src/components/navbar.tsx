@@ -18,10 +18,24 @@ const Navbar = () => {
       </Link>
 
       <div className="flex gap-1 sm:gap-2 items-center shrink-0">
+        <nav className="mr-1 hidden items-center gap-1 md:flex">
+          <Link
+            href="/examples"
+            className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+          >
+            Examples
+          </Link>
+          <Link
+            href="/how-it-works"
+            className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+          >
+            How it works
+          </Link>
+        </nav>
         <div className="mr-1 sm:mr-2 hidden sm:block">
           <SignUpButton>
             <Button className="cursor-pointer whitespace-nowrap">
-              Sign Up For Advanced Features
+              Sign up
             </Button>
           </SignUpButton>
         </div>
