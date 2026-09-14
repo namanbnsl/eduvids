@@ -5,7 +5,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { useMutation } from "convex/react";
+import { useConvexAuth, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
 // Components
@@ -57,10 +57,16 @@ export function GeneratorHome() {
   const [generationMode, setGenerationMode] = useState<
     "video" | "short" | null
   >(null);
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   const router = useRouter();
   const { isSignedIn } = useAuth();
+  const {
+    isAuthenticated: isConvexAuthenticated,
+    isLoading: isConvexAuthLoading,
+  } = useConvexAuth();
   const createChatWithMessage = useMutation(api.chats.createWithFirstMessage);
 
   const { messages, status, sendMessage } = useChat<ChatMessage>();
@@ -116,25 +122,43 @@ export function GeneratorHome() {
     e.preventDefault();
 
     const trimmed = input.trim();
-    if (!trimmed) return;
+    if (!trimmed || isCreatingChat) return;
+
+    setSubmitError(null);
 
     if (isSignedIn) {
+      if (!isConvexAuthenticated) {
+        setSubmitError(
+          "Your signed-in session is still connecting. Please refresh and try again.",
+        );
+        return;
+      }
+
       const title =
         trimmed.length > 50 ? trimmed.slice(0, 50) + "..." : trimmed;
 
-      // Single mutation creates chat + first message
-      const chatId = await createChatWithMessage({
-        title,
-        content: trimmed,
-        parts: [{ type: "text", text: trimmed }],
-      });
+      setIsCreatingChat(true);
 
-      // Navigate immediately
-      startTransition(() => {
-        router.push(
-          `/chat/${chatId}?pending=${encodeURIComponent(trimmed)}&mode=${generationMode || ""}`,
+      try {
+        // Single mutation creates chat + first message
+        const chatId = await createChatWithMessage({
+          title,
+          content: trimmed,
+          parts: [{ type: "text", text: trimmed }],
+        });
+
+        startTransition(() => {
+          router.push(
+            `/chat/${chatId}?pending=${encodeURIComponent(trimmed)}&mode=${generationMode || ""}`,
+          );
+        });
+      } catch (error) {
+        console.error("Failed to create chat", error);
+        setSubmitError(
+          "We couldn't start this chat. Please refresh and try again.",
         );
-      });
+        setIsCreatingChat(false);
+      }
     } else {
       sendMessage(
         { text: trimmed },
@@ -218,7 +242,10 @@ export function GeneratorHome() {
             <div className="mx-auto w-full max-w-7xl px-4 md:px-6 py-4">
               <PromptInput onSubmit={handleSubmit} data-onboarding="composer">
                 <PromptInputTextarea
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    setSubmitError(null);
+                  }}
                   value={input}
                   placeholder="Choose a mode and describe the video you want to generate"
                 />
@@ -248,10 +275,25 @@ export function GeneratorHome() {
                     </div>
                   </PromptInputTools>
                   <div data-onboarding="submit">
-                    <PromptInputSubmit disabled={!input} status={status} />
+                    <PromptInputSubmit
+                      disabled={
+                        !input.trim() ||
+                        isCreatingChat ||
+                        (isSignedIn && isConvexAuthLoading)
+                      }
+                      status={isCreatingChat ? "submitted" : status}
+                    />
                   </div>
                 </PromptInputToolbar>
               </PromptInput>
+              {submitError && (
+                <p
+                  className="mt-2 text-center text-xs text-destructive"
+                  role="alert"
+                >
+                  {submitError}
+                </p>
+              )}
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 Please avoid sharing personal data—everything submitted here
                 will be automatically uploaded publicly to the community YouTube
@@ -278,7 +320,10 @@ export function GeneratorHome() {
               <div className="mb-8">
                 <PromptInput onSubmit={handleSubmit} data-onboarding="composer">
                   <PromptInputTextarea
-                    onChange={(e) => setInput(e.target.value)}
+                    onChange={(e) => {
+                      setInput(e.target.value);
+                      setSubmitError(null);
+                    }}
                     value={input}
                     placeholder="Describe your video idea here..."
                   />
@@ -311,10 +356,25 @@ export function GeneratorHome() {
                       </div>
                     </PromptInputTools>
                     <div data-onboarding="submit">
-                      <PromptInputSubmit disabled={!input} status={status} />
+                      <PromptInputSubmit
+                        disabled={
+                          !input.trim() ||
+                          isCreatingChat ||
+                          (isSignedIn && isConvexAuthLoading)
+                        }
+                        status={isCreatingChat ? "submitted" : status}
+                      />
                     </div>
                   </PromptInputToolbar>
                 </PromptInput>
+                {submitError && (
+                  <p
+                    className="mt-2 text-center text-xs text-destructive"
+                    role="alert"
+                  >
+                    {submitError}
+                  </p>
+                )}
               </div>
 
               <div data-onboarding="topic-suggestion">
