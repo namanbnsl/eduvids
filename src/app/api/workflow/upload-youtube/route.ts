@@ -2,7 +2,16 @@ import { WorkflowNonRetryableError } from "@upstash/workflow";
 import { safeError } from "@/lib/workflow/errors";
 import { serve } from "@upstash/workflow/nextjs";
 
-import { uploadToYouTube } from "@/lib/youtube";
+import {
+  findPreviousYouTubeVideo,
+  postYouTubeComment,
+  uploadToYouTube,
+} from "@/lib/youtube";
+import {
+  buildPreviousVideoComment,
+  buildYouTubeDescription,
+  type RelatedYouTubeVideo,
+} from "@/lib/youtube-metadata";
 import { jobStore, artifactStore } from "@/lib/job-store";
 import { getConvexClient, api } from "@/lib/convex-server";
 import {
@@ -40,9 +49,41 @@ export const { POST } = serve<YouTubeUploadPayload>(
       "science",
       ...(isShort ? ["shorts", "vertical"] : []),
     ];
+    const key = jobId ?? context.workflowRunId;
+
+    const previousVideo = await context.run(
+      "find-previous-youtube-video",
+      async () => {
+        const saved = await artifactStore.find(key, "previousYoutubeVideo");
+        if (saved) {
+          return JSON.parse(saved) as RelatedYouTubeVideo | null;
+        }
+
+        try {
+          const result = await findPreviousYouTubeVideo();
+          await artifactStore.set(
+            key,
+            "previousYoutubeVideo",
+            JSON.stringify(result ?? null),
+          );
+          return result ?? null;
+        } catch (error) {
+          console.warn(
+            "Previous-video lookup failed; continuing without a link:",
+            safeError(error),
+          );
+          return null;
+        }
+      },
+    );
+
+    const finalDescription = buildYouTubeDescription({
+      salesCopy: description,
+      topic: prompt,
+      previousVideo: previousVideo ?? undefined,
+    });
 
     const youtubeResult = await context.run("upload-to-youtube", async () => {
-      const key = jobId ?? context.workflowRunId;
       const saved = await artifactStore.find(key, "youtubeResult");
       if (saved)
         return JSON.parse(saved) as Awaited<ReturnType<typeof uploadToYouTube>>;
@@ -56,7 +97,7 @@ export const { POST } = serve<YouTubeUploadPayload>(
         const result = await uploadToYouTube({
           videoUrl,
           title: title ?? prompt.slice(0, 100),
-          description,
+          description: finalDescription,
           tags,
           variant,
         });
@@ -95,26 +136,34 @@ export const { POST } = serve<YouTubeUploadPayload>(
       }
     }
 
-    // Trigger X (Twitter) post workflow
-    await context.run("trigger-x-upload", async () => {
-      if (
-        !process.env.X_API_KEY ||
-        !process.env.X_API_KEY_SECRET ||
-        !process.env.X_ACCESS_TOKEN ||
-        !process.env.X_ACCESS_TOKEN_SECRET
-      )
-        return;
-      await workflowClient.trigger({
-        workflowRunId: `x-${youtubeResult.videoId}`,
-        retries: 0,
-        headers: getTriggerHeaders(),
-        url: `${getBaseUrl()}/api/workflow/upload-x`,
-        body: {
-          videoUrl: youtubeResult.watchUrl,
-          title: youtubeResult.title,
-        },
+    if (previousVideo) {
+      await context.run("comment-previous-youtube-video", async () => {
+        if (await artifactStore.find(key, "youtubeCommentResult")) return;
+        if (!(await artifactStore.claim(key, "youtubeCommentStarted"))) return;
+
+        try {
+          const result = await postYouTubeComment({
+            videoId: youtubeResult.videoId,
+            text: buildPreviousVideoComment(previousVideo),
+          });
+          await artifactStore.set(
+            key,
+            "youtubeCommentResult",
+            JSON.stringify(result),
+          );
+        } catch (error) {
+          console.warn(
+            "Previous-video comment failed; upload remains successful:",
+            safeError(error),
+          );
+          await artifactStore.set(
+            key,
+            "youtubeCommentResult",
+            JSON.stringify({ error: safeError(error) }),
+          );
+        }
       });
-    });
+    }
 
     return { success: true, ...youtubeResult };
   },

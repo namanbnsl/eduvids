@@ -19,6 +19,7 @@ import {
   generationFailureMessage,
 } from "../src/lib/workflow/errors";
 import type { PreparedSandboxState } from "../src/lib/e2b";
+import { uploadThingFetch } from "../src/lib/uploadthing";
 
 const exec = promisify(execFile);
 const state = (folder: string): PreparedSandboxState => ({
@@ -196,6 +197,38 @@ test("error messages distinguish credentials, deadlines, and script failures", (
     /automatic repair/,
   );
   assert.doesNotMatch(safeError("api_key:AIzaExampleSecret"), /AIza/);
+  assert.equal(safeError("token sk_live_exampleSecret123"), "token [REDACTED]");
+});
+
+test("UploadThing fetch removes content-length and preserves cancellation", async () => {
+  const originalFetch = globalThis.fetch;
+  const upstreamController = new AbortController();
+  let receivedInit: RequestInit | undefined;
+  globalThis.fetch = mock.fn(async (_input, init) => {
+    receivedInit = init;
+    return new Response("{}", { status: 200 });
+  });
+
+  try {
+    await uploadThingFetch("https://api.uploadthing.test/v6/getFileUrl", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "content-length": "54",
+      },
+      body: new Uint8Array([1, 2, 3]),
+      signal: upstreamController.signal,
+    });
+
+    const headers = new Headers(receivedInit?.headers);
+    assert.equal(headers.has("content-length"), false);
+    assert.equal(headers.get("content-type"), "application/json");
+    assert.ok(receivedInit?.signal);
+    upstreamController.abort();
+    assert.equal(receivedInit?.signal?.aborted, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("sanitizing Python preserves comparisons and text containing angle brackets", () => {

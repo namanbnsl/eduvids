@@ -7,7 +7,10 @@ const oauth2Client = new google.auth.OAuth2(
   "http://localhost:3000/oauth2callback"
 );
 
-const scopes = ["https://www.googleapis.com/auth/youtube.upload"];
+const scopes = [
+  "https://www.googleapis.com/auth/youtube.upload",
+  "https://www.googleapis.com/auth/youtube.force-ssl",
+];
 
 const authUrl = oauth2Client.generateAuthUrl({
   access_type: "offline",

@@ -15,6 +15,7 @@ import { queryManimDocs } from "./deepwiki";
 
 import { jsonrepair } from "jsonrepair";
 import { franc } from "franc";
+import { parseVideoTitleSet, type VideoTitleSet } from "./youtube-metadata";
 
 // @ts-expect-error langs has no types
 import langs from "langs";
@@ -639,21 +640,23 @@ export interface VideoTitleRequest {
   sessionId: string;
 }
 
-export async function generateVideoTitle({
+export async function generateVideoTitles({
   prompt,
   sessionId,
-}: VideoTitleRequest): Promise<string> {
-  const systemPrompt = `You are a YouTube title expert for a math/science education channel. Generate a single catchy, concise video title.
+}: VideoTitleRequest): Promise<VideoTitleSet> {
+  const systemPrompt = `You package videos for eduvids, a cinematic visual math and science channel. Generate exactly three distinct YouTube title candidates, ordered strongest first.
 
 RULES:
-- Maximum 80 characters
-- No quotes around the title
-- Use title case
-- Make the title catchy and descriptive
-- Examples: "Neural Networks Explained" / "The Hidden Beauty of Prime Numbers" / "Why Gravity Bends Light"
-- Output ONLY the title text, nothing else`;
+- Aim for 45-65 characters; never exceed 80
+- Create curiosity while making the subject immediately clear
+- Prefer natural use of Why, How, What, Visualized, Intuitive, Actually, In 3D, or Finally Makes Sense
+- Never use the words Explained, Basics, Introduction, or Lesson
+- Avoid hype, clickbait, vague promises, and repeated title structures
+- Use natural title case, not all caps
+- Strong examples: "What Even Is a Tensor? Visualized From 0D to 3D" / "Why Differentiation Actually Works" / "The 5 Ways Two Triangles Can Be Exactly the Same"
+- Return ONLY a JSON array of three strings`;
 
-  const userPrompt = `Generate a YouTube title for a math/science animation video about: "${prompt}"`;
+  const userPrompt = `Generate three title candidates for this animated educational video: "${prompt}"`;
 
   const googleModel = await createGoogleModel("gemini-3.5-flash-lite");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
@@ -665,15 +668,12 @@ RULES:
       model,
       system: systemPrompt,
       prompt: userPrompt,
-      temperature: 0.7,
+      temperature: 0.8,
     },
     googleModel,
   );
 
-  return text
-    .trim()
-    .replace(/^["']|["']$/g, "")
-    .slice(0, 80);
+  return parseVideoTitleSet(text);
 }
 
 // ---------------------------------------------------------------------------
@@ -693,15 +693,18 @@ export async function generateVideoDescription({
   sessionId,
   variant,
 }: VideoDescriptionRequest): Promise<string> {
-  const systemPrompt = `You are a YouTube description expert for educational math/science videos.
+  const systemPrompt = `You package videos for eduvids, a cinematic visual math and science channel. Write the sales-first opening of a YouTube description.
 
 RULES:
-- Maximum 900 characters
-- 1-2 short paragraphs
-- Plain text only (no lists or timestamps)
-- No quotes around the description
-- Do not include calls-to-action or links
-- Output ONLY the description text, nothing else`;
+- Output exactly two short, non-empty lines and no blank line
+- Line 1 opens with the central mystery, surprising result, or useful problem
+- Line 2 promises the specific visual intuition the viewer will gain
+- Naturally include 2-3 precise topic keywords across the two lines
+- Do not repeat the title or start with "In this video"
+- Never use generic phrases such as "dive into", "join us", "embark on", or "unlock the secrets"
+- Do not include calls-to-action, links, hashtags, timestamps, or labels
+- Keep the total under 500 characters
+- Output only the two lines`;
 
   const userPrompt = `Create a YouTube description for this ${
     variant === "short" ? "vertical short" : "video"
@@ -722,7 +725,7 @@ ${voiceoverScript}`;
       model,
       system: systemPrompt,
       prompt: userPrompt,
-      temperature: 0.6,
+      temperature: 0.5,
     },
     googleModel,
   );
@@ -730,7 +733,7 @@ ${voiceoverScript}`;
   return text
     .trim()
     .replace(/^["']|["']$/g, "")
-    .slice(0, 900);
+    .slice(0, 500);
 }
 
 // ---------------------------------------------------------------------------

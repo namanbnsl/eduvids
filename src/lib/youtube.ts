@@ -2,6 +2,7 @@ import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import { Readable } from "node:stream";
 import type { VideoVariant } from "./types";
+import type { RelatedYouTubeVideo } from "./youtube-metadata";
 
 export type YouTubePrivacyStatus = "public" | "unlisted" | "private";
 
@@ -32,6 +33,75 @@ function getOAuth2Client(): OAuth2Client {
   return oauth2Client;
 }
 
+function getYouTubeClient() {
+  return google.youtube({ version: "v3", auth: getOAuth2Client() });
+}
+
+export async function findPreviousYouTubeVideo(): Promise<
+  RelatedYouTubeVideo | undefined
+> {
+  const youtube = getYouTubeClient();
+  const channels = await youtube.channels.list({
+    part: ["contentDetails"],
+    mine: true,
+    maxResults: 1,
+  });
+  const uploadsPlaylistId =
+    channels.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+  if (!uploadsPlaylistId) return undefined;
+
+  const uploads = await youtube.playlistItems.list({
+    part: ["snippet", "status"],
+    playlistId: uploadsPlaylistId,
+    maxResults: 10,
+  });
+
+  for (const item of uploads.data.items ?? []) {
+    const videoId = item.snippet?.resourceId?.videoId;
+    const title = item.snippet?.title?.trim();
+    if (
+      !videoId ||
+      !title ||
+      item.status?.privacyStatus === "private" ||
+      title === "Private video" ||
+      title === "Deleted video"
+    ) {
+      continue;
+    }
+
+    return {
+      videoId,
+      title,
+      watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
+    };
+  }
+
+  return undefined;
+}
+
+export async function postYouTubeComment({
+  videoId,
+  text,
+}: {
+  videoId: string;
+  text: string;
+}): Promise<{ commentThreadId?: string }> {
+  const youtube = getYouTubeClient();
+  const result = await youtube.commentThreads.insert({
+    part: ["snippet"],
+    requestBody: {
+      snippet: {
+        videoId,
+        topLevelComment: {
+          snippet: { textOriginal: text },
+        },
+      },
+    },
+  });
+
+  return { commentThreadId: result.data.id ?? undefined };
+}
+
 export async function uploadToYouTube({
   videoUrl,
   title,
@@ -43,8 +113,7 @@ export async function uploadToYouTube({
   watchUrl: string;
   title: string;
 }> {
-  const auth = getOAuth2Client();
-  const youtube = google.youtube({ version: "v3", auth });
+  const youtube = getYouTubeClient();
 
   const privacy =
     privacyStatus ??
@@ -70,9 +139,7 @@ export async function uploadToYouTube({
       requestBody: {
         snippet: {
           title: title,
-          description: description
-            ? `Generate your own videos for free at https://eduvids.app\n\n ${description}`
-            : `Generate your own videos for free at https://eduvids.app`,
+          description,
           tags,
           categoryId: "27",
         },

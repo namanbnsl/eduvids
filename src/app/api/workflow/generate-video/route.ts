@@ -6,7 +6,7 @@ import {
   generateScenePlan,
   generateManimScript,
   fixManimScript,
-  generateVideoTitle,
+  generateVideoTitles,
   generateVideoDescription,
 } from "@/lib/llm";
 import {
@@ -281,11 +281,14 @@ export const { POST } = serve<VideoGenerationPayload>(
       cleanupSandbox(prepared!.sandboxId),
     );
 
-    const videoTitle = await context.run("generate-title", async () => {
+    const videoTitleSet = await context.run("generate-titles", async () => {
       try {
-        const title = await generateVideoTitle({ prompt, sessionId: chatId });
-        console.log("✅ Title generated:", title);
-        return title;
+        const saved = await artifactStore.find(jobId, "videoTitleSet");
+        if (saved) return JSON.parse(saved);
+        const titles = await generateVideoTitles({ prompt, sessionId: chatId });
+        await artifactStore.set(jobId, "videoTitleSet", JSON.stringify(titles));
+        console.log("✅ Title candidates generated:", titles.candidates);
+        return titles;
       } catch (err) {
         console.warn("Title generation failed (non-fatal):", err);
         return undefined;
@@ -329,7 +332,7 @@ export const { POST } = serve<VideoGenerationPayload>(
         url: `${getBaseUrl()}/api/workflow/upload-youtube`,
         body: {
           videoUrl: uploadUrl,
-          title: videoTitle,
+          title: videoTitleSet?.selected,
           description: videoDescription,
           prompt,
           jobId,

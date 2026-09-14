@@ -12,7 +12,7 @@ export function QuickActionCards({
   topics,
   isLoading = false,
 }: QuickActionCardsProps) {
-  const placeholderCount = 1;
+  const placeholderCount = 2;
 
   if (isLoading || !topics || topics.length === 0) {
     return (

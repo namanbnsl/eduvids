@@ -3,6 +3,7 @@ export function safeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message
     .replace(/AIza[\w-]+/g, "[REDACTED]")
+    .replace(/\bsk_(?:live|test)_[\w-]+\b/gi, "[REDACTED]")
     .replace(/(api[_ -]?key\s*[:=]\s*)[^\s,'";]+/gi, "$1[REDACTED]")
     .slice(0, 6000);
 }

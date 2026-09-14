@@ -1,4 +1,5 @@
 import { UTApi, UTFile } from "uploadthing/server";
+import { safeError } from "./workflow/errors";
 
 export interface UploadRequest {
   videoPath: string;
@@ -18,14 +19,30 @@ const isUploadResponseData = (
   return typeof ufsUrl === "string" || typeof url === "string";
 };
 
+export function uploadThingFetch(
+  input: string | URL | Request,
+  init?: RequestInit,
+): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  // Let Undici calculate this from the final body. UploadThing's Effect adapter
+  // can otherwise forward a stale/invalid value through Next's fetch wrapper.
+  headers.delete("content-length");
+
+  const timeoutSignal = AbortSignal.timeout(150_000);
+  const signal = init?.signal
+    ? AbortSignal.any([init.signal, timeoutSignal])
+    : timeoutSignal;
+
+  return globalThis.fetch(input, { ...init, headers, signal });
+}
+
 export async function uploadVideo({
   videoPath,
   userId,
   jobId,
 }: UploadRequest): Promise<string> {
-  const signal = AbortSignal.timeout(150_000);
   const utapi = new UTApi({
-    fetch: (input, init) => fetch(input, { ...init, signal }),
+    fetch: uploadThingFetch,
   });
   try {
     if (jobId) {
@@ -74,7 +91,8 @@ export async function uploadVideo({
     console.log(`Video uploaded successfully: ${uploadUrl}`);
     return uploadUrl;
   } catch (error) {
-    console.error("Upload failed:", error);
-    throw new Error(`Video upload failed: ${(error as Error).message}`);
+    const message = safeError(error);
+    console.error("Upload failed:", message);
+    throw new Error(`Video upload failed: ${message}`);
   }
 }

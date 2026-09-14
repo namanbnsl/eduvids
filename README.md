@@ -78,9 +78,8 @@ npm run dev
 node helper/get_google_refresh_token.mjs
 ```
 
-4. Edit your `YOUTUBE_PRIVACY_STATUS` in `.env` based on what you want as the visibility for your videos `(public | unlisted | private)`. Default is `public`.
+4. Edit your `YOUTUBE_PRIVACY_STATUS` in `.env` based on what you want as the visibility for your videos `(public | unlisted | private)`. Default is `public`. If your refresh token predates previous-video linking, run the helper again so the new token includes channel and comment access.
 
 ## 📺 Setting up automatic X uploads (optional)
 
 1. Visit the X developer API console and fill in the required values in `.env`
-

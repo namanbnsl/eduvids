@@ -48,10 +48,8 @@ const isGenerateVideoToolPart = (
   part.type === "tool-generate_video";
 
 const SUGGESTED_TOPICS = [
-  "How Fourier transforms separate a signal into frequencies",
-  "Why GPS satellites need Einstein's relativity",
-  "Visualize the chain rule with moving geometry",
-  "How gravitational waves stretch spacetime",
+  "Why Does Gravity Bend Light? Visualized in 3D",
+  "How Fourier Transforms Reveal Hidden Frequencies",
 ];
 
 export function GeneratorHome() {
@@ -280,16 +278,7 @@ export function GeneratorHome() {
               <div data-onboarding="topic-suggestion">
                 <QuickActionCards
                   onCardClick={(text) => {
-                    const videoPrefix = "Generate a video of ";
-                    const shortPrefix = "Generate a short vertical video of ";
-
-                    if (generationMode === "video") {
-                      setInput(videoPrefix + text);
-                    } else if (generationMode === "short") {
-                      setInput(shortPrefix + text);
-                    } else {
-                      setInput(text);
-                    }
+                    setInput(text);
                   }}
                   topics={SUGGESTED_TOPICS}
                 />
