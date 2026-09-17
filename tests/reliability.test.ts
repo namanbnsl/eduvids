@@ -30,7 +30,9 @@ import {
 } from "../src/prompt";
 import {
   buildThumbnailManimScript,
+  sanitizeGeneratedThumbnailScript,
   THUMBNAIL_CLASS_NAMES,
+  thumbnailManimScriptIssues,
 } from "../src/lib/youtube-thumbnail";
 import {
   safeError,
@@ -382,6 +384,48 @@ test("scene narration is split into short visual timing beats", () => {
   assert.deepEqual(scene.beats.at(-1)?.focusElementIds, ["second"]);
 });
 
+test("scene timing keeps faithful model-planned visual focus", () => {
+  const narration =
+    "The square stretches sideways. Its area grows while its height stays fixed.";
+  const [scene] = normalizeScenePlanTiming([
+    {
+      sceneId: "Scene01",
+      narration,
+      visualType: "comparison",
+      elements: [
+        { id: "square", type: "shape", content: "unit square" },
+        { id: "area", type: "region", content: "filled area" },
+      ],
+      layout: "left_right_split",
+      maxSimultaneousElements: 2,
+      transitionIn: "create",
+      clearPrevious: false,
+      labels: [],
+      beats: [
+        {
+          narration: "The square stretches sideways.",
+          focusElementIds: ["square"],
+        },
+        {
+          narration: "Its area grows while its height stays fixed.",
+          focusElementIds: ["area", "square"],
+        },
+      ],
+    },
+  ]);
+
+  assert.deepEqual(scene.beats, [
+    {
+      narration: "The square stretches sideways.",
+      focusElementIds: ["square"],
+    },
+    {
+      narration: "Its area grows while its height stays fixed.",
+      focusElementIds: ["area", "square"],
+    },
+  ]);
+});
+
 test("voiceover timing rejects long idle blocks before rendering", () => {
   const good = `class Scene01(VoiceoverScene):
     def construct(self):
@@ -399,6 +443,27 @@ test("voiceover timing rejects long idle blocks before rendering", () => {
   assert.ok(issues.some((issue) => issue.includes("maximum is 22")));
   assert.ok(issues.some((issue) => issue.includes("final duration")));
   assert.ok(issues.some((issue) => issue.includes("2 planned beats")));
+});
+
+test("voiceover timing accepts direct reveals and isolated narration holds", () => {
+  const mixed = `class Scene01(VoiceoverScene):
+    def construct(self):
+        with self.voiceover(text="The diagram appears before we inspect it.") as tracker:
+            self.add(diagram)
+            self.wait(max(0, tracker.get_remaining_duration()))
+        with self.voiceover(text="Notice how both sides stay balanced.") as tracker:
+            self.wait(max(0, tracker.get_remaining_duration()))`;
+  assert.deepEqual(manimVoiceoverTimingIssues(mixed, 2), []);
+
+  const entirelyStatic = `class Scene01(VoiceoverScene):
+    def construct(self):
+        with self.voiceover(text="Nothing ever changes in this scene.") as tracker:
+            self.wait(max(0, tracker.get_remaining_duration()))`;
+  assert.ok(
+    manimVoiceoverTimingIssues(entirelyStatic, 1).some((issue) =>
+      issue.includes("no visual action in any voiceover block"),
+    ),
+  );
 });
 
 test("voiceover enforcement replaces model-selected gTTS and fills missing scene setters", () => {
@@ -623,12 +688,41 @@ test("thumbnail packaging creates three title-paired Manim scenes", async () => 
   ];
   const source = buildThumbnailManimScript({
     topic: "Explain tensors geometrically",
+    designSeed: "video-job-123",
+    titles: {
+      selected: candidates[0],
+      candidates,
+      thumbnailConcepts: [
+        {
+          text: "",
+          visualConcept: "a cube stretching between coordinate grids",
+          visualType: "transformation",
+          mathNotation: "T(\\vec v)",
+        },
+        {
+          text: "Same tensor",
+          visualConcept: "one vector shown in two coordinate frames",
+          visualType: "transformation",
+          mathNotation: "[v]_{B}",
+        },
+        {
+          text: "What stays fixed?",
+          visualConcept: "a glowing invariant inside rotating axes",
+          visualType: "geometry",
+          mathNotation: "T",
+        },
+      ],
+    },
+  });
+  const alternate = buildThumbnailManimScript({
+    topic: "Explain tensors geometrically",
+    designSeed: "video-job-456",
     titles: { selected: candidates[0], candidates },
   });
   const expectedThumbnailText = [
-    "TENSOR 0D → 3D",
-    "TENSORS CHANGE",
-    "TENSORS DESCRIBE",
+    "T(\\\\vec v)",
+    "Same tensor",
+    "What stays fixed?",
   ];
   const folder = await mkdtemp(join(tmpdir(), "eduvids-thumbnails-"));
   const script = join(folder, "thumbnails.py");
@@ -637,13 +731,98 @@ test("thumbnail packaging creates three title-paired Manim scenes", async () => 
     await writeFile(script, source);
     await exec("python3", ["-m", "py_compile", script]);
     for (const [index, sceneClass] of THUMBNAIL_CLASS_NAMES.entries()) {
-      assert.match(source, new RegExp(`class ${sceneClass}\\(Scene\\)`));
+      assert.match(
+        source,
+        new RegExp(`class ${sceneClass}\\((?:Scene|ThreeDScene)\\)`),
+      );
       assert.ok(source.includes(expectedThumbnailText[index]!));
+      assert.ok(source.includes(JSON.stringify(candidates[index])));
     }
+    assert.doesNotMatch(source, /brand_mark|cinematic_frame|EDUVIDS/);
+    assert.match(source, /config\.background_color = "#050505"/);
+    assert.notEqual(source, alternate);
     assert.doesNotMatch(source, /voiceover|bookmark/i);
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
+});
+
+test("generated thumbnail scripts are title-paired and reject unsafe Python", () => {
+  const candidates: [string, string, string] = [
+    "What Even Is a Tensor? Visualized From 0D to 3D",
+    "Why Tensors Actually Change Shape Between Coordinates",
+    "How Tensors Describe the World Without Breaking Physics",
+  ];
+  const titles = { selected: candidates[0], candidates };
+  const safe = sanitizeGeneratedThumbnailScript(`\`\`\`python
+from manim import *
+import numpy as np
+config.background_color = "#050505"
+class EduvidsThumbnailA(Scene):
+    def construct(self):
+        paired_title = ${JSON.stringify(candidates[0])}
+        self.add(Circle())
+class EduvidsThumbnailB(ThreeDScene):
+    def construct(self):
+        paired_title = ${JSON.stringify(candidates[1])}
+        self.add(Sphere())
+class EduvidsThumbnailC(Scene):
+    def construct(self):
+        paired_title = ${JSON.stringify(candidates[2])}
+        self.add(Axes())
+\`\`\``);
+  assert.deepEqual(thumbnailManimScriptIssues(safe, titles), []);
+  assert.ok(
+    thumbnailManimScriptIssues(`${safe}\nimport os`, titles).some((issue) =>
+      issue.includes("disallowed"),
+    ),
+  );
+});
+
+test("generated graph thumbnails must use the title package expression", () => {
+  const candidates: [string, string, string] = [
+    "Why This Function Bends Exactly Where It Does",
+    "What the Derivative Knows About Every Turn",
+    "How One Curve Reveals Its Own Rate of Change",
+  ];
+  const script = `from manim import *
+import numpy as np
+config.background_color = "#050505"
+class EduvidsThumbnailA(Scene):
+    def construct(self):
+        paired_title = ${JSON.stringify(candidates[0])}
+        self.add(Axes().plot(lambda x: np.cos(x)))
+class EduvidsThumbnailB(Scene):
+    def construct(self):
+        paired_title = ${JSON.stringify(candidates[1])}
+        self.add(Circle())
+class EduvidsThumbnailC(Scene):
+    def construct(self):
+        paired_title = ${JSON.stringify(candidates[2])}
+        self.add(Circle())`;
+  const issues = thumbnailManimScriptIssues(script, {
+    selected: candidates[0],
+    candidates,
+    thumbnailConcepts: [
+      {
+        text: "",
+        visualConcept: "the exact source function",
+        visualType: "function_plot",
+        plotExpression: "sin(x)+x^2",
+      },
+      {
+        text: "",
+        visualConcept: "a tangent touching one turning curve",
+        visualType: "geometry",
+      },
+      {
+        text: "",
+        visualConcept: "a curve and its local slope triangle",
+        visualType: "geometry",
+      },
+    ],
+  });
+  assert.ok(issues.some((issue) => issue.includes("exact plot expression")));
 });
 
 test("sanitizing Python preserves comparisons and text containing angle brackets", () => {
@@ -652,6 +831,7 @@ test("sanitizing Python preserves comparisons and text containing angle brackets
   const sanitized = sanitizeManimScript(script);
   assert.ok(sanitized.includes('"<hello>"'));
   assert.ok(sanitized.includes("1 < x.width and x.width > 0"));
+  assert.match(sanitized, /config\.background_color = "#050505"/);
 });
 
 test("model cancellation aborts the provider request", async () => {

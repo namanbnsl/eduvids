@@ -555,10 +555,14 @@ export async function renderThumbnailCandidates({
   prepared,
   titles,
   topic,
+  designSeed,
+  generatedScript,
 }: {
   prepared: PreparedSandboxState;
   titles: VideoTitleSet;
   topic: string;
+  designSeed: string;
+  generatedScript?: string;
 }): Promise<[string, string, string]> {
   const sandbox = await Sandbox.connect(prepared.sandboxId, {
     timeoutMs: 3_600_000,
@@ -571,10 +575,12 @@ export async function renderThumbnailCandidates({
     (_, index) => `/home/user/thumbnail-${index}.png`,
   );
 
-  await sandbox.files.write(
-    scriptPath,
-    buildThumbnailManimScript({ titles, topic }),
-  );
+  const fallbackScript = buildThumbnailManimScript({
+    titles,
+    topic,
+    designSeed,
+  });
+  await sandbox.files.write(scriptPath, generatedScript ?? fallbackScript);
   await sandbox.files.write(
     runnerPath,
     [
@@ -585,9 +591,28 @@ export async function renderThumbnailCandidates({
       `media_dir = ${JSON.stringify(mediaDir)}`,
       `classes = ${JSON.stringify([...THUMBNAIL_CLASS_NAMES])}`,
       `outputs = ${JSON.stringify(outputPaths)}`,
+      "source = Path(script_path).read_text()",
+      "tree = __import__('ast').parse(source)",
+      "ast = __import__('ast')",
+      "allowed_top_level = (ast.Import, ast.ImportFrom, ast.Assign, ast.AnnAssign, ast.FunctionDef, ast.ClassDef)",
+      "for node in tree.body:",
+      "    if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):",
+      "        continue",
+      "    if not isinstance(node, allowed_top_level):",
+      "        raise RuntimeError('Unsafe top-level thumbnail statement: ' + type(node).__name__)",
+      "for node in ast.walk(tree):",
+      "    if isinstance(node, ast.Import):",
+      "        if any(alias.name.split('.')[0] not in {'manim', 'numpy'} for alias in node.names):",
+      "            raise RuntimeError('Unsafe thumbnail import')",
+      "    if isinstance(node, ast.ImportFrom) and (node.module or '').split('.')[0] not in {'manim', 'numpy'}:",
+      "        raise RuntimeError('Unsafe thumbnail import')",
+      "    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {'open', 'exec', 'eval', 'compile', '__import__', 'input'}:",
+      "        raise RuntimeError('Unsafe thumbnail call: ' + node.func.id)",
+      "    if isinstance(node, ast.Attribute) and (node.attr.startswith('__') or node.attr == 'random'):",
+      "        raise RuntimeError('Unsafe thumbnail attribute: ' + node.attr)",
       "for scene_class, output_path in zip(classes, outputs):",
       "    result = subprocess.run([",
-      "        'manim', script_path, scene_class, '-s', '-ql',",
+      "        'manim', script_path, scene_class, '-s', '-qh', '--format', 'png',",
       "        '--disable_caching', '--media_dir', media_dir, '-r', '1280,720'",
       "    ], text=True, capture_output=True)",
       "    if result.returncode != 0:",
@@ -602,9 +627,17 @@ export async function renderThumbnailCandidates({
     ].join("\n"),
   );
 
-  const result = await sandbox.commands.run(`python ${runnerPath}`, {
-    timeoutMs: 180_000,
-  });
+  const runRenderer = () =>
+    sandbox.commands.run(`python ${runnerPath}`, { timeoutMs: 180_000 });
+  let result = await runRenderer();
+  if (result.exitCode !== 0 && generatedScript) {
+    console.warn(
+      "Generated thumbnail Manim script did not render; retrying verified fallback",
+      (result.stderr || result.stdout).slice(-1_000),
+    );
+    await sandbox.files.write(scriptPath, fallbackScript);
+    result = await runRenderer();
+  }
   if (result.exitCode !== 0) {
     throw new Error(
       `Thumbnail render failed: ${(result.stderr || result.stdout).slice(-2_000)}`,

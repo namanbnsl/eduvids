@@ -10,6 +10,7 @@ import {
   generateManimScript,
   fixManimScript,
   generateVideoTitles,
+  generateThumbnailManimScript,
   generateVideoDescription,
   manimVoiceoverTimingIssues,
   normalizeScenePlanTiming,
@@ -35,9 +36,11 @@ import { getConvexClient, api } from "@/lib/convex-server";
 import { uploadImage, uploadVideo } from "@/lib/uploadthing";
 import { jobStore, artifactStore } from "@/lib/job-store";
 import { findPreviousYouTubeVideo } from "@/lib/youtube";
-import type {
-  RelatedYouTubeVideo,
-  VideoTitleSet,
+import {
+  selectThumbnailPair,
+  type ThumbnailPair,
+  type RelatedYouTubeVideo,
+  type VideoTitleSet,
 } from "@/lib/youtube-metadata";
 import {
   EDUVIDS_TTS_SERVICE_SOURCE,
@@ -433,7 +436,16 @@ export const { POST } = serve<VideoGenerationPayload>(
       try {
         const saved = await artifactStore.find(jobId, "videoTitleSet");
         if (saved) return JSON.parse(saved) as VideoTitleSet;
-        const titles = await generateVideoTitles({ prompt, sessionId: chatId });
+        const [voiceoverScript, storedScenePlan] = await Promise.all([
+          artifactStore.get(jobId, "voiceoverScript"),
+          artifactStore.get(jobId, "scenePlan"),
+        ]);
+        const titles = await generateVideoTitles({
+          prompt,
+          sessionId: chatId,
+          voiceoverScript,
+          scenePlan: JSON.parse(storedScenePlan),
+        });
         await artifactStore.set(jobId, "videoTitleSet", JSON.stringify(titles));
         console.log("✅ Title candidates generated:", titles.candidates);
         return titles;
@@ -443,17 +455,44 @@ export const { POST } = serve<VideoGenerationPayload>(
       }
     });
 
-    const thumbnailUrls = await context.run(
+    const thumbnailScript = await context.run(
+      "generate-thumbnail-manim-v2",
+      async () => {
+        if (!videoTitleSet) return undefined;
+        const saved = await artifactStore.find(jobId, "thumbnailManimScript");
+        if (saved) return saved;
+        try {
+          const [voiceoverScript, storedScenePlan] = await Promise.all([
+            artifactStore.get(jobId, "voiceoverScript"),
+            artifactStore.get(jobId, "scenePlan"),
+          ]);
+          const script = await generateThumbnailManimScript({
+            prompt,
+            titles: videoTitleSet,
+            sessionId: chatId,
+            designSeed: jobId,
+            voiceoverScript,
+            scenePlan: JSON.parse(storedScenePlan),
+          });
+          await artifactStore.set(jobId, "thumbnailManimScript", script);
+          return script;
+        } catch (error) {
+          console.warn(
+            "Thumbnail art direction failed; using the verified motif renderer:",
+            safeError(error),
+          );
+          return undefined;
+        }
+      },
+    );
+
+    const thumbnailPairs = await context.run(
       "generate-thumbnail-candidates",
       async () => {
         if (!videoTitleSet) return undefined;
         const saved = await artifactStore.find(jobId, "thumbnailPairs");
         if (saved) {
-          const pairs = JSON.parse(saved) as Array<{
-            title: string;
-            thumbnailUrl: string;
-          }>;
-          return pairs.map((pair) => pair.thumbnailUrl);
+          return JSON.parse(saved) as ThumbnailPair[];
         }
 
         try {
@@ -461,6 +500,8 @@ export const { POST } = serve<VideoGenerationPayload>(
             prepared: prepared!,
             titles: videoTitleSet,
             topic: prompt,
+            designSeed: jobId,
+            generatedScript: thumbnailScript,
           });
           const urls = await Promise.all(
             images.map((imagePath, index) =>
@@ -482,7 +523,7 @@ export const { POST } = serve<VideoGenerationPayload>(
             "thumbnailPairs",
             JSON.stringify(pairs),
           );
-          return urls;
+          return pairs;
         } catch (error) {
           console.warn(
             "Thumbnail generation failed; continuing with YouTube defaults:",
@@ -524,19 +565,22 @@ export const { POST } = serve<VideoGenerationPayload>(
       )
         return;
       await jobStore.setYoutubeStatus(jobId, { youtubeStatus: "pending" });
+      const selectedThumbnailPair = videoTitleSet
+        ? selectThumbnailPair(videoTitleSet, thumbnailPairs)
+        : undefined;
       await workflowClient.trigger({
         workflowRunId: `youtube-${jobId}`,
         headers: getTriggerHeaders(),
         url: `${getBaseUrl()}/api/workflow/upload-youtube`,
         body: {
           videoUrl: uploadUrl,
-          title: videoTitleSet?.selected,
+          title: selectedThumbnailPair?.title ?? videoTitleSet?.selected,
           description: videoDescription,
           prompt,
           jobId,
           userId,
           variant,
-          thumbnailUrl: thumbnailUrls?.[0],
+          thumbnailUrl: selectedThumbnailPair?.thumbnailUrl,
         },
       });
     });

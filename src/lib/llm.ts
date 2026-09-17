@@ -4,6 +4,7 @@ import {
   MANIM_SYSTEM_PROMPT,
   VOICEOVER_SYSTEM_PROMPT,
   SCENE_PLAN_SYSTEM_PROMPT,
+  THUMBNAIL_SYSTEM_PROMPT,
   VOICEOVER_SERVICE_IMPORT_TOKEN,
   VOICEOVER_SERVICE_SETTER_TOKEN,
 } from "@/prompt";
@@ -18,6 +19,10 @@ import { queryManimDocs } from "./deepwiki";
 import { jsonrepair } from "jsonrepair";
 import { franc } from "franc";
 import { parseVideoTitleSet, type VideoTitleSet } from "./youtube-metadata";
+import {
+  sanitizeGeneratedThumbnailScript,
+  thumbnailManimScriptIssues,
+} from "./youtube-thumbnail";
 
 // @ts-expect-error langs has no types
 import langs from "langs";
@@ -496,6 +501,7 @@ export function manimVoiceoverTimingIssues(
   const issues: string[] = [];
   let timedBlockCount = 0;
   let voiceoverBlockCount = 0;
+  let visualActionBlockCount = 0;
 
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index];
@@ -533,7 +539,13 @@ export function manimVoiceoverTimingIssues(
         : narrationLiteral;
     const wordCount = narration.split(/\s+/).filter(Boolean).length;
     const body = lines.slice(index + 1, bodyEnd).join("\n");
-    const playCount = body.match(/\bself\.play\s*\(/g)?.length ?? 0;
+    // Generated scenes can legitimately change the frame without self.play().
+    // Fixed 3D overlays, direct reveals, and camera movement are all visible
+    // actions and should not fail an otherwise renderable script.
+    const hasVisualAction =
+      /\bself\.(?:play|add|add_fixed_in_frame_mobjects|add_foreground_mobjects?|remove|clear|move_camera|set_camera_orientation|begin_ambient_camera_rotation|stop_ambient_camera_rotation)\s*\(/.test(
+        body,
+      );
     const alignedWait = new RegExp(
       `self\\.wait\\(\\s*max\\(\\s*0(?:\\.0+)?\\s*,\\s*${tracker}\\.get_remaining_duration\\(\\)\\s*\\)\\s*\\)`,
     ).test(body);
@@ -543,11 +555,7 @@ export function manimVoiceoverTimingIssues(
         `voiceover block ${voiceoverBlockCount} has ${wordCount} words; maximum is 22`,
       );
     }
-    if (playCount === 0) {
-      issues.push(
-        `voiceover block ${voiceoverBlockCount} has no visual action`,
-      );
-    }
+    if (hasVisualAction) visualActionBlockCount += 1;
     if (!alignedWait) {
       issues.push(
         `voiceover block ${voiceoverBlockCount} does not align its final duration`,
@@ -559,6 +567,10 @@ export function manimVoiceoverTimingIssues(
 
   if (voiceoverBlockCount === 0) {
     issues.push("script has no voiceover blocks");
+  } else if (visualActionBlockCount === 0) {
+    // A short narration hold over an existing diagram is valid pacing. Only an
+    // entirely static script is a fatal generation error.
+    issues.push("script has no visual action in any voiceover block");
   } else if (timedBlockCount < expectedBeatCount) {
     issues.push(
       `script has ${timedBlockCount} timed voiceover blocks for ${expectedBeatCount} planned beats`,
@@ -583,7 +595,17 @@ export interface ManimScriptRequest {
 
 export interface ScenePlanElement {
   id: string;
-  type: "text" | "math" | "label" | "diagram" | "graph" | "axis" | "shape";
+  type:
+    | "text"
+    | "math"
+    | "label"
+    | "diagram"
+    | "graph"
+    | "axis"
+    | "shape"
+    | "surface"
+    | "vector"
+    | "region";
   content: string;
   color?: string;
 }
@@ -642,16 +664,46 @@ export function normalizeScenePlanTiming(
 ): ScenePlanEntry[] {
   return scenePlan.map((scene) => {
     const elementIds = scene.elements.map((element) => element.id);
-    const narrationBeats = splitNarrationIntoTimingBeats(scene.narration);
+    const elementIdSet = new Set(elementIds);
+    const suppliedBeats = Array.isArray(scene.beats) ? scene.beats : [];
+    const suppliedNarration = suppliedBeats
+      .map((beat) => beat.narration?.trim())
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\s+/g, " ");
+    const sceneNarration = scene.narration.trim().replace(/\s+/g, " ");
+    const hasFaithfulBeatPlan =
+      suppliedBeats.length > 0 && suppliedNarration === sceneNarration;
+    const fallbackFocusIds = (index: number) =>
+      elementIds.length === 0
+        ? []
+        : [elementIds[Math.min(index, elementIds.length - 1)]];
+
+    const beats = hasFaithfulBeatPlan
+      ? suppliedBeats.flatMap((beat, beatIndex) => {
+          const focusElementIds = (beat.focusElementIds ?? []).filter((id) =>
+            elementIdSet.has(id),
+          );
+          return splitNarrationIntoTimingBeats(beat.narration).map(
+            (narration) => ({
+              narration,
+              focusElementIds:
+                focusElementIds.length > 0
+                  ? focusElementIds.slice(0, 2)
+                  : fallbackFocusIds(beatIndex),
+            }),
+          );
+        })
+      : splitNarrationIntoTimingBeats(scene.narration).map(
+          (narration, index) => ({
+            narration,
+            focusElementIds: fallbackFocusIds(index),
+          }),
+        );
+
     return {
       ...scene,
-      beats: narrationBeats.map((narration, index) => ({
-        narration,
-        focusElementIds:
-          elementIds.length === 0
-            ? []
-            : [elementIds[Math.min(index, elementIds.length - 1)]],
-      })),
+      beats,
     };
   });
 }
@@ -738,7 +790,7 @@ export async function generateVoiceoverScript({
     "Draft the narration voiceover:",
   ].join("\n\n");
 
-  const googleModel = await createGoogleModel("gemini-3.5-flash-lite");
+  const googleModel = await createGoogleModel("gemini-3.8-flash");
 
   const text = await streamTextWithTracking(
     {
@@ -901,6 +953,20 @@ export function sanitizeManimScript(script: string): string {
     result = result.replace(
       /(from\s+manim\s+import\s+[^\n]+)/,
       "$1\nfrom manim_voiceover import VoiceoverScene",
+    );
+  }
+
+  // Keep every generated video in the same content-first visual system as its
+  // thumbnail, even if the model omits or overrides the requested background.
+  if (/config\.background_color\s*=/.test(result)) {
+    result = result.replace(
+      /config\.background_color\s*=\s*[^\n]+/,
+      'config.background_color = "#050505"',
+    );
+  } else {
+    result = result.replace(
+      /(from\s+manim\s+import\s+[^\n]+)/,
+      '$1\n\nconfig.background_color = "#050505"',
     );
   }
 
@@ -1101,13 +1167,17 @@ export async function generateManimScript({
 export interface VideoTitleRequest {
   prompt: string;
   sessionId: string;
+  voiceoverScript?: string;
+  scenePlan?: ScenePlanEntry[];
 }
 
 export async function generateVideoTitles({
   prompt,
   sessionId,
+  voiceoverScript,
+  scenePlan,
 }: VideoTitleRequest): Promise<VideoTitleSet> {
-  const systemPrompt = `You package videos for eduvids, a cinematic visual math and science channel. Generate exactly three distinct YouTube title candidates, ordered strongest first.
+  const systemPrompt = `You package videos for eduvids, a cinematic visual math and science channel. Generate exactly three distinct title-and-thumbnail concepts, ordered strongest first.
 
 RULES:
 - Aim for 45-65 characters; never exceed 80
@@ -1116,12 +1186,37 @@ RULES:
 - Never use the words Explained, Basics, Introduction, or Lesson
 - Avoid hype, clickbait, vague promises, and repeated title structures
 - Use natural title case, not all caps
+- Pair each title with thumbnailText: either an empty string or at most 1-4 useful words such as a mathematical label, contrast, or short question. Prefer no text when the visual and notation are enough. Never write a generic slogan or repeat the title
+- Pair each title with visualConcept: one concrete, instantly readable mathematical or scientific hero composition that proves the title's promise. Describe the actual objects, graph, transformation, or relationship; never request cards, borders, badges, branding, decorative gradients, or stock imagery
+- Build a visual hook that creates title-specific tension: a surprising before-and-after, one anomalous feature, a prediction the viewer wants resolved, or a highlighted invariant. The title and image must complete one thought without duplicating each other
+- Pair each title with visualType, choosing exactly one of: function_plot, complex_plane, geometry, transformation, vector_field, wave, orbit, probability, network, atom, surface_3d, solid_3d. Prefer genuine 3D for surfaces, solids, spatial transformations, topology, vector geometry, molecular structure, and other concepts whose depth teaches something
+- Pair each title with mathNotation: a short, valid LaTeX fragment that is central to this exact topic, or an empty string when no notation genuinely helps. Never invent an equation merely to decorate the image
+- Pair each function_plot title with plotExpression and plotXRange. plotExpression must be the exact single-variable function supported by the source material, written with x, numbers, arithmetic, and sin/cos/tan/exp/log/sqrt/abs only. plotXRange is a useful two-number domain inside -20 to 20. For every other visualType, or when the source does not establish an exact function, return an empty plotExpression and [-5, 5]
+- Ground notation, graphs, labels, and claims only in the supplied source material. If exact mathematics is absent, choose a truthful geometric or conceptual visual instead of inventing a graph
+- Make all three title/thumbnail pairs distinct in both angle and visual composition
 - Strong examples: "What Even Is a Tensor? Visualized From 0D to 3D" / "Why Differentiation Actually Works" / "The 5 Ways Two Triangles Can Be Exactly the Same"
-- Return ONLY a JSON array of three strings`;
+- Return ONLY a JSON array of three objects with exactly these keys: title, thumbnailText, visualConcept, visualType, mathNotation, plotExpression, plotXRange`;
 
-  const userPrompt = `Generate three title candidates for this animated educational video: "${prompt}"`;
+  const sourceMaterial = [
+    voiceoverScript ? `NARRATION:\n${voiceoverScript.slice(0, 8_000)}` : "",
+    scenePlan
+      ? `SCENE PLAN:\n${JSON.stringify(
+          scenePlan.map(({ sceneId, narration, visualType, elements }) => ({
+            sceneId,
+            narration,
+            visualType,
+            elements,
+          })),
+        ).slice(0, 10_000)}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const userPrompt = `Generate three title-and-thumbnail pairs for this animated educational video: "${prompt}"${
+    sourceMaterial ? `\n\nSOURCE MATERIAL:\n${sourceMaterial}` : ""
+  }`;
 
-  const googleModel = await createGoogleModel("gemini-3.5-flash-lite");
+  const googleModel = await createGoogleModel("gemini-3.8-flash");
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
   });
@@ -1137,6 +1232,65 @@ RULES:
   );
 
   return parseVideoTitleSet(text);
+}
+
+export interface ThumbnailManimScriptRequest {
+  prompt: string;
+  titles: VideoTitleSet;
+  sessionId: string;
+  designSeed: string;
+  voiceoverScript?: string;
+  scenePlan?: ScenePlanEntry[];
+}
+
+export async function generateThumbnailManimScript({
+  prompt,
+  titles,
+  sessionId,
+  designSeed,
+  voiceoverScript,
+  scenePlan,
+}: ThumbnailManimScriptRequest): Promise<string> {
+  const sourceMaterial = {
+    topic: prompt,
+    designSeed,
+    titlePackages: titles.candidates.map((title, index) => ({
+      title,
+      ...(titles.thumbnailConcepts?.[index] ?? {}),
+    })),
+    narration: voiceoverScript?.slice(0, 8_000),
+    scenePlan: scenePlan?.map(
+      ({ sceneId, narration, visualType, elements, labels }) => ({
+        sceneId,
+        narration,
+        visualType,
+        elements,
+        labels,
+      }),
+    ),
+  };
+  const googleModel = await createGoogleModel("gemini-3.8-flash");
+  const text = await streamTextWithTracking(
+    {
+      model: maybeWithTracing(googleModel.provider(googleModel.modelId), {
+        posthogProperties: { $ai_session_id: sessionId },
+      }),
+      system: THUMBNAIL_SYSTEM_PROMPT,
+      prompt: `Create the three title-paired Manim thumbnail scenes from this source:\n${JSON.stringify(sourceMaterial, null, 2)}`,
+      temperature: 0.35,
+      maxOutputTokens: 32_768,
+    },
+    googleModel,
+  );
+
+  const script = sanitizeGeneratedThumbnailScript(text);
+  const issues = thumbnailManimScriptIssues(script, titles);
+  if (issues.length > 0) {
+    throw new Error(
+      `Generated thumbnail Manim script failed validation: ${issues.join("; ")}`,
+    );
+  }
+  return script;
 }
 
 // ---------------------------------------------------------------------------

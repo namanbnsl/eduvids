@@ -4,6 +4,8 @@ import {
   buildPreviousVideoComment,
   buildYouTubeDescription,
   parseVideoTitleSet,
+  sanitizeThumbnailPlotExpression,
+  selectThumbnailPair,
   type RelatedYouTubeVideo,
 } from "../src/lib/youtube-metadata";
 
@@ -29,6 +31,51 @@ test("title packaging keeps exactly three clean curiosity-led candidates", () =>
   assert.equal(titles.candidates.length, 3);
 });
 
+test("title packaging preserves explicit thumbnail-title concepts", () => {
+  const titles = parseVideoTitleSet(
+    JSON.stringify([
+      {
+        title: "What Even Is a Tensor? Visualized From 0D to 3D",
+        thumbnailText: "",
+        visualConcept: "a cube stretching between coordinate grids",
+        visualType: "transformation",
+        mathNotation: "T(\\vec v)",
+      },
+      {
+        title: "Why Tensors Actually Change Shape Between Coordinates",
+        thumbnailText: "SAME OBJECT",
+        visualConcept: "one arrow shown in two skewed coordinate frames",
+        visualType: "transformation",
+        mathNotation: "[v]_{B}",
+      },
+      {
+        title: "How Tensors Describe the World Without Breaking Physics",
+        thumbnailText: "STAYS TRUE",
+        visualConcept: "a glowing invariant inside rotating axes",
+        visualType: "geometry",
+        mathNotation: "T",
+      },
+    ]),
+  );
+
+  assert.equal(titles.thumbnailConcepts?.[0].text, "");
+  assert.equal(titles.thumbnailConcepts?.[0].visualType, "transformation");
+  assert.equal(titles.thumbnailConcepts?.[0].mathNotation, "T(\\vec v)");
+  assert.equal(
+    selectThumbnailPair(titles, [
+      { title: titles.candidates[1], thumbnailUrl: "second.png" },
+      { title: titles.selected, thumbnailUrl: "selected.png" },
+    ])?.thumbnailUrl,
+    "selected.png",
+  );
+  assert.equal(
+    selectThumbnailPair(titles, [
+      { title: titles.candidates[1], thumbnailUrl: "wrong.png" },
+    ]),
+    undefined,
+  );
+});
+
 test("title packaging rejects textbook boilerplate", () => {
   assert.throws(
     () =>
@@ -36,6 +83,16 @@ test("title packaging rejects textbook boilerplate", () => {
         '["Tensor Basics", "Tensors Explained", "Introduction to Tensors"]',
       ),
     /three usable candidates/,
+  );
+});
+
+test("thumbnail plot expressions accept math but reject executable Python", () => {
+  assert.equal(sanitizeThumbnailPlotExpression("sin(x) + x^2"), "sin(x)+x**2");
+  assert.equal(sanitizeThumbnailPlotExpression("2x"), "");
+  assert.equal(sanitizeThumbnailPlotExpression("sinx"), "");
+  assert.equal(
+    sanitizeThumbnailPlotExpression('__import__("os").system("id")'),
+    "",
   );
 });
 
