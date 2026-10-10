@@ -10,7 +10,6 @@ import {
   generateManimScript,
   fixManimScript,
   generateVideoTitles,
-  generateThumbnailManimScript,
   generateVideoDescription,
   manimVoiceoverTimingIssues,
   normalizeScenePlanTiming,
@@ -25,7 +24,7 @@ import {
   startSandboxJob,
   pollSandboxJobWindow,
   MAX_SANDBOX_POLL_WINDOWS,
-  renderCommand,
+  renderJobCommand,
   startPostprocess,
   downloadVideo,
   cleanupSandbox,
@@ -36,6 +35,7 @@ import { getConvexClient, api } from "@/lib/convex-server";
 import { uploadImage, uploadVideo } from "@/lib/uploadthing";
 import { jobStore, artifactStore } from "@/lib/job-store";
 import { findPreviousYouTubeVideo } from "@/lib/youtube";
+import { videoPalette } from "@/lib/video-style";
 import {
   selectThumbnailPair,
   type ThumbnailPair,
@@ -96,7 +96,7 @@ export const { POST } = serve<VideoGenerationPayload>(
     const variant = rawVariant === "short" ? "short" : "video";
     const generationPrompt =
       variant === "short"
-        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Use large readable typography and keep visual groups well spaced.`
+        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Use large readable typography and keep visual groups well spaced. The portrait frame is 8 units wide and about 14.2 units tall (x from -4 to 4, y from -7.1 to 7.1): stack content vertically and keep every element within x from -3.4 to 3.4.`
         : prompt;
 
     await context.run("generate-voiceover-script", async () => {
@@ -302,6 +302,8 @@ export const { POST } = serve<VideoGenerationPayload>(
               sessionId: chatId,
               variant,
               previousVideo: previousVideo ?? undefined,
+              // Same seed as the thumbnails, so video and thumbnail match.
+              palette: videoPalette(jobId),
               applyWatermark: true,
               skipDryRun: true,
               renderOptions:
@@ -344,7 +346,7 @@ export const { POST } = serve<VideoGenerationPayload>(
             return startSandboxJob(
               preparation.state!.sandboxId,
               "render-job-tts-v3",
-              renderCommand(preparation.state!),
+              renderJobCommand(preparation.state!),
               eduvidsTTSSandboxEnvironment(),
             );
           },
@@ -432,111 +434,35 @@ export const { POST } = serve<VideoGenerationPayload>(
       });
     });
 
-    const videoTitleSet = await context.run("generate-titles", async () => {
-      try {
-        const saved = await artifactStore.find(jobId, "videoTitleSet");
-        if (saved) return JSON.parse(saved) as VideoTitleSet;
-        const [voiceoverScript, storedScenePlan] = await Promise.all([
-          artifactStore.get(jobId, "voiceoverScript"),
-          artifactStore.get(jobId, "scenePlan"),
-        ]);
-        const titles = await generateVideoTitles({
-          prompt,
-          sessionId: chatId,
-          voiceoverScript,
-          scenePlan: JSON.parse(storedScenePlan),
-        });
-        await artifactStore.set(jobId, "videoTitleSet", JSON.stringify(titles));
-        console.log("✅ Title candidates generated:", titles.candidates);
-        return titles;
-      } catch (err) {
-        console.warn("Title generation failed (non-fatal):", err);
-        return undefined;
-      }
-    });
-
-    const thumbnailScript = await context.run(
-      "generate-thumbnail-manim-v2",
-      async () => {
-        if (!videoTitleSet) return undefined;
-        const saved = await artifactStore.find(jobId, "thumbnailManimScript");
-        if (saved) return saved;
+    // Titles and description are independent; run them as parallel steps.
+    const [videoTitleSet, videoDescription] = await Promise.all([
+      context.run("generate-titles", async () => {
         try {
+          const saved = await artifactStore.find(jobId, "videoTitleSet");
+          if (saved) return JSON.parse(saved) as VideoTitleSet;
           const [voiceoverScript, storedScenePlan] = await Promise.all([
             artifactStore.get(jobId, "voiceoverScript"),
             artifactStore.get(jobId, "scenePlan"),
           ]);
-          const script = await generateThumbnailManimScript({
+          const titles = await generateVideoTitles({
             prompt,
-            titles: videoTitleSet,
             sessionId: chatId,
-            designSeed: jobId,
             voiceoverScript,
             scenePlan: JSON.parse(storedScenePlan),
           });
-          await artifactStore.set(jobId, "thumbnailManimScript", script);
-          return script;
-        } catch (error) {
-          console.warn(
-            "Thumbnail art direction failed; using the verified motif renderer:",
-            safeError(error),
-          );
-          return undefined;
-        }
-      },
-    );
-
-    const thumbnailPairs = await context.run(
-      "generate-thumbnail-candidates",
-      async () => {
-        if (!videoTitleSet) return undefined;
-        const saved = await artifactStore.find(jobId, "thumbnailPairs");
-        if (saved) {
-          return JSON.parse(saved) as ThumbnailPair[];
-        }
-
-        try {
-          const images = await renderThumbnailCandidates({
-            prepared: prepared!,
-            titles: videoTitleSet,
-            topic: prompt,
-            designSeed: jobId,
-            generatedScript: thumbnailScript,
-          });
-          const urls = await Promise.all(
-            images.map((imagePath, index) =>
-              uploadImage({
-                imagePath,
-                userId,
-                customId: `${jobId}-thumbnail-${index}`,
-              }),
-            ),
-          );
-          const pairs = videoTitleSet.candidates.map(
-            (candidateTitle, index) => ({
-              title: candidateTitle,
-              thumbnailUrl: urls[index]!,
-            }),
-          );
           await artifactStore.set(
             jobId,
-            "thumbnailPairs",
-            JSON.stringify(pairs),
+            "videoTitleSet",
+            JSON.stringify(titles),
           );
-          return pairs;
-        } catch (error) {
-          console.warn(
-            "Thumbnail generation failed; continuing with YouTube defaults:",
-            safeError(error),
-          );
+          console.log("✅ Title candidates generated:", titles.candidates);
+          return titles;
+        } catch (err) {
+          console.warn("Title generation failed (non-fatal):", err);
           return undefined;
         }
-      },
-    );
-
-    const videoDescription = await context.run(
-      "generate-description",
-      async () => {
+      }),
+      context.run("generate-description", async () => {
         try {
           const voiceoverScript = await artifactStore.get(
             jobId,
@@ -552,6 +478,61 @@ export const { POST } = serve<VideoGenerationPayload>(
           return desc;
         } catch (err) {
           console.warn("Description generation failed (non-fatal):", err);
+          return undefined;
+        }
+      }),
+    ]);
+
+    const thumbnailPairs = await context.run(
+      "generate-thumbnail-candidates",
+      async () => {
+        // YouTube does not show custom thumbnails in the Shorts feed.
+        if (!videoTitleSet || variant === "short") return undefined;
+        const saved = await artifactStore.find(jobId, "thumbnailPairs");
+        if (saved) {
+          return JSON.parse(saved) as ThumbnailPair[];
+        }
+
+        try {
+          const { images, report } = await renderThumbnailCandidates({
+            prepared: prepared!,
+            titles: videoTitleSet,
+            topic: prompt,
+            designSeed: jobId,
+          });
+          await artifactStore.set(
+            jobId,
+            "thumbnailReport",
+            JSON.stringify(report),
+          );
+          const pairs = (
+            await Promise.all(
+              images.map(async (image, index) =>
+                image
+                  ? {
+                      title: videoTitleSet.candidates[index]!,
+                      thumbnailUrl: await uploadImage({
+                        imagePath: image,
+                        userId,
+                        customId: `${jobId}-thumbnail-v3-${index}`,
+                      }),
+                    }
+                  : null,
+              ),
+            )
+          ).filter((pair): pair is ThumbnailPair => pair !== null);
+          await artifactStore.set(
+            jobId,
+            "thumbnailPairs",
+            JSON.stringify(pairs),
+          );
+          return pairs;
+        } catch (error) {
+          console.warn(
+            "Thumbnail generation failed; continuing with YouTube defaults:",
+            safeError(error),
+          );
+          await artifactStore.set(jobId, "thumbnailError", safeError(error));
           return undefined;
         }
       },

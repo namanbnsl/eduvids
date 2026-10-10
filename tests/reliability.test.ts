@@ -13,6 +13,7 @@ import {
   pollSandboxJob,
   pollSandboxJobWindow,
   renderCommand,
+  renderJobCommand,
 } from "../src/lib/workflow/sandbox-jobs";
 import {
   configureVoiceoverServicePrompt,
@@ -25,14 +26,18 @@ import {
 } from "../src/lib/llm";
 import { injectEduvidsCallout } from "../src/lib/e2b";
 import {
+  applyVideoStyle,
+  loadVideoStyleAssets,
+  VIDEO_STYLE_MARKER,
+  videoPalette,
+} from "../src/lib/video-style";
+import {
   VOICEOVER_SERVICE_IMPORT_TOKEN,
   VOICEOVER_SERVICE_SETTER_TOKEN,
 } from "../src/prompt";
 import {
-  buildThumbnailManimScript,
-  sanitizeGeneratedThumbnailScript,
-  THUMBNAIL_CLASS_NAMES,
-  thumbnailManimScriptIssues,
+  buildThumbnailSpecs,
+  THUMBNAIL_PALETTES,
 } from "../src/lib/youtube-thumbnail";
 import {
   safeError,
@@ -675,154 +680,239 @@ class Last(Scene):
       enhanced.indexOf("PREVIOUS VIDEO") > enhanced.indexOf("class Last"),
     );
     assert.match(enhanced, /Link in description and top comment/);
+    // The end card uses the house typography, not a hard-coded font.
+    assert.doesNotMatch(enhanced, /font=/);
+    assert.match(enhanced, /balanced_text\(/);
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
 });
 
-test("thumbnail packaging creates three title-paired Manim scenes", async () => {
-  const candidates: [string, string, string] = [
-    "What Even Is a Tensor? Visualized From 0D to 3D",
-    "Why Tensors Actually Change Shape Between Coordinates",
-    "How Tensors Describe the World Without Breaking Physics",
-  ];
-  const source = buildThumbnailManimScript({
-    topic: "Explain tensors geometrically",
-    designSeed: "video-job-123",
-    titles: {
-      selected: candidates[0],
-      candidates,
-      thumbnailConcepts: [
-        {
-          text: "",
-          visualConcept: "a cube stretching between coordinate grids",
-          visualType: "transformation",
-          mathNotation: "T(\\vec v)",
-        },
-        {
-          text: "Same tensor",
-          visualConcept: "one vector shown in two coordinate frames",
-          visualType: "transformation",
-          mathNotation: "[v]_{B}",
-        },
-        {
-          text: "What stays fixed?",
-          visualConcept: "a glowing invariant inside rotating axes",
-          visualType: "geometry",
-          mathNotation: "T",
-        },
-      ],
-    },
-  });
-  const alternate = buildThumbnailManimScript({
-    topic: "Explain tensors geometrically",
-    designSeed: "video-job-456",
-    titles: { selected: candidates[0], candidates },
-  });
-  const expectedThumbnailText = [
-    "T(\\\\vec v)",
-    "Same tensor",
-    "What stays fixed?",
-  ];
-  const folder = await mkdtemp(join(tmpdir(), "eduvids-thumbnails-"));
-  const script = join(folder, "thumbnails.py");
+const thumbnailCandidates: [string, string, string] = [
+  "Why the Derivative of e^x Is Itself",
+  "The Only Function That Equals Its Own Slope",
+  "What Makes e So Special? Visualized",
+];
 
-  try {
-    await writeFile(script, source);
-    await exec("python3", ["-m", "py_compile", script]);
-    for (const [index, sceneClass] of THUMBNAIL_CLASS_NAMES.entries()) {
-      assert.match(
-        source,
-        new RegExp(`class ${sceneClass}\\((?:Scene|ThreeDScene)\\)`),
-      );
-      assert.ok(source.includes(expectedThumbnailText[index]!));
-      assert.ok(source.includes(JSON.stringify(candidates[index])));
-    }
-    assert.doesNotMatch(source, /brand_mark|cinematic_frame|EDUVIDS/);
-    assert.match(source, /config\.background_color = "#050505"/);
-    assert.notEqual(source, alternate);
-    assert.doesNotMatch(source, /voiceover|bookmark/i);
-  } finally {
-    await rm(folder, { recursive: true, force: true });
-  }
-});
-
-test("generated thumbnail scripts are title-paired and reject unsafe Python", () => {
-  const candidates: [string, string, string] = [
-    "What Even Is a Tensor? Visualized From 0D to 3D",
-    "Why Tensors Actually Change Shape Between Coordinates",
-    "How Tensors Describe the World Without Breaking Physics",
-  ];
-  const titles = { selected: candidates[0], candidates };
-  const safe = sanitizeGeneratedThumbnailScript(`\`\`\`python
-from manim import *
-import numpy as np
-config.background_color = "#050505"
-class EduvidsThumbnailA(Scene):
-    def construct(self):
-        paired_title = ${JSON.stringify(candidates[0])}
-        self.add(Circle())
-class EduvidsThumbnailB(ThreeDScene):
-    def construct(self):
-        paired_title = ${JSON.stringify(candidates[1])}
-        self.add(Sphere())
-class EduvidsThumbnailC(Scene):
-    def construct(self):
-        paired_title = ${JSON.stringify(candidates[2])}
-        self.add(Axes())
-\`\`\``);
-  assert.deepEqual(thumbnailManimScriptIssues(safe, titles), []);
-  assert.ok(
-    thumbnailManimScriptIssues(`${safe}\nimport os`, titles).some((issue) =>
-      issue.includes("disallowed"),
-    ),
-  );
-});
-
-test("generated graph thumbnails must use the title package expression", () => {
-  const candidates: [string, string, string] = [
-    "Why This Function Bends Exactly Where It Does",
-    "What the Derivative Knows About Every Turn",
-    "How One Curve Reveals Its Own Rate of Change",
-  ];
-  const script = `from manim import *
-import numpy as np
-config.background_color = "#050505"
-class EduvidsThumbnailA(Scene):
-    def construct(self):
-        paired_title = ${JSON.stringify(candidates[0])}
-        self.add(Axes().plot(lambda x: np.cos(x)))
-class EduvidsThumbnailB(Scene):
-    def construct(self):
-        paired_title = ${JSON.stringify(candidates[1])}
-        self.add(Circle())
-class EduvidsThumbnailC(Scene):
-    def construct(self):
-        paired_title = ${JSON.stringify(candidates[2])}
-        self.add(Circle())`;
-  const issues = thumbnailManimScriptIssues(script, {
-    selected: candidates[0],
-    candidates,
+test("thumbnail specs share one palette per video and keep each title's copy", () => {
+  const titles = {
+    selected: thumbnailCandidates[0],
+    candidates: thumbnailCandidates,
     thumbnailConcepts: [
       {
-        text: "",
-        visualConcept: "the exact source function",
-        visualType: "function_plot",
-        plotExpression: "sin(x)+x^2",
+        eyebrow: "Calculus",
+        headline: "The slope is the height",
+        accent: "height",
+        visualConcept: "exp curve with a tangent",
+        visual: { type: "function_plot" as const, expression: "exp(x)" },
       },
       {
-        text: "",
-        visualConcept: "a tangent touching one turning curve",
-        visualType: "geometry",
+        eyebrow: "Calculus",
+        headline: "Its own derivative",
+        accent: "own",
+        visualConcept: "tangent",
+        visual: { type: "function_plot" as const },
       },
       {
-        text: "",
-        visualConcept: "a curve and its local slope triangle",
-        visualType: "geometry",
+        eyebrow: "Constants",
+        headline: "Why $e$ is special",
+        accent: "$e$",
+        visualConcept: "formula",
+        visual: {
+          type: "equation" as const,
+          notation: "e=\\lim_{n\\to\\infty}(1+1/n)^n",
+        },
       },
-    ],
+    ] as const,
+  };
+  const specs = buildThumbnailSpecs({
+    titles: { ...titles, thumbnailConcepts: [...titles.thumbnailConcepts] },
+    topic: "derivative of e^x",
+    designSeed: "job-123",
   });
-  assert.ok(issues.some((issue) => issue.includes("exact plot expression")));
+  assert.equal(new Set(specs.map(({ palette }) => palette)).size, 1);
+  assert.ok(THUMBNAIL_PALETTES.includes(specs[0].palette));
+  assert.deepEqual(
+    specs.map(({ title }) => title),
+    thumbnailCandidates,
+  );
+  assert.equal(specs[0].headline, "The slope is the height");
+  assert.equal(specs[2].visual.type, "equation");
+
+  const bare = buildThumbnailSpecs({
+    titles: {
+      selected: thumbnailCandidates[0],
+      candidates: thumbnailCandidates,
+    },
+    topic: "derivative of e^x",
+    designSeed: "job-123",
+  });
+  assert.ok(bare.every(({ headline }) => headline === ""));
+  assert.equal(bare[0].visual.type, "function_plot");
+});
+
+async function thumbnailToolchainAvailable() {
+  try {
+    await exec("python3", ["-c", "import manim"]);
+    await exec("xelatex", ["--version"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+test("thumbnail renderer produces verified 1280x720 PNGs and recovers in safe mode", async (t) => {
+  if (!(await thumbnailToolchainAvailable())) {
+    t.skip("manim and xelatex are not installed");
+    return;
+  }
+  const folder = await mkdtemp(join(tmpdir(), "eduvids-thumbnail-render-"));
+  try {
+    const specs = [
+      {
+        palette: "teal-amber",
+        eyebrow: "Calculus",
+        headline: "The slope is the height",
+        accent: "height",
+        visual: {
+          type: "function_plot",
+          expression: "exp(x)",
+          xRange: [-3, 2],
+          notation: "f(x)=e^x",
+        },
+      },
+      {
+        palette: "azure-coral",
+        eyebrow: "Complex numbers",
+        headline: "Multiplying by $i$ is a quarter turn",
+        accent: "quarter turn",
+        visual: { type: "complex_plane", turn: 0.25 },
+      },
+      {
+        // No finite samples: the full render fails and safe mode recovers.
+        palette: "violet-amber",
+        eyebrow: "Logarithms",
+        headline: "Where $\\log$ breaks",
+        accent: "breaks",
+        visual: {
+          type: "function_plot",
+          expression: "log(x)",
+          xRange: [-5, -1],
+        },
+      },
+    ];
+    await writeFile(join(folder, "specs.json"), JSON.stringify(specs));
+    await exec(
+      "python3",
+      [
+        join(process.cwd(), "src/lib/thumbnail/renderer.py"),
+        "batch",
+        "--spec",
+        join(folder, "specs.json"),
+        "--out-dir",
+        join(folder, "out"),
+        "--font-dir",
+        join(process.cwd(), "src/lib/thumbnail/fonts"),
+        "--timeout",
+        "240",
+      ],
+      { timeout: 300_000 },
+    );
+    const results = JSON.parse(
+      await readFile(join(folder, "out", "results.json"), "utf8"),
+    ) as Record<
+      string,
+      {
+        ok: boolean;
+        path: string;
+        report: { mode: string; warnings: string[] };
+      }
+    >;
+    for (const index of ["0", "1", "2"]) {
+      assert.equal(results[index]?.ok, true, `candidate ${index} rendered`);
+      const png = await readFile(results[index]!.path);
+      assert.equal(png.readUInt32BE(16), 1280);
+      assert.equal(png.readUInt32BE(20), 720);
+    }
+    assert.equal(results["0"]!.report.mode, "full");
+    assert.equal(results["1"]!.report.mode, "full");
+    assert.equal(results["2"]!.report.mode, "safe");
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("thumbnail headlines break at phrase boundaries", async (t) => {
+  try {
+    await exec("python3", ["-c", "import numpy"]);
+  } catch {
+    t.skip("python3 with numpy is not installed");
+    return;
+  }
+  const headlines = [
+    "The rate of change is~itself",
+    "Walking down the~slope",
+    "A donut is a coffee mug",
+    "Multiplying by $i$ is a quarter turn",
+    "Why a $\\pi$ hides in the bell~curve",
+  ];
+  const script = `
+import json, sys
+sys.path.insert(0, "src/lib/thumbnail")
+import renderer
+out = {}
+for headline in json.loads(sys.argv[1]):
+    words = renderer.split_words(headline)
+    fitting = [o for o in renderer.line_options(words, None) if len(o[2]) > 1]
+    out[headline] = [" ".join(w.text for w in words[a:b]) for a, b in fitting[0][2]]
+print(json.dumps(out))
+`;
+  const { stdout } = await exec("python3", [
+    "-c",
+    script,
+    JSON.stringify(headlines),
+  ]);
+  const breaks = JSON.parse(stdout) as Record<string, string[]>;
+  assert.deepEqual(breaks["The rate of change is~itself"], [
+    "The rate of change",
+    "is~itself",
+  ]);
+  assert.deepEqual(breaks["Walking down the~slope"], [
+    "Walking down",
+    "the~slope",
+  ]);
+  assert.deepEqual(breaks["A donut is a coffee mug"], [
+    "A donut",
+    "is a coffee mug",
+  ]);
+  assert.deepEqual(breaks["Multiplying by $i$ is a quarter turn"], [
+    "Multiplying by $i$",
+    "is a quarter turn",
+  ]);
+  for (const lines of Object.values(breaks)) {
+    for (const line of lines.slice(0, -1)) {
+      assert.doesNotMatch(
+        line,
+        /\b(a|an|the|of)$/i,
+        `line ends on an article: ${line}`,
+      );
+    }
+    assert.ok(
+      !lines.some((line) => /bell$/.test(line)),
+      "bound phrase was split",
+    );
+  }
+});
+
+test("sanitizing Manim scripts removes disable_ligatures, which truncates text", () => {
+  const sanitized = sanitizeManimScript(
+    'from manim import *\nclass Demo(Scene):\n    def construct(self):\n        self.add(Text("Area of a Circle", font="EB Garamond", disable_ligatures=True, font_size=48))',
+  );
+  assert.doesNotMatch(sanitized, /disable_ligatures/);
+  assert.match(
+    sanitized,
+    /Text\("Area of a Circle", font="EB Garamond", font_size=48\)/,
+  );
 });
 
 test("sanitizing Python preserves comparisons and text containing angle brackets", () => {
@@ -831,7 +921,7 @@ test("sanitizing Python preserves comparisons and text containing angle brackets
   const sanitized = sanitizeManimScript(script);
   assert.ok(sanitized.includes('"<hello>"'));
   assert.ok(sanitized.includes("1 < x.width and x.width > 0"));
-  assert.match(sanitized, /config\.background_color = "#050505"/);
+  assert.match(sanitized, /config\.background_color = "#0E0F11"/);
 });
 
 test("model cancellation aborts the provider request", async () => {
@@ -858,4 +948,280 @@ test("model cancellation aborts the provider request", async () => {
     /deadline|abort|No output/,
   );
   assert.equal(model.doStreamCalls.length, 1);
+});
+
+test("videos use their thumbnail's palette and import the house style after their own imports", () => {
+  const titles = {
+    selected: thumbnailCandidates[0],
+    candidates: thumbnailCandidates,
+  };
+  for (const seed of ["job-a", "job-b", "job-c", "job-d"]) {
+    const [spec] = buildThumbnailSpecs({ titles, topic: "e", designSeed: seed });
+    assert.equal(videoPalette(seed), spec.palette);
+  }
+
+  const source = `from manim import *
+from manim_voiceover import VoiceoverScene
+from eduvids_tts import (
+    EduvidsTTSService,
+)
+config.background_color = "#050505"
+
+class Scene01(VoiceoverScene):
+    def construct(self):
+        self.add(Text("Hi"))`;
+  const styled = applyVideoStyle(source);
+  const lines = styled.split("\n");
+  const marker = lines.indexOf(VIDEO_STYLE_MARKER);
+  assert.equal(lines[marker + 1], "from eduvids_style import *");
+  assert.ok(marker > lines.indexOf(")"), "after the parenthesised import");
+  assert.ok(marker < lines.findIndex((line) => line.startsWith("class ")));
+  assert.match(styled, /config\.background_color = "#0E0F11"/);
+  assert.doesNotMatch(styled, /#050505/);
+  assert.equal(applyVideoStyle(styled), styled);
+
+  // A script that redefines house names gets them back before its scenes.
+  const redefined = applyVideoStyle(`from manim import *
+PRIMARY = BLUE
+def balanced_text(text, font_size=36):
+    return Text(text)
+
+class Scene01(Scene):
+    def construct(self):
+        self.add(balanced_text("Hi"))`).split("\n");
+  const again = redefined.findIndex((line) =>
+    line.startsWith("from eduvids_style import *  #"),
+  );
+  assert.ok(again > redefined.indexOf("    return Text(text)"));
+  assert.ok(again < redefined.findIndex((line) => line.startsWith("class ")));
+});
+
+test("house style sets text and math on one type scale and keeps copy in frame", async (t) => {
+  if (!(await thumbnailToolchainAvailable())) {
+    t.skip("manim and xelatex are not installed");
+    return;
+  }
+  const folder = await mkdtemp(join(tmpdir(), "eduvids-video-style-"));
+  try {
+    const assets = await loadVideoStyleAssets("azure-coral");
+    await mkdir(join(folder, "eduvids-fonts"));
+    await writeFile(join(folder, "eduvids_style.py"), assets.module);
+    for (const { name, data } of assets.fonts) {
+      await writeFile(join(folder, "eduvids-fonts", name), data);
+    }
+    const probe = join(folder, "probe.py");
+    await writeFile(
+      probe,
+      `import json
+from manim import *
+from eduvids_style import *
+config.media_dir = ${JSON.stringify(join(folder, "media"))}
+text, math = Text("H"), MathTex(r"\\text{H}")
+long = Text("An extremely long single line of copy that would run off the frame")
+card = balanced_text("Generate your own educational videos for free", font_size=48, max_width=6)
+print(json.dumps({
+    "text": text.height, "math": math.height,
+    "font": text.font, "blue": BLUE.to_hex(), "primary": PRIMARY.to_hex(),
+    "long": long.width, "limit": config.frame_width - 1,
+    "lines": card.original_text.split("\\n"), "card": card.width,
+    "card_size": card.height / len(card.original_text.split("\\n")), "line_size": Text("Hg", font_size=48).height,
+}))
+`,
+    );
+    const { stdout } = await exec("python3", [probe], {
+      cwd: folder,
+      timeout: 240_000,
+    });
+    const result = JSON.parse(stdout.trim().split("\n").pop()!);
+    assert.equal(result.font, "Inter Tight");
+    assert.ok(Math.abs(result.math / result.text - 1) < 0.02, stdout);
+    assert.equal(result.blue.toUpperCase(), "#6AAEE8");
+    assert.equal(result.primary.toUpperCase(), "#6AAEE8");
+    assert.ok(result.long <= result.limit + 1e-6);
+    assert.ok(result.card <= 6 + 1e-6);
+    assert.ok(result.lines.length >= 2);
+    // Wrapped, not shrunk: each line keeps roughly the requested size.
+    assert.ok(result.card_size > result.line_size * 0.8, stdout);
+    for (const line of result.lines.slice(0, -1)) {
+      assert.doesNotMatch(line, /\b(?:a|an|the|of|for|your)$/i, line);
+    }
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("the render job runs the driver with Manim flags, and in-frame watermarks skip re-encoding", () => {
+  const prepared = {
+    ...state("/home/user"),
+    renderOptions: { resolution: { width: 720, height: 1280 } },
+    watermarkInVideo: true,
+  };
+  const [python, driver, config] = renderJobCommand(prepared);
+  assert.equal(python, "python");
+  assert.equal(driver, "/home/user/eduvids_render.py");
+  assert.deepEqual(JSON.parse(config!), {
+    script: "/home/user/script.py",
+    scenes: ["First", "Second"],
+    media_dir: "/home/user/media",
+    manim_args: ["--disable_caching", "--format=mp4", "-qm", "-r", "720,1280"],
+  });
+  assert.match(buildPostprocessScript(prepared), /\\"watermark\\":false/);
+  assert.match(buildPostprocessScript(state("/home/user")), /\\"watermark\\":true/);
+});
+
+test("render driver finds narration and formulas and balances scenes by narration", async (t) => {
+  try {
+    await exec("python3", ["-c", "import ast"]);
+  } catch {
+    t.skip("python3 is not installed");
+    return;
+  }
+  const source = [
+    "class A(Scene):",
+    "    def construct(self):",
+    `        with self.voiceover(text="${"a".repeat(900)}") as t:`,
+    '            MathTex(r"x^2", "=", r"y", substrings_to_isolate=["x"])',
+    '            axes.get_graph_label(c, label="y=x^2")',
+    "            MathTex(name)",
+    "class B(Scene):",
+    "    def construct(self):",
+    '        with self.voiceover(text="short") as t:',
+    "            pass",
+    "class C(Scene):",
+    "    def construct(self):",
+    `        with self.voiceover(text="${"c".repeat(500)}") as t:`,
+    "            pass",
+  ].join("\n");
+  const { stdout } = await exec(
+    "python3",
+    [
+      "-c",
+      `import json, sys
+sys.path.insert(0, "src/lib/thumbnail")
+import render_driver as d
+narration, formulas, weights = d.analyse(json.loads(sys.argv[1]), ["A", "B", "C"])
+print(json.dumps({"narration": len(narration), "formulas": [f[1] for f in formulas[:2]], "groups": d.balance(["A", "B", "C"], weights, 2)}))`,
+      JSON.stringify(source),
+    ],
+  );
+  const result = JSON.parse(stdout);
+  assert.equal(result.narration, 3);
+  assert.deepEqual(result.formulas, [["x^2", "=", "y"], ["y=x^2"]]);
+  // The long scene renders alone; the two shorter ones share a process.
+  assert.deepEqual(result.groups, [["A"], ["B", "C"]]);
+});
+
+test("layout guard moves a label off a line and inside the frame, but keeps a value inside its circle", async (t) => {
+  if (!(await thumbnailToolchainAvailable())) {
+    t.skip("manim and xelatex are not installed");
+    return;
+  }
+  const folder = await mkdtemp(join(tmpdir(), "eduvids-layout-guard-"));
+  try {
+    const assets = await loadVideoStyleAssets("teal-amber");
+    await mkdir(join(folder, "eduvids-fonts"));
+    await writeFile(join(folder, "eduvids_style.py"), assets.module);
+    for (const { name, data } of assets.fonts) {
+      await writeFile(join(folder, "eduvids-fonts", name), data);
+    }
+    const probe = join(folder, "probe.py");
+    await writeFile(
+      probe,
+      `import json
+from manim import *
+from eduvids_style import *
+config.media_dir = ${JSON.stringify(join(folder, "media"))}
+scene = Scene()
+line = Line(LEFT * 4, RIGHT * 4)
+ring = Circle(radius=0.8).shift(DOWN * 2)
+scene.add(line, ring)
+label = Text("on the line", font_size=28)
+inside = Text("10", font_size=36).move_to(ring)
+edge = Text("off the edge", font_size=28).move_to([config.frame_width / 2, 2, 0])
+start = inside.get_center().copy()
+scene.add(label, inside, edge)
+print(json.dumps({
+    "clear": bool(label.get_bottom()[1] > 0.05 or label.get_top()[1] < -0.05),
+    "inside_moved": float(np.linalg.norm(inside.get_center() - start)),
+    "edge_right": float(edge.get_right()[0]), "half": config.frame_width / 2,
+}))
+`,
+    );
+    const { stdout } = await exec("python3", [probe], {
+      cwd: folder,
+      timeout: 240_000,
+    });
+    const result = JSON.parse(stdout.trim().split("\n").pop()!);
+    assert.ok(result.clear, stdout);
+    assert.equal(result.inside_moved, 0);
+    assert.ok(result.edge_right < result.half - 0.25, stdout);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("wrapped or positional voiceover headers are normalized to one timed line", () => {
+  const source = [
+    "class A(VoiceoverScene):",
+    "    def construct(self):",
+    "        with self.voiceover(",
+    '            text="A long narration line"',
+    "        ) as tracker:",
+    "            self.play(Create(c), run_time=tracker.duration * 0.6)",
+    "            self.wait(max(0, tracker.get_remaining_duration()))",
+    '        with self.voiceover("Positional") as tracker:  # beat 2',
+    "            self.play(Create(c), run_time=tracker.duration * 0.6)",
+    "            self.wait(max(0, tracker.get_remaining_duration()))",
+  ].join("\n");
+  const sanitized = sanitizeManimScript(source);
+  assert.match(
+    sanitized,
+    /^ {8}with self\.voiceover\(text="A long narration line"\) as tracker:$/m,
+  );
+  assert.match(
+    sanitized,
+    /^ {8}with self\.voiceover\(text="Positional"\) as tracker:$/m,
+  );
+  assert.deepEqual(manimVoiceoverTimingIssues(sanitized, 2), []);
+});
+
+test("postprocessing keeps each scene's narration aligned with its picture", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "workflow-sync-"));
+  try {
+    const prepared = {
+      ...state(folder),
+      sceneNames: ["First", "Second", "Third"],
+      watermarkInVideo: true,
+    };
+    const outputs = `${folder}/media/p0/videos/script/720p30`;
+    await mkdir(outputs, { recursive: true });
+    // Each scene: 2s of video, narration only in its first 0.5s (as when a
+    // scene ends with a silent fade-out).
+    for (const scene of prepared.sceneNames) {
+      await exec("ffmpeg", [
+        "-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x90:d=2:r=30",
+        "-f", "lavfi", "-i", "sine=frequency=440:duration=0.5",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+        `${outputs}/${scene}.mp4`,
+      ]);
+    }
+    const script = join(folder, "process.py");
+    await writeFile(script, buildPostprocessScript(prepared));
+    await exec("python3", [script]);
+    const { stdout } = await exec(
+      "python3",
+      [
+        "-c",
+        `import subprocess, numpy as np
+pcm = subprocess.run(['ffmpeg', '-v', 'error', '-i', ${JSON.stringify(join(folder, "final.mp4"))}, '-ac', '1', '-ar', '8000', '-f', 's16le', '-'], stdout=subprocess.PIPE).stdout
+a = np.abs(np.frombuffer(pcm, dtype=np.int16).astype(float))
+print(' '.join(str(int(a[int(t * 8000):int(t * 8000) + 800].mean())) for t in (0.2, 1.2, 2.2, 3.2, 4.2, 5.2)))`,
+      ],
+    );
+    const [s1, gap1, s2, gap2, s3, gap3] = stdout.trim().split(" ").map(Number);
+    for (const loud of [s1, s2, s3]) assert.ok(loud! > 1000, stdout);
+    for (const quiet of [gap1, gap2, gap3]) assert.ok(quiet! < 50, stdout);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
 });
