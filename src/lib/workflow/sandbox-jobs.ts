@@ -1,5 +1,10 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import type { PreparedSandboxState } from "@/lib/e2b";
+import {
+  RENDER_DRIVER_PATH,
+  WATERMARK_FONT_PYTHON,
+  WATERMARK_STYLE,
+} from "@/lib/video-style";
 
 export const SANDBOX_JOB_TIMEOUT_SECONDS = 1_800;
 export const SANDBOX_POLL_WINDOW_MS = 150_000;
@@ -140,35 +145,56 @@ export async function pollSandboxJobWindow(
   }
 }
 
+function manimFlags(prepared: PreparedSandboxState): string[] {
+  const flags = ["--disable_caching", "--format=mp4", "-qm"];
+  const resolution = prepared.renderOptions?.resolution;
+  if (resolution)
+    flags.push(
+      "-r",
+      `${Math.round(resolution.width)},${Math.round(resolution.height)}`,
+    );
+  return flags;
+}
+
 export function renderCommand(prepared: PreparedSandboxState): string[] {
-  const args = [
+  return [
     "manim",
     prepared.scriptPath,
     ...prepared.sceneNames,
     "--media_dir",
     prepared.mediaDir,
-    "--disable_caching",
-    "--format=mp4",
-    "-qm",
+    ...manimFlags(prepared),
   ];
-  const resolution = prepared.renderOptions?.resolution;
-  if (resolution)
-    args.push(
-      "-r",
-      `${Math.round(resolution.width)},${Math.round(resolution.height)}`,
-    );
-  return args;
+}
+
+/**
+ * The render job: prefetches narration audio and formulas in parallel, then
+ * renders scenes across parallel Manim processes (see render_driver.py).
+ */
+export function renderJobCommand(prepared: PreparedSandboxState): string[] {
+  return [
+    "python",
+    RENDER_DRIVER_PATH,
+    JSON.stringify({
+      script: prepared.scriptPath,
+      scenes: prepared.sceneNames,
+      media_dir: prepared.mediaDir,
+      manim_args: manimFlags(prepared),
+    }),
+  ];
 }
 
 // Runs entirely in E2B; neither ffmpeg nor its retries occupy a Vercel request.
 export function buildPostprocessScript(prepared: PreparedSandboxState): string {
   return `import json, pathlib, subprocess, math
-settings = json.loads(${JSON.stringify(JSON.stringify({ base: prepared.baseVideosDir, workdir: prepared.scriptPath.slice(0, prepared.scriptPath.lastIndexOf("/")), scenes: prepared.sceneNames, watermark: prepared.applyWatermark, variant: prepared.variant }))})
-base = pathlib.Path(settings['base']) / 'script'
+${WATERMARK_FONT_PYTHON}
+settings = json.loads(${JSON.stringify(JSON.stringify({ media: prepared.mediaDir, workdir: prepared.scriptPath.slice(0, prepared.scriptPath.lastIndexOf("/")), scenes: prepared.sceneNames, watermark: prepared.applyWatermark && !prepared.watermarkInVideo, variant: prepared.variant }))})
+# Scenes may come from several parallel render processes' media directories.
+media = pathlib.Path(settings['media'])
 workdir = pathlib.Path(settings['workdir'])
 paths = []
 for scene in settings['scenes']:
-    candidates = sorted(p for p in base.rglob(scene + '.mp4') if 'partial_movie_files' not in p.parts)
+    candidates = sorted(p for p in media.rglob(scene + '.mp4') if 'partial_movie_files' not in p.parts)
     if len(candidates) != 1:
         raise RuntimeError('Expected one complete rendered output for ' + scene)
     paths.append(candidates[0])
@@ -181,21 +207,37 @@ def duration(path):
     if not math.isfinite(value) or value <= 0:
         raise RuntimeError('Invalid video duration')
     return value
-for path in paths:
-    duration(path)
-source = paths[0]
+# Each scene's audio track ends where its narration ends, while its video runs
+# on through the closing fade. Stream-copy concatenation butts those audio
+# tracks together and drops the gaps, so narration drifts ahead of the picture
+# scene by scene. Build the soundtrack sample-accurately instead: each scene's
+# audio padded or trimmed to exactly its video length, then muxed once.
+RATE, CHANNELS, WIDTH = 48000, 2, 2
+def video_duration(path):
+    value = float(run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=duration', '-of', 'default=noprint_wrappers=1:nokey=1', str(path)]) or 'nan')
+    if not math.isfinite(value) or value <= 0:
+        value = duration(path)
+    return value
+soundtrack = workdir / 'soundtrack.pcm'
+with open(soundtrack, 'wb') as out:
+    for path in paths:
+        frames = round(video_duration(path) * RATE)
+        pcm = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(path), '-vn', '-ac', str(CHANNELS), '-ar', str(RATE), '-f', 's16le', '-'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=900).stdout
+        size = frames * CHANNELS * WIDTH
+        out.write(pcm[:size] + bytes(max(0, size - len(pcm))))
+video = paths[0]
 if len(paths) > 1:
     listing = workdir / 'scenes.txt'
     listing.write_text(''.join("file '" + str(p) + "'\\n" for p in paths))
-    source = workdir / 'combined.mp4'
-    run(['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', str(listing), '-c', 'copy', str(source)])
+    video = workdir / 'combined.mp4'
+    run(['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', str(listing), '-an', '-c', 'copy', str(video)])
 output = workdir / 'final.mp4'
-args = ['ffmpeg', '-y', '-i', str(source)]
+args = ['ffmpeg', '-y', '-i', str(video), '-f', 's16le', '-ar', str(RATE), '-ac', str(CHANNELS), '-i', str(soundtrack), '-map', '0:v:0', '-map', '1:a:0']
 if settings['watermark']:
-    args += ['-vf', "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='eduvids':fontcolor=white:fontsize=24:x=w-tw-20:y=h-th-20", '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p']
+    args += ['-vf', "drawtext=fontfile=" + watermark_font + ":text='eduvids':${WATERMARK_STYLE}", '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p']
 else:
     args += ['-c:v', 'copy']
-args += ['-c:a', 'copy', '-movflags', '+faststart', str(output)]
+args += ['-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', str(output)]
 run(args)
 duration(output)
 `;

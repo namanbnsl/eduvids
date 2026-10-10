@@ -22,10 +22,12 @@ export function eduvidsTTSSandboxEnvironment(): Record<string, string> {
  * successful provider is locked for the complete Manim process so a video
  * cannot change speakers between narration clips.
  */
-export const EDUVIDS_TTS_SERVICE_SOURCE = String.raw`from pathlib import Path
+export const EDUVIDS_TTS_SERVICE_SOURCE = String.raw`from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 import json
 import logging
 import os
+import shutil
 import time
 import urllib.error
 import urllib.parse
@@ -38,7 +40,11 @@ from manim_voiceover.services.base import SpeechService
 
 LOGGER = logging.getLogger("eduvids_tts")
 OPENROUTER_SPEECH_URL = "https://openrouter.ai/api/v1/audio/speech"
-LOCKED_PROVIDER = None
+# The render driver prefetches every narration line before Manim starts and
+# runs scenes in parallel processes; the provider it used is locked for all of
+# them so the voice never changes between scenes.
+LOCKED_PROVIDER = os.environ.get("EDUVIDS_TTS_PROVIDER") or None
+PREFETCH_DIR = os.environ.get("EDUVIDS_TTS_PREFETCH_DIR") or None
 
 
 class EduvidsTTSService(SpeechService):
@@ -192,6 +198,23 @@ class EduvidsTTSService(SpeechService):
         output_path = cache_root / filename
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        prefetched = Path(PREFETCH_DIR) / (basename + ".mp3") if PREFETCH_DIR else None
+        if prefetched is not None:
+            # The driver fetches all narration concurrently while rendering
+            # starts; wait for this line rather than requesting it twice.
+            pending = prefetched.with_suffix(".pending")
+            deadline = time.time() + 120
+            while pending.exists() and not prefetched.exists() and time.time() < deadline:
+                time.sleep(0.05)
+        if prefetched is not None and prefetched.exists() and prefetched.stat().st_size >= 128:
+            shutil.copyfile(prefetched, output_path)
+            print("[eduvids-tts] provider=" + provider + " source=prefetch", flush=True)
+            return {
+                "input_text": text,
+                "input_data": input_data,
+                "original_audio": filename,
+            }
+
         try:
             if provider == "openrouter":
                 output_path.write_bytes(self._openrouter_audio(text))
@@ -253,4 +276,63 @@ class EduvidsTTSService(SpeechService):
                 LOGGER.warning("%s unavailable: %s", provider, error)
 
         raise RuntimeError("Eduvids TTS exhausted all providers")
+
+
+def prefetch(texts, directory, workers=6, on_first=None):
+    """Fetch every narration line concurrently into directory, named as the
+    render will look them up. A .pending marker per line lets the render wait
+    for a line in flight. on_first(provider or None) is called once the first
+    request settles. Returns the provider used, or None."""
+    service = EduvidsTTSService(cache_dir=str(directory))
+    if service.deepgram_key:
+        provider, fetch = "deepgram", service._deepgram_audio
+    elif service.openrouter_key:
+        provider, fetch = "openrouter", service._openrouter_audio
+    else:
+        if on_first:
+            on_first(None)
+        return None
+    jobs = {}
+    for text in texts:
+        spoken = remove_bookmarks(" ".join(text.split())).strip()
+        if not spoken:
+            continue
+        data = service._provider_input_data(spoken, provider)
+        target = Path(directory) / (service.get_audio_basename(data) + ".mp3")
+        if not target.exists():
+            jobs[target] = spoken
+    for target in jobs:
+        target.with_suffix(".pending").touch()
+    settled = []
+
+    def get(item):
+        target, spoken = item
+        ok = False
+        try:
+            audio = fetch(spoken)
+            partial = target.with_suffix(".part")
+            partial.write_bytes(audio)
+            os.replace(partial, target)
+            ok = True
+        except Exception as error:
+            LOGGER.warning("prefetch failed: %s", error)
+        finally:
+            target.with_suffix(".pending").unlink(missing_ok=True)
+        if on_first and not settled:
+            settled.append(ok)
+            on_first(provider if ok else None)
+        return ok
+
+    if not jobs and on_first:
+        on_first(provider)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(get, jobs.items()))
+    print(
+        "[eduvids-tts] prefetched " + str(sum(results)) + "/" + str(len(results))
+        + " via " + provider,
+        flush=True,
+    )
+    if results and not any(results):
+        return None
+    return provider
 `;
