@@ -1464,7 +1464,11 @@ if _SEGMENT:
     def _segment_progression(self, animations, duration):
         times = _progression(self, animations, duration)
         if self.renderer.skip_animations:
-            return times
+            # A rendered animation's updaters last run at its final frame's
+            # time, not at its run time; stop there too, so dt-driven updaters
+            # (a dot flowing along a path) keep the whole render's phase.
+            times.close()
+            return tqdm(list(np.arange(0, duration, 1 / config.frame_rate))[-1:], disable=True)
         low, high = _overlap(self.renderer, len(times.iterable))
         kept = list(times.iterable)[low:high]
         times.close()

@@ -56,6 +56,26 @@ class Split(VoiceoverScene):
             self.wait(max(0, tracker.get_remaining_duration()))
         self.play(FadeOut(dot), FadeOut(circle), run_time=0.6)
         self.wait(0.3)
+
+
+class Flow(Scene):
+    """A dt-driven updater (a dot flowing along a path) across segment cuts."""
+
+    def construct(self):
+        path = Circle(radius=2)
+        dot = Dot(color=ACCENT)
+        state = {"phase": 0.0}
+
+        def move(mob, dt):
+            state["phase"] = (state["phase"] + dt * 0.37) % 1
+            mob.move_to(path.point_from_proportion(state["phase"]))
+
+        dot.add_updater(move)
+        self.add(path, dot)
+        self.play(Create(Square()), run_time=1.5)
+        self.wait(2)
+        self.play(FadeIn(Triangle()), run_time=1.2)
+        self.wait(1.5)
 '''
 
 FLAGS = ["--disable_caching", "--format=mp4", "-ql"]
@@ -110,14 +130,14 @@ class SegmentTests(unittest.TestCase):
                        check=True, env=cls.env, cwd=WORK, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         cls.whole = driver.scene_output(WORK / "whole", "Split")
 
-    def split(self, name, bounds):
+    def split(self, name, bounds, scene="Split"):
         media = WORK / name
         cfg = {"script": str(WORK / "script.py"), "media_dir": str(media), "manim_args": FLAGS}
         slots = [media / f"p{index}" for index in range(2)]
-        tasks = [("Split", index, len(bounds) - 1, bounds[index], bounds[index + 1]) for index in range(len(bounds) - 1)]
+        tasks = [(scene, index, len(bounds) - 1, bounds[index], bounds[index + 1]) for index in range(len(bounds) - 1)]
         self.assertEqual(driver.render(cfg, tasks, slots, self.env), [])
-        driver.merge_segments(cfg, "Split", len(tasks))
-        return driver.scene_output(media, "Split")
+        driver.merge_segments(cfg, scene, len(tasks))
+        return driver.scene_output(media, scene)
 
     def test_segments_join_into_the_whole_render(self):
         # Cuts fall inside animations (the transform and the dot's path).
@@ -132,6 +152,16 @@ class SegmentTests(unittest.TestCase):
         joined = self.split("trailing", [0, 3.0, 500.0, 1e9])
         self.assertSameFrames(joined)
         self.assertSameSoundtrack(joined)
+
+
+    def test_dt_updaters_keep_their_phase_across_cuts(self):
+        subprocess.run(["manim", str(WORK / "script.py"), "Flow", "--media_dir", str(WORK / "flow-whole"), *FLAGS],
+                       check=True, env=self.env, cwd=WORK, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        whole = driver.scene_output(WORK / "flow-whole", "Flow")
+        joined = self.split("flow", [0, 1.0, 3.9, 1e9], scene="Flow")
+        self.assertEqual(timestamps(joined), timestamps(whole))
+        # A drifting dot would sit pixels away (well under 45 dB).
+        self.assertGreater(worst_psnr(joined, whole), 50)
 
 
 if __name__ == "__main__":
