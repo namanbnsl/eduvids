@@ -9,15 +9,20 @@ import {
 import type { RelatedYouTubeVideo } from "@/lib/youtube-metadata";
 import type { VideoTitleSet } from "@/lib/youtube-metadata";
 import {
-  buildThumbnailManimScript,
-  THUMBNAIL_CLASS_NAMES,
+  buildThumbnailSpecs,
+  FRAME_CANDIDATES,
+  loadThumbnailAssets,
+  type ThumbnailPalette,
 } from "@/lib/youtube-thumbnail";
 import {
-  applyManimHouseStyle,
-  HOUSE_LIGHT_PATH,
-  HOUSE_LIGHT_PY,
-  REGISTER_HOUSE_FONTS_COMMAND,
-} from "@/lib/visual-style";
+  applyVideoStyle,
+  loadVideoStyleAssets,
+  RENDER_DRIVER_PATH,
+  videoPalette,
+  videoRenderFlags,
+  WATERMARK_FONT_COMMAND,
+  WATERMARK_STYLE,
+} from "@/lib/video-style";
 
 const MAX_COMMAND_OUTPUT_CHARS = 4000;
 const MAX_COMMAND_BUFFER_CHARS = 20000;
@@ -25,65 +30,6 @@ let latexEnvironmentVerified = false;
 
 const CTA_MARKER = "# __EDUVIDS_CTA_INJECTED__";
 const SCENE_FADE_MARKER = "# __EDUVIDS_SCENE_FADE_OUT__";
-
-const SCALED_TEXT_MARKER = "# __EDUVIDS_SCALED_TEXT__";
-
-const SCALED_TEXT_HELPER = `${SCALED_TEXT_MARKER}
-_TEXT_SCALE_FACTOR = 0.3
-_TEXT_SCALE_THRESHOLD = 32
-
-_OrigText = Text
-
-def Text(*args, **kwargs):
-    scale_font = False
-    if "font_size" in kwargs and kwargs["font_size"] < _TEXT_SCALE_THRESHOLD:
-        scale_font = True
-        kwargs["font_size"] = kwargs["font_size"] / _TEXT_SCALE_FACTOR
-    obj = _OrigText(*args, **kwargs)
-    if scale_font:
-        obj.scale(_TEXT_SCALE_FACTOR)
-    return obj
-`;
-
-function injectScaledTextHelper(script: string): string {
-  if (script.includes(SCALED_TEXT_MARKER)) return script;
-
-  // Insert after the last top-level import line
-  const lines = script.split("\n");
-  let lastImportIndex = -1;
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i]?.trim() ?? "";
-    if (
-      trimmed.startsWith("import ") ||
-      trimmed.startsWith("from ") ||
-      trimmed.startsWith("#")
-    ) {
-      lastImportIndex = i;
-    } else if (trimmed.length > 0) {
-      break;
-    }
-  }
-
-  const insertAt = lastImportIndex + 1;
-  lines.splice(insertAt, 0, "", SCALED_TEXT_HELPER);
-  return lines.join("\n");
-}
-
-/**
- * Makes CMU Serif visible to Pango and ships the thumbnail spotlight helper.
- * Safe to call repeatedly on one sandbox.
- */
-async function prepareHouseStyleAssets(sandbox: Sandbox): Promise<void> {
-  await sandbox.files.write(HOUSE_LIGHT_PATH, HOUSE_LIGHT_PY);
-  const fonts = await sandbox.commands.run(REGISTER_HOUSE_FONTS_COMMAND, {
-    timeoutMs: 60_000,
-  });
-  if (!fonts.stdout.includes("house-fonts-ok")) {
-    console.warn(
-      "CMU Serif is unavailable in the sandbox; Pango will fall back",
-    );
-  }
-}
 
 export function injectEduvidsCallout(
   script: string,
@@ -142,28 +88,42 @@ export function injectEduvidsCallout(
     : "Generate your own educational videos for free at eduvids dot app";
   const narrationLiteral = JSON.stringify(narration);
 
-  // End card in the house style: type on the background, no card or chrome.
+  // House typography, as on the thumbnails: a large balanced SemiBold
+  // headline, a sentence-case lead-in, accent for the one action, and no
+  // block-capital tags. Names come from eduvids_style.
   const contentLines = previousTitle
     ? [
-        `${bodyIndent}    eyebrow = Text("Previous video", font_size=26, color=MUTED)`,
-        `${bodyIndent}    previous_title = Text(${JSON.stringify(previousTitle)}, font_size=46, color=INK)`,
-        `${bodyIndent}    if previous_title.width > 11.5:`,
-        `${bodyIndent}        previous_title.scale_to_fit_width(11.5)`,
-        `${bodyIndent}    rule = Line(LEFT * 1.2, RIGHT * 1.2, stroke_width=3, color=YELLOW)`,
-        `${bodyIndent}    link_hint = Text("Link in description and top comment", font_size=28, color=MUTED)`,
-        `${bodyIndent}    end_content = VGroup(eyebrow, previous_title, rule, link_hint).arrange(DOWN, buff=0.45).move_to(ORIGIN)`,
-        `${bodyIndent}    self.play(FadeIn(eyebrow, shift=UP * 0.15), run_time=max(0.4, tracker.duration * 0.15))`,
-        `${bodyIndent}    self.play(FadeIn(previous_title, shift=UP * 0.15), Create(rule), run_time=max(0.4, tracker.duration * 0.30))`,
-        `${bodyIndent}    self.play(FadeIn(link_hint), run_time=max(0.4, tracker.duration * 0.15))`,
+        `${bodyIndent}    lead = Text("Watch next", font_size=36, color=MUTED)`,
+        `${bodyIndent}    previous_title = balanced_text(${JSON.stringify(previousTitle)}, font_size=60, max_lines=3)`,
+        `${bodyIndent}    link_hint = Text("Link in description and top comment", font_size=32, color=MUTED)`,
+        `${bodyIndent}    subscribe_hint = Text("Subscribe for the next visual", font_size=32, color=ACCENT)`,
+        `${bodyIndent}    heading = VGroup(lead, previous_title).arrange(DOWN, aligned_edge=LEFT, buff=0.3)`,
+        `${bodyIndent}    hints = VGroup(link_hint, subscribe_hint).arrange(DOWN, aligned_edge=LEFT, buff=0.22)`,
+        `${bodyIndent}    end_content = VGroup(heading, hints).arrange(DOWN, aligned_edge=LEFT, buff=0.6)`,
+        `${bodyIndent}    if end_content.width > config.frame_width - 1.6:`,
+        `${bodyIndent}        end_content.scale_to_fit_width(config.frame_width - 1.6)`,
+        `${bodyIndent}    end_content.move_to(ORIGIN)`,
+        `${bodyIndent}    lock_layout(end_content)`,
+        `${bodyIndent}    if isinstance(self, ThreeDScene):`,
+        `${bodyIndent}        fixed_overlay(self, end_content)`,
+        `${bodyIndent}    self.play(FadeIn(lead, shift=UP * 0.15), pop_in(previous_title, scale=0.85), run_time=max(0.4, tracker.duration * 0.25))`,
+        `${bodyIndent}    self.play(FadeIn(link_hint, shift=UP * 0.1), run_time=max(0.3, tracker.duration * 0.15))`,
+        `${bodyIndent}    self.play(pop_in(subscribe_hint), run_time=max(0.3, tracker.duration * 0.15))`,
         `${bodyIndent}    self.wait(max(0, tracker.get_remaining_duration()))`,
       ]
     : [
-        `${bodyIndent}    cta_title = Text("Make your own visual explanation", font_size=40, color=INK)`,
-        `${bodyIndent}    rule = Line(LEFT * 1.2, RIGHT * 1.2, stroke_width=3, color=YELLOW)`,
-        `${bodyIndent}    cta_link = Text("eduvids.app", font_size=34, color=BLUE)`,
-        `${bodyIndent}    cta_content = VGroup(cta_title, rule, cta_link).arrange(DOWN, buff=0.45).move_to(ORIGIN)`,
-        `${bodyIndent}    self.play(FadeIn(cta_title, shift=UP * 0.2), run_time=max(0.4, tracker.duration * 0.30))`,
-        `${bodyIndent}    self.play(Create(rule), FadeIn(cta_link, shift=UP * 0.2), run_time=max(0.4, tracker.duration * 0.30))`,
+        `${bodyIndent}    cta_title = balanced_text("Generate your own educational videos for free", font_size=60, max_lines=3)`,
+        `${bodyIndent}    cta_link = Text("eduvids.app", font_size=44, color=ACCENT)`,
+        `${bodyIndent}    cta_content = VGroup(cta_title, cta_link).arrange(DOWN, aligned_edge=LEFT, buff=0.55)`,
+        `${bodyIndent}    if cta_content.width > config.frame_width - 1.6:`,
+        `${bodyIndent}        cta_content.scale_to_fit_width(config.frame_width - 1.6)`,
+        `${bodyIndent}    cta_content.move_to(ORIGIN)`,
+        `${bodyIndent}    lock_layout(cta_content)`,
+        `${bodyIndent}    if isinstance(self, ThreeDScene):`,
+        `${bodyIndent}        fixed_overlay(self, cta_content)`,
+        `${bodyIndent}    self.play(pop_in(cta_title, scale=0.85), run_time=max(0.4, tracker.duration * 0.30))`,
+        `${bodyIndent}    self.play(pop_in(cta_link), run_time=max(0.3, tracker.duration * 0.20))`,
+        `${bodyIndent}    self.play(pulse(cta_link, scale=1.06), run_time=max(0.3, tracker.duration * 0.20))`,
         `${bodyIndent}    self.wait(max(0, tracker.get_remaining_duration()))`,
       ];
 
@@ -173,11 +133,9 @@ export function injectEduvidsCallout(
     `${bodyIndent}existing_mobjects = list(self.mobjects)`,
     `${bodyIndent}if existing_mobjects:`,
     `${bodyIndent}    self.play(*[FadeOut(mob) for mob in existing_mobjects])`,
-    `${bodyIndent}# Reset 3D camera to a flat 2D view so text is always visible`,
-    `${bodyIndent}if hasattr(self, 'renderer') and hasattr(self.renderer, 'camera') and hasattr(self.renderer.camera, 'set_euler_angles'):`,
-    `${bodyIndent}    self.renderer.camera.set_euler_angles(phi=0, theta=-90 * DEGREES, gamma=0)`,
-    `${bodyIndent}    self.renderer.camera.frame.move_to(ORIGIN)`,
-    `${bodyIndent}    self.renderer.camera.frame.set(width=14)`,
+    `${bodyIndent}# End camera motion and reveal the end card as a screen overlay`,
+    `${bodyIndent}if isinstance(self, ThreeDScene):`,
+    `${bodyIndent}    self.stop_ambient_camera_rotation()`,
     `${bodyIndent}with self.voiceover(text=${narrationLiteral}) as tracker:`,
     ...contentLines,
   ];
@@ -509,6 +467,8 @@ export interface RenderRequest {
   onProgress?: (update: RenderProgressUpdate) => Promise<void> | void;
   existingSandboxId?: string;
   previousVideo?: RelatedYouTubeVideo;
+  /** The video's palette; pass the thumbnail's so the two match. */
+  palette?: ThumbnailPalette;
   /** Skip the synchronous dry run when rendering in a durable sandbox job. */
   skipDryRun?: boolean;
   /** Called when dry-run fails — receives the current script and error output,
@@ -527,6 +487,8 @@ export interface RenderState {
   warnings: ValidationWarning[];
   logs: RenderLogEntry[];
   applyWatermark: boolean;
+  /** The watermark is drawn into frames, so postprocessing need not re-encode. */
+  watermarkInVideo?: boolean;
   existingSandboxId?: string;
   prompt?: string;
   sessionId?: string;
@@ -562,6 +524,8 @@ export interface PreparedSandboxState {
   warnings: ValidationWarning[];
   logs: RenderLogEntry[];
   applyWatermark: boolean;
+  /** The watermark is drawn into frames, so postprocessing need not re-encode. */
+  watermarkInVideo?: boolean;
   existingSandboxId?: string;
   prompt?: string;
   sessionId?: string;
@@ -569,115 +533,176 @@ export interface PreparedSandboxState {
   previousVideo?: RelatedYouTubeVideo;
 }
 
+const SANDBOX_TEMPLATE = "manim20-ffmpeg-bookmarks-latest";
+const THUMBNAIL_ROOT = "/home/user/eduvids-thumbnail";
+/** Where the postprocess step leaves the finished video. */
+const FINAL_VIDEO_PATH = "/home/user/final.mp4";
+
+export interface ThumbnailRenderResult {
+  /** PNG data URLs in candidate order; null where that candidate failed. */
+  images: [string | null, string | null, string | null];
+  report: unknown;
+}
+
+/**
+ * Install the house style module and its fonts into the sandbox's user
+ * site-packages, where every generated script (and the validators) can import
+ * it as `eduvids_style`.
+ */
+async function installVideoStyle(
+  sandbox: Sandbox,
+  palette: ThumbnailPalette,
+  { watermark = false }: { watermark?: boolean } = {},
+): Promise<void> {
+  const assets = await loadVideoStyleAssets(palette, { watermark });
+  const site = (
+    await sandbox.commands.run(
+      `python -c "import site; print(site.getusersitepackages())"`,
+    )
+  ).stdout.trim();
+  await sandbox.commands.run(`mkdir -p "${site}/eduvids-fonts"`);
+  await Promise.all([
+    sandbox.files.write(`${site}/eduvids_style.py`, assets.module),
+    sandbox.files.write(RENDER_DRIVER_PATH, assets.driver),
+    ...assets.fonts.map(({ name, data }) =>
+      sandbox.files.write(
+        `${site}/eduvids-fonts/${name}`,
+        data.buffer.slice(
+          data.byteOffset,
+          data.byteOffset + data.byteLength,
+        ) as ArrayBuffer,
+      ),
+    ),
+  ]);
+}
+
+/**
+ * Render the three title-paired thumbnails from data specs with the bundled
+ * renderer. Each candidate renders in its own process and retries once in
+ * safe mode, so one bad spec never takes the others down. If the video's
+ * sandbox has already been reclaimed, a fresh one is used.
+ */
+/**
+ * Frames from the finished video for the thumbnail, best first. The video
+ * is only there when thumbnails render in the video's own sandbox; a fresh
+ * sandbox (or any picker failure) yields none, and drawn visuals are used.
+ */
+async function pickVideoFrames(sandbox: Sandbox): Promise<string[]> {
+  try {
+    const result = await sandbox.commands.run(
+      `test -f ${FINAL_VIDEO_PATH} && cd ${THUMBNAIL_ROOT} && python frame_picker.py --video ${FINAL_VIDEO_PATH} --out-dir frames --count ${FRAME_CANDIDATES} || true`,
+      { timeoutMs: 90_000 },
+    );
+    const line = result.stdout.trim().split("\n").pop();
+    if (!line) return [];
+    const picked = JSON.parse(line) as { path?: unknown }[];
+    return picked
+      .map(({ path }) => path)
+      .filter((path): path is string => typeof path === "string");
+  } catch (error) {
+    console.warn(
+      "Frame picking failed; thumbnails use drawn visuals",
+      error instanceof Error ? error.message : error,
+    );
+    return [];
+  }
+}
+
 export async function renderThumbnailCandidates({
   prepared,
   titles,
   topic,
   designSeed,
-  generatedScript,
 }: {
   prepared: PreparedSandboxState;
   titles: VideoTitleSet;
   topic: string;
   designSeed: string;
-  generatedScript?: string;
-}): Promise<[string, string, string]> {
-  const sandbox = await Sandbox.connect(prepared.sandboxId, {
-    timeoutMs: 3_600_000,
-    requestTimeoutMs: 180_000,
-  });
-  const scriptPath = "/home/user/eduvids_thumbnails.py";
-  const runnerPath = "/home/user/render_eduvids_thumbnails.py";
-  const mediaDir = "/home/user/thumbnail-media";
-  const outputPaths = THUMBNAIL_CLASS_NAMES.map(
-    (_, index) => `/home/user/thumbnail-${index}.png`,
-  );
-
-  await prepareHouseStyleAssets(sandbox);
-  const fallbackScript = buildThumbnailManimScript({
-    titles,
-    topic,
-    designSeed,
-  });
-  await sandbox.files.write(
-    scriptPath,
-    applyManimHouseStyle(generatedScript ?? fallbackScript),
-  );
-  await sandbox.files.write(
-    runnerPath,
-    [
-      "from pathlib import Path",
-      "import shutil",
-      "import subprocess",
-      `script_path = ${JSON.stringify(scriptPath)}`,
-      `media_dir = ${JSON.stringify(mediaDir)}`,
-      `classes = ${JSON.stringify([...THUMBNAIL_CLASS_NAMES])}`,
-      `outputs = ${JSON.stringify(outputPaths)}`,
-      "source = Path(script_path).read_text()",
-      "tree = __import__('ast').parse(source)",
-      "ast = __import__('ast')",
-      "allowed_top_level = (ast.Import, ast.ImportFrom, ast.Assign, ast.AnnAssign, ast.FunctionDef, ast.ClassDef)",
-      "for node in tree.body:",
-      "    if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):",
-      "        continue",
-      "    if not isinstance(node, allowed_top_level):",
-      "        raise RuntimeError('Unsafe top-level thumbnail statement: ' + type(node).__name__)",
-      "for node in ast.walk(tree):",
-      "    if isinstance(node, ast.Import):",
-      "        if any(alias.name.split('.')[0] not in {'manim', 'numpy'} for alias in node.names):",
-      "            raise RuntimeError('Unsafe thumbnail import')",
-      "    if isinstance(node, ast.ImportFrom) and (node.module or '').split('.')[0] not in {'manim', 'numpy'}:",
-      "        raise RuntimeError('Unsafe thumbnail import')",
-      "    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {'open', 'exec', 'eval', 'compile', '__import__', 'input'}:",
-      "        raise RuntimeError('Unsafe thumbnail call: ' + node.func.id)",
-      "    if isinstance(node, ast.Attribute) and (node.attr.startswith('__') or node.attr == 'random'):",
-      "        raise RuntimeError('Unsafe thumbnail attribute: ' + node.attr)",
-      "for scene_class, output_path in zip(classes, outputs):",
-      "    result = subprocess.run([",
-      "        'manim', script_path, scene_class, '-s', '-qh', '--format', 'png',",
-      "        '--disable_caching', '--media_dir', media_dir, '-r', '1280,720'",
-      "    ], text=True, capture_output=True)",
-      "    if result.returncode != 0:",
-      "        print(result.stdout)",
-      "        print(result.stderr)",
-      "        raise SystemExit(result.returncode)",
-      "    matches = list(Path(media_dir).rglob(scene_class + '*.png'))",
-      "    if not matches:",
-      "        raise RuntimeError('No thumbnail output found for ' + scene_class)",
-      "    newest = max(matches, key=lambda path: path.stat().st_mtime)",
-      "    shutil.copyfile(newest, output_path)",
-      `    subprocess.run(['python', ${JSON.stringify(HOUSE_LIGHT_PATH)}, 'thumbnail', output_path, output_path], check=True)`,
-    ].join("\n"),
-  );
-
-  const runRenderer = () =>
-    sandbox.commands.run(`python ${runnerPath}`, { timeoutMs: 180_000 });
-  let result = await runRenderer();
-  if (result.exitCode !== 0 && generatedScript) {
+}): Promise<ThumbnailRenderResult> {
+  let sandbox: Sandbox;
+  let ownsSandbox = false;
+  try {
+    sandbox = await Sandbox.connect(prepared.sandboxId, {
+      timeoutMs: 3_600_000,
+      requestTimeoutMs: 180_000,
+    });
+  } catch (error) {
     console.warn(
-      "Generated thumbnail Manim script did not render; retrying verified fallback",
-      (result.stderr || result.stdout).slice(-1_000),
+      "Video sandbox unavailable for thumbnails; starting a fresh one",
+      error instanceof Error ? error.message : error,
     );
-    await sandbox.files.write(scriptPath, fallbackScript);
-    result = await runRenderer();
-  }
-  if (result.exitCode !== 0) {
-    throw new Error(
-      `Thumbnail render failed: ${(result.stderr || result.stdout).slice(-2_000)}`,
-    );
+    sandbox = await Sandbox.create(SANDBOX_TEMPLATE, { timeoutMs: 600_000 });
+    ownsSandbox = true;
   }
 
-  const images = await Promise.all(
-    outputPaths.map(async (path) => {
-      const bytes = (await sandbox.files.read(path, {
-        format: "bytes",
-      })) as Uint8Array;
-      if (!bytes.length) throw new Error(`Thumbnail output is empty: ${path}`);
-      return `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`;
-    }),
-  );
+  try {
+    const assets = await loadThumbnailAssets();
+    await sandbox.commands.run(
+      `rm -rf ${THUMBNAIL_ROOT}/out ${THUMBNAIL_ROOT}/frames && mkdir -p ${THUMBNAIL_ROOT}/fonts`,
+    );
+    await sandbox.files.write(
+      `${THUMBNAIL_ROOT}/frame_picker.py`,
+      assets.framePicker,
+    );
+    const frames = await pickVideoFrames(sandbox);
+    const specs = buildThumbnailSpecs({ titles, topic, designSeed, frames });
+    await Promise.all([
+      sandbox.files.write(`${THUMBNAIL_ROOT}/renderer.py`, assets.renderer),
+      sandbox.files.write(
+        `${THUMBNAIL_ROOT}/specs.json`,
+        JSON.stringify(specs),
+      ),
+      ...assets.fonts.map(({ name, data }) =>
+        sandbox.files.write(
+          `${THUMBNAIL_ROOT}/fonts/${name}`,
+          data.buffer.slice(
+            data.byteOffset,
+            data.byteOffset + data.byteLength,
+          ) as ArrayBuffer,
+        ),
+      ),
+    ]);
 
-  return images as [string, string, string];
+    try {
+      await sandbox.commands.run(
+        `cd ${THUMBNAIL_ROOT} && python renderer.py batch --spec specs.json --out-dir out --font-dir fonts --timeout 150`,
+        { timeoutMs: 180_000 },
+      );
+    } catch (error) {
+      // Exit code 1 means no candidate rendered; results.json explains why.
+      if (!(error instanceof CommandExitError)) throw error;
+    }
+
+    const report = JSON.parse(
+      await sandbox.files.read(`${THUMBNAIL_ROOT}/out/results.json`),
+    ) as Record<string, { ok: boolean; path?: string; errors?: string[] }>;
+
+    const images = (await Promise.all(
+      specs.map(async (_, index) => {
+        const result = report[String(index)];
+        if (!result?.ok || !result.path) {
+          console.warn(
+            `Thumbnail ${index} failed:`,
+            result?.errors?.map((entry) => entry.slice(-400)),
+          );
+          return null;
+        }
+        const bytes = (await sandbox.files.read(result.path, {
+          format: "bytes",
+        })) as Uint8Array;
+        return bytes.length
+          ? `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`
+          : null;
+      }),
+    )) as ThumbnailRenderResult["images"];
+
+    if (images.every((image) => image === null)) {
+      throw new Error("No thumbnail candidate rendered");
+    }
+    return { images, report };
+  } finally {
+    if (ownsSandbox) await sandbox.kill().catch(() => undefined);
+  }
 }
 
 export async function startManimRender({
@@ -690,6 +715,7 @@ export async function startManimRender({
   onProgress,
   existingSandboxId,
   previousVideo,
+  palette,
   scriptFixer,
 }: RenderRequest): Promise<StartRenderResult> {
   const normalizedScript = script.trim();
@@ -1040,7 +1066,7 @@ export async function startManimRender({
       await reportProgress("sandbox", "Sandbox connected", sandbox.sandboxId);
     } else {
       await reportProgress("sandbox", "Provisioning secure rendering sandbox");
-      sandbox = await Sandbox.create("manim20-ffmpeg-bookmarks-latest", {
+      sandbox = await Sandbox.create(SANDBOX_TEMPLATE, {
         timeoutMs: 3_600_000, // 60 minutes
         envs: {
           ...eduvidsTTSSandboxEnvironment(),
@@ -1067,11 +1093,13 @@ export async function startManimRender({
       EDUVIDS_TTS_SERVICE_PATH,
       EDUVIDS_TTS_SERVICE_SOURCE,
     );
+    await installVideoStyle(
+      sandbox,
+      palette ?? videoPalette(sessionId ?? prompt),
+    );
 
-    await prepareHouseStyleAssets(sandbox);
-
-    let enhancedScript = applyManimHouseStyle(heuristicFixedScript);
-    enhancedScript = injectScaledTextHelper(enhancedScript);
+    let enhancedScript = heuristicFixedScript;
+    enhancedScript = applyVideoStyle(enhancedScript);
     enhancedScript = injectSceneFadeOut(enhancedScript);
     enhancedScript = injectEduvidsCallout(enhancedScript, previousVideo);
 
@@ -1229,8 +1257,6 @@ export async function startManimRender({
 
     const resolution = renderOptions?.resolution;
     const orientation = renderOptions?.orientation;
-    let safeWidth: number | undefined;
-    let safeHeight: number | undefined;
     if (resolution) {
       pushLog({
         level: "info",
@@ -1252,16 +1278,8 @@ export async function startManimRender({
       ...currentSceneNames,
       "--media_dir",
       mediaDir,
-      "--disable_caching",
-      "--format=mp4",
-      "-qm",
+      ...videoRenderFlags(resolution),
     ];
-    if (resolution) {
-      safeWidth = Math.max(1, Math.round(resolution.width));
-      safeHeight = Math.max(1, Math.round(resolution.height));
-      manimArgs.push("-r", `${safeHeight},${safeWidth}`);
-    }
-
     const manimCmd = `manim ${manimArgs.join(" ")}`;
     const renderContextLabel = "Manim render";
 
@@ -1406,6 +1424,7 @@ export async function prepareManimSandbox({
   onProgress,
   existingSandboxId,
   previousVideo,
+  palette,
   scriptFixer,
   skipDryRun = false,
 }: RenderRequest): Promise<PreparedSandboxState> {
@@ -1652,7 +1671,7 @@ export async function prepareManimSandbox({
       });
     } else {
       await reportProgress("sandbox", "Provisioning secure rendering sandbox");
-      sandbox = await Sandbox.create("manim20-ffmpeg-bookmarks-latest", {
+      sandbox = await Sandbox.create(SANDBOX_TEMPLATE, {
         timeoutMs: 3_600_000,
         requestTimeoutMs: 15_000,
         envs: {
@@ -1671,11 +1690,14 @@ export async function prepareManimSandbox({
       EDUVIDS_TTS_SERVICE_PATH,
       EDUVIDS_TTS_SERVICE_SOURCE,
     );
+    await installVideoStyle(
+      sandbox,
+      palette ?? videoPalette(sessionId ?? prompt),
+      { watermark: applyWatermark },
+    );
 
-    await prepareHouseStyleAssets(sandbox);
-
-    let enhancedScript = applyManimHouseStyle(heuristicFixedScript);
-    enhancedScript = injectScaledTextHelper(enhancedScript);
+    let enhancedScript = heuristicFixedScript;
+    enhancedScript = applyVideoStyle(enhancedScript);
     enhancedScript = injectSceneFadeOut(enhancedScript);
     enhancedScript = injectEduvidsCallout(enhancedScript, previousVideo);
 
@@ -1734,7 +1756,8 @@ export async function prepareManimSandbox({
     await runCommandOrThrow(buildSceneValidationCommand(scriptPath), {
       description: "Scene validation",
       stage: "scene-validation",
-      timeoutMs: 20_000,
+      // Importing manim alone takes ~8s on a cold sandbox.
+      timeoutMs: 60_000,
     });
 
     if (!latexEnvironmentVerified) {
@@ -1803,6 +1826,7 @@ export async function prepareManimSandbox({
       warnings,
       logs: [...renderLogs],
       applyWatermark,
+      watermarkInVideo: applyWatermark,
       existingSandboxId,
       prompt,
       sessionId,
@@ -1862,21 +1886,13 @@ export async function launchManimRender({
     timeoutMs: 3_600_000,
   });
 
-  const resolution = prepared.renderOptions?.resolution;
   const manimArgs = [
     prepared.scriptPath,
     ...prepared.sceneNames,
     "--media_dir",
     prepared.mediaDir,
-    "--disable_caching",
-    "--format=mp4",
-    "-qm",
+    ...videoRenderFlags(prepared.renderOptions?.resolution),
   ];
-  if (resolution) {
-    const safeWidth = Math.max(1, Math.round(resolution.width));
-    const safeHeight = Math.max(1, Math.round(resolution.height));
-    manimArgs.push("-r", `${safeHeight},${safeWidth}`);
-  }
 
   const manimCmd = `manim ${manimArgs.join(" ")}`;
   console.log("Starting manim render with command:", manimCmd);
@@ -2399,6 +2415,8 @@ export async function finalizeManimRender({
       qualityCandidates.push(`custom_quality_${safeWidth}x${safeHeight}`);
     }
     qualityCandidates.push(
+      "1080p30",
+      "1920p30",
       "720p30",
       "medium_quality",
       "720p15",
@@ -2589,9 +2607,10 @@ export async function finalizeManimRender({
     if (state.applyWatermark) {
       const watermarkedPath = `${outputDir}/watermarked.mp4`;
       const watermarkText = "eduvids";
-      const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
-      // const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@1.0:fontsize=24:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw-20:y=h-th-20`;
-      const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':fontcolor=white@1.0:fontsize=24:box=0:x=w-tw-20:y=h-th-20`;
+      const fontFile = (
+        await sandbox!.commands.run(WATERMARK_FONT_COMMAND)
+      ).stdout.trim();
+      const drawText = `drawtext=fontfile=${fontFile}:text='${watermarkText}':${WATERMARK_STYLE}`;
       await reportProgress("watermark", "Applying watermark overlay");
       const ffmpegCmd = `ffmpeg -y -i ${processedVideoPath} -vf "${drawText}" -c:v libx264 -profile:v main -pix_fmt yuv420p -movflags +faststart -c:a copy ${watermarkedPath}`;
       await runCommandOrThrow(ffmpegCmd, {

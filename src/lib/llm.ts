@@ -4,7 +4,6 @@ import {
   MANIM_SYSTEM_PROMPT,
   VOICEOVER_SYSTEM_PROMPT,
   SCENE_PLAN_SYSTEM_PROMPT,
-  THUMBNAIL_SYSTEM_PROMPT,
   VOICEOVER_SERVICE_IMPORT_TOKEN,
   VOICEOVER_SERVICE_SETTER_TOKEN,
 } from "@/prompt";
@@ -18,17 +17,8 @@ import { queryManimDocs } from "./deepwiki";
 
 import { jsonrepair } from "jsonrepair";
 import { franc } from "franc";
-import {
-  parseVideoDescriptionPackage,
-  parseVideoTitleSet,
-  type VideoDescriptionPackage,
-  type VideoTitleSet,
-} from "./youtube-metadata";
-import { applyManimHouseStyle } from "./visual-style";
-import {
-  sanitizeGeneratedThumbnailScript,
-  thumbnailManimScriptIssues,
-} from "./youtube-thumbnail";
+import { VIDEO_BACKGROUND } from "./video-style";
+import { parseVideoTitleSet, type VideoTitleSet } from "./youtube-metadata";
 
 // @ts-expect-error langs has no types
 import langs from "langs";
@@ -194,11 +184,11 @@ function buildAugmentedSystemPrompt(base: string, language?: string): string {
     const nonEnglishHeader = `
 CRITICAL - ${langUpper} LANGUAGE DETECTED
 This video is in ${language.toUpperCase()}. IMPORTANT RULES:
-1. USE Text() FOR WORDS: Text("your text", font_size=36). The house font and ink color are applied automatically; do not pass font= or disable_ligatures=
-2. USE MathTex() FOR ALL MATHEMATICAL EXPRESSIONS: MathTex(r"E = mc^2", font_size=44)
-3. If a label mixes words and an equation, split into Text() + MathTex() in a VGroup
-4. Never pass a font argument; the renderer chooses a face that covers ${language}
-5. For bullets in ${language}: create Text() objects and arrange them manually
+1. USE Text() FOR NON-MATHEMATICAL WORDS ONLY (no digits): Text("your text", font_size=36)
+2. USE MathTex() FOR ALL MATH AND FOR ANY NUMBERS OR DIGITS SHOWN ONSCREEN: MathTex(r"E = mc^2", font_size=36)
+3. If a label mixes words and numbers, split into Text() + MathTex() in a VGroup
+4. Never pass font=, weight=, or disable_ligatures to Text(); the house style sets the typeface for every script (disable_ligatures also truncates multi-word text)
+5. For bullets in ${language}: Create Text() objects and arrange them manually, left-aligned
 6. Example correct usage:
    title = Text("${
      language === "spanish"
@@ -217,7 +207,7 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
          : language === "german"
            ? "Inhalt"
            : "Content"
-   }", font_size=36, color=MUTED)
+   }", font_size=36)
 7. LaTeX will NOT work for ${language} characters - it will show garbled text or errors
 
 `;
@@ -520,7 +510,7 @@ export function manimVoiceoverTimingIssues(
       );
     if (!header) {
       issues.push(
-        `voiceover block ${voiceoverBlockCount} has no timing tracker`,
+        `voiceover block ${voiceoverBlockCount} has no timing tracker: ${line.trim().slice(0, 100)}`,
       );
       continue;
     }
@@ -629,8 +619,6 @@ export interface ScenePlanBeat {
 
 export interface ScenePlanEntry {
   sceneId: string;
-  /** Starts a new YouTube chapter when present. */
-  chapterTitle?: string;
   narration: string;
   visualType: string;
   elements: ScenePlanElement[];
@@ -830,6 +818,41 @@ const PROHIBITED_MODULES = [
   "asyncio",
 ];
 
+/**
+ * Put every `with self.voiceover(...) as tracker:` header on one line with an
+ * explicit text= argument. Smaller fallback models often wrap the narration
+ * over several lines or pass it positionally, which the timing check (and
+ * the prefetcher) cannot read.
+ */
+export function normalizeVoiceoverHeaders(script: string): string {
+  const lines = script.split("\n");
+  const output: string[] = [];
+  for (let index = 0; index < lines.length; index++) {
+    let line = lines[index]!;
+    if (/^\s*with\s+self\.voiceover\(/.test(line) && !/:\s*(#.*)?$/.test(line)) {
+      let end = index;
+      while (end + 1 < lines.length && end - index < 8 && !/:\s*(#.*)?$/.test(lines[end]!)) {
+        end++;
+      }
+      if (/:\s*(#.*)?$/.test(lines[end]!)) {
+        const indent = line.match(/^\s*/)![0];
+        line = indent + lines
+          .slice(index, end + 1)
+          .map((part) => part.trim())
+          .join(" ")
+          .replace(/\(\s+/g, "(")
+          .replace(/\s+\)/g, ")");
+        index = end;
+      }
+    }
+    line = line
+      .replace(/^(\s*with\s+self\.voiceover\()\s*(?=[rfbu]{0,2}["'])/i, "$1text=")
+      .replace(/^(\s*with\s+self\.voiceover\(.*\)\s+as\s+\w+\s*:)\s*#.*$/, "$1");
+    output.push(line);
+  }
+  return output.join("\n");
+}
+
 export function sanitizeManimScript(script: string): string {
   let result = script;
 
@@ -964,9 +987,25 @@ export function sanitizeManimScript(script: string): string {
     );
   }
 
-  // Keep every generated video in the same house style as its thumbnail, even
-  // if the model omits or overrides the requested background or typography.
-  result = applyManimHouseStyle(result);
+  // Keep every generated video on its thumbnail's canvas, even if the model
+  // omits or overrides the background.
+  if (/config\.background_color\s*=/.test(result)) {
+    result = result.replace(
+      /config\.background_color\s*=\s*[^\n]+/,
+      `config.background_color = "${VIDEO_BACKGROUND}"`,
+    );
+  } else {
+    result = result.replace(
+      /(from\s+manim\s+import\s+[^\n]+)/,
+      `$1\n\nconfig.background_color = "${VIDEO_BACKGROUND}"`,
+    );
+  }
+
+  result = normalizeVoiceoverHeaders(result);
+
+  // Manim 0.20 drops one trailing glyph per space when ligatures are disabled
+  // ("Area of a Circle" renders as "Area of a Cir"), so never pass the flag.
+  result = result.replace(/,\s*disable_ligatures\s*=\s*(?:True|False)/g, "");
 
   // Remove duplicate import lines
   const seenImports = new Set<string>();
@@ -1175,37 +1214,41 @@ export async function generateVideoTitles({
   voiceoverScript,
   scenePlan,
 }: VideoTitleRequest): Promise<VideoTitleSet> {
-  const systemPrompt = `You package videos for eduvids, a minimal, beautifully animated math and science channel in the spirit of 3Blue1Brown, Welch Labs, and Veritasium. Generate exactly three title-and-thumbnail packages, ordered strongest first. The first package is published; the other two are kept for A/B testing.
-
-WHAT WINS THE CLICK
-- The title and thumbnail are one sentence split in two: the image shows the strange thing, the title makes it matter. Never say the same thing twice.
-- The promise must be paid off by THIS video. Read the narration: its opening puzzle, its tempting wrong answer, and its payoff are your best raw material. Never promise a result the narration does not deliver.
-- Concrete beats abstract: a specific object, number, or claim ("A 99% Accurate Test Says You're Sick. You're Probably Not.") beats a topic label ("Understanding Bayes' Theorem").
+  const systemPrompt = `You package videos for eduvids, a visual math and science channel. Generate exactly three distinct title-and-thumbnail packages, ordered strongest first. Each thumbnail is rendered by a fixed design system: a big, bold two-line headline on the left and, on the right, either a frame taken from the video itself or one precise, glowing mathematical visual (lit 3D for surfaces and solids), on a dark vignetted background. There are no small tags or eyebrows on the image. You supply the words and the visual parameters only.
 
 TITLE RULES
-- 30-60 characters is ideal and 70 is the hard ceiling. Put the subject in the first 40 characters, because mobile truncates.
-- Plain words a curious 15-year-old would use. Name the topic keyword exactly once, naturally.
-- Three DIFFERENT angles, one per package:
-  A. The hook: the video's opening puzzle or surprising claim as a statement or question ("Why the Slope at a Single Point Isn't a Paradox").
-  B. The search title: the clearest phrasing someone would actually type, made intriguing ("What a Derivative Actually Measures", "How Fourier Transforms Hear Every Note").
-  C. The bold claim or wrong intuition: a confident, specific, true statement ("Every Sound Is Secretly a Sum of Circles").
-- Use title case. No ALL CAPS words, no emoji, no colons with subtitles, no "| eduvids".
-- Never use: Explained, Basics, Introduction, Lesson, Tutorial, Ultimate, Mind-Blowing, Insane, You Won't Believe, Finally Makes Sense, Visualized.
-- Never use clickbait that the video does not deliver.
+- Aim for 45-65 characters; never exceed 80
+- Create curiosity while making the subject immediately clear
+- Prefer natural use of Why, How, What, Visualized, Intuitive, Actually, In 3D, or Finally Makes Sense
+- Never use the words Explained, Basics, Introduction, or Lesson
+- Avoid hype, clickbait, vague promises, and repeated title structures
+- Use natural title case, not all caps
 
-THUMBNAIL RULES (one per title)
-- visualConcept: the single hero object from the video and the one anomaly that makes it strange, such as "parabola with a red point where secant lines collapse into the tangent". Under 120 characters, with real objects only. Never request cards, borders, badges, branding, gradients, or stock imagery.
-- thumbnailText, which deliberately differs by slot so the channel learns what works:
-  A: a 1-3 word hook that adds tension the title doesn't state, such as "0/0?", "9%?", "Not random", or "Impossible?". It may be math-like.
-  B: always an empty string. This slot is visual-only.
-  C: a 1-3 word question or verdict, such as "Guess?", "Same area", or "Wrong".
-  Never repeat words from the title, and never write a slogan.
-- visualType: exactly one of function_plot, complex_plane, geometry, transformation, vector_field, wave, orbit, probability, network, atom, surface_3d, solid_3d. Prefer genuine 3D only when depth teaches something.
-- mathNotation: a short valid LaTeX fragment central to this exact topic, or an empty string. Always empty for slot B. Never invent an equation to decorate.
-- plotExpression and plotXRange: for function_plot only, give the exact single-variable function from the source, using x, numbers, arithmetic, and sin/cos/tan/exp/log/sqrt/abs, with a two-number domain inside -20 to 20. Otherwise return an empty plotExpression and [-5, 5].
-- Ground every graph, label, and claim in the supplied source material. If exact mathematics is absent, choose a truthful geometric or conceptual visual.
+THUMBNAIL COPY RULES
+- eyebrow: the field in 1-3 words, e.g. "Calculus", "Complex numbers", "Machine learning". It is metadata for picking the visual and is never drawn
+- headline: 3-6 words, at most 30 characters, sentence case, no final period. It must complete the title's thought, never repeat it. State the insight or the tension: "The slope is the height", "Multiplying by $i$ is a quarter turn", "Waves are spinning circles"
+- Inline math goes between $...$ (e.g. "$e^{i\\pi}$", "$a^2+b^2=c^2$"). Use "~" only inside a multi-word term that must never be split across lines, e.g. "bell~curve", "rate~of~change"; most headlines need none
+- accent: the exact substring of the headline that carries the payoff (1-2 words or one $math$ token). It is painted in the warm accent colour that also marks the focal detail of the visual, so pick the word the picture proves
 
-Return ONLY a JSON array of three objects with exactly these keys: title, thumbnailText, visualConcept, visualType, mathNotation, plotExpression, plotXRange`;
+VISUAL RULES
+- visual.type is exactly one of: function_plot, complex_plane, geometry, transformation, vector_field, wave, orbit, probability, network, atom, surface_3d, solid_3d, equation
+- Parameters by type (omit any you are unsure of; sensible defaults are used):
+  function_plot: expression (single variable x; numbers, + - * / ^, parentheses, sin cos tan exp log sqrt abs, pi), xRange [min, max] within -20..20, highlight "tangent" | "area" | "point", at (x of the tangent or point), from and to (x bounds of a shaded area), notation (short LaTeX label such as "f(x)=e^x")
+  complex_plane: turn (fraction of a full rotation, 0.25 = multiply by i, 0.5 = multiply by -1), notation
+  geometry: shape "pythagoras" | "inscribed_polygon" | "triangle_angles", sides (for inscribed_polygon), notation
+  transformation: matrix [[a, b], [c, d]] with entries in -3..3
+  vector_field: field "rotation" | "source" | "saddle" | "spiral"
+  wave: shape "square" | "sawtooth", harmonics 2-6 (drawn as Fourier epicycles)
+  orbit: eccentricity 0.1-0.85
+  probability: from and to (shaded interval of a normal curve in standard deviations), notation
+  network: layers, e.g. [3, 5, 5, 2]
+  surface_3d: expression in x and y, e.g. "sin(x)*cos(y)"
+  solid_3d: shape "sphere" | "torus" | "cube"
+  equation: notation (the formula is the hero; wrap the key term in \\hl{...} to colour it)
+- notation must be short valid LaTeX that is central to the topic, or omitted. Never invent equations, functions, or claims: ground every expression and label in the source material. If exact mathematics is absent, choose a truthful conceptual visual
+- Make the three packages distinct in angle, headline, and visual
+
+Return ONLY a JSON array of three objects with keys: title, eyebrow, headline, accent, visualConcept (one sentence describing the image), visual (object with type and its parameters). JSON strings must escape backslashes, e.g. "$e^{i\\\\pi}$".`;
 
   const sourceMaterial = [
     voiceoverScript ? `NARRATION:\n${voiceoverScript.slice(0, 8_000)}` : "",
@@ -1244,65 +1287,6 @@ Return ONLY a JSON array of three objects with exactly these keys: title, thumbn
   return parseVideoTitleSet(text);
 }
 
-export interface ThumbnailManimScriptRequest {
-  prompt: string;
-  titles: VideoTitleSet;
-  sessionId: string;
-  designSeed: string;
-  voiceoverScript?: string;
-  scenePlan?: ScenePlanEntry[];
-}
-
-export async function generateThumbnailManimScript({
-  prompt,
-  titles,
-  sessionId,
-  designSeed,
-  voiceoverScript,
-  scenePlan,
-}: ThumbnailManimScriptRequest): Promise<string> {
-  const sourceMaterial = {
-    topic: prompt,
-    designSeed,
-    titlePackages: titles.candidates.map((title, index) => ({
-      title,
-      ...(titles.thumbnailConcepts?.[index] ?? {}),
-    })),
-    narration: voiceoverScript?.slice(0, 8_000),
-    scenePlan: scenePlan?.map(
-      ({ sceneId, narration, visualType, elements, labels }) => ({
-        sceneId,
-        narration,
-        visualType,
-        elements,
-        labels,
-      }),
-    ),
-  };
-  const googleModel = await createGoogleModel("gemini-3.8-flash");
-  const text = await streamTextWithTracking(
-    {
-      model: maybeWithTracing(googleModel.provider(googleModel.modelId), {
-        posthogProperties: { $ai_session_id: sessionId },
-      }),
-      system: THUMBNAIL_SYSTEM_PROMPT,
-      prompt: `Create the three title-paired Manim thumbnail scenes from this source:\n${JSON.stringify(sourceMaterial, null, 2)}`,
-      temperature: 0.35,
-      maxOutputTokens: 32_768,
-    },
-    googleModel,
-  );
-
-  const script = sanitizeGeneratedThumbnailScript(text);
-  const issues = thumbnailManimScriptIssues(script, titles);
-  if (issues.length > 0) {
-    throw new Error(
-      `Generated thumbnail Manim script failed validation: ${issues.join("; ")}`,
-    );
-  }
-  return script;
-}
-
 // ---------------------------------------------------------------------------
 // YouTube description generation
 // ---------------------------------------------------------------------------
@@ -1319,21 +1303,21 @@ export async function generateVideoDescription({
   voiceoverScript,
   sessionId,
   variant,
-}: VideoDescriptionRequest): Promise<VideoDescriptionPackage> {
-  const systemPrompt = `You package videos for eduvids, a minimal, beautifully animated math and science channel. Write the top of a YouTube description plus discovery metadata.
+}: VideoDescriptionRequest): Promise<string> {
+  const systemPrompt = `You package videos for eduvids, a cinematic visual math and science channel. Write the sales-first opening of a YouTube description.
 
-HOOK (two lines; this is all most viewers see before "...more", and line 1 appears in search results)
-- Line 1, under 110 characters: the video's opening puzzle or surprising claim, phrased differently from the title and grounded in the narration.
-- Line 2, under 160 characters: the concrete thing the viewer will see and understand, naming the running example and 1-2 precise topic keywords.
-- Plain, confident words. Never start with "In this video". Never use "dive into", "join us", "embark", "unlock", "journey", "fascinating", or "mind-blowing".
-- No links, calls to action, timestamps, emoji, or labels.
+RULES:
+- Output exactly two short, non-empty lines and no blank line
+- Line 1 opens with the central mystery, surprising result, or useful problem
+- Line 2 promises the specific visual intuition the viewer will gain
+- Naturally include 2-3 precise topic keywords across the two lines
+- Do not repeat the title or start with "In this video"
+- Never use generic phrases such as "dive into", "join us", "embark on", or "unlock the secrets"
+- Do not include calls-to-action, links, hashtags, timestamps, or labels
+- Keep the total under 500 characters
+- Output only the two lines`;
 
-HASHTAGS: 2-3 specific topic hashtags in CamelCase, from broad to specific (e.g. "#Math", "#Calculus", "#Derivatives"). No generic tags like #Education or #Learning.
-TAGS: 6-10 search phrases people would actually type to find this video (e.g. "what is a derivative", "derivative intuition").
-
-Return ONLY JSON: {"hook": ["line 1", "line 2"], "hashtags": ["#A", "#B"], "tags": ["phrase", "phrase"]}`;
-
-  const userPrompt = `Package this ${
+  const userPrompt = `Create a YouTube description for this ${
     variant === "short" ? "vertical short" : "video"
   }.
 
@@ -1357,7 +1341,10 @@ ${voiceoverScript}`;
     googleModel,
   );
 
-  return parseVideoDescriptionPackage(text);
+  return text
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .slice(0, 500);
 }
 
 // ---------------------------------------------------------------------------

@@ -10,11 +10,9 @@ import {
   generateManimScript,
   fixManimScript,
   generateVideoTitles,
-  generateThumbnailManimScript,
   generateVideoDescription,
   manimVoiceoverTimingIssues,
   normalizeScenePlanTiming,
-  type ScenePlanEntry,
 } from "@/lib/llm";
 import {
   prepareManimSandbox,
@@ -26,11 +24,10 @@ import {
   startSandboxJob,
   pollSandboxJobWindow,
   MAX_SANDBOX_POLL_WINDOWS,
-  renderCommand,
+  renderJobCommand,
   startPostprocess,
   downloadVideo,
   cleanupSandbox,
-  readSceneDurations,
   type SandboxJob,
 } from "@/lib/workflow/sandbox-jobs";
 import { generationFailureMessage, safeError } from "@/lib/workflow/errors";
@@ -38,11 +35,10 @@ import { getConvexClient, api } from "@/lib/convex-server";
 import { uploadImage, uploadVideo } from "@/lib/uploadthing";
 import { jobStore, artifactStore } from "@/lib/job-store";
 import { findPreviousYouTubeVideo } from "@/lib/youtube";
+import { videoPalette } from "@/lib/video-style";
 import {
-  buildChapters,
   selectThumbnailPair,
   type ThumbnailPair,
-  type YouTubeChapter,
   type RelatedYouTubeVideo,
   type VideoTitleSet,
 } from "@/lib/youtube-metadata";
@@ -100,7 +96,7 @@ export const { POST } = serve<VideoGenerationPayload>(
     const variant = rawVariant === "short" ? "short" : "video";
     const generationPrompt =
       variant === "short"
-        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Use large readable typography and keep visual groups well spaced.`
+        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Use large readable typography and keep visual groups well spaced. The portrait frame is 8 units wide and about 14.2 units tall (x from -4 to 4, y from -7.1 to 7.1): stack content vertically and keep every element within x from -3.4 to 3.4.`
         : prompt;
 
     await context.run("generate-voiceover-script", async () => {
@@ -306,12 +302,14 @@ export const { POST } = serve<VideoGenerationPayload>(
               sessionId: chatId,
               variant,
               previousVideo: previousVideo ?? undefined,
+              // Same seed as the thumbnails, so video and thumbnail match.
+              palette: videoPalette(jobId),
               applyWatermark: true,
               skipDryRun: true,
               renderOptions:
                 variant === "short"
                   ? {
-                      resolution: { width: 720, height: 1280 },
+                      resolution: { width: 1080, height: 1920 },
                       orientation: "portrait",
                     }
                   : undefined,
@@ -348,7 +346,7 @@ export const { POST } = serve<VideoGenerationPayload>(
             return startSandboxJob(
               preparation.state!.sandboxId,
               "render-job-tts-v3",
-              renderCommand(preparation.state!),
+              renderJobCommand(preparation.state!),
               eduvidsTTSSandboxEnvironment(),
             );
           },
@@ -436,92 +434,93 @@ export const { POST } = serve<VideoGenerationPayload>(
       });
     });
 
-    const videoTitleSet = await context.run("generate-titles", async () => {
-      try {
-        const saved = await artifactStore.find(jobId, "videoTitleSet");
-        if (saved) return JSON.parse(saved) as VideoTitleSet;
-        const [voiceoverScript, storedScenePlan] = await Promise.all([
-          artifactStore.get(jobId, "voiceoverScript"),
-          artifactStore.get(jobId, "scenePlan"),
-        ]);
-        const titles = await generateVideoTitles({
-          prompt,
-          sessionId: chatId,
-          voiceoverScript,
-          scenePlan: JSON.parse(storedScenePlan),
-        });
-        await artifactStore.set(jobId, "videoTitleSet", JSON.stringify(titles));
-        console.log("✅ Title candidates generated:", titles.candidates);
-        return titles;
-      } catch (err) {
-        console.warn("Title generation failed (non-fatal):", err);
-        return undefined;
-      }
-    });
-
-    const thumbnailScript = await context.run(
-      "generate-thumbnail-manim-v2",
-      async () => {
-        if (!videoTitleSet) return undefined;
-        const saved = await artifactStore.find(jobId, "thumbnailManimScript");
-        if (saved) return saved;
+    // Titles and description are independent; run them as parallel steps.
+    const [videoTitleSet, videoDescription] = await Promise.all([
+      context.run("generate-titles", async () => {
         try {
+          const saved = await artifactStore.find(jobId, "videoTitleSet");
+          if (saved) return JSON.parse(saved) as VideoTitleSet;
           const [voiceoverScript, storedScenePlan] = await Promise.all([
             artifactStore.get(jobId, "voiceoverScript"),
             artifactStore.get(jobId, "scenePlan"),
           ]);
-          const script = await generateThumbnailManimScript({
+          const titles = await generateVideoTitles({
             prompt,
-            titles: videoTitleSet,
             sessionId: chatId,
-            designSeed: jobId,
             voiceoverScript,
             scenePlan: JSON.parse(storedScenePlan),
           });
-          await artifactStore.set(jobId, "thumbnailManimScript", script);
-          return script;
-        } catch (error) {
-          console.warn(
-            "Thumbnail art direction failed; using the verified motif renderer:",
-            safeError(error),
+          await artifactStore.set(
+            jobId,
+            "videoTitleSet",
+            JSON.stringify(titles),
           );
+          console.log("✅ Title candidates generated:", titles.candidates);
+          return titles;
+        } catch (err) {
+          console.warn("Title generation failed (non-fatal):", err);
           return undefined;
         }
-      },
-    );
+      }),
+      context.run("generate-description", async () => {
+        try {
+          const voiceoverScript = await artifactStore.get(
+            jobId,
+            "voiceoverScript",
+          );
+          const desc = await generateVideoDescription({
+            prompt,
+            voiceoverScript,
+            sessionId: chatId,
+            variant,
+          });
+          console.log("✅ Description generated:", { length: desc.length });
+          return desc;
+        } catch (err) {
+          console.warn("Description generation failed (non-fatal):", err);
+          return undefined;
+        }
+      }),
+    ]);
 
     const thumbnailPairs = await context.run(
       "generate-thumbnail-candidates",
       async () => {
-        if (!videoTitleSet) return undefined;
+        // YouTube does not show custom thumbnails in the Shorts feed.
+        if (!videoTitleSet || variant === "short") return undefined;
         const saved = await artifactStore.find(jobId, "thumbnailPairs");
         if (saved) {
           return JSON.parse(saved) as ThumbnailPair[];
         }
 
         try {
-          const images = await renderThumbnailCandidates({
+          const { images, report } = await renderThumbnailCandidates({
             prepared: prepared!,
             titles: videoTitleSet,
             topic: prompt,
             designSeed: jobId,
-            generatedScript: thumbnailScript,
           });
-          const urls = await Promise.all(
-            images.map((imagePath, index) =>
-              uploadImage({
-                imagePath,
-                userId,
-                customId: `${jobId}-thumbnail-${index}`,
-              }),
-            ),
+          await artifactStore.set(
+            jobId,
+            "thumbnailReport",
+            JSON.stringify(report),
           );
-          const pairs = videoTitleSet.candidates.map(
-            (candidateTitle, index) => ({
-              title: candidateTitle,
-              thumbnailUrl: urls[index]!,
-            }),
-          );
+          const pairs = (
+            await Promise.all(
+              images.map(async (image, index) =>
+                image
+                  ? {
+                      title: videoTitleSet.candidates[index]!,
+                      thumbnailUrl: await uploadImage({
+                        imagePath: image,
+                        userId,
+                        customId: `${jobId}-thumbnail-v3-${index}`,
+                      }),
+                    }
+                  : null,
+              ),
+            )
+          ).filter((pair): pair is ThumbnailPair => pair !== null);
           await artifactStore.set(
             jobId,
             "thumbnailPairs",
@@ -533,54 +532,11 @@ export const { POST } = serve<VideoGenerationPayload>(
             "Thumbnail generation failed; continuing with YouTube defaults:",
             safeError(error),
           );
+          await artifactStore.set(jobId, "thumbnailError", safeError(error));
           return undefined;
         }
       },
     );
-
-    const videoDescription = await context.run(
-      "generate-description",
-      async () => {
-        try {
-          const [voiceoverScript, storedScenePlan] = await Promise.all([
-            artifactStore.get(jobId, "voiceoverScript"),
-            artifactStore.get(jobId, "scenePlan"),
-          ]);
-          const packaging = await generateVideoDescription({
-            prompt,
-            voiceoverScript,
-            sessionId: chatId,
-            variant,
-          });
-          // Chapters come from real rendered scene lengths, read while the
-          // sandbox is still alive. Shorts don't get chapters.
-          let chapters: YouTubeChapter[] = [];
-          if (variant !== "short") {
-            try {
-              chapters = buildChapters(
-                await readSceneDurations(prepared!.sandboxId),
-                JSON.parse(storedScenePlan) as ScenePlanEntry[],
-              );
-            } catch (error) {
-              console.warn("Chapter timing unavailable:", safeError(error));
-            }
-          }
-          console.log("✅ Description generated:", {
-            length: packaging.hook.length,
-            chapters: chapters.length,
-          });
-          return { ...packaging, chapters };
-        } catch (err) {
-          console.warn("Description generation failed (non-fatal):", err);
-          return undefined;
-        }
-      },
-    );
-    // Runs replayed from before chapters existed cached a plain string here.
-    const packaging =
-      typeof videoDescription === "string"
-        ? { hook: videoDescription, hashtags: [], tags: [], chapters: [] }
-        : videoDescription;
 
     await context.run("trigger-youtube-upload", async () => {
       if (
@@ -600,10 +556,7 @@ export const { POST } = serve<VideoGenerationPayload>(
         body: {
           videoUrl: uploadUrl,
           title: selectedThumbnailPair?.title ?? videoTitleSet?.selected,
-          description: packaging?.hook,
-          hashtags: packaging?.hashtags,
-          tags: packaging?.tags,
-          chapters: packaging?.chapters,
+          description: videoDescription,
           prompt,
           jobId,
           userId,
