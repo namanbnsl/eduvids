@@ -127,6 +127,10 @@ class VideoQualityTests(unittest.TestCase):
         self.assertTrue(np.isfinite(lit).all())
 
     def test_intermediate_movie_keeps_the_quality_profile(self):
+        from manim.scene.scene_file_writer import SceneFileWriter
+
+        if not hasattr(SceneFileWriter, "open_partial_movie_stream"):
+            self.skipTest("legacy FFmpeg writer has no PyAV quality override")
         with TemporaryDirectory() as folder:
             with tempconfig({"media_dir": folder, "pixel_width": 160, "pixel_height": 90}):
                 writer = Scene().renderer.file_writer
