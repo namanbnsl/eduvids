@@ -391,6 +391,56 @@ if not getattr(Camera.get_fill_rgbas, "__eduvids_graded__", False):
     _modified_graded.__eduvids_graded__ = True
     ThreeDCamera.modified_rgbas = _modified_graded
 
+# ---------------------------------------------------------------------------
+# Drawing: the same Cairo calls as Manim, with less Python per frame.
+# ---------------------------------------------------------------------------
+
+_set_path = Camera.set_cairo_context_path
+_set_pixels = Camera.set_pixel_array
+if not getattr(_set_path, "__eduvids_fast__", False):
+
+    def _fast_path(self, ctx, vmobject):
+        """Camera.set_cairo_context_path with the subpath breaks found in one
+        numpy pass instead of one Python comparison per curve."""
+        points = self.transform_points_pre_display(vmobject, vmobject.points)
+        if len(points) == 0:
+            return self
+        if vmobject.n_points_per_cubic_curve != 4 or len(points) % 4:
+            return _set_path(self, ctx, vmobject)
+        # VMobject.consider_points_equals_2d(points[n - 1], points[n]) at every
+        # curve boundary n; a subpath starts wherever the two differ.
+        atol = vmobject.tolerance_for_point_equality
+        ends, starts = points[3:-1:4], points[4::4]
+        joined = (np.abs(ends[:, 0] - starts[:, 0]) <= atol + 1e-5 * np.abs(starts[:, 0])) & (
+            np.abs(ends[:, 1] - starts[:, 1]) <= atol + 1e-5 * np.abs(starts[:, 1])
+        )
+        breaks = [0, *((np.flatnonzero(~joined) + 1) * 4).tolist(), len(points)]
+        xy = points[:, :2].tolist()
+        ctx.new_path()
+        for first, end in zip(breaks[:-1], breaks[1:]):
+            ctx.new_sub_path()
+            ctx.move_to(*xy[first])
+            for k in range(first, end, 4):
+                ctx.curve_to(*xy[k + 1], *xy[k + 2], *xy[k + 3])
+            if vmobject.consider_points_equals_2d(points[first], points[end - 1]):
+                ctx.close_path()
+        return self
+
+    def _fast_pixels(self, pixel_array, convert_from_floats=False):
+        # Manim copies the frame into a new array, then into the canvas.
+        current = getattr(self, "pixel_array", None)
+        if (
+            not convert_from_floats and isinstance(pixel_array, np.ndarray)
+            and current is not None and current.shape == pixel_array.shape
+        ):
+            current[:, :, :] = pixel_array
+            return None
+        return _set_pixels(self, pixel_array, convert_from_floats)
+
+    _fast_path.__eduvids_fast__ = True
+    Camera.set_cairo_context_path = _fast_path
+    Camera.set_pixel_array = _fast_pixels
+
 # Canvas: flat BG (config.background_color), as in 3Blue1Brown and Welch Labs
 # videos. Strokes are drawn as-is, without halos.
 
