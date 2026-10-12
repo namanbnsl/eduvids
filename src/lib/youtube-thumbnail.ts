@@ -51,11 +51,11 @@ export const FRAME_CANDIDATES = 2;
 const THUMBNAIL_DIR = join(process.cwd(), "src/lib/thumbnail");
 
 export const THUMBNAIL_FONT_FILES = [
-  "InterTight-SemiBold.ttf",
-  "InterTight-SemiBoldItalic.ttf",
-  "InterTight-Medium.ttf",
-  "InterTight-MediumItalic.ttf",
-  "FiraMath-Regular.otf",
+  "cmunrm.otf",
+  "cmunti.otf",
+  "cmunbx.otf",
+  "cmunbi.otf",
+  "latinmodern-math.otf",
 ] as const;
 
 function stableHash(value: string): number {
@@ -138,9 +138,17 @@ export function buildThumbnailSpecs({
   return titles.candidates.map((title, index) => {
     const concept = titles.thumbnailConcepts?.[index];
     // Without a concept there is no vetted copy: show the visual on its own.
-    const drawn = concept?.visual ?? {
-      type: inferVisualType(`${title} ${topic}`),
-    };
+    // An equation hero needs valid notation; otherwise draw what the title is
+    // about rather than an unrelated formula.
+    const drawn =
+      concept?.visual &&
+      !(concept.visual.type === "equation" && !concept.visual.notation)
+        ? concept.visual
+        : {
+            type: inferVisualType(
+              `${concept?.visualConcept ?? ""} ${title} ${topic}`,
+            ),
+          };
     const frame = index < FRAME_CANDIDATES ? frames[index] : undefined;
     return {
       title,

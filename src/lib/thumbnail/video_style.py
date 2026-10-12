@@ -5,15 +5,18 @@ imports (see ``src/lib/video-style.ts``), so the video shares its thumbnail's
 canvas, typography and palette whatever the model wrote:
 
 - Canvas ``BG`` and ink ``INK``; pure white and pure black are graded to them.
-- ``Text`` is set in Inter Tight (SemiBold for headings, Medium for body).
-- ``MathTex``/``Tex`` compile with XeLaTeX: Inter Tight letters and digits,
-  Fira Math symbols, as on the thumbnails. A formula that fails to compile
-  falls back to Manim's default template rather than failing the render.
+- ``Text`` is set in CMU Serif, the Computer Modern face 3Blue1Brown and
+  Welch Labs use, so words match the math.
+- ``MathTex``/``Tex`` compile with XeLaTeX in Computer Modern (CMU Serif
+  letters, Latin Modern Math symbols), as on the thumbnails. A formula that
+  fails to compile falls back to Manim's default template (also Computer
+  Modern) rather than failing the render.
 - ``PRIMARY``/``ACCENT`` are the video's thumbnail palette; ``SECONDARY`` and
   ``TERTIARY`` support it. Manim's named colours are retuned to the same
   family, so ``BLUE`` or ``YELLOW`` still land on the house tones.
-- The canvas is a soft vignette; crisp curves, dots and vectors have restrained
-  glow; 3D surfaces have smooth material lighting, without a patch wireframe.
+- A flat near-black canvas with crisp, unadorned strokes, in the manner of
+  3Blue1Brown and Welch Labs: no vignette, no glow, no specular shine. 3D
+  surfaces have matte, smooth shading without a patch wireframe.
 - Explicit responsive layouts reserve title, hero, formula and caption lanes;
   the fallback guard handles nested labels and projected 3D screen overlays.
 - No block-capital tags: ``header()`` ignores eyebrows and all-caps copy is
@@ -35,20 +38,23 @@ from manim.mobject.text import tex_mobject
 
 PALETTE_NAME = "__EDUVIDS_PALETTE__"
 FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "eduvids-fonts")
-FONT = "Inter Tight"
+FONT = "CMU Serif"
 
-BG = "#0E0F11"
+BG = "#0A0A0A"
 INK = "#EDEAE4"
 MUTED = "#8A8F98"
 
+# Classic mathematical-animation tones (3Blue1Brown's BLUE_C, TEAL_C, RED_C,
+# GREEN_C, PURPLE_B; Welch Labs' yellow): bright enough to read on black,
+# muted enough to stay calm.
 HUES = {
-    "teal": "#2DD4BF",
-    "azure": "#4EA8FF",
-    "violet": "#9B7BFF",
-    "rose": "#FF5FA2",
-    "amber": "#FFC233",
-    "coral": "#FF6B5A",
-    "green": "#7BE07B",
+    "teal": "#5CD0B3",
+    "azure": "#58C4DD",
+    "violet": "#B189C6",
+    "rose": "#E07A9F",
+    "amber": "#FFD35A",
+    "coral": "#FC6255",
+    "green": "#83C167",
 }
 
 # (primary, accent, secondary, tertiary). Supporting hues are chosen to stay
@@ -173,7 +179,7 @@ if not getattr(Camera.get_fill_rgbas, "__eduvids_graded__", False):
     def _lit(camera, face, rgbas):
         # Manim's lighting adds up to half a unit of white toward the light,
         # flattening a height gradient to one pale tone. House surfaces get a
-        # two-sided Lambert term that keeps the hue, plus a soft highlight.
+        # two-sided Lambert term that keeps the hue.
         from manim.mobject.three_d.three_d_utils import get_3d_vmob_unit_normal
 
         points = face.points
@@ -190,121 +196,24 @@ if not getattr(Camera.get_fill_rgbas, "__eduvids_graded__", False):
             n = normals[min(i, len(normals) - 1)]
             n = n / (np.linalg.norm(n) or 1)
             facing = abs(float(np.dot(n, to_light)))
-            # Restrained diffuse light retains the colour even at the peaks.
-            lit[i, :3] = np.clip(lit[i, :3] * (0.62 + 0.38 * facing) + 0.07 * facing ** 24, 0, 1)
+            # Matte diffuse light only: no specular shine, colour kept at peaks.
+            lit[i, :3] = np.clip(lit[i, :3] * (0.62 + 0.38 * facing), 0, 1)
         return lit
 
     _modified_graded.__eduvids_graded__ = True
     ThreeDCamera.modified_rgbas = _modified_graded
 
-# Canvas: a soft radial vignette around BG instead of a flat fill, lifting
-# the centre of the frame where the content sits. Lightly dithered so the
-# gradient does not band after encoding. Transparent cameras (the watermark)
-# keep their empty background.
-VIGNETTE_CENTER = "#15171C"
-VIGNETTE_EDGE = "#08090B"
-_vignettes = {}
-
-
-def vignette(width, height):
-    key = (width, height)
-    if key not in _vignettes:
-        ys, xs = np.mgrid[0:height, 0:width].astype(np.float32)
-        nx = (xs - width / 2) / (width / 2)
-        ny = (ys - height * 0.46) / (height / 2)
-        r = np.clip(np.sqrt(nx * nx * 0.62 + ny * ny * 0.9), 0, 1.4) / 1.4
-        t = (r * r * (3 - 2 * r))[:, :, None]
-        center = _rgb(VIGNETTE_CENTER).astype(np.float32) * 255
-        edge = _rgb(VIGNETTE_EDGE).astype(np.float32) * 255
-        noise = np.random.default_rng(7).random((height, width, 1), dtype=np.float32) - 0.5
-        rgb = np.clip(center * (1 - t) + edge * t + noise, 0, 255)
-        _vignettes[key] = rgb.astype(np.uint8)
-    return _vignettes[key]
-
-
-_init_background = Camera.init_background
-if not getattr(_init_background, "__eduvids_vignette__", False):
-
-    def _vignette_background(self):
-        _init_background(self)
-        if self.background_image is None and self.background_opacity >= 1 and self.n_channels == 4:
-            self.background[:, :, :3] = vignette(self.pixel_width, self.pixel_height)
-
-    _vignette_background.__eduvids_vignette__ = True
-    Camera.init_background = _vignette_background
-
-# Glow: curves, traced paths, dots and vectors are drawn over two soft
-# halos of their own colour, so the lines the narration follows read as
-# light on the dark canvas. glow(mob) opts anything else in; glow(mob, False)
-# opts out.
-_GLOW_LAYERS = ((3.0, 0.045), (1.8, 0.09))
-_GLOW_DOT_LAYERS = ((0.24, 0.07), (0.15, 0.12))  # frame units around a dot
-
-
-def _glow_types():
-    types = [manim.ParametricFunction, manim.TracedPath, manim.Dot]
-    for name in ("ImplicitFunction", "Vector"):
-        if hasattr(manim, name):
-            types.append(getattr(manim, name))
-    return tuple(types)
-
-
-_GLOWING = _glow_types()
-
-
-def _glows(vmobject):
-    flag = getattr(vmobject, "_eduvids_glow", None)
-    if flag is not None:
-        return flag
-    return isinstance(vmobject, _GLOWING)
+# Canvas: flat BG (config.background_color), as in 3Blue1Brown and Welch Labs
+# videos. Strokes are drawn as-is, without halos.
 
 
 def glow(mob, on=True):
-    """Draw ``mob`` (and its parts) with the house glow, or without it."""
-    for part in mob.get_family():
-        part._eduvids_glow = on
+    """No-op kept for scripts written against the earlier glowing style."""
     return mob
 
 
-_apply_stroke = Camera.apply_stroke
-if not getattr(_apply_stroke, "__eduvids_glow__", False):
-    import cairo
-
-    def _glowing_stroke(self, ctx, vmobject, background=False):
-        if not background:
-            try:
-                if _glows(vmobject):
-                    _draw_glow(self, ctx, vmobject)
-            except Exception:  # glow is decoration; never fail a frame for it
-                pass
-        return _apply_stroke(self, ctx, vmobject, background)
-
-    def _draw_glow(self, ctx, vmobject):
-        width = vmobject.get_stroke_width()
-        if width > 0 and vmobject.get_stroke_opacity() > 0.05:
-            rgbas = np.array(self.get_stroke_rgbas(vmobject), dtype=float)
-            layers = [(width * factor * self.cairo_line_width_multiple, alpha) for factor, alpha in _GLOW_LAYERS]
-        elif isinstance(vmobject, manim.Dot) and vmobject.get_fill_opacity() > 0.05:
-            rgbas = np.array(self.get_fill_rgbas(vmobject), dtype=float)
-            layers = list(_GLOW_DOT_LAYERS)
-        else:
-            return
-        ctx.save()  # the path survives; cap, join and colour are restored
-        ctx.set_line_cap(cairo.LINE_CAP_ROUND)
-        ctx.set_line_join(cairo.LINE_JOIN_ROUND)
-        for line_width, alpha in layers:
-            halo = rgbas.copy()
-            halo[:, 3] *= alpha
-            self.set_cairo_context_color(ctx, halo, vmobject)
-            ctx.set_line_width(line_width)
-            ctx.stroke_preserve()
-        ctx.restore()
-
-    _glowing_stroke.__eduvids_glow__ = True
-    Camera.apply_stroke = _glowing_stroke
-
 # ---------------------------------------------------------------------------
-# Text: Inter Tight. Small sizes are set large and scaled down, because Pango
+# Text: CMU Serif. Small sizes are set large and scaled down, because Pango
 # hints small text onto a coarse grid and the letter spacing goes uneven.
 # ---------------------------------------------------------------------------
 
@@ -312,7 +221,7 @@ try:
     from manimpango import register_font
 
     for _name in sorted(os.listdir(FONT_DIR)):
-        if _name.startswith("InterTight-"):
+        if _name.startswith("cmun"):
             register_font(os.path.join(FONT_DIR, _name))
 except (ImportError, OSError):
     pass
@@ -378,11 +287,9 @@ def _house_text(base):
             kwargs["font"] = FONT
             size = kwargs.get("font_size") or manim.DEFAULT_FONT_SIZE
             weight = str(kwargs.get("weight") or "").upper()
-            # Only SemiBold and Medium ship, so map every request onto them.
-            if weight in _HEAVY or (not weight and size >= 40):
-                kwargs["weight"] = "SEMIBOLD"
-            else:
-                kwargs["weight"] = "MEDIUM"
+            # CMU Serif ships Regular and Bold. Like 3Blue1Brown, headings stay
+            # regular; bold only when the script asks for it.
+            kwargs["weight"] = "BOLD" if weight in _HEAVY else "NORMAL"
             kwargs.setdefault("color", INK)
             scale = _SMALL_TEXT_SCALE if size < _SMALL_TEXT else 1
             kwargs["font_size"] = size / scale
@@ -444,14 +351,14 @@ def balanced_text(text, font_size=48, max_width=None, max_lines=3, **kwargs):
 
 
 # ---------------------------------------------------------------------------
-# Math: the thumbnails' XeLaTeX setup, at the Medium weight used for labels.
+# Math: the thumbnails' XeLaTeX setup in Computer Modern.
 # ---------------------------------------------------------------------------
 
-_upright = "InterTight-Medium.ttf"
-_italic = "InterTight-MediumItalic.ttf"
+_upright = "cmunrm.otf"
+_italic = "cmunti.otf"
 _path = FONT_DIR.rstrip("/") + "/"
-# Inter set by Pango is larger than TeX's 10pt at the same font_size; set TeX
-# to match, so Text and MathTex share one type scale and mixed labels line up.
+# CMU Serif set by Pango is larger than TeX's 10pt at the same font_size; set
+# TeX to match, so Text and MathTex share one type scale and labels line up.
 TEX_POINT_SIZE = 13.4
 _size_command = rf"\fontsize{{{TEX_POINT_SIZE}}}{{{TEX_POINT_SIZE * 1.2:.2f}}}\selectfont"
 HOUSE_TEX_TEMPLATE = TexTemplate(
@@ -462,14 +369,8 @@ HOUSE_TEX_TEMPLATE.add_to_preamble("\n".join([
     r"\usepackage{unicode-math}",
     r"\usepackage{xcolor}",
     r"\defaultfontfeatures{Kerning=On}",
-    rf"\setmainfont{{{_upright}}}[Path={_path}, ItalicFont={_italic}, BoldFont=InterTight-SemiBold.ttf, BoldItalicFont=InterTight-SemiBoldItalic.ttf]",
-    rf"\setmathfont{{FiraMath-Regular.otf}}[Path={_path}]",
-    rf"\setmathfont{{{_italic}}}[Path={_path}, range={{it/{{latin,Latin,greek,Greek}}}}]",
-    rf"\setmathfont{{{_upright}}}[Path={_path}, range={{up/{{num,latin,Latin,greek,Greek}},bfup/{{num,latin,Latin}}}}]",
-    rf'\setmathfont{{{_upright}}}[Path={_path}, range={{"002B,"003D,"2212,"00D7,"003C,"003E,"00B1}}]',
-    # Inter's operators carry their own side bearings; tighten TeX's math spacing to match.
-    r"\medmuskip=2.5mu plus 1mu minus 1mu",
-    r"\thickmuskip=3.5mu plus 2mu",
+    rf"\setmainfont{{{_upright}}}[Path={_path}, ItalicFont={_italic}, BoldFont=cmunbx.otf, BoldItalicFont=cmunbi.otf]",
+    rf"\setmathfont{{latinmodern-math.otf}}[Path={_path}]",
 ]))
 _STOCK_TEX_TEMPLATE = TexTemplate()
 _FALLBACK_TEX_TEMPLATE = TexTemplate(post_doc_commands=_size_command)
@@ -513,32 +414,6 @@ def _is_stock(template):
     )
 
 
-_PRIMES = {1: "\u2032", 2: "\u2033", 3: "\u2033\u2032"}
-# \text{...} is prose, and Manim 0.20 wraps formulas in \special{...} markers
-# whose quotes must survive untouched.
-_TEXT_GROUP = re.compile(r"\\(?:text|special)\{[^{}]*\}")
-
-
-def _full_size_primes(expression):
-    """f'(x) with Inter's own prime at full size; TeX's superscript prime is
-    tiny and detached in this font pairing."""
-    pieces = []
-    last = 0
-    for match in _TEXT_GROUP.finditer(expression):
-        pieces.append((expression[last:match.start()], True))
-        pieces.append((match.group(0), False))
-        last = match.end()
-    pieces.append((expression[last:], True))
-    return "".join(
-        re.sub(
-            r"'{1,3}",
-            lambda m: r"\mkern2mu\text{" + _PRIMES[len(m.group(0))] + r"}\mkern-1mu",
-            piece,
-        ) if is_math else piece
-        for piece, is_math in pieces
-    )
-
-
 def house_tex_job(expression, environment=None, tex_template=None):
     """The (expression, environment, template) Manim will actually compile.
 
@@ -547,8 +422,7 @@ def house_tex_job(expression, environment=None, tex_template=None):
     """
     if not (_is_stock(tex_template) or tex_template is HOUSE_TEX_TEMPLATE):
         return None
-    if environment == "align*":
-        expression = _full_size_primes(expression)
+    # Computer Modern's own superscript prime is the classic f'(x): no rewrite.
     return expression, environment, HOUSE_TEX_TEMPLATE
 
 
@@ -742,8 +616,7 @@ def place_3d_in_content(scene, mob, above=None, below=None, orbit=0.0, fill=0.88
 
 
 # ---------------------------------------------------------------------------
-# 3D: surfaces are lit by height, with continuous normals and restrained
-# highlights. Same-colour seams close Cairo cracks without a patch grid.
+# 3D: surfaces are shaded by height, matte, with continuous normals. Same-colour seams close Cairo cracks without a patch grid.
 # A surface the script colours itself (a checkerboard
 # of distinct colours, set_fill_by_value) keeps the script's colours.
 # ---------------------------------------------------------------------------
@@ -755,7 +628,7 @@ def shade_surface(surface, color=None, opacity=None, mesh=False):
         return surface
     base = ManimColor(color) if color is not None else PRIMARY
     base_hex = base.to_hex()
-    low, high = _mix(base_hex, BG, 0.40), _mix(base_hex, INK, 0.24)
+    low, high = _mix(base_hex, BG, 0.40), _mix(base_hex, INK, 0.12)
     heights = np.array([face.get_center()[2] for face in faces])
     span = heights.max() - heights.min()
     flat = span < 1e-6
@@ -859,13 +732,13 @@ if not getattr(_surface_init, "__eduvids_shaded__", False):
     manim.Surface.set_fill_by_checkerboard = _shaded_checkerboard
 
 # ---------------------------------------------------------------------------
-# Motion: entrances with a little overshoot, so reveals land with energy.
+# Motion: calm, smooth entrances, as in 3Blue1Brown videos (no bounce).
 # ---------------------------------------------------------------------------
 
 
 def pop_in(*mobjects, scale=0.6, run_time=0.7, **kwargs):
-    """Grow in from ``scale`` with a slight overshoot: a reveal that lands."""
-    kwargs.setdefault("rate_func", manim.rate_functions.ease_out_back)
+    """Fade and grow in from ``scale`` on a smooth curve."""
+    kwargs.setdefault("rate_func", manim.rate_functions.smooth)
     anims = [manim.FadeIn(mob, scale=scale, run_time=run_time, **kwargs) for mob in mobjects]
     return anims[0] if len(anims) == 1 else manim.AnimationGroup(*anims, lag_ratio=0.12)
 

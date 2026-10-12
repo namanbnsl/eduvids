@@ -13,6 +13,7 @@ import {
   buildPreviousVideoComment,
   buildYouTubeDescription,
   type RelatedYouTubeVideo,
+  type YouTubeChapter,
 } from "@/lib/youtube-metadata";
 import { jobStore, artifactStore } from "@/lib/job-store";
 import { getConvexClient, api } from "@/lib/convex-server";
@@ -32,6 +33,9 @@ type YouTubeUploadPayload = {
   userId: string;
   variant?: VideoVariant;
   thumbnailUrl?: string;
+  hashtags?: string[];
+  tags?: string[];
+  chapters?: YouTubeChapter[];
 };
 
 export const { POST } = serve<YouTubeUploadPayload>(
@@ -44,16 +48,26 @@ export const { POST } = serve<YouTubeUploadPayload>(
       jobId,
       variant,
       thumbnailUrl,
+      hashtags,
+      tags: topicTags,
+      chapters,
     } = context.requestPayload;
 
     const isShort = variant === "short";
-    const tags = [
-      "education",
-      "manim",
+    // Specific search phrases first; YouTube caps the combined tag text at 500
+    // characters.
+    const tags: string[] = [];
+    for (const tag of [
+      ...(topicTags ?? []),
       "math",
       "science",
-      ...(isShort ? ["shorts", "vertical"] : []),
-    ];
+      "animation",
+      ...(isShort ? ["shorts"] : []),
+    ]) {
+      if (tags.includes(tag)) continue;
+      if ([...tags, tag].join(",").length > 450) break;
+      tags.push(tag);
+    }
     const key = jobId ?? context.workflowRunId;
 
     const previousVideo = await context.run(
@@ -86,6 +100,8 @@ export const { POST } = serve<YouTubeUploadPayload>(
       salesCopy: description,
       topic: prompt,
       previousVideo: previousVideo ?? undefined,
+      chapters,
+      hashtags,
     });
 
     const youtubeResult = await context.run("upload-to-youtube", async () => {

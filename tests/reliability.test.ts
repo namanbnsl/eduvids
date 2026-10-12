@@ -181,6 +181,15 @@ test("postprocessing joins real scene fixtures, watermarks, and validates an MP4
       join(folder, "final.mp4"),
     ]);
     assert.ok(Number(probe.stdout) >= 0.4);
+    // Per-scene lengths are recorded for YouTube chapters, in scene order.
+    const timings = JSON.parse(
+      await readFile(join(folder, "scene_durations.json"), "utf8"),
+    ) as { scene: string; seconds: number }[];
+    assert.deepEqual(
+      timings.map(({ scene }) => scene),
+      prepared.sceneNames,
+    );
+    assert.ok(timings.every(({ seconds }) => seconds > 0.1));
     await rm(`${outputs}/Second.mp4`);
     await assert.rejects(
       exec("python3", [script]),
@@ -740,6 +749,22 @@ test("thumbnail specs share one palette per video and keep each title's copy", (
   assert.equal(specs[0].headline, "The slope is the height");
   assert.equal(specs[2].visual.type, "equation");
 
+  // An equation hero without usable notation falls back to the topic's visual
+  // instead of letting the renderer substitute an unrelated formula.
+  const noNotation = buildThumbnailSpecs({
+    titles: {
+      ...titles,
+      thumbnailConcepts: [
+        titles.thumbnailConcepts[0],
+        titles.thumbnailConcepts[1],
+        { ...titles.thumbnailConcepts[2], visual: { type: "equation" } },
+      ],
+    },
+    topic: "Bayes theorem and medical tests",
+    designSeed: "job-123",
+  });
+  assert.equal(noNotation[2].visual.type, "probability");
+
   const bare = buildThumbnailSpecs({
     titles: {
       selected: thumbnailCandidates[0],
@@ -817,6 +842,25 @@ test("thumbnail renderer produces verified 1280x720 PNGs and recovers in safe mo
           xRange: [-5, -1],
         },
       },
+      {
+        // Too wide beside a headline: safe mode draws a neutral visual.
+        palette: "azure-coral",
+        eyebrow: "Probability",
+        headline: "Base rates decide",
+        accent: "Base rates",
+        visual: {
+          type: "equation",
+          notation: "P(A\\mid B)=\\frac{P(B\\mid A)\\,P(A)}{\\hl{P(B)}}",
+        },
+      },
+      {
+        // Disallowed notation is never replaced by an unrelated formula.
+        palette: "azure-coral",
+        eyebrow: "Probability",
+        headline: "Base rates decide",
+        accent: "Base rates",
+        visual: { type: "equation", notation: "\\input{x}" },
+      },
     ];
     await writeFile(join(folder, "specs.json"), JSON.stringify(specs));
     await exec(
@@ -845,7 +889,7 @@ test("thumbnail renderer produces verified 1280x720 PNGs and recovers in safe mo
         report: { mode: string; warnings: string[] };
       }
     >;
-    for (const index of ["0", "1", "2"]) {
+    for (const index of ["0", "1", "2", "3", "4"]) {
       assert.equal(results[index]?.ok, true, `candidate ${index} rendered`);
       const png = await readFile(results[index]!.path);
       assert.equal(png.readUInt32BE(16), 1280);
@@ -854,6 +898,14 @@ test("thumbnail renderer produces verified 1280x720 PNGs and recovers in safe mo
     assert.equal(results["0"]!.report.mode, "full");
     assert.equal(results["1"]!.report.mode, "full");
     assert.equal(results["2"]!.report.mode, "safe");
+    for (const index of ["3", "4"]) {
+      const report = results[index]!.report as {
+        mode: string;
+        visual?: string;
+      };
+      assert.equal(report.mode, "safe");
+      assert.equal(report.visual, "geometry");
+    }
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
@@ -938,7 +990,7 @@ test("sanitizing Python preserves comparisons and text containing angle brackets
   const sanitized = sanitizeManimScript(script);
   assert.ok(sanitized.includes('"<hello>"'));
   assert.ok(sanitized.includes("1 < x.width and x.width > 0"));
-  assert.match(sanitized, /config\.background_color = "#0E0F11"/);
+  assert.match(sanitized, /config\.background_color = "#0A0A0A"/);
 });
 
 test("model cancellation aborts the provider request", async () => {
@@ -997,7 +1049,7 @@ class Scene01(VoiceoverScene):
   assert.equal(lines[marker + 1], "from eduvids_style import *");
   assert.ok(marker > lines.indexOf(")"), "after the parenthesised import");
   assert.ok(marker < lines.findIndex((line) => line.startsWith("class ")));
-  assert.match(styled, /config\.background_color = "#0E0F11"/);
+  assert.match(styled, /config\.background_color = "#0A0A0A"/);
   assert.doesNotMatch(styled, /#050505/);
   assert.equal(applyVideoStyle(styled), styled);
 
@@ -1104,10 +1156,10 @@ print(json.dumps({
       timeout: 240_000,
     });
     const result = JSON.parse(stdout.trim().split("\n").pop()!);
-    assert.equal(result.font, "Inter Tight");
+    assert.equal(result.font, "CMU Serif");
     assert.ok(Math.abs(result.math / result.text - 1) < 0.02, stdout);
-    assert.equal(result.blue.toUpperCase(), "#4EA8FF");
-    assert.equal(result.primary.toUpperCase(), "#4EA8FF");
+    assert.equal(result.blue.toUpperCase(), "#58C4DD");
+    assert.equal(result.primary.toUpperCase(), "#58C4DD");
     assert.ok(result.long <= result.limit + 1e-6);
     // No block-capital tags: all-caps copy is set in sentence case, acronyms
     // survive, and header() drops the eyebrow.

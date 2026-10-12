@@ -178,6 +178,9 @@ export function renderJobCommand(prepared: PreparedSandboxState): string[] {
   ];
 }
 
+// Written next to the script by postprocessing (the workdir is /home/user).
+export const SCENE_DURATIONS_PATH = "/home/user/scene_durations.json";
+
 // Runs entirely in E2B; neither ffmpeg nor its retries occupy a Vercel request.
 export function buildPostprocessScript(prepared: PreparedSandboxState): string {
   return `import json, pathlib, subprocess, math
@@ -213,12 +216,17 @@ def video_duration(path):
         value = duration(path)
     return value
 soundtrack = workdir / 'soundtrack.pcm'
+timings = []
 with open(soundtrack, 'wb') as out:
-    for path in paths:
-        frames = round(video_duration(path) * RATE)
+    for scene, path in zip(settings['scenes'], paths):
+        seconds = video_duration(path)
+        timings.append({'scene': scene, 'seconds': seconds})
+        frames = round(seconds * RATE)
         pcm = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(path), '-vn', '-ac', str(CHANNELS), '-ar', str(RATE), '-f', 's16le', '-'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=900).stdout
         size = frames * CHANNELS * WIDTH
         out.write(pcm[:size] + bytes(max(0, size - len(pcm))))
+# Scene lengths, matching the final cut, become the YouTube chapters.
+(workdir / 'scene_durations.json').write_text(json.dumps(timings))
 video = paths[0]
 if len(paths) > 1:
     listing = workdir / 'scenes.txt'
@@ -263,4 +271,23 @@ export async function downloadVideo(sandboxId: string): Promise<string> {
 
 export async function cleanupSandbox(sandboxId: string): Promise<void> {
   await Sandbox.kill(sandboxId, { requestTimeoutMs: REQUEST_TIMEOUT_MS });
+}
+
+export type SceneDuration = { scene: string; seconds: number };
+
+export async function readSceneDurations(
+  sandboxId: string,
+): Promise<SceneDuration[]> {
+  const sandbox = await connectSandbox(sandboxId);
+  const parsed = JSON.parse(
+    await sandbox.files.read(SCENE_DURATIONS_PATH),
+  ) as unknown;
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter(
+    (entry): entry is SceneDuration =>
+      typeof entry?.scene === "string" &&
+      typeof entry?.seconds === "number" &&
+      Number.isFinite(entry.seconds) &&
+      entry.seconds > 0,
+  );
 }
