@@ -1336,49 +1336,117 @@ if WATERMARK and WATERMARK != "__EDUVIDS_" + "WATERMARK__":
     SceneFileWriter.write_frame = _write_marked
 
 # ---------------------------------------------------------------------------
+# Errors: an exception raised while an animation plays (in an updater, an
+# always_redraw function, an interpolation) left Manim's encoder thread waiting
+# for frames forever, so the process never exited and the render job ran into
+# its 30-minute timeout instead of reporting the error for repair. Let the
+# thread finish so the error surfaces at once.
+# ---------------------------------------------------------------------------
+
+from manim.renderer.cairo_renderer import CairoRenderer as _CairoRenderer
+
+_renderer_play = _CairoRenderer.play
+if not getattr(_renderer_play, "__eduvids_release__", False):
+
+    def _play_releasing_writer(self, scene, *args, **kwargs):
+        try:
+            return _renderer_play(self, scene, *args, **kwargs)
+        except BaseException:
+            writer = getattr(self, "file_writer", None)
+            thread = getattr(writer, "writer_thread", None)
+            if thread is not None and thread.is_alive():
+                writer.queue.put((-1, None))
+            raise
+
+    _play_releasing_writer.__eduvids_release__ = True
+    _CairoRenderer.play = _play_releasing_writer
+
+# ---------------------------------------------------------------------------
 # Segments: the render driver can split one long scene across processes.
-# EDUVIDS_SEGMENT="start,end" renders only the animations that begin in that
-# span of the scene's timeline and fast-forwards through the rest, so the
-# segments' movies concatenate into the full scene, frame for frame.
+# EDUVIDS_SEGMENT="start,end" (seconds) renders only the scene's frames in
+# that span, counted the way a whole render counts them, and fast-forwards
+# through the rest. Every process numbers frames identically, so the segments
+# partition the whole render's frames, even inside one long animation (a
+# camera move), and their movies concatenate into the full scene.
 # ---------------------------------------------------------------------------
 
 _SEGMENT = os.environ.get("EDUVIDS_SEGMENT")
 if _SEGMENT:
     from manim.renderer.cairo_renderer import CairoRenderer
     from manim.utils.exceptions import EndSceneEarlyException
+    from tqdm import tqdm
 
-    _segment_start, _segment_end = (float(value) for value in _SEGMENT.split(","))
-    _cairo_play = CairoRenderer.play
+    _segment_first, _segment_last = (round(float(value) * config.frame_rate) for value in _SEGMENT.split(","))
+
+    def _frame_count(scene):
+        """Frames this play adds to a whole render (see CairoRenderer.play)."""
+        dt = 1 / config.frame_rate
+        if scene.is_current_animation_frozen_frame():
+            return int(scene.duration / dt)
+        return len(np.arange(0, scene.duration, dt))
+
     _cairo_skipping = CairoRenderer.update_skipping_status
+    _cairo_play = CairoRenderer.play
+    _cairo_freeze = CairoRenderer.freeze_current_frame
+    _compile = manim.Scene.compile_animation_data
+    _progression = manim.Scene._get_animation_time_progression
 
     def _segment_skipping(self):
         _cairo_skipping(self)
-        # The clock sums animation run times, which every process computes
-        # identically whether it renders an animation or skips it.
-        clock = getattr(self, "_eduvids_clock", 0.0)
-        if clock >= _segment_end:
+        if getattr(self, "_eduvids_frame", 0) >= _segment_last:
             self.skip_animations = True
             raise EndSceneEarlyException()
-        if clock < _segment_start:
-            self.skip_animations = True
+
+    def _segment_compile(self, *args, **kwargs):
+        result = _compile(self, *args, **kwargs)
+        start = getattr(self.renderer, "_eduvids_frame", 0)
+        self.renderer._eduvids_span = (start, start + _frame_count(self))
+        if start + _frame_count(self) <= _segment_first:
+            self.renderer.skip_animations = True  # wholly before the segment
+        return result
+
+    def _overlap(renderer, count):
+        start, _ = renderer._eduvids_span
+        return max(0, _segment_first - start), min(count, _segment_last - start)
+
+    def _segment_progression(self, animations, duration):
+        times = _progression(self, animations, duration)
+        if self.renderer.skip_animations:
+            return times
+        low, high = _overlap(self.renderer, len(times.iterable))
+        kept = list(times.iterable)[low:high]
+        times.close()
+        return tqdm(kept, disable=True)
+
+    def _segment_freeze(self, duration):
+        low, high = _overlap(self, int(duration / (1 / config.frame_rate)))
+        if high > low:
+            self.add_frame(self.get_frame(), num_frames=high - low)
 
     def _segment_play(self, scene, *args, **kwargs):
         before = self.time
         _cairo_play(self, scene, *args, **kwargs)
-        self._eduvids_clock = getattr(self, "_eduvids_clock", 0.0) + scene.duration
-        if self.skip_animations:
-            # Skipping adds the exact run time; rendering adds whole frames.
-            # Advance as rendering would, so narration added later (and the
-            # last segment's soundtrack) lands on the full render's frames.
-            dt = 1 / config.frame_rate
-            if scene.is_current_animation_frozen_frame():
-                frames = int(scene.duration / dt)
-            else:
-                frames = len(np.arange(0, scene.duration, dt))
-            self.time = before + frames * dt
+        start, end = self._eduvids_span
+        self._eduvids_frame = end
+        # As far as a whole render would have advanced, so narration added
+        # later (and the soundtrack) lands on the same frames.
+        self.time = before + (end - start) / config.frame_rate
 
+    _update_frame = CairoRenderer.update_frame
+
+    def _segment_update_frame(self, *args, **kwargs):
+        # A skipped animation writes no frames, so drawing its static
+        # background or held frame (a full 3D render each) is wasted.
+        if self.skip_animations:
+            return None
+        return _update_frame(self, *args, **kwargs)
+
+    CairoRenderer.update_frame = _segment_update_frame
     CairoRenderer.update_skipping_status = _segment_skipping
     CairoRenderer.play = _segment_play
+    CairoRenderer.freeze_current_frame = _segment_freeze
+    manim.Scene.compile_animation_data = _segment_compile
+    manim.Scene._get_animation_time_progression = _segment_progression
 
 # Export the neutrals as colours too, so they work with interpolate_color().
 INK, MUTED, BG = ManimColor(INK), ManimColor(MUTED), ManimColor(BG)

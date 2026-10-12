@@ -1192,6 +1192,52 @@ test("house encoding supports legacy FFmpeg and PyAV Manim writers", async () =>
   ]);
 });
 
+test("an error raised during an animation ends the render at once instead of hanging", async (t) => {
+  if (!(await thumbnailToolchainAvailable())) {
+    t.skip("manim and xelatex are not installed");
+    return;
+  }
+  const folder = await mkdtemp(join(tmpdir(), "eduvids-error-"));
+  try {
+    const assets = await loadVideoStyleAssets("teal-amber");
+    await mkdir(join(folder, "eduvids-fonts"));
+    await writeFile(join(folder, "eduvids_style.py"), assets.module);
+    for (const { name, data } of assets.fonts)
+      await writeFile(join(folder, "eduvids-fonts", name), data);
+    await writeFile(
+      join(folder, "boom.py"),
+      `from manim import *
+from eduvids_style import *
+class Boom(Scene):
+    def construct(self):
+        dot = Dot()
+        def fail(mob, dt):
+            if self.renderer.time > 0.5:
+                raise ValueError("script error mid-animation")
+        dot.add_updater(fail)
+        self.add(dot)
+        self.play(dot.animate.shift(RIGHT), run_time=2)
+`,
+    );
+    const started = Date.now();
+    // Manim's encoder thread used to wait for frames forever, so the process
+    // never exited and the render job ran into its 30-minute timeout.
+    await assert.rejects(
+      exec(
+        "python3",
+        ["-m", "manim", "boom.py", "Boom", "--disable_caching", "-ql"],
+        { cwd: folder, timeout: 120_000, killSignal: "SIGKILL" },
+      ),
+      (error: { stderr?: string; stdout?: string; killed?: boolean }) =>
+        !error.killed &&
+        /script error mid-animation/.test(`${error.stdout}${error.stderr}`),
+    );
+    assert.ok(Date.now() - started < 60_000);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
 test("a scene split into timeline segments joins into the same movie as a whole render", async (t) => {
   try {
     await exec("python3", ["-c", "import manim, manim_voiceover"]);

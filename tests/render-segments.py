@@ -61,9 +61,20 @@ class Split(VoiceoverScene):
 FLAGS = ["--disable_caching", "--format=mp4", "-ql"]
 
 
-def frames(path):
+def timestamps(path):
+    """(pts, duration) of every frame."""
     out = subprocess.check_output(["ffmpeg", "-v", "error", "-i", str(path), "-map", "0:v", "-f", "framemd5", "-"])
-    return [line for line in out.decode().splitlines() if not line.startswith("#")]
+    return [tuple(line.split(",")[2:4]) for line in out.decode().splitlines() if not line.startswith("#")]
+
+
+def worst_psnr(a, b):
+    """Lowest per-frame PSNR between two movies. A cut inside an animation
+    starts a new encoded file, so frames after it are encoded (not drawn)
+    differently; the picture itself is the same."""
+    out = subprocess.run(["ffmpeg", "-i", str(a), "-i", str(b), "-lavfi", "[0:v][1:v]psnr", "-f", "null", "-"],
+                         capture_output=True, text=True, check=True).stderr
+    value = out.rsplit("min:", 1)[1].split()[0]
+    return float("inf") if value == "inf" else float(value)
 
 
 def audio(path):
@@ -74,6 +85,10 @@ def audio(path):
 
 
 class SegmentTests(unittest.TestCase):
+    def assertSameFrames(self, joined):
+        self.assertEqual(timestamps(joined), timestamps(self.whole))
+        self.assertGreater(worst_psnr(joined, self.whole), 50)
+
     def assertSameSoundtrack(self, joined):
         # Same length and the same samples. The AAC encoder's padding of the
         # final frame may differ by a few quanta (well below -50 dBFS).
@@ -105,16 +120,17 @@ class SegmentTests(unittest.TestCase):
         return driver.scene_output(media, "Split")
 
     def test_segments_join_into_the_whole_render(self):
+        # Cuts fall inside animations (the transform and the dot's path).
         joined = self.split("segments", [0, 2.5, 5.0, 1e9])
         self.assertIsNotNone(joined)
-        self.assertEqual(frames(joined), frames(self.whole))
+        self.assertSameFrames(joined)
         self.assertSameSoundtrack(joined)
 
     def test_empty_trailing_segment_keeps_the_soundtrack(self):
         # The last span starts after the scene ends, so that segment renders
         # nothing; the one before it played to the end and has every line.
         joined = self.split("trailing", [0, 3.0, 500.0, 1e9])
-        self.assertEqual(frames(joined), frames(self.whole))
+        self.assertSameFrames(joined)
         self.assertSameSoundtrack(joined)
 
 

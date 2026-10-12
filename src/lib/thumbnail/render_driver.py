@@ -48,7 +48,7 @@ THREE_D_FACTOR = 4
 POSTPROCESS_FAILED = 86
 # Shortest stretch of scene time worth its own process (each pays Manim's
 # start-up and fast-forwards through the scene up to its start).
-MIN_SEGMENT_SECONDS = 4
+MIN_SEGMENT_SECONDS = 2.5
 DIGITS = list("0123456789") + ["-", ".", ","]
 LABEL_METHODS = {"get_graph_label", "get_axis_labels", "get_x_axis_label", "get_y_axis_label", "get_tex", "BraceLabel"}
 TEX_CLASSES = {"MathTex", "Tex"}
@@ -86,16 +86,27 @@ def _base_name(node):
     return None
 
 
+# A segment counts frames from run times alone; these make a scene's frames
+# (or its sounds) depend on what was rendered before, so it renders whole.
+UNSPLITTABLE_CALLS = {"wait_until", "add_sound", "next_section"}
+
+
 def narrated_seconds(source, scenes):
     """Rough scene length from narration (about 15 characters a second, plus
-    the closing fade); used only to place split points."""
+    the closing fade); used only to place split points. 0 for a scene that
+    must render whole."""
     chars = {name: 0 for name in scenes}
+    whole = set()
     for cls in ast.parse(source).body:
         if isinstance(cls, ast.ClassDef) and cls.name in chars:
             for node in ast.walk(cls):
-                if isinstance(node, ast.Call) and _call_name(node) == "voiceover":
+                if not isinstance(node, ast.Call):
+                    continue
+                if _call_name(node) == "voiceover":
                     chars[cls.name] += sum(len(_string(k.value) or "") for k in node.keywords if k.arg == "text")
-    return {name: count / 15 + 1.5 for name, count in chars.items()}
+                if _call_name(node) in UNSPLITTABLE_CALLS or any(k.arg == "stop_condition" for k in node.keywords):
+                    whole.add(cls.name)
+    return {name: 0 if name in whole else count / 15 + 1.5 for name, count in chars.items()}
 
 
 def analyse(source, scenes):
@@ -314,7 +325,7 @@ def usable_cpus():
 
 
 def plan(scenes, weights, seconds, workers):
-    """Render tasks, most expensive first. A scene costing well over an even
+    """Render tasks, most expensive scene first. A scene costing well over an even
     share of the work is split into segments of its timeline (see
     EDUVIDS_SEGMENT in video_style.py), so one long 3D scene cannot hold up
     the whole video while the other workers sit idle. Ties keep the script's
@@ -333,7 +344,9 @@ def plan(scenes, weights, seconds, workers):
         # something (it carries the scene's whole soundtrack).
         bounds = [seconds.get(name, 0) * 0.85 * index / count for index in range(count)] + [1e9]
         for index in range(count):
-            tasks.append((name, index, count, bounds[index], bounds[index + 1], weight / count))
+            tasks.append((name, index, count, bounds[index], bounds[index + 1], weight))
+    # Ordered by the whole scene's cost: a split scene is the long pole, and
+    # its cost is uneven within it, so all of its segments start first.
     order = {name: i for i, name in enumerate(scenes)}
     tasks.sort(key=lambda task: (-task[5], order[task[0]], task[1]))
     return [task[:5] for task in tasks]
