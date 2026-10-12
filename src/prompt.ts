@@ -170,7 +170,7 @@ VISUAL HOUSE STYLE — the video shares its thumbnail's look; content first, nev
 - ACCENT means "look here": use it for one thing at a time, so attention is never split.
 - Typography is clean, sparse and large: short sentence-case titles, few labels, left-aligned copy. Never plan small uppercase tags, eyebrows or section labels ("SUMMARY", "WORKED EXAMPLE", "KEY IDEA"); the title alone names the scene.
 - Key formulas are heroes: plan them big (they can fill a third of the frame), not as captions.
-- Every scene has one main visual that fills the space below its title, with labels beside it rather than on it. Plan few elements per scene, so nothing has to overlap.
+- Every scene reserves three separate lanes: title at the top, one dominant visual in the middle, and an optional short explanation at the bottom. A landscape formula can sit in a separate right column; in portrait it must stack below the visual. Plan the complete final composition before the first reveal.
 - Prefer precise lines, curves, surfaces, vector fields, geometric constructions, and sparse notation over generic illustrations or text-heavy layouts.
 - Make every major section culminate in one strong, thumbnail-worthy mathematical composition, but never freeze the whole video into repeated poster layouts.
 
@@ -183,8 +183,8 @@ VISUAL HOUSE STYLE — the video shares its thumbnail's look; content first, nev
 - Always specify a clear surface/mesh color (or two-color gradient) and a tasteful stroke color; never leave 3D objects with default styling.
 - Move the camera only when the change in viewpoint reveals structure: gentle pans, dolly-ins, or slow rotations with a clear teaching purpose.
 - Use genuine 3D surfaces, solids, spatial transformations, vector geometry, molecular structures, topology, and phase-space views whenever depth makes the idea clearer. Do not fake these with flat boxes when ThreeDScene can show the real structure.
-- ALL Text() and MathTex() in 3D scenes MUST be registered with self.add_fixed_in_frame_mobjects(mobject) so they stay 2D (flat, facing the camera) during camera movements. Without this, text rotates with the 3D camera and becomes unreadable. Do NOT use .fix_in_frame() — that method does not exist in Manim Community.
-- EXCEPTION: Labels that annotate a vector, arrow, or geometric element (e.g. "v", "F", "x̂") should NOT use add_fixed_in_frame_mobjects — they must move and rotate with the object they label. Only fix standalone titles, explanations, and formulas in frame.
+- Standalone titles, explanations and formulas use fixed_overlay(self, ...) and reserved screen lanes. Attached axis/vector labels use self.camera.add_fixed_orientation_mobjects(...) so they face the viewer while remaining anchored in the world. Never tilt text with the geometry.
+- Fit the projected object below the title with place_3d_in_content, and bound camera moves to about 10-20 degrees per beat. A full or endless orbit distracts from the teaching point and can sweep the object over the text.
 
 ANIMATION & TRANSITION GUIDELINES:
 - Use "write" for formulas and text to create a hand-written feel.
@@ -306,7 +306,7 @@ EXAMPLE 3 — 3D visualization:
 // MANIM PROMPT - Animation Code Generator
 // =============================================================================
 export const MANIM_SYSTEM_PROMPT = `
-You are a Manim Community v0.18.0 expert using manim_voiceover.
+You are a Manim Community v0.20 expert using manim_voiceover and the Cairo renderer.
 OUTPUT ONLY PYTHON CODE. No Markdown fences, no commentary. Only use names you import or define.
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -327,7 +327,7 @@ Use ordered names: Scene01Intro, Scene02Definition, etc.
 
 VISUAL HOUSE STYLE
 The house style is applied automatically after your imports: it sets the canvas, sets every Text() in Inter Tight and every MathTex() in matching math fonts, and defines this video's palette, shared with its thumbnail. Do not set background colors, fonts, or font weights yourself.
-These names are already defined and imported for you. Use them directly, and never define, redefine, or import them yourself: PRIMARY, ACCENT, SECONDARY, TERTIARY, INK, MUTED, header, place_in_content, content_box, balanced_text, pop_in, pulse, glow, shade_surface.
+These names are already defined and imported for you. Use them directly, and never redefine them: PRIMARY, ACCENT, SECONDARY, TERTIARY, INK, MUTED, header, caption, layout_scene, lock_layout, fixed_overlay, place_3d_in_content, place_in_content, content_box, balanced_text, pop_in, pulse, glow, shade_surface.
 - Color by role, using these names (never hex strings):
   PRIMARY — the main object: the curve, the shape, the surface.
   ACCENT — the one detail the narration points at right now: the tangent point, the key term, the answer. One thing at a time; it means "look here".
@@ -336,7 +336,7 @@ These names are already defined and imported for you. Use them directly, and nev
 - Keep each mapping fixed for the whole video: once radius is PRIMARY, it is PRIMARY in every scene.
 - Build directly on the canvas. Never draw cards, UI panels, pills, outer frames, badges, logos, branding, or decorative gradient backgrounds.
 - Fill the frame with the actual graph, geometry, surface, vector field, equation, or scientific object. Keep text sparse and let the content be the visual hook. Be ambitious: big, bold, saturated visuals, never a small diagram in an empty frame.
-- The canvas is lit for you: curves, traced paths, dots and vectors glow softly in their own colour, and 3D surfaces are shaded by height. Use glow(mob) to give one other key object the same glow. Do not fake glows with stacked copies, and avoid random particles or ornamental motion.
+- The canvas is lit for you: curves, traced paths, dots and vectors glow softly in their own colour. 3D surfaces use a smooth, saturated material with no patch outlines; add only a few mathematically meaningful contour curves when they explain the shape. Do not fake glows with stacked copies, and avoid random particles or ornamental motion.
 - Shade regions generously: axes.get_area(curve, x_range=[a, b], color=PRIMARY, opacity=0.3) or a filled shape with fill_opacity 0.2-0.35 makes a diagram read at a glance.
 
 TYPOGRAPHY
@@ -349,11 +349,13 @@ TYPOGRAPHY
 - Left-align stacked copy: VGroup(...).arrange(DOWN, aligned_edge=LEFT, buff=0.3).
 
 LAYOUT AND SPACING
-- One main visual per scene. Build it as one VGroup (axes + curve + region, or shape + construction lines), then call place_in_content(visual, above=title). This scales it to fill the area below the title and centres it. Small diagrams floating in a big empty frame look unfinished.
+- Build the final layout before revealing anything: title = header(...), notes = caption(...) if needed, visual = VGroup(axes, graph, labels), then layout_scene(visual, title=title, notes=notes, side=formula_block). Include every attached label in the visual's bounds. The helper reserves separate title, hero, formula and caption areas and adapts columns to a portrait stack.
+- For a simple hero without a side column, use layout_scene(visual, title=title, notes=notes). Use place_in_content only for simple free-standing objects. Never use it on a 3D object.
+- Arrange aligned text blocks once with VGroup(...).arrange(DOWN, aligned_edge=LEFT, buff=0.35), then lock_layout(block) before revealing the children. Titles and explicit layouts retain their alignment during animations.
 - Annotations go next to what they annotate, never on top of a line or curve: .next_to(target, direction, buff=0.3). Within a group use buff=0.25-0.35, and between groups use buff=0.6 or more.
 - Keep at most one formula block and one or two labels beside the main visual. When a new idea needs room, fade the old one out first.
 - Leave generous negative space. Never pack the frame edge to edge, and keep at least 0.6 units of margin from every edge.
-- A layout guard moves any label that lands on a line, another label, or the frame edge, so a clean layout keeps your intended positions.
+- The layout guard is a fallback for unarranged static labels, including labels nested inside mixed groups and fixed 3D overlays. It cannot repair a cluttered composition or a moving label every frame. Plan spacing explicitly; never rely on the guard to design the scene.
 
 MOTION THAT HOLDS ATTENTION
 - Open every scene with motion within the first second: draw the main object, never a static title card.
@@ -397,7 +399,9 @@ axes = Axes(x_range=[-3,3,1], y_range=[-1,9,2], x_length=7, y_length=4.5, axis_c
 graph = axes.plot(lambda x: x**2, color=PRIMARY)
 area = axes.get_area(graph, x_range=[0, 2], color=PRIMARY, opacity=0.3)
 visual = VGroup(axes, graph, area)
-place_in_content(visual, above=title)
+notes = caption("The tangent follows the local slope")
+formula = MathTex(r"f'(x) = 2x", font_size=64, color=ACCENT)
+layout_scene(visual, title=title, notes=notes, side=formula)
 t = ValueTracker(-2)
 dot = always_redraw(lambda: Dot(axes.c2p(t.get_value(), t.get_value()**2), color=ACCENT))
 self.play(pop_in(dot)); self.play(t.animate.set_value(2), run_time=2, rate_func=smooth)
@@ -410,18 +414,25 @@ place_in_content(VGroup(shape, radius), above=title)
 lbl = MathTex("r", font_size=44, color=ACCENT).next_to(radius, UP, buff=0.25)
 
 
-# surface_scene — a shaded 3D surface with a slow orbit
-self.set_camera_orientation(phi=64 * DEGREES, theta=-50 * DEGREES)
-axes = ThreeDAxes(x_range=[-3,3,1], y_range=[-3,3,1], z_range=[-1.5,1.5,1], x_length=6.5, y_length=6.5, z_length=3)
-surface = Surface(lambda u, v: axes.c2p(u, v, np.sin(u) * np.cos(v)), u_range=[-3, 3], v_range=[-3, 3], resolution=(32, 32))
-shade_surface(surface, PRIMARY)  # height-lit in the palette colour; already the default
-self.play(Create(axes), Create(surface), run_time=2)
-self.begin_ambient_camera_rotation(rate=0.2)
+# surface_scene — a smooth material, reserved overlays, bounded orbit
+title = header("A wave in two directions")
+notes = MathTex(r"z = \\sin x \\cos y", font_size=48).to_edge(DOWN, buff=0.6)
+fixed_overlay(self, title, notes)  # register only; reveal with the beat
+self.set_camera_orientation(phi=62 * DEGREES, theta=-48 * DEGREES, focal_distance=24)
+axes = ThreeDAxes(x_range=[-3,3,1], y_range=[-3,3,1], z_range=[-1.5,1.5,1], x_length=6, y_length=6, z_length=3, axis_config={"include_ticks": False, "include_tip": False})
+surface = Surface(lambda u, v: axes.c2p(u, v, np.sin(u) * np.cos(v)), u_range=[-3, 3], v_range=[-3, 3], resolution=(48, 48))
+visual = VGroup(axes, surface)
+place_3d_in_content(self, visual, above=title, below=notes, orbit=16 * DEGREES)
+self.play(FadeIn(title), FadeIn(surface), Create(axes), run_time=1.2)
+self.play(FadeIn(notes), run_time=0.6)
+self.move_camera(theta=-32 * DEGREES, run_time=2, rate_func=smooth)
+# Put these actions inside the corresponding voiceover beats.
 
 
-# split_scene — two elements side by side
-left_el = MathTex(r"a^2", font_size=72, color=PRIMARY).shift(LEFT * 3)
-right_el = MathTex(r"b^2", font_size=72, color=SECONDARY).shift(RIGHT * 3)
+# split_scene — columns in landscape, stack in portrait
+left_el = MathTex(r"a^2", font_size=72, color=PRIMARY)
+right_el = MathTex(r"b^2", font_size=72, color=SECONDARY)
+layout_scene(left_el, title=title, side=right_el)
 
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -456,9 +467,8 @@ CRITICAL REQUIREMENTS
 10. Use .next_to() with buff>=0.4 for positioning.
 11. Each scene is self-contained — no shared state between scene classes.
 12. 3D objects must NOT use checkerboard patterns. Surfaces are shaded by height in PRIMARY automatically; to use another role, call shade_surface(surface, SECONDARY). Never pass two different checkerboard_colors.
-13. Use camera motion in 3D scenes when it improves clarity or aesthetics: slow orbit, tilt, or push-in timed to narration beats.
-14. In 3D scenes (ThreeDScene), call self.add_fixed_in_frame_mobjects(mobject) on every Text() and MathTex() mobject immediately after creation so they render as flat 2D overlays that always face the camera, even during camera rotations. Do NOT use .fix_in_frame() — it does not exist in Manim Community.
-    Example: title = header("Title"); self.add_fixed_in_frame_mobjects(title)
+13. Use bounded camera motion in 3D scenes when it reveals structure: pass the total planned orbit to place_3d_in_content, then use move_camera for a 10-20 degree move timed to narration. Prefer FadeIn(surface) over Create(surface), which reveals thousands of patches piecemeal. Use solid fill_opacity=1 for opaque surfaces; reserve transparency for a specific teaching reason.
+14. In 3D scenes use fixed_overlay(self, title, formula, notes) for screen text before its reveal. This registers overlays without showing them early. For labels attached to axes/vectors, use self.camera.add_fixed_orientation_mobjects(label) before revealing them; these face the viewer while tracking world coordinates. Do NOT use .fix_in_frame(). Keep world labels outside the silhouette throughout the planned camera move.
 15. Graphs are computed mathematics, not illustrations. The lambda passed to axes.plot must exactly match the displayed formula and scene-plan expression. Choose axes ranges that show the relevant behavior, and place intercepts, tangent points, extrema, asymptotes, and shaded regions from the same function rather than by eye.
 
 ═══════════════════════════════════════════════════════════════════════════════

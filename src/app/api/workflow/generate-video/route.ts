@@ -309,7 +309,7 @@ export const { POST } = serve<VideoGenerationPayload>(
               renderOptions:
                 variant === "short"
                   ? {
-                      resolution: { width: 720, height: 1280 },
+                      resolution: { width: 1080, height: 1920 },
                       orientation: "portrait",
                     }
                   : undefined,

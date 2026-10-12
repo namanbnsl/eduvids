@@ -19,6 +19,7 @@ import {
   loadVideoStyleAssets,
   RENDER_DRIVER_PATH,
   videoPalette,
+  videoRenderFlags,
   WATERMARK_FONT_COMMAND,
   WATERMARK_STYLE,
 } from "@/lib/video-style";
@@ -102,6 +103,9 @@ export function injectEduvidsCallout(
         `${bodyIndent}    if end_content.width > config.frame_width - 1.6:`,
         `${bodyIndent}        end_content.scale_to_fit_width(config.frame_width - 1.6)`,
         `${bodyIndent}    end_content.move_to(ORIGIN)`,
+        `${bodyIndent}    lock_layout(end_content)`,
+        `${bodyIndent}    if isinstance(self, ThreeDScene):`,
+        `${bodyIndent}        fixed_overlay(self, end_content)`,
         `${bodyIndent}    self.play(FadeIn(lead, shift=UP * 0.15), pop_in(previous_title, scale=0.85), run_time=max(0.4, tracker.duration * 0.25))`,
         `${bodyIndent}    self.play(FadeIn(link_hint, shift=UP * 0.1), run_time=max(0.3, tracker.duration * 0.15))`,
         `${bodyIndent}    self.play(pop_in(subscribe_hint), run_time=max(0.3, tracker.duration * 0.15))`,
@@ -114,6 +118,9 @@ export function injectEduvidsCallout(
         `${bodyIndent}    if cta_content.width > config.frame_width - 1.6:`,
         `${bodyIndent}        cta_content.scale_to_fit_width(config.frame_width - 1.6)`,
         `${bodyIndent}    cta_content.move_to(ORIGIN)`,
+        `${bodyIndent}    lock_layout(cta_content)`,
+        `${bodyIndent}    if isinstance(self, ThreeDScene):`,
+        `${bodyIndent}        fixed_overlay(self, cta_content)`,
         `${bodyIndent}    self.play(pop_in(cta_title, scale=0.85), run_time=max(0.4, tracker.duration * 0.30))`,
         `${bodyIndent}    self.play(pop_in(cta_link), run_time=max(0.3, tracker.duration * 0.20))`,
         `${bodyIndent}    self.play(pulse(cta_link, scale=1.06), run_time=max(0.3, tracker.duration * 0.20))`,
@@ -126,11 +133,9 @@ export function injectEduvidsCallout(
     `${bodyIndent}existing_mobjects = list(self.mobjects)`,
     `${bodyIndent}if existing_mobjects:`,
     `${bodyIndent}    self.play(*[FadeOut(mob) for mob in existing_mobjects])`,
-    `${bodyIndent}# Reset 3D camera to a flat 2D view so text is always visible`,
-    `${bodyIndent}if hasattr(self, 'renderer') and hasattr(self.renderer, 'camera') and hasattr(self.renderer.camera, 'set_euler_angles'):`,
-    `${bodyIndent}    self.renderer.camera.set_euler_angles(phi=0, theta=-90 * DEGREES, gamma=0)`,
-    `${bodyIndent}    self.renderer.camera.frame.move_to(ORIGIN)`,
-    `${bodyIndent}    self.renderer.camera.frame.set(width=14)`,
+    `${bodyIndent}# End camera motion and reveal the end card as a screen overlay`,
+    `${bodyIndent}if isinstance(self, ThreeDScene):`,
+    `${bodyIndent}    self.stop_ambient_camera_rotation()`,
     `${bodyIndent}with self.voiceover(text=${narrationLiteral}) as tracker:`,
     ...contentLines,
   ];
@@ -1252,8 +1257,6 @@ export async function startManimRender({
 
     const resolution = renderOptions?.resolution;
     const orientation = renderOptions?.orientation;
-    let safeWidth: number | undefined;
-    let safeHeight: number | undefined;
     if (resolution) {
       pushLog({
         level: "info",
@@ -1275,16 +1278,8 @@ export async function startManimRender({
       ...currentSceneNames,
       "--media_dir",
       mediaDir,
-      "--disable_caching",
-      "--format=mp4",
-      "-qm",
+      ...videoRenderFlags(resolution),
     ];
-    if (resolution) {
-      safeWidth = Math.max(1, Math.round(resolution.width));
-      safeHeight = Math.max(1, Math.round(resolution.height));
-      manimArgs.push("-r", `${safeHeight},${safeWidth}`);
-    }
-
     const manimCmd = `manim ${manimArgs.join(" ")}`;
     const renderContextLabel = "Manim render";
 
@@ -1891,21 +1886,13 @@ export async function launchManimRender({
     timeoutMs: 3_600_000,
   });
 
-  const resolution = prepared.renderOptions?.resolution;
   const manimArgs = [
     prepared.scriptPath,
     ...prepared.sceneNames,
     "--media_dir",
     prepared.mediaDir,
-    "--disable_caching",
-    "--format=mp4",
-    "-qm",
+    ...videoRenderFlags(prepared.renderOptions?.resolution),
   ];
-  if (resolution) {
-    const safeWidth = Math.max(1, Math.round(resolution.width));
-    const safeHeight = Math.max(1, Math.round(resolution.height));
-    manimArgs.push("-r", `${safeHeight},${safeWidth}`);
-  }
 
   const manimCmd = `manim ${manimArgs.join(" ")}`;
   console.log("Starting manim render with command:", manimCmd);
@@ -2428,6 +2415,8 @@ export async function finalizeManimRender({
       qualityCandidates.push(`custom_quality_${safeWidth}x${safeHeight}`);
     }
     qualityCandidates.push(
+      "1080p30",
+      "1920p30",
       "720p30",
       "medium_quality",
       "720p15",

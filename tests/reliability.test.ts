@@ -30,6 +30,7 @@ import {
   loadVideoStyleAssets,
   VIDEO_STYLE_MARKER,
   videoPalette,
+  videoRenderFlags,
 } from "../src/lib/video-style";
 import {
   VOICEOVER_SERVICE_IMPORT_TOKEN,
@@ -972,7 +973,11 @@ test("videos use their thumbnail's palette and import the house style after thei
     candidates: thumbnailCandidates,
   };
   for (const seed of ["job-a", "job-b", "job-c", "job-d"]) {
-    const [spec] = buildThumbnailSpecs({ titles, topic: "e", designSeed: seed });
+    const [spec] = buildThumbnailSpecs({
+      titles,
+      topic: "e",
+      designSeed: seed,
+    });
     assert.equal(videoPalette(seed), spec.palette);
   }
 
@@ -1010,6 +1015,51 @@ class Scene01(Scene):
   );
   assert.ok(again > redefined.indexOf("    return Text(text)"));
   assert.ok(again < redefined.findIndex((line) => line.startsWith("class ")));
+});
+
+test("all render paths use 1080p at 30fps and preserve portrait dimensions", () => {
+  assert.deepEqual(videoRenderFlags(), [
+    "--disable_caching",
+    "--format=mp4",
+    "-qh",
+    "--fps",
+    "30",
+  ]);
+  assert.deepEqual(videoRenderFlags({ width: 1080, height: 1920 }).slice(-2), [
+    "-r",
+    "1080,1920",
+  ]);
+  assert.deepEqual(videoRenderFlags({ width: 721, height: 1279 }).slice(-2), [
+    "-r",
+    "722,1280",
+  ]);
+  assert.throws(() => videoRenderFlags({ width: NaN, height: 1920 }));
+  assert.throws(() => videoRenderFlags({ width: 0, height: 1920 }));
+});
+
+test("real Manim geometry keeps grouped labels, overlay lanes and projected 3D layouts clear", async (t) => {
+  if (!(await thumbnailToolchainAvailable())) {
+    t.skip("manim and xelatex are not installed");
+    return;
+  }
+  const folder = await mkdtemp(join(tmpdir(), "eduvids-quality-"));
+  try {
+    const assets = await loadVideoStyleAssets("azure-coral");
+    await mkdir(join(folder, "eduvids-fonts"));
+    await writeFile(join(folder, "eduvids_style.py"), assets.module);
+    for (const { name, data } of assets.fonts)
+      await writeFile(join(folder, "eduvids-fonts", name), data);
+    await exec(
+      "python3",
+      [join(process.cwd(), "tests/video-quality.py"), folder],
+      {
+        cwd: folder,
+        timeout: 240_000,
+      },
+    );
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
 });
 
 test("house style sets text and math on one type scale and keeps copy in frame", async (t) => {
@@ -1095,10 +1145,21 @@ test("the render job runs the driver with Manim flags, and in-frame watermarks s
     script: "/home/user/script.py",
     scenes: ["First", "Second"],
     media_dir: "/home/user/media",
-    manim_args: ["--disable_caching", "--format=mp4", "-qm", "-r", "720,1280"],
+    manim_args: [
+      "--disable_caching",
+      "--format=mp4",
+      "-qh",
+      "--fps",
+      "30",
+      "-r",
+      "720,1280",
+    ],
   });
   assert.match(buildPostprocessScript(prepared), /\\"watermark\\":false/);
-  assert.match(buildPostprocessScript(state("/home/user")), /\\"watermark\\":true/);
+  assert.match(
+    buildPostprocessScript(state("/home/user")),
+    /\\"watermark\\":true/,
+  );
 });
 
 test("render driver finds narration and formulas and balances scenes by narration", async (t) => {
@@ -1124,18 +1185,15 @@ test("render driver finds narration and formulas and balances scenes by narratio
     `        with self.voiceover(text="${"c".repeat(500)}") as t:`,
     "            pass",
   ].join("\n");
-  const { stdout } = await exec(
-    "python3",
-    [
-      "-c",
-      `import json, sys
+  const { stdout } = await exec("python3", [
+    "-c",
+    `import json, sys
 sys.path.insert(0, "src/lib/thumbnail")
 import render_driver as d
 narration, formulas, weights = d.analyse(json.loads(sys.argv[1]), ["A", "B", "C"])
 print(json.dumps({"narration": len(narration), "formulas": [f[1] for f in formulas[:2]], "groups": d.balance(["A", "B", "C"], weights, 2)}))`,
-      JSON.stringify(source),
-    ],
-  );
+    JSON.stringify(source),
+  ]);
   const result = JSON.parse(stdout);
   assert.equal(result.narration, 3);
   assert.deepEqual(result.formulas, [["x^2", "=", "y"], ["y=x^2"]]);
@@ -1231,25 +1289,35 @@ test("postprocessing keeps each scene's narration aligned with its picture", asy
     // scene ends with a silent fade-out).
     for (const scene of prepared.sceneNames) {
       await exec("ffmpeg", [
-        "-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x90:d=2:r=30",
-        "-f", "lavfi", "-i", "sine=frequency=440:duration=0.5",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=blue:s=160x90:d=2:r=30",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:duration=0.5",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
         `${outputs}/${scene}.mp4`,
       ]);
     }
     const script = join(folder, "process.py");
     await writeFile(script, buildPostprocessScript(prepared));
     await exec("python3", [script]);
-    const { stdout } = await exec(
-      "python3",
-      [
-        "-c",
-        `import subprocess, numpy as np
+    const { stdout } = await exec("python3", [
+      "-c",
+      `import subprocess, numpy as np
 pcm = subprocess.run(['ffmpeg', '-v', 'error', '-i', ${JSON.stringify(join(folder, "final.mp4"))}, '-ac', '1', '-ar', '8000', '-f', 's16le', '-'], stdout=subprocess.PIPE).stdout
 a = np.abs(np.frombuffer(pcm, dtype=np.int16).astype(float))
 print(' '.join(str(int(a[int(t * 8000):int(t * 8000) + 800].mean())) for t in (0.2, 1.2, 2.2, 3.2, 4.2, 5.2)))`,
-      ],
-    );
+    ]);
     const [s1, gap1, s2, gap2, s3, gap3] = stdout.trim().split(" ").map(Number);
     for (const loud of [s1, s2, s3]) assert.ok(loud! > 1000, stdout);
     for (const quiet of [gap1, gap2, gap3]) assert.ok(quiet! < 50, stdout);
