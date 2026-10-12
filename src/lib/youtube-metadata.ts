@@ -24,6 +24,7 @@ export const THUMBNAIL_VISUAL_TYPES = [
   "probability",
   "network",
   "atom",
+  "energy_levels",
   "surface_3d",
   "solid_3d",
   "equation",
@@ -290,6 +291,7 @@ export function sanitizeThumbnailVisual(
           "pythagoras",
           "inscribed_polygon",
           "triangle_angles",
+          "venn",
         ] as const),
         sides: finiteNumber(raw.sides, 5, 32),
       });

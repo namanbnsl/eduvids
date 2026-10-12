@@ -11,6 +11,7 @@ import {
   sanitizeThumbnailLatex,
   sanitizeThumbnailPlotExpression,
   sanitizeThumbnailSurfaceExpression,
+  sanitizeThumbnailVisual,
   selectThumbnailPair,
   type RelatedYouTubeVideo,
 } from "../src/lib/youtube-metadata";
@@ -20,6 +21,19 @@ const previousVideo: RelatedYouTubeVideo = {
   title: "Why Differentiation Actually Works",
   watchUrl: "https://www.youtube.com/watch?v=previous123",
 };
+
+test("thumbnail concepts support energy transitions and overlapping sets", () => {
+  assert.deepEqual(
+    sanitizeThumbnailVisual("energy_levels", { notation: "wrong legend" }),
+    {
+      type: "energy_levels",
+    },
+  );
+  assert.deepEqual(sanitizeThumbnailVisual("geometry", { shape: "venn" }), {
+    type: "geometry",
+    shape: "venn",
+  });
+});
 
 test("title packaging keeps exactly three clean curiosity-led candidates", () => {
   const titles = parseVideoTitleSet(`\`\`\`json

@@ -1,0 +1,33 @@
+[
+  {
+    "title": "Why Chemical Bonds Glow Without Any Heat",
+    "palette": "teal-amber",
+    "headline": "Falling down quantum steps",
+    "accent": "quantum steps",
+    "visual": {
+      "type": "energy_levels"
+    }
+  },
+  {
+    "title": "Why the Area Under a Curve Equals 1",
+    "palette": "teal-amber",
+    "headline": "Height is not the probability",
+    "accent": "probability",
+    "visual": {
+      "type": "probability",
+      "from": -3.5,
+      "to": 3.5,
+      "notation": "\\int_{-\\infty}^{\\infty} f(x)\\,dx=1"
+    }
+  },
+  {
+    "title": "Why Overlapping Events Break Naive Addition",
+    "palette": "teal-amber",
+    "headline": "You counted that single face twice",
+    "accent": "twice",
+    "visual": {
+      "type": "geometry",
+      "shape": "venn"
+    }
+  }
+]
