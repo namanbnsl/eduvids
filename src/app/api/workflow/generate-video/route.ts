@@ -120,9 +120,9 @@ export const { POST } = serve<VideoGenerationPayload>(
       });
     });
 
-    const voiceoverLanguage = await context.run(
-      "detect-voiceover-language",
-      async () => {
+    // Independent of one another: run as parallel steps.
+    const [voiceoverLanguage, , previousVideo] = await Promise.all([
+      context.run("detect-voiceover-language", async () => {
         const saved = await artifactStore.find(jobId, "voiceoverLanguage");
         if (saved) return saved;
         const language = await detectLanguage(
@@ -130,27 +130,60 @@ export const { POST } = serve<VideoGenerationPayload>(
         );
         await artifactStore.set(jobId, "voiceoverLanguage", language);
         return language;
-      },
-    );
+      }),
+      context.run("generate-scene-plan", async () => {
+        if (await artifactStore.find(jobId, "scenePlan")) return;
+        const voiceoverScript = await artifactStore.get(
+          jobId,
+          "voiceoverScript",
+        );
+        await updateJobProgress(jobId, {
+          progress: 12,
+          step: "generating script",
+          details: "Storyboarding the scenes",
+        });
+        const scenePlan = await generateScenePlan({
+          prompt: generationPrompt,
+          voiceoverScript,
+          sessionId: chatId,
+        });
+        await artifactStore.set(jobId, "scenePlan", JSON.stringify(scenePlan));
+        console.log("✅ Scene plan generated", {
+          sceneCount: scenePlan.length,
+        });
+      }),
+      context.run("resolve-previous-youtube-video", async () => {
+        const saved = await artifactStore.find(jobId, "previousYoutubeVideo");
+        if (saved) {
+          return JSON.parse(saved) as RelatedYouTubeVideo | null;
+        }
+        if (
+          !process.env.GOOGLE_CLIENT_ID ||
+          !process.env.GOOGLE_CLIENT_SECRET ||
+          !process.env.GOOGLE_REFRESH_TOKEN
+        ) {
+          await artifactStore.set(jobId, "previousYoutubeVideo", "null");
+          return null;
+        }
 
-    await context.run("generate-scene-plan", async () => {
-      if (await artifactStore.find(jobId, "scenePlan")) return;
-      const voiceoverScript = await artifactStore.get(jobId, "voiceoverScript");
-      await updateJobProgress(jobId, {
-        progress: 12,
-        step: "generating script",
-        details: "Storyboarding the scenes",
-      });
-      const scenePlan = await generateScenePlan({
-        prompt: generationPrompt,
-        voiceoverScript,
-        sessionId: chatId,
-      });
-      await artifactStore.set(jobId, "scenePlan", JSON.stringify(scenePlan));
-      console.log("✅ Scene plan generated", {
-        sceneCount: scenePlan.length,
-      });
-    });
+        try {
+          const result = await findPreviousYouTubeVideo();
+          await artifactStore.set(
+            jobId,
+            "previousYoutubeVideo",
+            JSON.stringify(result ?? null),
+          );
+          return result ?? null;
+        } catch (error) {
+          console.warn(
+            "Previous-video lookup failed; using the standard outro:",
+            safeError(error),
+          );
+          await artifactStore.set(jobId, "previousYoutubeVideo", "null");
+          return null;
+        }
+      }),
+    ]);
 
     await context.run("generate-manim-script", async () => {
       if (await artifactStore.find(jobId, "manimScript")) return;
@@ -229,41 +262,6 @@ export const { POST } = serve<VideoGenerationPayload>(
           normalized: enforced.script !== currentScript,
         });
         return { language: voiceoverLanguage, provider: enforced.provider };
-      },
-    );
-
-    const previousVideo = await context.run(
-      "resolve-previous-youtube-video",
-      async () => {
-        const saved = await artifactStore.find(jobId, "previousYoutubeVideo");
-        if (saved) {
-          return JSON.parse(saved) as RelatedYouTubeVideo | null;
-        }
-        if (
-          !process.env.GOOGLE_CLIENT_ID ||
-          !process.env.GOOGLE_CLIENT_SECRET ||
-          !process.env.GOOGLE_REFRESH_TOKEN
-        ) {
-          await artifactStore.set(jobId, "previousYoutubeVideo", "null");
-          return null;
-        }
-
-        try {
-          const result = await findPreviousYouTubeVideo();
-          await artifactStore.set(
-            jobId,
-            "previousYoutubeVideo",
-            JSON.stringify(result ?? null),
-          );
-          return result ?? null;
-        } catch (error) {
-          console.warn(
-            "Previous-video lookup failed; using the standard outro:",
-            safeError(error),
-          );
-          await artifactStore.set(jobId, "previousYoutubeVideo", "null");
-          return null;
-        }
       },
     );
 
