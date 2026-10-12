@@ -171,10 +171,198 @@ if not getattr(Camera.get_fill_rgbas, "__eduvids_graded__", False):
         graded = _grade(rgbas)
         if getattr(vmobject, "_eduvids_shaded", False) and self.should_apply_shading:
             try:
+                entry = getattr(self, "_eduvids_light", {}).get(id(vmobject))
+                if entry is not None and entry[0] is vmobject:
+                    return _apply_light(graded, entry[1])
                 return _lit(self, vmobject, graded)
             except Exception:
                 pass
         return _modified_rgbas(self, vmobject, graded)
+
+    def _apply_light(rgbas, factors):
+        lit = np.array(rgbas, dtype=float)
+        if len(lit) == 1:
+            lit = lit.repeat(2, axis=0)
+        rows = factors[np.minimum(np.arange(len(lit)), len(factors) - 1)]
+        lit[:, :3] = np.clip(lit[:, :3] * rows[:, None], 0, 1)
+        return lit
+
+    def _unit(vectors, axis=-1):
+        norms = np.linalg.norm(vectors, axis=axis, keepdims=True)
+        return vectors / np.where(norms == 0, 1, norms)
+
+    def _light_factors(camera, faces):
+        """``_lit``'s diffuse factor at both gradient ends, for many faces at
+        once: one numpy pass per frame instead of ~30 small calls per face,
+        twice (fill and stroke) per face."""
+        points = np.array([face.points[:8] for face in faces])
+        coefficients = np.array([face._eduvids_normal_coefficients for face in faces])
+        origin = points[:, 0]
+        a = _unit(points[:, 3] - origin)  # anchors 1 and 3, as in _surface_basis
+        b = _unit(points[:, 7] - origin)
+        basis = np.stack((a, b, _unit(np.cross(a, b))), axis=2)
+        normals = _unit(basis @ coefficients, axis=1)
+        to_light = _unit(camera.light_source.points[0] - origin)
+        facing = np.abs(np.einsum("kij,ki->kj", normals, to_light))
+        return 0.62 + 0.38 * facing
+
+    def _litable(mob):
+        points = getattr(mob, "points", None)
+        return (
+            getattr(mob, "_eduvids_shaded", False)
+            and getattr(mob, "_eduvids_normal_coefficients", None) is not None
+            and getattr(mob, "n_points_per_cubic_curve", 0) == 4
+            and points is not None and len(points) >= 8
+        )
+
+    _stock_reference_point = manim.Mobject.get_z_index_reference_point
+
+    def _depth_key(rotation):
+        def key(mob):
+            if not getattr(mob, "shade_in_3d", False):
+                return np.inf
+            points = mob.points
+            if (
+                isinstance(mob, manim.VMobject) and not mob.submobjects
+                and type(mob).get_z_index_reference_point is _stock_reference_point
+                and getattr(mob, "z_index_group", mob) is mob and len(points) > 1
+            ):
+                # Mobject.get_center() for a leaf VMobject: the box centre of
+                # its anchors, without walking the generic family machinery.
+                step = mob.n_points_per_cubic_curve
+                anchors = np.concatenate((points[::step], points[step - 1::step]))
+                center = (anchors.min(axis=0) + anchors.max(axis=0)) / 2
+            else:
+                center = mob.get_z_index_reference_point()
+            return float(np.dot(center, rotation[2]))
+        return key
+
+    def _get_mobjects_to_display(self, *args, **kwargs):
+        mobjects = Camera.get_mobjects_to_display(self, *args, **kwargs)
+        mobjects = sorted(mobjects, key=_depth_key(self.get_rotation_matrix()))
+        self._eduvids_light = {}
+        if self.should_apply_shading:
+            faces = [mob for mob in mobjects if _litable(mob)]
+            if faces:
+                try:
+                    factors = _light_factors(self, faces)
+                    self._eduvids_light = {id(face): (face, row) for face, row in zip(faces, factors)}
+                except Exception:
+                    pass  # per-face lighting below still applies
+        return mobjects
+
+    _capture_3d = ThreeDCamera.capture_mobjects
+
+    def _capture_lit(self, *args, **kwargs):
+        try:
+            return _capture_3d(self, *args, **kwargs)
+        finally:
+            self._eduvids_light = {}  # factors are valid for one frame only
+
+    def _patch(mob, camera):
+        """A surface patch the batched drawing below reproduces exactly."""
+        return (
+            _litable(mob) and len(mob.points) == 16 and mob.background_stroke_width == 0
+            and mob not in camera.fixed_in_frame_mobjects
+            and mob not in camera.fixed_orientation_mobjects
+        )
+
+    def _close_2d(p0, p1, atol):
+        # VMobject.consider_points_equals_2d, for arrays of points.
+        return (np.abs(p0[..., 0] - p1[..., 0]) <= atol + 1e-5 * np.abs(p1[..., 0])) & (
+            np.abs(p0[..., 1] - p1[..., 1]) <= atol + 1e-5 * np.abs(p1[..., 1])
+        )
+
+    def _set_color(ctx, rgbas, start, end):
+        if len(rgbas) == 1:
+            ctx.set_source_rgba(*rgbas[0][2::-1], rgbas[0][3])
+            return
+        pattern = cairo.LinearGradient(start[0], start[1], end[0], end[1])
+        offsets = (0.0, 1.0) if len(rgbas) == 2 else np.linspace(0, 1, len(rgbas))
+        for rgba, offset in zip(rgbas, offsets):
+            pattern.add_color_stop_rgba(offset, *rgba[2::-1], rgba[3])
+        ctx.set_source(pattern)
+
+    def _lit_colors(camera, faces, rgbas):
+        """camera.get_fill_rgbas / get_stroke_rgbas for a batch of patches:
+        graded and lit in one pass when every face has two colour stops."""
+        light = getattr(camera, "_eduvids_light", {})
+        entries = [light.get(id(face)) for face in faces]
+        if (
+            camera.should_apply_shading
+            and all(entry is not None and entry[0] is face for entry, face in zip(entries, faces))
+            and all(len(row) == 2 for row in rgbas)
+        ):
+            stacked = _grade(np.concatenate(rgbas)).reshape(len(faces), 2, 4)
+            factors = np.array([entry[1] for entry in entries])
+            lit = np.array(stacked, dtype=float)
+            lit[:, :, :3] = np.clip(lit[:, :, :3] * factors[:, :, None], 0, 1)
+            return lit
+        return None
+
+    def _draw_patches(camera, ctx, faces):
+        """Camera.display_vectorized for many surface patches: one projection
+        for all of them, then the same Cairo calls Manim makes for each."""
+        points = np.array([face.points for face in faces])
+        finite = np.isfinite(points).all(axis=(1, 2))
+        projected = camera.project_points(points.reshape(-1, 3)).reshape(points.shape)
+        atol = np.array([face.tolerance_for_point_equality for face in faces])[:, None]
+        # A patch is one path unless consecutive curves come apart on screen.
+        joined = _close_2d(projected[:, [3, 7, 11]], projected[:, [4, 8, 12]], atol).all(axis=1)
+        closed = _close_2d(projected[:, 0], projected[:, 15], atol[:, 0])
+        fills = _lit_colors(camera, faces, [face.get_fill_rgbas() for face in faces])
+        widths = [face.get_stroke_width() for face in faces]
+        stroked = [face for face, width in zip(faces, widths) if width]
+        strokes = _lit_colors(camera, stroked, [face.get_stroke_rgbas() for face in stroked]) if stroked else None
+        stroke_index = 0
+        for index, face in enumerate(faces):
+            width = widths[index]
+            if not (finite[index] and joined[index]):
+                camera.display_vectorized(face, ctx)
+                stroke_index += bool(width)
+                continue
+            p = projected[index]
+            ctx.new_path()
+            ctx.new_sub_path()
+            ctx.move_to(p[0, 0], p[0, 1])
+            for i in (1, 5, 9, 13):
+                ctx.curve_to(p[i, 0], p[i, 1], p[i + 1, 0], p[i + 1, 1], p[i + 2, 0], p[i + 2, 1])
+            if closed[index]:
+                ctx.close_path()
+            # Gradient ends: get_3d_vmob_start/end_corner, points 0 and 6.
+            _set_color(ctx, fills[index] if fills is not None else camera.get_fill_rgbas(face), p[0], p[6])
+            ctx.fill_preserve()
+            if width:
+                colors = strokes[stroke_index] if strokes is not None else camera.get_stroke_rgbas(face)
+                stroke_index += 1
+                _set_color(ctx, colors, p[0], p[6])
+                ctx.set_line_width(width * camera.cairo_line_width_multiple)
+                if face.joint_type != manim.LineJointType.AUTO:
+                    ctx.set_line_join(LINE_JOIN_MAP[face.joint_type])
+                if face.cap_style != manim.CapStyleType.AUTO:
+                    ctx.set_line_cap(CAP_STYLE_MAP[face.cap_style])
+                ctx.stroke_preserve()
+
+    def _display_batched(self, vmobjects, pixel_array):
+        ctx = self.get_cairo_context(pixel_array)
+        run = []
+        for vmobject in vmobjects:
+            if _patch(vmobject, self):
+                run.append(vmobject)
+                continue
+            if run:
+                _draw_patches(self, ctx, run)
+                run = []
+            self.display_vectorized(vmobject, ctx)
+        if run:
+            _draw_patches(self, ctx, run)
+
+    import cairo
+    from manim.camera.camera import CAP_STYLE_MAP, LINE_JOIN_MAP
+
+    ThreeDCamera.get_mobjects_to_display = _get_mobjects_to_display
+    ThreeDCamera.capture_mobjects = _capture_lit
+    ThreeDCamera.display_multiple_non_background_colored_vmobjects = _display_batched
 
     def _lit(camera, face, rgbas):
         # Manim's lighting adds up to half a unit of white toward the light,
