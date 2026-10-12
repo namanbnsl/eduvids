@@ -75,8 +75,9 @@ export async function startSandboxJob(
 
 export async function pollSandboxJob(
   job: SandboxJob,
+  connected?: Sandbox,
 ): Promise<SandboxJobResult> {
-  const sandbox = await connectSandbox(job.sandboxId);
+  const sandbox = connected ?? (await connectSandbox(job.sandboxId));
   const result = await sandbox.commands.run(
     `python - <<'PY'
 import json, os
@@ -135,7 +136,14 @@ export async function pollSandboxJobWindow(
     options.delay ??
     ((milliseconds: number) =>
       new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
-  const poll = options.poll ?? pollSandboxJob;
+  // One connection per window; each poll is then a single small command.
+  let connected: Sandbox | undefined;
+  const poll =
+    options.poll ??
+    (async (target: SandboxJob) => {
+      connected ??= await connectSandbox(target.sandboxId);
+      return pollSandboxJob(target, connected);
+    });
   const deadline = now() + windowMs;
 
   while (true) {

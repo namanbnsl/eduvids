@@ -234,7 +234,9 @@ if not getattr(Camera.get_fill_rgbas, "__eduvids_graded__", False):
                 center = (anchors.min(axis=0) + anchors.max(axis=0)) / 2
             else:
                 center = mob.get_z_index_reference_point()
-            return float(np.dot(center, rotation[2]))
+            # The same expression as ThreeDCamera's own key, so ties between
+            # patches break exactly as they did.
+            return np.dot(center, rotation.T)[2]
         return key
 
     def _get_mobjects_to_display(self, *args, **kwargs):
