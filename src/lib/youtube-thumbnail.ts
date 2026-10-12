@@ -25,14 +25,28 @@ export const THUMBNAIL_PALETTES = [
 
 export type ThumbnailPalette = (typeof THUMBNAIL_PALETTES)[number];
 
+/**
+ * A frame lifted from the finished video (see `thumbnail/frame_picker.py`).
+ * `fallback` is drawn instead if the frame cannot be used.
+ */
+export interface ThumbnailFrameVisual {
+  type: "frame";
+  path: string;
+  fallback: ThumbnailVisual;
+}
+
 export interface ThumbnailSpec {
   title: string;
   palette: ThumbnailPalette;
+  /** Metadata only; the renderer draws no eyebrow. */
   eyebrow: string;
   headline: string;
   accent: string;
-  visual: ThumbnailVisual;
+  visual: ThumbnailVisual | ThumbnailFrameVisual;
 }
+
+/** Candidates that show a real video frame; the rest keep a drawn visual. */
+export const FRAME_CANDIDATES = 2;
 
 const THUMBNAIL_DIR = join(process.cwd(), "src/lib/thumbnail");
 
@@ -112,38 +126,38 @@ export function buildThumbnailSpecs({
   titles,
   topic,
   designSeed,
+  frames = [],
 }: {
   titles: VideoTitleSet;
   topic: string;
   designSeed: string;
+  /** Sandbox paths of frames picked from the video, best first. */
+  frames?: string[];
 }): [ThumbnailSpec, ThumbnailSpec, ThumbnailSpec] {
   const palette = choosePalette(designSeed);
   return titles.candidates.map((title, index) => {
     const concept = titles.thumbnailConcepts?.[index];
-    if (concept) {
-      return {
-        title,
-        palette,
-        eyebrow: concept.eyebrow,
-        headline: concept.headline,
-        accent: concept.accent,
-        visual: concept.visual,
-      };
-    }
     // Without a concept there is no vetted copy: show the visual on its own.
+    const drawn = concept?.visual ?? {
+      type: inferVisualType(`${title} ${topic}`),
+    };
+    const frame = index < FRAME_CANDIDATES ? frames[index] : undefined;
     return {
       title,
       palette,
-      eyebrow: "",
-      headline: "",
-      accent: "",
-      visual: { type: inferVisualType(`${title} ${topic}`) },
+      eyebrow: concept?.eyebrow ?? "",
+      headline: concept?.headline ?? "",
+      accent: concept?.accent ?? "",
+      visual: frame
+        ? { type: "frame" as const, path: frame, fallback: drawn }
+        : drawn,
     };
   }) as [ThumbnailSpec, ThumbnailSpec, ThumbnailSpec];
 }
 
 export interface ThumbnailAssets {
   renderer: string;
+  framePicker: string;
   fonts: { name: string; data: Uint8Array }[];
 }
 
@@ -153,6 +167,7 @@ let assetsPromise: Promise<ThumbnailAssets> | undefined;
 export function loadThumbnailAssets(): Promise<ThumbnailAssets> {
   assetsPromise ??= (async () => ({
     renderer: await readFile(join(THUMBNAIL_DIR, "renderer.py"), "utf8"),
+    framePicker: await readFile(join(THUMBNAIL_DIR, "frame_picker.py"), "utf8"),
     fonts: await Promise.all(
       THUMBNAIL_FONT_FILES.map(async (name) => ({
         name,

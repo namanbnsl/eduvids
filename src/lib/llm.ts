@@ -1214,7 +1214,7 @@ export async function generateVideoTitles({
   voiceoverScript,
   scenePlan,
 }: VideoTitleRequest): Promise<VideoTitleSet> {
-  const systemPrompt = `You package videos for eduvids, a visual math and science channel. Generate exactly three distinct title-and-thumbnail packages, ordered strongest first. Each thumbnail is rendered by a fixed design system: a small topic eyebrow and a two-line headline on the left, one precise mathematical visual on the right, on a plain dark background. You supply the words and the visual parameters only.
+  const systemPrompt = `You package videos for eduvids, a visual math and science channel. Generate exactly three distinct title-and-thumbnail packages, ordered strongest first. Each thumbnail is rendered by a fixed design system: a big, bold two-line headline on the left and, on the right, either a frame taken from the video itself or one precise, glowing mathematical visual (lit 3D for surfaces and solids), on a dark vignetted background. There are no small tags or eyebrows on the image. You supply the words and the visual parameters only.
 
 TITLE RULES
 - Aim for 45-65 characters; never exceed 80
@@ -1225,7 +1225,7 @@ TITLE RULES
 - Use natural title case, not all caps
 
 THUMBNAIL COPY RULES
-- eyebrow: the field in 1-3 words, e.g. "Calculus", "Complex numbers", "Machine learning"
+- eyebrow: the field in 1-3 words, e.g. "Calculus", "Complex numbers", "Machine learning". It is metadata for picking the visual and is never drawn
 - headline: 3-6 words, at most 30 characters, sentence case, no final period. It must complete the title's thought, never repeat it. State the insight or the tension: "The slope is the height", "Multiplying by $i$ is a quarter turn", "Waves are spinning circles"
 - Inline math goes between $...$ (e.g. "$e^{i\\pi}$", "$a^2+b^2=c^2$"). Use "~" only inside a multi-word term that must never be split across lines, e.g. "bell~curve", "rate~of~change"; most headlines need none
 - accent: the exact substring of the headline that carries the payoff (1-2 words or one $math$ token). It is painted in the warm accent colour that also marks the focal detail of the visual, so pick the word the picture proves

@@ -154,6 +154,7 @@ Build each concept as a visual story:
 - Prefer transformations, tracing, highlighting, and side-by-side contrasts over static text cards.
 - Carry consistent colors and important objects across related scenes so the viewer keeps their mental map.
 - Give major insights a clean final frame with a brief visual hold; do not fill every second with motion.
+- Be ambitious and make it pop. Every scene should have a moment worth pausing on: a curve sweeping into place, a surface rising out of the plane, a formula collapsing into its answer, a shape morphing into its meaning. Favour bold, large, saturated visuals over small diagrams in a big empty frame.
 
 Choose the clearest visually impactful representation for each concept:
 - If a concept has spatial/geometric meaning → use "3d_visualization" with camera rotations, lighting, and depth. Prefer 3D over 2D whenever the concept benefits from a spatial perspective (surfaces, volumes, vectors, coordinate systems, physics, transformations).
@@ -167,7 +168,8 @@ VISUAL HOUSE STYLE — the video shares its thumbnail's look; content first, nev
 - Colors are palette roles, not hues: PRIMARY for the main object, ACCENT for the single detail the narration points at, SECONDARY and TERTIARY for supporting quantities, INK for text, MUTED for captions, axes and context. Most scenes use only PRIMARY and ACCENT.
 - Keep each role mapping fixed across scenes (if radius is PRIMARY, it stays PRIMARY; if area is ACCENT, it stays ACCENT).
 - ACCENT means "look here": use it for one thing at a time, so attention is never split.
-- Typography is clean and sparse: short sentence-case titles, a small uppercase topic eyebrow above section titles, few labels, left-aligned copy.
+- Typography is clean, sparse and large: short sentence-case titles, few labels, left-aligned copy. Never plan small uppercase tags, eyebrows or section labels ("SUMMARY", "WORKED EXAMPLE", "KEY IDEA"); the title alone names the scene.
+- Key formulas are heroes: plan them big (they can fill a third of the frame), not as captions.
 - Every scene has one main visual that fills the space below its title, with labels beside it rather than on it. Plan few elements per scene, so nothing has to overlap.
 - Prefer precise lines, curves, surfaces, vector fields, geometric constructions, and sparse notation over generic illustrations or text-heavy layouts.
 - Make every major section culminate in one strong, thumbnail-worthy mathematical composition, but never freeze the whole video into repeated poster layouts.
@@ -175,7 +177,7 @@ VISUAL HOUSE STYLE — the video shares its thumbnail's look; content first, nev
 3D VISUALIZATION GUIDELINES:
 - Actively prefer 3D scenes for surfaces, solids of revolution, vector fields, 3D geometry, physics simulations, coordinate systems, and anything with depth.
 - Describe camera angles, rotations, and perspectives in the element content (e.g., "camera phi=75° theta=-45°, slow rotation").
-- Use opacity and fill to give objects a sense of volume and materiality.
+- Use opacity and fill to give objects a sense of volume and materiality. Surfaces are shaded by height in their palette colour automatically, so describe the surface and its colour role, not a pattern.
 - Combine 3D objects with 2D labels and annotations overlaid for clarity.
 - Avoid checkerboard or grid patterns on 3D surfaces. Use solid or smooth gradient colors instead.
 - Always specify a clear surface/mesh color (or two-color gradient) and a tasteful stroke color; never leave 3D objects with default styling.
@@ -187,7 +189,8 @@ VISUAL HOUSE STYLE — the video shares its thumbnail's look; content first, nev
 ANIMATION & TRANSITION GUIDELINES:
 - Use "write" for formulas and text to create a hand-written feel.
 - Use "create" for shapes, graphs, and 3D objects for a satisfying build-up effect.
-- Use "fade_in" for titles, summaries, and comparison elements.
+- Use "fade_in" for titles, summaries, and comparison elements; key results "pop" in with a slight overshoot.
+- Keep the energy up: something moves within the first second of every scene, and every beat changes the picture. Prefer continuous motion (a point sliding along a curve, a vector rotating, an area filling, a camera orbit) over static reveals.
 - Think cinematically: clear the screen between major topic shifts, but let related elements build on each other.
 - Plan a visible action for every narration beat. A beat may reveal, transform, trace, move, compare, highlight, or intentionally reframe its focus element, but it must never be only a wait.
 - Vary the rhythm across consecutive beats: establish, change, reveal, then hold on the insight. Avoid repeating the same animation type three times in a row.
@@ -324,22 +327,25 @@ Use ordered names: Scene01Intro, Scene02Definition, etc.
 
 VISUAL HOUSE STYLE
 The house style is applied automatically after your imports: it sets the canvas, sets every Text() in Inter Tight and every MathTex() in matching math fonts, and defines this video's palette, shared with its thumbnail. Do not set background colors, fonts, or font weights yourself.
-These names are already defined and imported for you. Use them directly, and never define, redefine, or import them yourself: PRIMARY, ACCENT, SECONDARY, TERTIARY, INK, MUTED, header, place_in_content, content_box, balanced_text.
+These names are already defined and imported for you. Use them directly, and never define, redefine, or import them yourself: PRIMARY, ACCENT, SECONDARY, TERTIARY, INK, MUTED, header, place_in_content, content_box, balanced_text, pop_in, pulse, glow, shade_surface.
 - Color by role, using these names (never hex strings):
   PRIMARY — the main object: the curve, the shape, the surface.
   ACCENT — the one detail the narration points at right now: the tangent point, the key term, the answer. One thing at a time; it means "look here".
   SECONDARY, TERTIARY — supporting quantities that must stay distinct from PRIMARY. Only when a scene needs more than two colors.
-  INK — text and neutral lines (already the default). MUTED — eyebrows, captions, guides, and de-emphasised context.
+  INK — text and neutral lines (already the default). MUTED — captions, guides, and de-emphasised context.
 - Keep each mapping fixed for the whole video: once radius is PRIMARY, it is PRIMARY in every scene.
 - Build directly on the canvas. Never draw cards, UI panels, pills, outer frames, badges, logos, branding, or decorative gradient backgrounds.
-- Fill the frame with the actual graph, geometry, surface, vector field, equation, or scientific object. Keep text sparse and let the content be the visual hook.
-- Favor precise line work, generous negative space, and one dominant relationship per shot. Avoid generic glows, random particles, ornamental motion, or anything that reads as an AI-generated template.
+- Fill the frame with the actual graph, geometry, surface, vector field, equation, or scientific object. Keep text sparse and let the content be the visual hook. Be ambitious: big, bold, saturated visuals, never a small diagram in an empty frame.
+- The canvas is lit for you: curves, traced paths, dots and vectors glow softly in their own colour, and 3D surfaces are shaded by height. Use glow(mob) to give one other key object the same glow. Do not fake glows with stacked copies, and avoid random particles or ornamental motion.
+- Shade regions generously: axes.get_area(curve, x_range=[a, b], color=PRIMARY, opacity=0.3) or a filled shape with fill_opacity 0.2-0.35 makes a diagram read at a glance.
 
 TYPOGRAPHY
-- Text and MathTex share one type scale: the same font_size gives the same letter size. Use title 48, heading 40, body and formulas 36, labels 28, captions 24, eyebrow 22.
+- Text and MathTex share one type scale: the same font_size gives the same letter size. Use title 52, hero formulas 64-80, formulas and body 44, labels 32, captions 28. Nothing on screen is smaller than 26.
 - Titles are sentence case, at most about 6 words, with no trailing period.
-- Every scene's title is made with header("Title", eyebrow="TOPIC"). It sets the eyebrow and title at the same upper-left position in every scene, so the video reads as one designed system. Never position titles by hand.
-- For copy longer than about 5 words, use balanced_text("...", font_size=36). It breaks the copy into even lines that fit the frame. Never put more than about 45 characters on one line.
+- Every scene's title is made with header("Title"). It sets the title at the same upper-left position in every scene, so the video reads as one designed system. Never position titles by hand.
+- Never set small uppercase tags, eyebrows or section labels ("SUMMARY", "WORKED EXAMPLE", "KEY IDEA", "STEP 1") anywhere. The title names the scene; everything else is the content itself. Never write words in all capitals.
+- The key formula of a scene is a hero: set it at 64-80 so it reads from across the room, not as a caption.
+- For copy longer than about 5 words, use balanced_text("...", font_size=40). It breaks the copy into even lines that fit the frame. Never put more than about 40 characters on one line.
 - Left-align stacked copy: VGroup(...).arrange(DOWN, aligned_edge=LEFT, buff=0.3).
 
 LAYOUT AND SPACING
@@ -353,7 +359,9 @@ MOTION THAT HOLDS ATTENTION
 - Open every scene with motion within the first second: draw the main object, never a static title card.
 - Reveal in the order the narration speaks: object first, then its label, then the relationship.
 - Animate the change itself: move a point along the curve with a ValueTracker, grow the area, swing the vector, morph the formula with TransformMatchingTex. Change is what the eye follows.
-- Use ACCENT plus Indicate, Circumscribe, or a brief Flash for the one thing being named. Do not highlight everything.
+- Make reveals pop: self.play(pop_in(result)) grows a key result, dot or formula in with a slight overshoot. pop_in(a, b, c) staggers several. Use it for the moments that matter, Write for formulas being derived, Create for curves and shapes.
+- Use pulse(mob) (a quick swell in ACCENT), Circumscribe, or a brief Flash for the one thing being named. Do not highlight everything.
+- Keep the picture alive: drive a Dot, tangent line, vector or readout with a ValueTracker and always_redraw, and let a DecimalNumber count along with it. Morph equations with TransformMatchingTex instead of fading one out and another in.
 - Vary run times (0.6-2s) and use rate_func=smooth or there_and_back for emphasis. Avoid a constant, mechanical rhythm.
 - To color part of a formula, pass its parts as separate strings and color by tex: f = MathTex(r"A", r"=", r"\\pi r^2"); f.set_color_by_tex(r"\\pi r^2", ACCENT). A formula written as one string has exactly one part, so never index it as if it had more.
 
@@ -369,37 +377,51 @@ Create exactly one voiceover block per beat, using that beat's narration verbati
 LAYOUT TEMPLATES (use these as starting patterns)
 ═══════════════════════════════════════════════════════════════════════════════
 
-# every scene — consistent header at the upper left
-title = header("The derivative is a slope", eyebrow="CALCULUS")
-subtitle = balanced_text("How fast does a curve change at a single point?", font_size=36, color=MUTED)
+# every scene — consistent header at the upper left, no eyebrow
+title = header("The derivative is a slope")
+subtitle = balanced_text("How fast does a curve change at a single point?", font_size=40, color=MUTED)
 subtitle.next_to(title, DOWN, buff=0.5).align_to(title, LEFT)
 
 
-# formula_scene — formula centered, the spoken term in ACCENT, label below
-formula = MathTex(r"E", r"=", r"m c^2", font_size=48).move_to(UP * 0.5)
+# formula_scene — hero formula, the spoken term in ACCENT, popping in
+formula = MathTex(r"E", r"=", r"m c^2", font_size=80).move_to(UP * 0.3)
 formula.set_color_by_tex(r"m c^2", ACCENT)
-label = Text("energy", font_size=28, color=MUTED).next_to(formula, DOWN, buff=0.5)
+label = Text("energy", font_size=32, color=MUTED).next_to(formula, DOWN, buff=0.6)
+self.play(pop_in(formula), run_time=0.8)
+self.play(pulse(formula[2]))
 
 
-# axes_scene — the graph fills the content area below the header
-title = header("Squaring grows fast", eyebrow="FUNCTIONS")
+# axes_scene — the graph fills the content area, a live point rides the curve
+title = header("Squaring grows fast")
 axes = Axes(x_range=[-3,3,1], y_range=[-1,9,2], x_length=7, y_length=4.5, axis_config={"include_numbers": True})
 graph = axes.plot(lambda x: x**2, color=PRIMARY)
-visual = VGroup(axes, graph)
+area = axes.get_area(graph, x_range=[0, 2], color=PRIMARY, opacity=0.3)
+visual = VGroup(axes, graph, area)
 place_in_content(visual, above=title)
-curve_label = axes.get_graph_label(graph, label="y=x^2", direction=UR)
+t = ValueTracker(-2)
+dot = always_redraw(lambda: Dot(axes.c2p(t.get_value(), t.get_value()**2), color=ACCENT))
+self.play(pop_in(dot)); self.play(t.animate.set_value(2), run_time=2, rate_func=smooth)
 
 
-# geometry_scene — shape fills the content area, labels outside it
-shape = Circle(radius=1.5, color=PRIMARY, fill_opacity=0.15)
-radius = Line(shape.get_center(), shape.get_right(), color=ACCENT)
+# geometry_scene — filled shape fills the content area, labels outside it
+shape = Circle(radius=1.5, color=PRIMARY, fill_opacity=0.25)
+radius = Line(shape.get_center(), shape.get_right(), color=ACCENT, stroke_width=6)
 place_in_content(VGroup(shape, radius), above=title)
-lbl = MathTex("r", font_size=36, color=ACCENT).next_to(radius, UP, buff=0.25)
+lbl = MathTex("r", font_size=44, color=ACCENT).next_to(radius, UP, buff=0.25)
+
+
+# surface_scene — a shaded 3D surface with a slow orbit
+self.set_camera_orientation(phi=64 * DEGREES, theta=-50 * DEGREES)
+axes = ThreeDAxes(x_range=[-3,3,1], y_range=[-3,3,1], z_range=[-1.5,1.5,1], x_length=6.5, y_length=6.5, z_length=3)
+surface = Surface(lambda u, v: axes.c2p(u, v, np.sin(u) * np.cos(v)), u_range=[-3, 3], v_range=[-3, 3], resolution=(32, 32))
+shade_surface(surface, PRIMARY)  # height-lit in the palette colour; already the default
+self.play(Create(axes), Create(surface), run_time=2)
+self.begin_ambient_camera_rotation(rate=0.2)
 
 
 # split_scene — two elements side by side
-left_el = MathTex(r"a^2", font_size=48, color=PRIMARY).shift(LEFT * 3)
-right_el = MathTex(r"b^2", font_size=48, color=SECONDARY).shift(RIGHT * 3)
+left_el = MathTex(r"a^2", font_size=72, color=PRIMARY).shift(LEFT * 3)
+right_el = MathTex(r"b^2", font_size=72, color=SECONDARY).shift(RIGHT * 3)
 
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -433,10 +455,10 @@ CRITICAL REQUIREMENTS
 9. Max 4-5 elements on screen. FadeOut old content before showing new. Use self.wait(1) between elements.
 10. Use .next_to() with buff>=0.4 for positioning.
 11. Each scene is self-contained — no shared state between scene classes.
-12. 3D objects must NOT use checkerboard patterns. For surfaces, set a solid fill color (or subtle gradient) and use set_style with fill_opacity and stroke_color. If using Surface, override checkerboard_colors to a uniform solid (e.g., [color, color]) or disable it.
+12. 3D objects must NOT use checkerboard patterns. Surfaces are shaded by height in PRIMARY automatically; to use another role, call shade_surface(surface, SECONDARY). Never pass two different checkerboard_colors.
 13. Use camera motion in 3D scenes when it improves clarity or aesthetics: slow orbit, tilt, or push-in timed to narration beats.
 14. In 3D scenes (ThreeDScene), call self.add_fixed_in_frame_mobjects(mobject) on every Text() and MathTex() mobject immediately after creation so they render as flat 2D overlays that always face the camera, even during camera rotations. Do NOT use .fix_in_frame() — it does not exist in Manim Community.
-    Example: title = Text("Title", font_size=48).to_edge(UP, buff=0.6); self.add_fixed_in_frame_mobjects(title)
+    Example: title = header("Title"); self.add_fixed_in_frame_mobjects(title)
 15. Graphs are computed mathematics, not illustrations. The lambda passed to axes.plot must exactly match the displayed formula and scene-plan expression. Choose axes ranges that show the relevant behavior, and place intercepts, tangent points, extrema, asymptotes, and shaded regions from the same function rather than by eye.
 
 ═══════════════════════════════════════════════════════════════════════════════

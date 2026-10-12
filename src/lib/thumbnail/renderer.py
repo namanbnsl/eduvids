@@ -9,13 +9,16 @@ slots that this module validates, lays out and checks.
     renderer.py render --spec specs.json --index N --out FILE.png --font-dir FONTS [--safe]
 
 Design system
-- Canvas 1280x720, solid background, fixed margins and a two-column grid:
-  copy on the left, one hero visual on the right.
+- Canvas 1280x720 on the video's dark vignetted canvas, fixed margins and a
+  two-column grid: a big headline on the left, one hero on the right. The
+  hero is either a frame lifted from the finished video (``frame``) or a
+  drawn visual that glows on the canvas; 3D heroes are lit in perspective.
 - Typography is typeset by XeLaTeX: Inter Tight for text, Inter Tight (italic)
   for math letters and digits, Fira Math for operators, so math and prose
   share one family and one baseline.
 - One cool hue carries the visual; one warm hue marks the single focal detail
-  and the accent words of the headline.
+  and the accent words of the headline. No eyebrow or other small tag: the
+  headline and the picture carry the thumbnail.
 - Layout is verified, not hoped for: the copy block, the hero, every label,
   the safe area and YouTube's duration badge are checked for collisions.
 """
@@ -69,18 +72,17 @@ INK = "#EDEAE4"
 MUTED = "#8A8F98"
 
 PALETTES = {
-    "teal-amber": ("#46C2B8", "#F2B84B"),
-    "azure-coral": ("#6AAEE8", "#F07167"),
-    "violet-amber": ("#A595F0", "#F2B84B"),
-    "teal-rose": ("#46C2B8", "#EE85B5"),
-    "azure-amber": ("#6AAEE8", "#F2B84B"),
+    "teal-amber": ("#2DD4BF", "#FFC233"),
+    "azure-coral": ("#4EA8FF", "#FF6B5A"),
+    "violet-amber": ("#9B7BFF", "#FFC233"),
+    "teal-rose": ("#2DD4BF", "#FF5FA2"),
+    "azure-amber": ("#4EA8FF", "#FFC233"),
 }
 
 # Type scale (em size in px). Headlines step down a tier only when the copy
 # cannot fit the column at the larger size.
-HEADLINE_TIERS = (66, 58, 50)
-HEADLINE_LEADING = 1.08
-EYEBROW_SIZE = 20
+HEADLINE_TIERS = (78, 70, 62)
+HEADLINE_LEADING = 1.06
 LABEL_SIZE = 34
 CAPTION_SIZE = 30
 EQUATION_SIZES = (92, 82, 72, 64)
@@ -1086,14 +1088,30 @@ def rotation_matrix(phi, theta):
 
 LIGHT = np.array([-0.35, 0.55, 0.76])
 LIGHT = LIGHT / np.linalg.norm(LIGHT)
+HALF = LIGHT + np.array([0.0, 0.0, 1.0])
+HALF = HALF / np.linalg.norm(HALF)
+CAMERA_DISTANCE = 11.0
 
 
 def shaded_mesh(vertices, faces, colors, phi=-1.1, theta=-0.75, cull=False, edge_opacity=0.28):
-    """Orthographic projection with painter's ordering and Lambert shading."""
+    """Perspective projection with painter's ordering and Blinn-Phong shading.
+
+    Each face gets a Lambert term, a specular highlight toward the key light
+    and a rim light on faces turning away from the viewer, so solids read as
+    lit objects rather than flat diagrams. Returns the mesh and the projection
+    used, so overlays (a cube's diagonal) land on the same picture.
+    """
     from manim import Polygon, VGroup
 
     rotation = rotation_matrix(phi, theta)
+
+    def project(points):
+        view = np.asarray(points, dtype=float) @ rotation.T
+        scale = CAMERA_DISTANCE / np.maximum(CAMERA_DISTANCE - view[:, 2], 1e-3)
+        return np.column_stack([view[:, 0] * scale, view[:, 1] * scale, view[:, 2]])
+
     view = vertices @ rotation.T
+    screen = project(vertices)
     polygons = []
     for face, color in zip(faces, colors):
         pts = view[face]
@@ -1102,18 +1120,28 @@ def shaded_mesh(vertices, faces, colors, phi=-1.1, theta=-0.75, cull=False, edge
         if norm < 1e-12:
             continue
         normal /= norm
+        # Facing is judged on the projected polygon, so perspective decides
+        # which faces are visible (judging it orthographically leaves teeth
+        # along the silhouette).
+        flat = screen[face]
+        area = sum(flat[k, 0] * flat[(k + 1) % len(face), 1] - flat[(k + 1) % len(face), 0] * flat[k, 1] for k in range(len(face)))
+        if area < 0 and cull:
+            continue
         if normal[2] < 0:
-            if cull:
-                continue
             normal = -normal
-        light = 0.32 + 0.68 * max(0.0, float(np.dot(normal, LIGHT)))
-        polygons.append((pts[:, 2].mean(), pts, hex_mix(BG, color, light)))
+        diffuse = 0.26 + 0.74 * max(0.0, float(np.dot(normal, LIGHT)))
+        specular = max(0.0, float(np.dot(normal, HALF))) ** 14 * 0.32
+        rim = (1 - abs(float(normal[2]))) ** 3 * 0.4
+        tone = hex_mix(BG, color, min(diffuse, 1.0))
+        tone = hex_mix(tone, hex_mix(color, INK, 0.55), rim)
+        tone = hex_mix(tone, INK, specular)
+        polygons.append((pts[:, 2].mean(), screen[face], tone))
     polygons.sort(key=lambda item: item[0])
     group = VGroup()
     for _, pts, color in polygons:
         flat = np.column_stack([pts[:, 0], pts[:, 1], np.zeros(len(pts))])
         group.add(Polygon(*flat, stroke_color=BG, stroke_width=0.6, stroke_opacity=edge_opacity, fill_color=color, fill_opacity=1))
-    return group, rotation
+    return group, project
 
 
 def hero_surface_3d(spec, cool, warm, ts, safe):
@@ -1160,8 +1188,9 @@ def hero_solid_3d(spec, cool, warm, ts, safe):
     if shape == "cube":
         corners = np.array([[x, y, z] for x in (-1.5, 1.5) for y in (-1.5, 1.5) for z in (-1.5, 1.5)], dtype=float)
         quads = [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]]
-        mesh, rotation = shaded_mesh(corners, np.array(quads), [cool] * 6, phi, theta, cull=True, edge_opacity=0)
-        view = corners @ rotation.T
+        mesh, project = shaded_mesh(corners, np.array(quads), [cool] * 6, phi, theta, cull=True, edge_opacity=0)
+        view = project(corners)
+        view[:, 2] = 0
         diagonal = corner_path([view[0], view[7]])
         return Hero(VGroup(mesh, stroke(diagonal, warm, 5)))
     if shape == "torus":
@@ -1225,8 +1254,9 @@ def compose(spec: dict, font_dir: str, safe: bool):
     ts = Typesetter(font_dir, cool, warm)
     report = {"mode": "safe" if safe else "full", "warnings": []}
 
+    # spec["eyebrow"] is metadata only: small block-capital tags read as
+    # template chrome, so the headline and the picture carry the thumbnail.
     headline = (spec.get("headline") or "").strip()
-    eyebrow = (spec.get("eyebrow") or "").strip()
     has_copy = bool(headline)
 
     copy_block = None
@@ -1250,14 +1280,7 @@ def compose(spec: dict, font_dir: str, safe: bool):
                 break
         if copy_block is None:
             raise LayoutError("headline does not fit the copy column at any type size")
-        parts = []
-        if eyebrow:
-            kicker = ts.block([tex_escape(eyebrow.upper())], EYEBROW_SIZE, "Medium", color="muted", leading=1.2, tracking=14)
-            parts.append(kicker)
-        parts.append(copy_block)
-        text = VGroup(*parts)
-        if len(parts) == 2:
-            parts[1].next_to(parts[0], np.array([0, -1, 0]), buff=u(26), aligned_edge=np.array([-1, 0, 0]))
+        text = VGroup(copy_block)
         text.move_to([x_at(MARGIN_X) + text.width / 2, u(6), 0])
         if text.height > u(HEIGHT - 2 * MARGIN_Y):
             raise LayoutError("copy block is taller than the canvas")
@@ -1268,6 +1291,16 @@ def compose(spec: dict, font_dir: str, safe: bool):
     ts.region_w = hero_region[2] - hero_region[0]
 
     visual = spec.get("visual") if isinstance(spec.get("visual"), dict) else {}
+    if visual.get("type") == "frame":
+        path = visual.get("path")
+        if not safe and isinstance(path, str) and os.path.isfile(path):
+            if text is not None:
+                verify(text, None, [], None)
+            report["visual"] = "frame"
+            report["frame"] = {"path": path, "left": HERO_LEFT - 72 if text is not None else 0}
+            return ([text] if text is not None else []), report
+        # Safe mode, or the frame is missing: draw the concept visual instead.
+        visual = visual.get("fallback") if isinstance(visual.get("fallback"), dict) else {}
     kind = visual.get("type") if visual.get("type") in HEROES else "equation"
     if safe and kind == "equation" and not clean_latex(visual.get("notation")):
         kind = "geometry"
@@ -1309,24 +1342,29 @@ def compose(spec: dict, font_dir: str, safe: bool):
     verify(text, hero_group, placed, graphics)
     box = bbox(hero_group)
     report["hero_box_px"] = [round((box[0] + FRAME_W / 2) * PX), round((FRAME_H / 2 - box[3]) * PX), round((box[2] + FRAME_W / 2) * PX), round((FRAME_H / 2 - box[1]) * PX)]
+    report["glow"] = 0.32 if kind in ("surface_3d", "solid_3d") else 0.0 if kind == "equation" else 0.75
+    report["_hero"] = graphics
     mobjects = [hero_group] + ([text] if text is not None else [])
     return mobjects, report
 
 
 def verify(text, hero_group, labels, graphics):
-    """Hard layout rules. Any violation fails the render."""
-    if text is not None:
+    """Hard layout rules. Any violation fails the render.
+
+    ``hero_group`` is None for a video-frame hero, which is composited as an
+    image and bleeds off the right edge by design: only the copy is checked.
+    """
+    if text is not None and hero_group is not None:
         if boxes_overlap(bbox(text, u(GUTTER / 2)), bbox(hero_group)):
             raise LayoutError("copy block and hero overlap")
     safe_box = np.array([-FRAME_W / 2 + u(SAFE_PAD), -FRAME_H / 2 + u(SAFE_PAD), FRAME_W / 2 - u(SAFE_PAD), FRAME_H / 2 - u(SAFE_PAD)])
-    for mob in ([text] if text is not None else []) + [hero_group]:
+    for mob in ([text] if text is not None else []) + ([hero_group] if hero_group is not None else []):
         box = bbox(mob)
         if box[0] < safe_box[0] or box[1] < safe_box[1] or box[2] > safe_box[2] or box[3] > safe_box[3]:
             raise LayoutError("content outside the safe area")
     badge = np.array([x_at(BADGE_ZONE[0]), y_at(BADGE_ZONE[3]), x_at(BADGE_ZONE[2]), y_at(BADGE_ZONE[1])])
-    points = bezier_samples(hero_group)
-    if text is not None:
-        points = np.vstack([points, bezier_samples(text)])
+    points = [bezier_samples(mob) for mob in (hero_group, text) if mob is not None]
+    points = np.vstack(points) if points else np.zeros((0, 3))
     inside = (points[:, 0] > badge[0]) & (points[:, 0] < badge[2]) & (points[:, 1] > badge[1]) & (points[:, 1] < badge[3])
     if inside.any():
         raise LayoutError("content under the YouTube duration badge")
@@ -1334,6 +1372,69 @@ def verify(text, hero_group, labels, graphics):
         for b in labels[i + 1:]:
             if boxes_overlap(bbox(a), bbox(b)):
                 raise LayoutError("labels overlap")
+
+
+# ---------------------------------------------------------------------------
+# Canvas: the video's vignette, a soft pool of the cool hue behind the hero,
+# bloom around drawn heroes, and video frames feathered into the canvas.
+# ---------------------------------------------------------------------------
+
+VIGNETTE_CENTER = "#15171C"  # same as video_style.py
+VIGNETTE_EDGE = "#08090B"
+
+
+def rgb255(color: str) -> np.ndarray:
+    value = color.lstrip("#")
+    return np.array([int(value[i:i + 2], 16) for i in (0, 2, 4)], dtype=np.float32)
+
+
+def canvas(cool: str, hero_center_px) -> np.ndarray:
+    """Float RGB canvas (0-255): vignette plus a glow pool behind the hero."""
+    ys, xs = np.mgrid[0:HEIGHT, 0:WIDTH].astype(np.float32)
+    nx, ny = (xs - WIDTH / 2) / (WIDTH / 2), (ys - HEIGHT * 0.46) / (HEIGHT / 2)
+    r = np.clip(np.sqrt(nx * nx * 0.62 + ny * ny * 0.9), 0, 1.4) / 1.4
+    t = (r * r * (3 - 2 * r))[:, :, None]
+    rgb = rgb255(VIGNETTE_CENTER) * (1 - t) + rgb255(VIGNETTE_EDGE) * t
+    if hero_center_px is not None:
+        cx, cy = hero_center_px
+        d2 = ((xs - cx) ** 2 + (ys - cy) ** 2) / (360.0 ** 2)
+        pool = np.exp(-d2)[:, :, None] * 0.16
+        rgb = rgb * (1 - pool) + rgb255(cool) * pool
+    return rgb
+
+
+def bloom(mobjects, strength: float) -> np.ndarray:
+    """Light the hero casts on the canvas: its own pixels, blurred wide."""
+    from manim.camera.camera import Camera
+    from PIL import Image, ImageFilter
+
+    layer = Camera(background_color=BG, background_opacity=0)
+    layer.capture_mobjects(mobjects)
+    rgb = Image.fromarray(np.ascontiguousarray(layer.pixel_array[:, :, :3]))
+    near = np.asarray(rgb.filter(ImageFilter.GaussianBlur(10)), dtype=np.float32)
+    far = np.asarray(rgb.filter(ImageFilter.GaussianBlur(34)), dtype=np.float32)
+    return (near * 0.5 + far * 0.6) * strength
+
+
+def feathered_frame(path: str, left_px: int):
+    """A video frame scaled into the hero column, its edges dissolved into
+    the canvas. Returns (rgb float array, alpha float array, x, y)."""
+    from PIL import Image, ImageEnhance
+
+    image = Image.open(path).convert("RGB")
+    image = ImageEnhance.Color(image).enhance(1.12)
+    area_w, area_h = WIDTH - left_px, HEIGHT
+    scale = min(area_w / image.width, area_h / image.height)
+    size = (min(area_w, max(1, round(image.width * scale))), min(area_h, max(1, round(image.height * scale))))
+    image = image.resize(size, Image.LANCZOS)
+    w, h = size
+    x, y = left_px + (area_w - w) // 2, (HEIGHT - h) // 2
+    feather = max(24.0, min(w, h) * 0.12)
+    xs, ys = np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32)
+    fx = np.clip(np.minimum(xs + 0.5, w - xs - 0.5) / feather, 0, 1)
+    fy = np.clip(np.minimum(ys + 0.5, h - ys - 0.5) / feather, 0, 1)
+    alpha = np.outer(fy * fy * (3 - 2 * fy), fx * fx * (3 - 2 * fx))
+    return np.asarray(image, dtype=np.float32), alpha, x, y
 
 
 def render(spec: dict, out_path: str, font_dir: str, work_dir: str, safe: bool) -> dict:
@@ -1354,7 +1455,28 @@ def render(spec: dict, out_path: str, font_dir: str, work_dir: str, safe: bool) 
 
     started = time.time()
     mobjects, report = compose(spec, font_dir, safe)
+    cool = PALETTES.get(spec.get("palette"), PALETTES["teal-amber"])[0]
+    hero = report.pop("_hero", None)
+    frame = report.get("frame")
+    if frame:
+        rgb, alpha, x, y = feathered_frame(frame["path"], frame["left"])
+        background = canvas(cool, (x + rgb.shape[1] / 2, HEIGHT / 2))
+        region = background[y:y + rgb.shape[0], x:x + rgb.shape[1]]
+        # Lighten blend: the video's own dark canvas never paints over the
+        # thumbnail's vignette, so only the content shows, with no box edge.
+        lifted = np.maximum(region, rgb)
+        region[:] = region * (1 - alpha[:, :, None]) + lifted * alpha[:, :, None]
+        report["frame_box_px"] = [x, y, x + rgb.shape[1], y + rgb.shape[0]]
+    else:
+        box = report.get("hero_box_px")
+        center = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2) if box else None
+        background = canvas(cool, center)
+        if hero is not None and report.get("glow"):
+            background = background + bloom([hero], report["glow"])
+    noise = np.random.default_rng(7).random(background.shape, dtype=np.float32) - 0.5
     camera = Camera(background_color=BG)
+    camera.background[:, :, :3] = np.clip(background + noise, 0, 255).astype(np.uint8)
+    camera.reset()
     camera.capture_mobjects(mobjects)
     camera.get_image().convert("RGB").save(out_path, optimize=True)
     report["seconds"] = round(time.time() - started, 2)
