@@ -585,23 +585,28 @@ export async function renderThumbnailCandidates({
   topic,
   designSeed,
 }: {
-  prepared: PreparedSandboxState;
+  /** The video's sandbox, if it is idle; otherwise a fresh one is used. */
+  prepared?: PreparedSandboxState;
   titles: VideoTitleSet;
   topic: string;
   designSeed: string;
 }): Promise<ThumbnailRenderResult> {
-  let sandbox: Sandbox;
+  let sandbox: Sandbox | undefined;
   let ownsSandbox = false;
-  try {
-    sandbox = await Sandbox.connect(prepared.sandboxId, {
-      timeoutMs: 3_600_000,
-      requestTimeoutMs: 180_000,
-    });
-  } catch (error) {
-    console.warn(
-      "Video sandbox unavailable for thumbnails; starting a fresh one",
-      error instanceof Error ? error.message : error,
-    );
+  if (prepared) {
+    try {
+      sandbox = await Sandbox.connect(prepared.sandboxId, {
+        timeoutMs: 3_600_000,
+        requestTimeoutMs: 180_000,
+      });
+    } catch (error) {
+      console.warn(
+        "Video sandbox unavailable for thumbnails; starting a fresh one",
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+  if (!sandbox) {
     sandbox = await Sandbox.create(SANDBOX_TEMPLATE, { timeoutMs: 600_000 });
     ownsSandbox = true;
   }
