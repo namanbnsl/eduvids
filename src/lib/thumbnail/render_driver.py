@@ -27,7 +27,7 @@ import tempfile
 import time
 from pathlib import Path
 
-# 1080p Cairo arrays, vignette buffers, 48x48 surfaces and encoder buffers.
+# 1080p Cairo arrays, background buffers, 48x48 surfaces and encoder buffers.
 # The old 720p allowance oversubscribed small sandboxes at the new quality.
 MB_PER_RENDER = 768
 DIGITS = list("0123456789") + ["-", ".", ","]

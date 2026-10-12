@@ -1221,7 +1221,7 @@ export async function generateVideoTitles({
   voiceoverScript,
   scenePlan,
 }: VideoTitleRequest): Promise<VideoTitleSet> {
-  const systemPrompt = `You package videos for eduvids, a visual math and science channel. Generate exactly three distinct title-and-thumbnail packages, ordered strongest first. Each thumbnail is rendered by a fixed design system: a big, bold two-line headline on the left and, on the right, either a frame taken from the video itself or one precise, glowing mathematical visual (lit 3D for surfaces and solids), on a dark vignetted background. There are no small tags or eyebrows on the image. You supply the words and the visual parameters only.
+  const systemPrompt = `You package videos for eduvids, a visual math and science channel. Generate exactly three distinct title-and-thumbnail packages, ordered strongest first. Each thumbnail is rendered by a fixed design system: a big, bold two-line headline on the left and, on the right, either a frame taken from the video itself or one precise mathematical visual (matte 3D for surfaces and solids), on a flat near-black background in the style of 3Blue1Brown. There are no small tags or eyebrows on the image. You supply the words and the visual parameters only.
 
 WHAT WINS THE CLICK
 - The title and thumbnail are one sentence split in two: the image shows the strange thing, the title makes it matter. Never say the same thing twice.
@@ -1262,7 +1262,7 @@ VISUAL RULES
   network: layers, e.g. [3, 5, 5, 2]
   surface_3d: expression in x and y, e.g. "sin(x)*cos(y)"
   solid_3d: shape "sphere" | "torus" | "cube"
-  equation: notation (the formula is the hero; wrap the key term in \\hl{...} to colour it)
+  equation: notation (the formula is the hero; wrap the key term in \\hl{...} to colour it). Beside a headline keep it under about 20 characters, e.g. "P(A\\mid B)" rather than the whole rule; a visual-only package can show a longer formula
 - notation must be short valid LaTeX that is central to the topic, or omitted. Never invent equations, functions, or claims: ground every expression and label in the source material. If exact mathematics is absent, choose a truthful conceptual visual
 - Make the three packages distinct in angle, headline, and visual
 

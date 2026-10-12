@@ -9,13 +9,14 @@ import {
 
 /**
  * Videos share their thumbnail's look: `thumbnail/video_style.py` sets the
- * canvas, Inter Tight text, matching math fonts and the per-video palette.
+ * canvas, Computer Modern text and math (CMU Serif, Latin Modern Math), and the
+ * per-video palette.
  * It is installed into the render sandbox as the `eduvids_style` module and
  * star-imported by every generated script.
  */
 
 export const VIDEO_STYLE_MARKER = "# __EDUVIDS_HOUSE_STYLE__";
-export const VIDEO_BACKGROUND = "#0E0F11";
+export const VIDEO_BACKGROUND = "#0A0A0A";
 /** One quality profile for durable and synchronous render paths. */
 export function videoRenderFlags(resolution?: {
   width: number;
@@ -142,7 +143,7 @@ const WATERMARK_FALLBACK_FONT =
   "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
 
 /** Prints the installed house font for ffmpeg, or DejaVu if it is missing. */
-export const WATERMARK_FONT_COMMAND = `python -c "import os, site; p = os.path.join(site.getusersitepackages(), 'eduvids-fonts', 'InterTight-Medium.ttf'); print(p if os.path.exists(p) else '${WATERMARK_FALLBACK_FONT}')"`;
+export const WATERMARK_FONT_COMMAND = `python -c "import os, site; p = os.path.join(site.getusersitepackages(), 'eduvids-fonts', 'cmunrm.otf'); print(p if os.path.exists(p) else '${WATERMARK_FALLBACK_FONT}')"`;
 
 /** Quiet ink wordmark, inset from the corner like the thumbnails' margins. */
 export const WATERMARK_STYLE =
@@ -150,6 +151,6 @@ export const WATERMARK_STYLE =
 
 /** Python lines that set `watermark_font` inside a sandbox script. */
 export const WATERMARK_FONT_PYTHON = `import os, site
-watermark_font = os.path.join(site.getusersitepackages(), 'eduvids-fonts', 'InterTight-Medium.ttf')
+watermark_font = os.path.join(site.getusersitepackages(), 'eduvids-fonts', 'cmunrm.otf')
 if not os.path.exists(watermark_font):
     watermark_font = '${WATERMARK_FALLBACK_FONT}'`;

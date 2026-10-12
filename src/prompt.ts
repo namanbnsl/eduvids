@@ -146,7 +146,7 @@ VISUAL HOUSE STYLE — the video shares its thumbnail's look; content first, nev
 ANIMATION & TRANSITION GUIDELINES:
 - Use "write" for formulas and text to create a hand-written feel.
 - Use "create" for shapes, graphs, and 3D objects for a satisfying build-up effect.
-- Use "fade_in" for titles, summaries, and comparison elements; key results "pop" in with a slight overshoot.
+- Use "fade_in" for titles, summaries, and comparison elements; key results grow in smoothly.
 - Keep the energy up: something moves within the first second of every scene, and every beat changes the picture. Prefer continuous motion (a point sliding along a curve, a vector rotating, an area filling, a camera orbit) over static reveals.
 - Think cinematically: clear the screen between major topic shifts, but let related elements build on each other.
 - Plan a visible action for every narration beat. A beat may reveal, transform, trace, move, compare, highlight, or intentionally reframe its focus element, but it must never be only a wait.
@@ -285,8 +285,8 @@ For 3D scenes: class MyScene(VoiceoverScene, ThreeDScene).
 Name each scene class exactly as its scene-plan sceneId (Scene01Intro, Scene02Definition, ...).
 
 VISUAL HOUSE STYLE
-The house style is applied automatically after your imports: it sets the canvas, sets every Text() in Inter Tight and every MathTex() in matching math fonts, and defines this video's palette, shared with its thumbnail. Do not set background colors, fonts, or font weights yourself.
-These names are already defined and imported for you. Use them directly, and never redefine them: PRIMARY, ACCENT, SECONDARY, TERTIARY, INK, MUTED, header, caption, layout_scene, lock_layout, fixed_overlay, place_3d_in_content, place_in_content, content_box, balanced_text, pop_in, pulse, glow, shade_surface.
+The house style is applied automatically after your imports: it sets the canvas, sets every Text() and MathTex() in Computer Modern (as in 3Blue1Brown and Welch Labs videos), and defines this video's palette, shared with its thumbnail. Do not set background colors, fonts, or font weights yourself.
+These names are already defined and imported for you. Use them directly, and never redefine them: PRIMARY, ACCENT, SECONDARY, TERTIARY, INK, MUTED, header, caption, layout_scene, lock_layout, fixed_overlay, place_3d_in_content, place_in_content, content_box, balanced_text, pop_in, pulse, shade_surface.
 - Color by role, using these names (never hex strings):
   PRIMARY — the main object: the curve, the shape, the surface.
   ACCENT — the one detail the narration points at right now: the tangent point, the key term, the answer. One thing at a time; it means "look here".
@@ -294,8 +294,8 @@ These names are already defined and imported for you. Use them directly, and nev
   INK — text and neutral lines (already the default). MUTED — captions, guides, and de-emphasised context.
 - Keep each mapping fixed for the whole video: once radius is PRIMARY, it is PRIMARY in every scene.
 - Build directly on the canvas. Never draw cards, UI panels, pills, outer frames, badges, logos, branding, or decorative gradient backgrounds.
-- Fill the frame with the actual graph, geometry, surface, vector field, equation, or scientific object. Keep text sparse and let the content be the visual hook. Be ambitious: big, bold, saturated visuals, never a small diagram in an empty frame.
-- The canvas is lit for you: curves, traced paths, dots and vectors glow softly in their own colour. 3D surfaces use a smooth, saturated material with no patch outlines; add only a few mathematically meaningful contour curves when they explain the shape. Do not fake glows with stacked copies, and avoid random particles or ornamental motion.
+- Fill the frame with the actual graph, geometry, surface, vector field, equation, or scientific object. Keep text sparse and let the content be the visual hook. Be ambitious: big, clear visuals, never a small diagram in an empty frame.
+- The look is flat and crisp, like 3Blue1Brown and Welch Labs: a plain near-black canvas, clean strokes in solid colour, no glow, no shine, no gradients. 3D surfaces use a smooth, matte material with no patch outlines; add only a few mathematically meaningful contour curves when they explain the shape. Never fake glows with stacked or blurred copies, and avoid random particles or ornamental motion.
 - Shade regions generously: axes.get_area(curve, x_range=[a, b], color=PRIMARY, opacity=0.3) or a filled shape with fill_opacity 0.2-0.35 makes a diagram read at a glance.
 
 TYPOGRAPHY
@@ -320,7 +320,7 @@ MOTION THAT HOLDS ATTENTION
 - Open every scene with motion within the first second: draw the main object, never a static title card.
 - Reveal in the order the narration speaks: object first, then its label, then the relationship.
 - Animate the change itself: move a point along the curve with a ValueTracker, grow the area, swing the vector, morph the formula with TransformMatchingTex. Change is what the eye follows.
-- Make reveals pop: self.play(pop_in(result)) grows a key result, dot or formula in with a slight overshoot. pop_in(a, b, c) staggers several. Use it for the moments that matter, Write for formulas being derived, Create for curves and shapes.
+- Reveal key moments calmly: self.play(pop_in(result)) fades and grows a key result, dot or formula in on a smooth curve (no bounce). pop_in(a, b, c) staggers several. Use it for the moments that matter, Write for formulas being derived, Create for curves and shapes.
 - Use pulse(mob) (a quick swell in ACCENT), Circumscribe, or a brief Flash for the one thing being named. Do not highlight everything.
 - Keep the picture alive: drive a Dot, tangent line, vector or readout with a ValueTracker and always_redraw, and let a DecimalNumber count along with it. Morph equations with TransformMatchingTex instead of fading one out and another in.
 - Vary run times (0.6-2s) and use rate_func=smooth or there_and_back for emphasis. Avoid a constant, mechanical rhythm.

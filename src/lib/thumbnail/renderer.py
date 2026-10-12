@@ -9,12 +9,12 @@ slots that this module validates, lays out and checks.
     renderer.py render --spec specs.json --index N --out FILE.png --font-dir FONTS [--safe]
 
 Design system
-- Canvas 1280x720 on the video's dark vignetted canvas, fixed margins and a
+- Canvas 1280x720 on the video's flat near-black canvas, fixed margins and a
   two-column grid: a big headline on the left, one hero on the right. The
   hero is either a frame lifted from the finished video (``frame``) or a
-  drawn visual that glows on the canvas; 3D heroes are lit in perspective.
-- Typography is typeset by XeLaTeX: Inter Tight for text, Inter Tight (italic)
-  for math letters and digits, Fira Math for operators, so math and prose
+  crisp drawn visual with no glow or shine; 3D heroes are matte, in perspective.
+- Typography is typeset by XeLaTeX in Computer Modern, as in 3Blue1Brown and
+  Welch Labs: CMU Serif for text, Latin Modern Math for formulas, so math and prose
   share one family and one baseline.
 - One cool hue carries the visual; one warm hue marks the single focal detail
   and the accent words of the headline. No eyebrow or other small tag: the
@@ -67,16 +67,16 @@ HERO_LEFT = MARGIN_X + TEXT_COL_W + GUTTER
 BADGE_ZONE = (WIDTH - 168, HEIGHT - 64, WIDTH, HEIGHT)
 SAFE_PAD = 40
 
-BG = "#0E0F11"
+BG = "#0A0A0A"
 INK = "#EDEAE4"
 MUTED = "#8A8F98"
 
 PALETTES = {
-    "teal-amber": ("#2DD4BF", "#FFC233"),
-    "azure-coral": ("#4EA8FF", "#FF6B5A"),
-    "violet-amber": ("#9B7BFF", "#FFC233"),
-    "teal-rose": ("#2DD4BF", "#FF5FA2"),
-    "azure-amber": ("#4EA8FF", "#FFC233"),
+    "teal-amber": ("#5CD0B3", "#FFD35A"),
+    "azure-coral": ("#58C4DD", "#FC6255"),
+    "violet-amber": ("#B189C6", "#FFD35A"),
+    "teal-rose": ("#5CD0B3", "#E07A9F"),
+    "azure-amber": ("#58C4DD", "#FFD35A"),
 }
 
 # Type scale (em size in px). Headlines step down a tier only when the copy
@@ -86,7 +86,7 @@ HEADLINE_LEADING = 1.06
 LABEL_SIZE = 34
 CAPTION_SIZE = 30
 EQUATION_SIZES = (92, 82, 72, 64)
-CAP_HEIGHT = 0.727  # Inter Tight cap height / em
+CAP_HEIGHT = 0.683  # Computer Modern cap height / em
 
 FUNCTION_WORDS = {
     "a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "is",
@@ -309,8 +309,8 @@ class Typesetter:
         if weight in self._templates:
             return self._templates[weight]
         path = self.font_dir.rstrip("/") + "/"
-        upright = f"InterTight-{weight}.ttf"
-        italic = f"InterTight-{weight}Italic.ttf"
+        # Headlines ("SemiBold") use CMU Serif Bold; labels use the regular cut.
+        upright, italic = ("cmunbx.otf", "cmunbi.otf") if weight == "SemiBold" else ("cmunrm.otf", "cmunti.otf")
         preamble = "\n".join([
             r"\usepackage{amsmath}",
             r"\usepackage{fontspec}",
@@ -318,19 +318,18 @@ class Typesetter:
             r"\usepackage{xcolor}",
             r"\defaultfontfeatures{Kerning=On}",
             rf"\setmainfont{{{upright}}}[Path={path}, ItalicFont={italic}, BoldFont={upright}, BoldItalicFont={italic}]",
-            rf"\setmathfont{{FiraMath-Regular.otf}}[Path={path}]",
-            rf"\setmathfont{{{italic}}}[Path={path}, range={{it/{{latin,Latin,greek,Greek}}}}]",
-            rf"\setmathfont{{{upright}}}[Path={path}, range={{up/{{num,latin,Latin,greek,Greek}},bfup/{{num,latin,Latin}}}}]",
-            rf'\setmathfont{{{upright}}}[Path={path}, range={{"002B,"003D,"2212,"00D7,"003C,"003E,"00B1}}]',
+            rf"\setmathfont{{latinmodern-math.otf}}[Path={path}]",
+            # Bold headlines get bold letters and digits in their math too.
+            *([
+                rf"\setmathfont{{{italic}}}[Path={path}, range={{it/{{latin,Latin}}}}]",
+                rf"\setmathfont{{{upright}}}[Path={path}, range={{up/{{num,latin,Latin}}}}]",
+            ] if weight == "SemiBold" else []),
             rf"\definecolor{{ink}}{{HTML}}{{{INK[1:]}}}",
             rf"\definecolor{{muted}}{{HTML}}{{{MUTED[1:]}}}",
             rf"\definecolor{{cool}}{{HTML}}{{{self.cool[1:]}}}",
             rf"\definecolor{{accent}}{{HTML}}{{{self.warm[1:]}}}",
             r"\newcommand{\hl}[1]{\textcolor{accent}{#1}}",
             r"\setlength{\tabcolsep}{0pt}",
-            # Inter's operators carry their own side bearings; tighten TeX's math spacing to match.
-            r"\medmuskip=2.5mu plus 1mu minus 1mu",
-            r"\thickmuskip=3.5mu plus 2mu",
         ])
         template = TexTemplate(
             tex_compiler="xelatex",
@@ -1088,17 +1087,14 @@ def rotation_matrix(phi, theta):
 
 LIGHT = np.array([-0.35, 0.55, 0.76])
 LIGHT = LIGHT / np.linalg.norm(LIGHT)
-HALF = LIGHT + np.array([0.0, 0.0, 1.0])
-HALF = HALF / np.linalg.norm(HALF)
 CAMERA_DISTANCE = 11.0
 
 
 def shaded_mesh(vertices, faces, colors, phi=-1.1, theta=-0.75, cull=False, edge_opacity=0.28):
     """Perspective projection with painter's ordering and Blinn-Phong shading.
 
-    Each face gets a Lambert term, a specular highlight toward the key light
-    and a rim light on faces turning away from the viewer, so solids read as
-    lit objects rather than flat diagrams. Returns the mesh and the projection
+    Each face gets a matte Lambert term only (no specular shine or rim
+    light), so solids read as solid without looking glossy. Returns the mesh and the projection
     used, so overlays (a cube's diagonal) land on the same picture.
     """
     from manim import Polygon, VGroup
@@ -1130,11 +1126,7 @@ def shaded_mesh(vertices, faces, colors, phi=-1.1, theta=-0.75, cull=False, edge
         if normal[2] < 0:
             normal = -normal
         diffuse = 0.26 + 0.74 * max(0.0, float(np.dot(normal, LIGHT)))
-        specular = max(0.0, float(np.dot(normal, HALF))) ** 14 * 0.32
-        rim = (1 - abs(float(normal[2]))) ** 3 * 0.4
         tone = hex_mix(BG, color, min(diffuse, 1.0))
-        tone = hex_mix(tone, hex_mix(color, INK, 0.55), rim)
-        tone = hex_mix(tone, INK, specular)
         polygons.append((pts[:, 2].mean(), screen[face], tone))
     polygons.sort(key=lambda item: item[0])
     group = VGroup()
@@ -1277,7 +1269,7 @@ def compose(spec: dict, font_dir: str, safe: bool):
         )
         for _, size, lines in candidates[:6]:
             rendered = [" ".join(word_tex(w, accent_span, safe) for w in words[a:b]) for a, b in lines]
-            block = ts.block(rendered, size, "SemiBold", tracking=-1.2)
+            block = ts.block(rendered, size, "SemiBold")
             if block.width <= column:
                 copy_block = block
                 report.update(size=size, lines=[" ".join(w.text for w in words[a:b]) for a, b in lines])
@@ -1308,7 +1300,15 @@ def compose(spec: dict, font_dir: str, safe: bool):
     kind = visual.get("type") if visual.get("type") in HEROES else "equation"
     if safe and kind == "equation" and not clean_latex(visual.get("notation")):
         kind = "geometry"
-    hero = HEROES[kind](visual, cool, warm, ts, safe)
+    try:
+        hero = HEROES[kind](visual, cool, warm, ts, safe)
+    except LayoutError:
+        # A formula too wide for the hero column (e.g. Bayes' rule beside a
+        # headline): the safe pass draws a neutral visual instead of failing.
+        if not (safe and kind == "equation"):
+            raise
+        kind = "geometry"
+        hero = HEROES[kind](visual, cool, warm, ts, safe)
     report["visual"] = kind
 
     # Fit the graphics, then place labels at their fixed type size. If a label
@@ -1346,8 +1346,6 @@ def compose(spec: dict, font_dir: str, safe: bool):
     verify(text, hero_group, placed, graphics)
     box = bbox(hero_group)
     report["hero_box_px"] = [round((box[0] + FRAME_W / 2) * PX), round((FRAME_H / 2 - box[3]) * PX), round((box[2] + FRAME_W / 2) * PX), round((FRAME_H / 2 - box[1]) * PX)]
-    report["glow"] = 0.32 if kind in ("surface_3d", "solid_3d") else 0.0 if kind == "equation" else 0.75
-    report["_hero"] = graphics
     mobjects = [hero_group] + ([text] if text is not None else [])
     return mobjects, report
 
@@ -1379,12 +1377,8 @@ def verify(text, hero_group, labels, graphics):
 
 
 # ---------------------------------------------------------------------------
-# Canvas: the video's vignette, a soft pool of the cool hue behind the hero,
-# bloom around drawn heroes, and video frames feathered into the canvas.
+# Canvas: the video's flat background; video frames are feathered into it.
 # ---------------------------------------------------------------------------
-
-VIGNETTE_CENTER = "#15171C"  # same as video_style.py
-VIGNETTE_EDGE = "#08090B"
 
 
 def rgb255(color: str) -> np.ndarray:
@@ -1392,32 +1386,9 @@ def rgb255(color: str) -> np.ndarray:
     return np.array([int(value[i:i + 2], 16) for i in (0, 2, 4)], dtype=np.float32)
 
 
-def canvas(cool: str, hero_center_px) -> np.ndarray:
-    """Float RGB canvas (0-255): vignette plus a glow pool behind the hero."""
-    ys, xs = np.mgrid[0:HEIGHT, 0:WIDTH].astype(np.float32)
-    nx, ny = (xs - WIDTH / 2) / (WIDTH / 2), (ys - HEIGHT * 0.46) / (HEIGHT / 2)
-    r = np.clip(np.sqrt(nx * nx * 0.62 + ny * ny * 0.9), 0, 1.4) / 1.4
-    t = (r * r * (3 - 2 * r))[:, :, None]
-    rgb = rgb255(VIGNETTE_CENTER) * (1 - t) + rgb255(VIGNETTE_EDGE) * t
-    if hero_center_px is not None:
-        cx, cy = hero_center_px
-        d2 = ((xs - cx) ** 2 + (ys - cy) ** 2) / (360.0 ** 2)
-        pool = np.exp(-d2)[:, :, None] * 0.16
-        rgb = rgb * (1 - pool) + rgb255(cool) * pool
-    return rgb
-
-
-def bloom(mobjects, strength: float) -> np.ndarray:
-    """Light the hero casts on the canvas: its own pixels, blurred wide."""
-    from manim.camera.camera import Camera
-    from PIL import Image, ImageFilter
-
-    layer = Camera(background_color=BG, background_opacity=0)
-    layer.capture_mobjects(mobjects)
-    rgb = Image.fromarray(np.ascontiguousarray(layer.pixel_array[:, :, :3]))
-    near = np.asarray(rgb.filter(ImageFilter.GaussianBlur(10)), dtype=np.float32)
-    far = np.asarray(rgb.filter(ImageFilter.GaussianBlur(34)), dtype=np.float32)
-    return (near * 0.5 + far * 0.6) * strength
+def canvas() -> np.ndarray:
+    """Float RGB canvas (0-255): flat BG, as in 3Blue1Brown thumbnails."""
+    return np.broadcast_to(rgb255(BG), (HEIGHT, WIDTH, 3)).astype(np.float32)
 
 
 def feathered_frame(path: str, left_px: int):
@@ -1459,27 +1430,20 @@ def render(spec: dict, out_path: str, font_dir: str, work_dir: str, safe: bool) 
 
     started = time.time()
     mobjects, report = compose(spec, font_dir, safe)
-    cool = PALETTES.get(spec.get("palette"), PALETTES["teal-amber"])[0]
-    hero = report.pop("_hero", None)
     frame = report.get("frame")
     if frame:
         rgb, alpha, x, y = feathered_frame(frame["path"], frame["left"])
-        background = canvas(cool, (x + rgb.shape[1] / 2, HEIGHT / 2))
+        background = canvas()
         region = background[y:y + rgb.shape[0], x:x + rgb.shape[1]]
         # Lighten blend: the video's own dark canvas never paints over the
-        # thumbnail's vignette, so only the content shows, with no box edge.
+        # thumbnail's, so only the content shows, with no box edge.
         lifted = np.maximum(region, rgb)
         region[:] = region * (1 - alpha[:, :, None]) + lifted * alpha[:, :, None]
         report["frame_box_px"] = [x, y, x + rgb.shape[1], y + rgb.shape[0]]
     else:
-        box = report.get("hero_box_px")
-        center = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2) if box else None
-        background = canvas(cool, center)
-        if hero is not None and report.get("glow"):
-            background = background + bloom([hero], report["glow"])
-    noise = np.random.default_rng(7).random(background.shape, dtype=np.float32) - 0.5
+        background = canvas()
     camera = Camera(background_color=BG)
-    camera.background[:, :, :3] = np.clip(background + noise, 0, 255).astype(np.uint8)
+    camera.background[:, :, :3] = np.clip(background, 0, 255).astype(np.uint8)
     camera.reset()
     camera.capture_mobjects(mobjects)
     camera.get_image().convert("RGB").save(out_path, optimize=True)

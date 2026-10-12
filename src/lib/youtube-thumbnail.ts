@@ -51,11 +51,11 @@ export const FRAME_CANDIDATES = 2;
 const THUMBNAIL_DIR = join(process.cwd(), "src/lib/thumbnail");
 
 export const THUMBNAIL_FONT_FILES = [
-  "InterTight-SemiBold.ttf",
-  "InterTight-SemiBoldItalic.ttf",
-  "InterTight-Medium.ttf",
-  "InterTight-MediumItalic.ttf",
-  "FiraMath-Regular.otf",
+  "cmunrm.otf",
+  "cmunti.otf",
+  "cmunbx.otf",
+  "cmunbi.otf",
+  "latinmodern-math.otf",
 ] as const;
 
 function stableHash(value: string): number {

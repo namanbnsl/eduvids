@@ -29,7 +29,7 @@ HEADER_BAND = 0.2      # scene titles live in the top fifth of the frame
 SKIP_START = 1.5       # seconds; scenes open on an empty canvas
 SKIP_END = 12.0        # seconds; the end card
 MIN_GAP = 8.0          # seconds between picked frames
-CONTENT_LUMA = 38      # brighter than the canvas (BG and its vignette)
+CONTENT_LUMA = 38      # brighter than the flat canvas (BG)
 
 
 def probe_duration(video: str) -> float:
