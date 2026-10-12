@@ -81,7 +81,7 @@ PALETTES = {
 
 # Type scale (em size in px). Headlines step down a tier only when the copy
 # cannot fit the column at the larger size.
-HEADLINE_TIERS = (78, 70, 62)
+HEADLINE_TIERS = (92, 84, 76)
 HEADLINE_LEADING = 1.06
 LABEL_SIZE = 34
 CAPTION_SIZE = 30
@@ -309,21 +309,19 @@ class Typesetter:
         if weight in self._templates:
             return self._templates[weight]
         path = self.font_dir.rstrip("/") + "/"
-        # Headlines ("SemiBold") use CMU Serif Bold; labels use the regular cut.
-        upright, italic = ("cmunbx.otf", "cmunbi.otf") if weight == "SemiBold" else ("cmunrm.otf", "cmunti.otf")
+        # Headlines ("SemiBold") and labels both use CMU Serif Roman, the face of
+        # the video titles. Computer Modern's 10pt design spaces words for small
+        # text, so headlines set at display size get tighter word spacing.
+        upright, italic = "cmunrm.otf", "cmunti.otf"
+        word_space = ", WordSpace=0.8" if weight == "SemiBold" else ""
         preamble = "\n".join([
             r"\usepackage{amsmath}",
             r"\usepackage{fontspec}",
             r"\usepackage{unicode-math}",
             r"\usepackage{xcolor}",
             r"\defaultfontfeatures{Kerning=On}",
-            rf"\setmainfont{{{upright}}}[Path={path}, ItalicFont={italic}, BoldFont={upright}, BoldItalicFont={italic}]",
+            rf"\setmainfont{{{upright}}}[Path={path}, ItalicFont={italic}, BoldFont={upright}, BoldItalicFont={italic}{word_space}]",
             rf"\setmathfont{{latinmodern-math.otf}}[Path={path}]",
-            # Bold headlines get bold letters and digits in their math too.
-            *([
-                rf"\setmathfont{{{italic}}}[Path={path}, range={{it/{{latin,Latin}}}}]",
-                rf"\setmathfont{{{upright}}}[Path={path}, range={{up/{{num,latin,Latin}}}}]",
-            ] if weight == "SemiBold" else []),
             rf"\definecolor{{ink}}{{HTML}}{{{INK[1:]}}}",
             rf"\definecolor{{muted}}{{HTML}}{{{MUTED[1:]}}}",
             rf"\definecolor{{cool}}{{HTML}}{{{self.cool[1:]}}}",
@@ -1269,7 +1267,8 @@ def compose(spec: dict, font_dir: str, safe: bool):
         )
         for _, size, lines in candidates[:6]:
             rendered = [" ".join(word_tex(w, accent_span, safe) for w in words[a:b]) for a, b in lines]
-            block = ts.block(rendered, size, "SemiBold")
+            # Display-size Computer Modern reads loose; tighten letter spacing.
+            block = ts.block(rendered, size, "SemiBold", tracking=-1.5)
             if block.width <= column:
                 copy_block = block
                 report.update(size=size, lines=[" ".join(w.text for w in words[a:b]) for a, b in lines])
