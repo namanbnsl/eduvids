@@ -10,7 +10,6 @@ import type { RelatedYouTubeVideo } from "@/lib/youtube-metadata";
 import type { VideoTitleSet } from "@/lib/youtube-metadata";
 import {
   buildThumbnailSpecs,
-  FRAME_CANDIDATES,
   loadThumbnailAssets,
   type ThumbnailPalette,
 } from "@/lib/youtube-thumbnail";
@@ -535,8 +534,6 @@ export interface PreparedSandboxState {
 
 const SANDBOX_TEMPLATE = "manim20-ffmpeg-bookmarks-latest";
 const THUMBNAIL_ROOT = "/home/user/eduvids-thumbnail";
-/** Where the postprocess step leaves the finished video. */
-const FINAL_VIDEO_PATH = "/home/user/final.mp4";
 
 export interface ThumbnailRenderResult {
   /** PNG data URLs in candidate order; null where that candidate failed. */
@@ -582,32 +579,6 @@ async function installVideoStyle(
  * safe mode, so one bad spec never takes the others down. If the video's
  * sandbox has already been reclaimed, a fresh one is used.
  */
-/**
- * Frames from the finished video for the thumbnail, best first. The video
- * is only there when thumbnails render in the video's own sandbox; a fresh
- * sandbox (or any picker failure) yields none, and drawn visuals are used.
- */
-async function pickVideoFrames(sandbox: Sandbox): Promise<string[]> {
-  try {
-    const result = await sandbox.commands.run(
-      `test -f ${FINAL_VIDEO_PATH} && cd ${THUMBNAIL_ROOT} && python frame_picker.py --video ${FINAL_VIDEO_PATH} --out-dir frames --count ${FRAME_CANDIDATES} || true`,
-      { timeoutMs: 90_000 },
-    );
-    const line = result.stdout.trim().split("\n").pop();
-    if (!line) return [];
-    const picked = JSON.parse(line) as { path?: unknown }[];
-    return picked
-      .map(({ path }) => path)
-      .filter((path): path is string => typeof path === "string");
-  } catch (error) {
-    console.warn(
-      "Frame picking failed; thumbnails use drawn visuals",
-      error instanceof Error ? error.message : error,
-    );
-    return [];
-  }
-}
-
 export async function renderThumbnailCandidates({
   prepared,
   titles,
@@ -638,14 +609,9 @@ export async function renderThumbnailCandidates({
   try {
     const assets = await loadThumbnailAssets();
     await sandbox.commands.run(
-      `rm -rf ${THUMBNAIL_ROOT}/out ${THUMBNAIL_ROOT}/frames && mkdir -p ${THUMBNAIL_ROOT}/fonts`,
+      `rm -rf ${THUMBNAIL_ROOT}/out && mkdir -p ${THUMBNAIL_ROOT}/fonts`,
     );
-    await sandbox.files.write(
-      `${THUMBNAIL_ROOT}/frame_picker.py`,
-      assets.framePicker,
-    );
-    const frames = await pickVideoFrames(sandbox);
-    const specs = buildThumbnailSpecs({ titles, topic, designSeed, frames });
+    const specs = buildThumbnailSpecs({ titles, topic, designSeed });
     await Promise.all([
       sandbox.files.write(`${THUMBNAIL_ROOT}/renderer.py`, assets.renderer),
       sandbox.files.write(

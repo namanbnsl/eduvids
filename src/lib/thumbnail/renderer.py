@@ -11,8 +11,9 @@ slots that this module validates, lays out and checks.
 Design system
 - Canvas 1280x720 on the video's flat near-black canvas, fixed margins and a
   two-column grid: a big headline on the left, one hero on the right. The
-  hero is either a frame lifted from the finished video (``frame``) or a
-  crisp drawn visual with no glow or shine; 3D heroes are matte, in perspective.
+  hero is a crisp drawn visual with no glow or shine; 3D heroes are matte,
+  in perspective. Legacy explicit ``frame`` specs remain readable, but new
+  thumbnails use diagrams whose geometry and labels can be verified.
 - Typography is typeset by XeLaTeX in Computer Modern, as in 3Blue1Brown and
   Welch Labs: CMU Serif for text, Latin Modern Math for formulas, so math and prose
   share one family and one baseline.
@@ -370,8 +371,14 @@ class Typesetter:
         mob.scale(u(size_px) / self.em_units(weight))
         return mob
 
-    def math(self, latex: str, size_px: float, color="ink", weight="Medium"):
-        body = rf"\fontsize{{10}}{{12}}\selectfont\color{{{color}}}$\displaystyle {math_spacing(latex)}$"
+    def math(self, latex: str, size_px: float, color="ink", weight="Medium",
+             highlight_color="cool"):
+        latex = math_spacing(latex)
+        # Equation heroes use a cool focal term, distinct from warm copy.
+        # Do this in TeX so symbol spacing and SVG glyph colours survive.
+        if highlight_color != "accent":
+            latex = latex.replace(r"\hl{", rf"\textcolor{{{highlight_color}}}{{")
+        body = rf"\fontsize{{10}}{{12}}\selectfont\color{{{color}}}$\displaystyle {latex}$"
         mob = self._tex(body, weight)
         mob.scale(u(size_px) / self.em_units(weight))
         return mob
@@ -879,16 +886,24 @@ def hero_probability(spec, cool, warm, ts, safe):
     hero = Hero(graphics)
     notation = "" if safe else clean_latex(spec.get("notation"))
     if notation:
-        hero.labels.append(Label(ts.math(notation, CAPTION_SIZE), to_screen(0, 0), [DOWN], buff=u(28)))
+        hero.labels.append(Label(ts.math(notation, 44), to_screen(0, 0), [DOWN], buff=u(28)))
     return hero
 
 
 def hero_geometry(spec, cool, warm, ts, safe):
     from manim import Arc, Circle, Line, Polygon, RegularPolygon, VGroup, DOWN, LEFT, RIGHT, UP, PI
 
-    shape = spec.get("shape") if (not safe and spec.get("shape") in ("pythagoras", "inscribed_polygon", "triangle_angles")) else "pythagoras"
+    shape = spec.get("shape") if spec.get("shape") == "venn" or (not safe and spec.get("shape") in ("pythagoras", "inscribed_polygon", "triangle_angles")) else "pythagoras"
     hero = Hero(VGroup())
-    if shape == "pythagoras":
+    if shape == "venn":
+        from manim import Intersection
+
+        left = Circle(radius=2.1).shift(LEFT * 1.05).set_stroke(cool, 3).set_fill(cool, 0.16)
+        second = PALETTES["violet-amber" if cool != PALETTES["violet-amber"][0] else "teal-amber"][0]
+        right = Circle(radius=2.1).shift(RIGHT * 1.05).set_stroke(second, 3, 0.8).set_fill(second, 0.16)
+        overlap = Intersection(left, right).set_stroke(warm, 3).set_fill(warm, 0.55)
+        hero.graphics = VGroup(left, right, overlap)
+    elif shape == "pythagoras":
         a, b = 3.0, 2.0
         A, B, C = np.array([0, 0, 0.0]), np.array([a, 0, 0.0]), np.array([0, b, 0.0])
         triangle = Polygon(A, B, C).set_stroke(INK, 3, 0.9).set_fill(BG, 1)
@@ -1075,6 +1090,30 @@ def hero_atom(spec, cool, warm, ts, safe):
     return Hero(VGroup(shells, nucleus, electrons))
 
 
+def hero_energy_levels(spec, cool, warm, ts, safe):
+    """A drop between two states emits light; no miniature prose legend."""
+    from manim import Arrow, Dot, Line, VGroup, LEFT
+
+    top, bottom = 1.7, -1.7
+    levels = VGroup(*[
+        stroke(Line([-2.4, y, 0], [1.5, y, 0]), cool, 6)
+        for y in (top, bottom)
+    ])
+    transition = Arrow([0, top - 0.18, 0], [0, bottom + 0.18, 0],
+                       buff=0, color=warm, stroke_width=7,
+                       max_tip_length_to_length_ratio=0.14)
+    photon = stroke(smooth_path([
+        (0.45 + t, 0.23 * math.sin(3 * math.pi * t))
+        for t in np.linspace(0, 2.3, 160)
+    ]), warm, 5)
+    hero = Hero(VGroup(levels, transition, photon, Dot([0, top, 0], radius=0.12, color=warm)))
+    hero.labels = [
+        Label(ts.math(name, 48, "cool"), np.array([-2.4, y, 0]), [LEFT], buff=u(20))
+        for name, y in ((r"E_{\mathrm{high}}", top), (r"E_{\mathrm{low}}", bottom))
+    ]
+    return hero
+
+
 def rotation_matrix(phi, theta):
     cz, sz = math.cos(theta), math.sin(theta)
     cx, sx = math.cos(phi), math.sin(phi)
@@ -1213,7 +1252,7 @@ def hero_equation(spec, cool, warm, ts, safe):
     if not latex:
         raise LayoutError("equation notation is missing or not allowed")
     for size in EQUATION_SIZES:
-        mob = ts.math(latex, size, "ink", weight="SemiBold")
+        mob = ts.math(latex, size, "ink", weight="SemiBold", highlight_color="cool")
         if mob.width <= ts.region_w and mob.height <= u(HEIGHT - 2 * MARGIN_Y):
             return Hero(mob, [])
     raise LayoutError("equation too wide for the hero column")
@@ -1230,6 +1269,7 @@ HEROES = {
     "orbit": hero_orbit,
     "network": hero_network,
     "atom": hero_atom,
+    "energy_levels": hero_energy_levels,
     "surface_3d": hero_surface_3d,
     "solid_3d": hero_solid_3d,
     "equation": hero_equation,

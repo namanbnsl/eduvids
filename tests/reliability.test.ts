@@ -25,7 +25,10 @@ import {
   streamTextWithTracking,
   sanitizeManimScript,
 } from "../src/lib/llm";
-import { injectEduvidsCallout } from "../src/lib/e2b";
+import {
+  injectEduvidsCallout,
+  renderThumbnailCandidates,
+} from "../src/lib/e2b";
 import {
   applyVideoStyle,
   loadVideoStyleAssets,
@@ -40,6 +43,7 @@ import {
 import {
   buildThumbnailSpecs,
   THUMBNAIL_PALETTES,
+  inferVisualType,
 } from "../src/lib/youtube-thumbnail";
 import {
   safeError,
@@ -801,22 +805,77 @@ test("thumbnail specs share one palette per video and keep each title's copy", (
   });
   assert.ok(bare.every(({ headline }) => headline === ""));
   assert.equal(bare[0].visual.type, "function_plot");
+  assert.equal(
+    inferVisualType("chemical luminescence and quantum emission"),
+    "energy_levels",
+  );
 
-  // Frames from the video lead the first candidates, keeping the drawn
-  // visual as a fallback; the last candidate stays drawn.
-  const framed = buildThumbnailSpecs({
-    titles: { ...titles, thumbnailConcepts: [...titles.thumbnailConcepts] },
-    topic: "derivative of e^x",
-    designSeed: "job-123",
-    frames: ["/f/0.png", "/f/1.png", "/f/2.png"],
-  });
-  assert.deepEqual(framed[0].visual, {
-    type: "frame",
-    path: "/f/0.png",
-    fallback: { type: "function_plot", expression: "exp(x)" },
-  });
-  assert.equal(framed[1].visual.type, "frame");
-  assert.equal(framed[2].visual.type, "equation");
+  // Every slot keeps its vetted diagram; video availability must not
+  // replace the concept with a frame carrying tiny captions or other math.
+  assert.deepEqual(
+    specs.map(({ visual }) => visual),
+    [
+      { type: "function_plot", expression: "exp(x)" },
+      { type: "function_plot" },
+      { type: "equation", notation: "e=\\lim_{n\\to\\infty}(1+1/n)^n" },
+    ],
+  );
+});
+
+test("thumbnail rendering keeps diagrams even when the video sandbox is available", async () => {
+  const commands: string[] = [];
+  let writtenSpecs: { visual: { type: string } }[] = [];
+  const connection = mock.method(
+    Sandbox,
+    "connect",
+    async () =>
+      ({
+        commands: {
+          run: async (command: string) => {
+            commands.push(command);
+            return { stdout: "" };
+          },
+        },
+        files: {
+          write: async (path: string, data: unknown) => {
+            if (path.endsWith("specs.json"))
+              writtenSpecs = JSON.parse(data as string);
+          },
+          read: async (path: string) =>
+            path.endsWith("results.json")
+              ? JSON.stringify(
+                  Object.fromEntries(
+                    [0, 1, 2].map((index) => [
+                      index,
+                      { ok: true, path: `/thumbnail-${index}.png` },
+                    ]),
+                  ),
+                )
+              : new Uint8Array([1, 2, 3]),
+        },
+      }) as never,
+  );
+  try {
+    const result = await renderThumbnailCandidates({
+      prepared: state("/tmp/fixture"),
+      titles: {
+        selected: thumbnailCandidates[0],
+        candidates: thumbnailCandidates,
+      },
+      topic: "derivative of e^x",
+      designSeed: "fixture",
+    });
+    assert.equal(result.images.filter(Boolean).length, 3);
+    assert.deepEqual(
+      writtenSpecs.map(({ visual }) => visual.type),
+      ["function_plot", "function_plot", "function_plot"],
+    );
+    assert.ok(
+      commands.every((command) => !/frame_picker|final\.mp4/.test(command)),
+    );
+  } finally {
+    connection.mock.restore();
+  }
 });
 
 async function thumbnailToolchainAvailable() {
@@ -828,6 +887,17 @@ async function thumbnailToolchainAvailable() {
     return false;
   }
 }
+
+test("thumbnail diagrams and equation colours remain readable in both render modes", async (t) => {
+  if (!(await thumbnailToolchainAvailable())) {
+    t.skip("manim and xelatex are not installed");
+    return;
+  }
+  const { stdout } = await exec("python3", ["tests/thumbnail-layout.py"], {
+    timeout: 240_000,
+  });
+  assert.match(stdout, /equation colours passed/);
+});
 
 test("thumbnail renderer produces verified 1280x720 PNGs and recovers in safe mode", async (t) => {
   if (!(await thumbnailToolchainAvailable())) {
