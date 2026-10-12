@@ -181,6 +181,15 @@ test("postprocessing joins real scene fixtures, watermarks, and validates an MP4
       join(folder, "final.mp4"),
     ]);
     assert.ok(Number(probe.stdout) >= 0.4);
+    // Per-scene lengths are recorded for YouTube chapters, in scene order.
+    const timings = JSON.parse(
+      await readFile(join(folder, "scene_durations.json"), "utf8"),
+    ) as { scene: string; seconds: number }[];
+    assert.deepEqual(
+      timings.map(({ scene }) => scene),
+      prepared.sceneNames,
+    );
+    assert.ok(timings.every(({ seconds }) => seconds > 0.1));
     await rm(`${outputs}/Second.mp4`);
     await assert.rejects(
       exec("python3", [script]),
@@ -739,6 +748,22 @@ test("thumbnail specs share one palette per video and keep each title's copy", (
   );
   assert.equal(specs[0].headline, "The slope is the height");
   assert.equal(specs[2].visual.type, "equation");
+
+  // An equation hero without usable notation falls back to the topic's visual
+  // instead of letting the renderer substitute an unrelated formula.
+  const noNotation = buildThumbnailSpecs({
+    titles: {
+      ...titles,
+      thumbnailConcepts: [
+        titles.thumbnailConcepts[0],
+        titles.thumbnailConcepts[1],
+        { ...titles.thumbnailConcepts[2], visual: { type: "equation" } },
+      ],
+    },
+    topic: "Bayes theorem and medical tests",
+    designSeed: "job-123",
+  });
+  assert.equal(noNotation[2].visual.type, "probability");
 
   const bare = buildThumbnailSpecs({
     titles: {

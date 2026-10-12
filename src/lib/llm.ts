@@ -18,7 +18,12 @@ import { queryManimDocs } from "./deepwiki";
 import { jsonrepair } from "jsonrepair";
 import { franc } from "franc";
 import { VIDEO_BACKGROUND } from "./video-style";
-import { parseVideoTitleSet, type VideoTitleSet } from "./youtube-metadata";
+import {
+  parseVideoDescriptionPackage,
+  parseVideoTitleSet,
+  type VideoDescriptionPackage,
+  type VideoTitleSet,
+} from "./youtube-metadata";
 
 // @ts-expect-error langs has no types
 import langs from "langs";
@@ -619,6 +624,8 @@ export interface ScenePlanBeat {
 
 export interface ScenePlanEntry {
   sceneId: string;
+  /** Starts a new YouTube chapter when present. */
+  chapterTitle?: string;
   narration: string;
   visualType: string;
   elements: ScenePlanElement[];
@@ -1216,17 +1223,28 @@ export async function generateVideoTitles({
 }: VideoTitleRequest): Promise<VideoTitleSet> {
   const systemPrompt = `You package videos for eduvids, a visual math and science channel. Generate exactly three distinct title-and-thumbnail packages, ordered strongest first. Each thumbnail is rendered by a fixed design system: a big, bold two-line headline on the left and, on the right, either a frame taken from the video itself or one precise, glowing mathematical visual (lit 3D for surfaces and solids), on a dark vignetted background. There are no small tags or eyebrows on the image. You supply the words and the visual parameters only.
 
+WHAT WINS THE CLICK
+- The title and thumbnail are one sentence split in two: the image shows the strange thing, the title makes it matter. Never say the same thing twice.
+- The promise must be paid off by THIS video. Read the narration: its opening puzzle, its tempting wrong answer and its payoff are your best raw material. Never promise a result the narration does not deliver.
+- Concrete beats abstract: a specific object, number or claim ("A 99% Accurate Test Says You're Sick. You're Probably Not.") beats a topic label ("Understanding Bayes' Theorem").
+
 TITLE RULES
-- Aim for 45-65 characters; never exceed 80
-- Create curiosity while making the subject immediately clear
-- Prefer natural use of Why, How, What, Visualized, Intuitive, Actually, In 3D, or Finally Makes Sense
-- Never use the words Explained, Basics, Introduction, or Lesson
-- Avoid hype, clickbait, vague promises, and repeated title structures
-- Use natural title case, not all caps
+- 30-60 characters is ideal and 70 the hard ceiling. Put the subject in the first 40 characters, because mobile truncates.
+- Plain words a curious 15-year-old would use. Name the topic keyword exactly once, naturally.
+- Three DIFFERENT angles, in this order:
+  A. The hook: the video's opening puzzle or surprising claim, as a statement or question ("Why the Slope at a Single Point Isn't a Paradox").
+  B. The search title: the clearest phrasing someone would actually type, made intriguing ("What a Derivative Actually Measures").
+  C. The bold claim or wrong intuition: a confident, specific, true statement ("Every Sound Is Secretly a Sum of Circles").
+- Title case. No ALL CAPS words, no emoji, no colon subtitles, no "| eduvids".
+- Never use: Explained, Basics, Introduction, Lesson, Tutorial, Ultimate, Mind-Blowing, Insane, You Won't Believe, Finally Makes Sense, Visualized.
 
 THUMBNAIL COPY RULES
 - eyebrow: the field in 1-3 words, e.g. "Calculus", "Complex numbers", "Machine learning". It is metadata for picking the visual and is never drawn
 - headline: 3-6 words, at most 30 characters, sentence case, no final period. It must complete the title's thought, never repeat it. State the insight or the tension: "The slope is the height", "Multiplying by $i$ is a quarter turn", "Waves are spinning circles"
+- The three packages deliberately differ in copy so the channel learns what works:
+  A: a headline that states the tension or insight.
+  B: headline and accent are empty strings. This thumbnail is visual-only: the picture alone carries it.
+  C: a headline phrased as a short question or verdict ("Where did $0/0$ go?", "Probably not sick").
 - Inline math goes between $...$ (e.g. "$e^{i\\pi}$", "$a^2+b^2=c^2$"). Use "~" only inside a multi-word term that must never be split across lines, e.g. "bell~curve", "rate~of~change"; most headlines need none
 - accent: the exact substring of the headline that carries the payoff (1-2 words or one $math$ token). It is painted in the warm accent colour that also marks the focal detail of the visual, so pick the word the picture proves
 
@@ -1303,21 +1321,21 @@ export async function generateVideoDescription({
   voiceoverScript,
   sessionId,
   variant,
-}: VideoDescriptionRequest): Promise<string> {
-  const systemPrompt = `You package videos for eduvids, a cinematic visual math and science channel. Write the sales-first opening of a YouTube description.
+}: VideoDescriptionRequest): Promise<VideoDescriptionPackage> {
+  const systemPrompt = `You package videos for eduvids, a minimal, beautifully animated math and science channel. Write the top of a YouTube description plus discovery metadata.
 
-RULES:
-- Output exactly two short, non-empty lines and no blank line
-- Line 1 opens with the central mystery, surprising result, or useful problem
-- Line 2 promises the specific visual intuition the viewer will gain
-- Naturally include 2-3 precise topic keywords across the two lines
-- Do not repeat the title or start with "In this video"
-- Never use generic phrases such as "dive into", "join us", "embark on", or "unlock the secrets"
-- Do not include calls-to-action, links, hashtags, timestamps, or labels
-- Keep the total under 500 characters
-- Output only the two lines`;
+HOOK (two lines; this is all most viewers see before "...more", and line 1 appears in search results)
+- Line 1, under 110 characters: the video's opening puzzle or surprising claim, phrased differently from the title and grounded in the narration.
+- Line 2, under 160 characters: the concrete thing the viewer will see and understand, naming the running example and 1-2 precise topic keywords.
+- Plain, confident words. Never start with "In this video". Never use "dive into", "join us", "embark", "unlock", "journey", "fascinating", or "mind-blowing".
+- No links, calls to action, timestamps, emoji, or labels.
 
-  const userPrompt = `Create a YouTube description for this ${
+HASHTAGS: 2-3 specific topic hashtags in CamelCase, from broad to specific (e.g. "#Math", "#Calculus", "#Derivatives"). No generic tags like #Education or #Learning.
+TAGS: 6-10 search phrases people would actually type to find this video (e.g. "what is a derivative", "derivative intuition").
+
+Return ONLY JSON: {"hook": ["line 1", "line 2"], "hashtags": ["#A", "#B"], "tags": ["phrase", "phrase"]}`;
+
+  const userPrompt = `Package this ${
     variant === "short" ? "vertical short" : "video"
   }.
 
@@ -1341,10 +1359,7 @@ ${voiceoverScript}`;
     googleModel,
   );
 
-  return text
-    .trim()
-    .replace(/^["']|["']$/g, "")
-    .slice(0, 500);
+  return parseVideoDescriptionPackage(text);
 }
 
 // ---------------------------------------------------------------------------

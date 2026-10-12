@@ -108,7 +108,7 @@ EXPR_TOKEN = re.compile(
 LATEX_COMMANDS = {
     "frac", "dfrac", "tfrac", "sqrt", "int", "iint", "oint", "sum", "prod",
     "lim", "infty", "partial", "nabla", "cdot", "cdots", "ldots", "times",
-    "div", "pm", "mp", "le", "leq", "ge", "geq", "ne", "neq", "approx",
+    "div", "pm", "mp", "mid", "le", "leq", "ge", "geq", "ne", "neq", "approx",
     "equiv", "sim", "simeq", "propto", "to", "rightarrow", "leftarrow",
     "Rightarrow", "iff", "mapsto", "in", "notin", "subset", "subseteq",
     "cup", "cap", "forall", "exists", "emptyset", "vec", "hat", "bar",
@@ -1217,7 +1217,11 @@ def hero_solid_3d(spec, cool, warm, ts, safe):
 
 
 def hero_equation(spec, cool, warm, ts, safe):
-    latex = clean_latex(spec.get("notation")) or r"e^{i\pi} + 1 = 0"
+    # Never stand in a famous but unrelated formula: without usable notation,
+    # fail so the safe pass draws a neutral visual instead.
+    latex = clean_latex(spec.get("notation"))
+    if not latex:
+        raise LayoutError("equation notation is missing or not allowed")
     for size in EQUATION_SIZES:
         mob = ts.math(latex, size, "ink", weight="SemiBold")
         if mob.width <= ts.region_w and mob.height <= u(HEIGHT - 2 * MARGIN_Y):
