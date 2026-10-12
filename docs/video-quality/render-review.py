@@ -3,7 +3,7 @@
 Run from the repo root: python3 docs/video-quality/render-review.py
 Requires Manim 0.20, XeLaTeX, dvisvgm and ffmpeg. The historical baseline is
 the exact shipped house module at 4de946a. Output stays in /tmp; only the
-small PNG/GIF review artifacts are copied into this directory.
+small JPEG/GIF review artifacts are copied into this directory.
 """
 import argparse
 import os
@@ -59,6 +59,8 @@ def main():
                      "fps=12,scale=640:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer",
                      str(DOCS / f"{scene.lower()}-{variant}.gif")])
     # Portrait is explicitly reviewed with the new layout helpers.
+    if "after" not in args.variants:
+        return
     folder = root / "after"
     env = dict(os.environ, PYTHONPATH=str(folder))
     run(["python3", "-m", "manim", "scenes.py", "Derivative", "WaveSurface", "-s", "-qh", "--fps", "30", "-r", "1080,1920",

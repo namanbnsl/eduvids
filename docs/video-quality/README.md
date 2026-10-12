@@ -63,7 +63,7 @@ npm run check
 
 Manim 0.20, XeLaTeX, dvisvgm and ffmpeg are required for renders and geometry
 tests. The render script uses bundled fonts and no narration or paid APIs.
-Full MP4s stay under the printed `/tmp` directory; PNGs and compact GIFs are
+Full MP4s stay under the printed `/tmp` directory; JPEGs and compact GIFs are
 copied here (review stills are resized to 1440 pixels on the long edge). `--stills-only` skips motion renders. The eight layout/material
 regressions plus an encoder check run through `tests/reliability.test.ts`.
 
