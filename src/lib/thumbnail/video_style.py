@@ -1028,8 +1028,10 @@ if not getattr(_play, "__eduvids_guard__", False):
 
 from manim.scene.scene_file_writer import SceneFileWriter
 
-_open_stream = SceneFileWriter.open_partial_movie_stream
-if not getattr(_open_stream, "__eduvids_quality__", False):
+# Manim < 0.19 uses an FFmpeg pipe instead of a PyAV stream. The optional
+# quality override must not prevent those sandboxes from importing the style.
+_open_stream = getattr(SceneFileWriter, "open_partial_movie_stream", None)
+if _open_stream is not None and not getattr(_open_stream, "__eduvids_quality__", False):
 
     def _open_quality_stream(self, *args, **kwargs):
         result = _open_stream(self, *args, **kwargs)

@@ -1115,6 +1115,13 @@ test("all render paths use 1080p at 30fps and preserve portrait dimensions", () 
   assert.throws(() => videoRenderFlags({ width: 0, height: 1920 }));
 });
 
+test("house encoding supports legacy FFmpeg and PyAV Manim writers", async () => {
+  await exec("python3", [
+    join(process.cwd(), "tests/video-encoding.py"),
+    join(process.cwd(), "src/lib/thumbnail/video_style.py"),
+  ]);
+});
+
 test("real Manim geometry keeps grouped labels, overlay lanes and projected 3D layouts clear", async (t) => {
   if (!(await thumbnailToolchainAvailable())) {
     t.skip("manim and xelatex are not installed");
