@@ -127,7 +127,9 @@ export async function pollSandboxJobWindow(
   options: PollWindowOptions = {},
 ): Promise<SandboxJobResult> {
   const windowMs = options.windowMs ?? SANDBOX_POLL_WINDOW_MS;
-  const intervalMs = options.intervalMs ?? 10_000;
+  // A poll is one small command; checking often keeps a finished job from
+  // idling for most of an interval before the workflow moves on.
+  const intervalMs = options.intervalMs ?? 2_000;
   const now = options.now ?? Date.now;
   const delay =
     options.delay ??
@@ -161,9 +163,16 @@ export function renderCommand(prepared: PreparedSandboxState): string[] {
   ];
 }
 
+export const POSTPROCESS_PATH = "/home/user/postprocess.py";
+export const FINAL_VIDEO_PATH = "/home/user/final.mp4";
+/** Render-job exit code when scenes rendered but the postprocess failed. */
+export const POSTPROCESS_FAILED_EXIT = 86;
+
 /**
- * The render job: prefetches narration audio and formulas in parallel, then
- * renders scenes across parallel Manim processes (see render_driver.py).
+ * The render job: prefetches narration audio and formulas in parallel, renders
+ * scenes across parallel Manim processes (see render_driver.py), then runs the
+ * postprocess in the same job, so the finished video needs no second launch
+ * and poll.
  */
 export function renderJobCommand(prepared: PreparedSandboxState): string[] {
   return [
@@ -174,8 +183,25 @@ export function renderJobCommand(prepared: PreparedSandboxState): string[] {
       scenes: prepared.sceneNames,
       media_dir: prepared.mediaDir,
       manim_args: manimFlags(prepared),
+      postprocess: POSTPROCESS_PATH,
     }),
   ];
+}
+
+/** Writes the postprocess script the render job runs, then launches the job. */
+export async function startRenderJob(
+  prepared: PreparedSandboxState,
+  name: string,
+  envs?: Record<string, string>,
+): Promise<SandboxJob> {
+  const sandbox = await connectSandbox(prepared.sandboxId);
+  await sandbox.files.write(POSTPROCESS_PATH, buildPostprocessScript(prepared));
+  return startSandboxJob(
+    prepared.sandboxId,
+    name,
+    renderJobCommand(prepared),
+    envs,
+  );
 }
 
 // Written next to the script by postprocessing (the workdir is /home/user).
@@ -183,7 +209,7 @@ export const SCENE_DURATIONS_PATH = "/home/user/scene_durations.json";
 
 // Runs entirely in E2B; neither ffmpeg nor its retries occupy a Vercel request.
 export function buildPostprocessScript(prepared: PreparedSandboxState): string {
-  return `import json, pathlib, subprocess, math
+  return `import concurrent.futures, json, pathlib, subprocess, math
 ${WATERMARK_FONT_PYTHON}
 settings = json.loads(${JSON.stringify(JSON.stringify({ media: prepared.mediaDir, workdir: prepared.scriptPath.slice(0, prepared.scriptPath.lastIndexOf("/")), scenes: prepared.sceneNames, watermark: prepared.applyWatermark && !prepared.watermarkInVideo, variant: prepared.variant }))})
 # Scenes may come from several parallel render processes' media directories.
@@ -215,16 +241,19 @@ def video_duration(path):
     if not math.isfinite(value) or value <= 0:
         value = duration(path)
     return value
+def scene_audio(path):
+    seconds = video_duration(path)
+    pcm = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(path), '-vn', '-ac', str(CHANNELS), '-ar', str(RATE), '-f', 's16le', '-'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=900).stdout
+    size = round(seconds * RATE) * CHANNELS * WIDTH
+    return seconds, pcm[:size] + bytes(max(0, size - len(pcm)))
+# Scenes are probed and decoded in parallel (each is its own ffmpeg process),
+# then written in order.
 soundtrack = workdir / 'soundtrack.pcm'
 timings = []
-with open(soundtrack, 'wb') as out:
-    for scene, path in zip(settings['scenes'], paths):
-        seconds = video_duration(path)
+with concurrent.futures.ThreadPoolExecutor(min(8, len(paths))) as pool, open(soundtrack, 'wb') as out:
+    for scene, (seconds, pcm) in zip(settings['scenes'], pool.map(scene_audio, paths)):
         timings.append({'scene': scene, 'seconds': seconds})
-        frames = round(seconds * RATE)
-        pcm = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(path), '-vn', '-ac', str(CHANNELS), '-ar', str(RATE), '-f', 's16le', '-'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=900).stdout
-        size = frames * CHANNELS * WIDTH
-        out.write(pcm[:size] + bytes(max(0, size - len(pcm))))
+        out.write(pcm)
 # Scene lengths, matching the final cut, become the YouTube chapters.
 (workdir / 'scene_durations.json').write_text(json.dumps(timings))
 video = paths[0]
@@ -245,23 +274,9 @@ duration(output)
 `;
 }
 
-export async function startPostprocess(
-  prepared: PreparedSandboxState,
-): Promise<SandboxJob> {
-  const sandbox = await connectSandbox(prepared.sandboxId);
-  await sandbox.files.write(
-    "/home/user/postprocess.py",
-    buildPostprocessScript(prepared),
-  );
-  return startSandboxJob(prepared.sandboxId, "postprocess-job", [
-    "python",
-    "/home/user/postprocess.py",
-  ]);
-}
-
 export async function downloadVideo(sandboxId: string): Promise<string> {
   const sandbox = await connectSandbox(sandboxId);
-  const bytes = await sandbox.files.read("/home/user/final.mp4", {
+  const bytes = await sandbox.files.read(FINAL_VIDEO_PATH, {
     format: "bytes",
     requestTimeoutMs: 45_000,
   });

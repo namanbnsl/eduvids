@@ -1309,6 +1309,7 @@ test("the render job runs the driver with Manim flags, and in-frame watermarks s
       "-r",
       "720,1280",
     ],
+    postprocess: "/home/user/postprocess.py",
   });
   assert.match(buildPostprocessScript(prepared), /\\"watermark\\":false/);
   assert.match(
@@ -1317,7 +1318,7 @@ test("the render job runs the driver with Manim flags, and in-frame watermarks s
   );
 });
 
-test("render driver finds narration and formulas and balances scenes by narration", async (t) => {
+test("render driver finds narration and formulas, and plans the costliest scenes first, splitting one that would hold up the rest", async (t) => {
   try {
     await exec("python3", ["-c", "import ast"]);
   } catch {
@@ -1335,7 +1336,7 @@ test("render driver finds narration and formulas and balances scenes by narratio
     "    def construct(self):",
     '        with self.voiceover(text="short") as t:',
     "            pass",
-    "class C(Scene):",
+    "class C(VoiceoverScene, ThreeDScene):",
     "    def construct(self):",
     `        with self.voiceover(text="${"c".repeat(500)}") as t:`,
     "            pass",
@@ -1345,15 +1346,41 @@ test("render driver finds narration and formulas and balances scenes by narratio
     `import json, sys
 sys.path.insert(0, "src/lib/thumbnail")
 import render_driver as d
-narration, formulas, weights = d.analyse(json.loads(sys.argv[1]), ["A", "B", "C"])
-print(json.dumps({"narration": len(narration), "formulas": [f[1] for f in formulas[:2]], "groups": d.balance(["A", "B", "C"], weights, 2)}))`,
+scenes = ["A", "B", "C"]
+narration, formulas, weights = d.analyse(json.loads(sys.argv[1]), scenes)
+seconds = d.narrated_seconds(json.loads(sys.argv[1]), scenes)
+print(json.dumps({"narration": len(narration), "formulas": [f[1] for f in formulas[:2]], "weights": weights,
+                  "one": d.plan(scenes, weights, seconds, 1), "four": d.plan(scenes, weights, seconds, 4)}))`,
     JSON.stringify(source),
   ]);
   const result = JSON.parse(stdout);
   assert.equal(result.narration, 3);
   assert.deepEqual(result.formulas, [["x^2", "=", "y"], ["y=x^2"]]);
-  // The long scene renders alone; the two shorter ones share a process.
-  assert.deepEqual(result.groups, [["A"], ["B", "C"]]);
+  // A lit 3D scene costs several times its narration.
+  assert.ok(result.weights.C > result.weights.A, stdout);
+  // One worker: whole scenes, most expensive first.
+  assert.deepEqual(
+    result.one.map((task: unknown[]) => [task[0], task[2]]),
+    [
+      ["C", 1],
+      ["A", 1],
+      ["B", 1],
+    ],
+  );
+  // Four workers: the 3D scene is cut into contiguous segments of its
+  // timeline, each still queued ahead of the cheap scene; the last segment
+  // runs to the scene's end.
+  const names = result.four.map((task: unknown[]) => task[0]);
+  const segments = result.four.filter((task: unknown[]) => task[0] === "C");
+  assert.ok(segments.length >= 2, stdout);
+  assert.ok(names.lastIndexOf("C") < names.indexOf("B"), stdout);
+  for (let index = 0; index < segments.length; index++) {
+    assert.equal(segments[index][1], index);
+    assert.equal(segments[index][2], segments.length);
+    if (index > 0) assert.equal(segments[index][3], segments[index - 1][4]);
+  }
+  assert.equal(segments[0][3], 0);
+  assert.ok(segments.at(-1)[4] > 1e6);
 });
 
 test("layout guard moves a label off a line and inside the frame, but keeps a value inside its circle", async (t) => {

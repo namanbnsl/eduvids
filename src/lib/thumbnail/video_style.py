@@ -1225,11 +1225,48 @@ if _open_stream is not None and not getattr(_open_stream, "__eduvids_quality__",
         result = _open_stream(self, *args, **kwargs)
         stream = getattr(self, "video_stream", None)
         if stream is not None and stream.codec_context.name == "libx264":
-            stream.options = dict(stream.options, crf="18")
+            # Measured against a lossless render of house scenes: superfast at
+            # CRF 17 matches the old medium/CRF 18 (SSIM 0.99982, PSNR 60.6 vs
+            # 59.8 dB) with 35% less encoder CPU and half its memory, for
+            # about twice the bitrate (still ~1 Mbit/s at 1080p).
+            stream.options = dict(stream.options, crf="17", preset="superfast")
+        # Manim queues finished frames for the encoder thread without limit.
+        # Each 1080p frame is 8 MB, so a fast scene piled up ~1 GB waiting
+        # for x264; a short queue keeps both threads busy at a fixed cost.
+        queue = getattr(self, "queue", None)
+        if queue is not None and not queue.maxsize:
+            queue.maxsize = FRAME_QUEUE
         return result
 
     _open_quality_stream.__eduvids_quality__ = True
     SceneFileWriter.open_partial_movie_stream = _open_quality_stream
+
+FRAME_QUEUE = 4
+
+# A held frame (every wait and narration hold) arrives once with a repeat
+# count; Manim converted the same RGBA frame to YUV again for every repeat.
+# Convert it once and resend it, with a fresh timestamp each time so the
+# encoder numbers it like any other frame.
+_encode_frames = getattr(SceneFileWriter, "encode_and_write_frame", None)
+if _encode_frames is not None and not getattr(_encode_frames, "__eduvids_held__", False):
+
+    def _encode_held(self, frame, num_frames):
+        stream = getattr(self, "video_stream", None)
+        if num_frames < 2 or stream is None or frame.shape[:2] != (stream.height, stream.width):
+            return _encode_frames(self, frame, num_frames)
+        import av
+
+        held = av.VideoFrame.from_ndarray(frame, format="rgba").reformat(
+            width=stream.width, height=stream.height, format=stream.codec_context.pix_fmt,
+        )
+        for _ in range(num_frames):
+            held.pts = None
+            for packet in stream.encode(held):
+                self.video_container.mux(packet)
+
+    _encode_held.__eduvids_held__ = True
+    SceneFileWriter.encode_and_write_frame = _encode_held
+
 
 # ---------------------------------------------------------------------------
 # Watermark: composited into each frame as it is written, so the finished
@@ -1282,7 +1319,14 @@ if WATERMARK and WATERMARK != "__EDUVIDS_" + "WATERMARK__":
             patch = _watermark_patch(frame.shape[1], frame.shape[0])
             if patch is not None:
                 y0, y1, x0, x1, rgb, a = patch
-                marked = frame.copy()
+                # The Cairo renderer hands over a fresh copy of each frame
+                # (renderer.get_frame), so mark that copy without another
+                # 8 MB copy. Anything that may be shared is copied first.
+                camera = getattr(getattr(self, "renderer", None), "camera", None)
+                shared = frame.base is not None or not frame.flags.writeable or (
+                    camera is not None and frame is getattr(camera, "pixel_array", None)
+                )
+                marked = frame.copy() if shared else frame
                 region = marked[y0:y1, x0:x1, :3].astype(float)
                 marked[y0:y1, x0:x1, :3] = (region * (1 - a) + rgb * a).astype(frame.dtype)
                 _last[0], _last[1] = frame, marked
@@ -1290,6 +1334,51 @@ if WATERMARK and WATERMARK != "__EDUVIDS_" + "WATERMARK__":
         return _write_frame(self, frame, *args, **kwargs)
 
     SceneFileWriter.write_frame = _write_marked
+
+# ---------------------------------------------------------------------------
+# Segments: the render driver can split one long scene across processes.
+# EDUVIDS_SEGMENT="start,end" renders only the animations that begin in that
+# span of the scene's timeline and fast-forwards through the rest, so the
+# segments' movies concatenate into the full scene, frame for frame.
+# ---------------------------------------------------------------------------
+
+_SEGMENT = os.environ.get("EDUVIDS_SEGMENT")
+if _SEGMENT:
+    from manim.renderer.cairo_renderer import CairoRenderer
+    from manim.utils.exceptions import EndSceneEarlyException
+
+    _segment_start, _segment_end = (float(value) for value in _SEGMENT.split(","))
+    _cairo_play = CairoRenderer.play
+    _cairo_skipping = CairoRenderer.update_skipping_status
+
+    def _segment_skipping(self):
+        _cairo_skipping(self)
+        # The clock sums animation run times, which every process computes
+        # identically whether it renders an animation or skips it.
+        clock = getattr(self, "_eduvids_clock", 0.0)
+        if clock >= _segment_end:
+            self.skip_animations = True
+            raise EndSceneEarlyException()
+        if clock < _segment_start:
+            self.skip_animations = True
+
+    def _segment_play(self, scene, *args, **kwargs):
+        before = self.time
+        _cairo_play(self, scene, *args, **kwargs)
+        self._eduvids_clock = getattr(self, "_eduvids_clock", 0.0) + scene.duration
+        if self.skip_animations:
+            # Skipping adds the exact run time; rendering adds whole frames.
+            # Advance as rendering would, so narration added later (and the
+            # last segment's soundtrack) lands on the full render's frames.
+            dt = 1 / config.frame_rate
+            if scene.is_current_animation_frozen_frame():
+                frames = int(scene.duration / dt)
+            else:
+                frames = len(np.arange(0, scene.duration, dt))
+            self.time = before + frames * dt
+
+    CairoRenderer.update_skipping_status = _segment_skipping
+    CairoRenderer.play = _segment_play
 
 # Export the neutrals as colours too, so they work with interpolate_color().
 INK, MUTED, BG = ManimColor(INK), ManimColor(MUTED), ManimColor(BG)

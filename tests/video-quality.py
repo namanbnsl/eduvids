@@ -136,10 +136,43 @@ class VideoQualityTests(unittest.TestCase):
                 writer = Scene().renderer.file_writer
                 writer.open_partial_movie_stream(Path(folder) / "probe.mp4")
                 try:
-                    self.assertEqual(writer.video_stream.options["crf"], "18")
+                    # Matches the old medium/CRF 18 against a lossless render
+                    # (see the comment in video_style.py) at far less CPU.
+                    self.assertEqual(writer.video_stream.options["crf"], "17")
+                    self.assertEqual(writer.video_stream.options["preset"], "superfast")
                 finally:
                     # Stop Manim's frame-consumer thread as well as PyAV.
                     writer.close_partial_movie_stream()
+
+    def test_held_frames_match_frames_written_one_by_one(self):
+        import av
+        from manim.scene.scene_file_writer import SceneFileWriter
+
+        if not hasattr(SceneFileWriter, "open_partial_movie_stream"):
+            self.skipTest("legacy FFmpeg writer")
+        rng = np.random.default_rng(1)
+        frames = [rng.integers(0, 255, (90, 160, 4), dtype=np.uint8) for _ in range(2)]
+
+        def decoded(held):
+            with TemporaryDirectory() as folder:
+                with tempconfig({"media_dir": folder, "pixel_width": 160, "pixel_height": 90}):
+                    writer = Scene().renderer.file_writer
+                    path = Path(folder) / "probe.mp4"
+                    writer.open_partial_movie_stream(path)
+                    for frame in frames:
+                        if held:
+                            writer.encode_and_write_frame(frame, 4)  # converted once, sent 4 times
+                        else:
+                            for _ in range(4):
+                                writer.encode_and_write_frame(frame, 1)
+                    writer.close_partial_movie_stream()
+                    with av.open(str(path)) as container:
+                        return [(f.pts, f.to_ndarray().tobytes()) for f in container.decode(video=0)]
+
+        held, single = decoded(True), decoded(False)
+        self.assertEqual(len(held), 8)
+        self.assertEqual([pts for pts, _ in held], sorted({pts for pts, _ in held}))
+        self.assertEqual(held, single)
 
 
 if __name__ == "__main__":

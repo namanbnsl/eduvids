@@ -23,11 +23,10 @@ import {
   type PreparedSandboxState,
 } from "@/lib/e2b";
 import {
-  startSandboxJob,
+  startRenderJob,
   pollSandboxJobWindow,
   MAX_SANDBOX_POLL_WINDOWS,
-  renderJobCommand,
-  startPostprocess,
+  POSTPROCESS_FAILED_EXIT,
   downloadVideo,
   cleanupSandbox,
   readSceneDurations,
@@ -343,27 +342,28 @@ export const { POST } = serve<VideoGenerationPayload>(
       let error = preparation.error;
       if (preparation.state) {
         prepared = preparation.state;
+        // One job renders the scenes and assembles the final video.
         const renderJob = await context.run(
-          `launch-render-tts-v3-${attempt}`,
+          `launch-render-v4-${attempt}`,
           async () => {
             await updateJobProgress(jobId, {
               progress: 45,
               step: "rendering video",
               details: "Rendering animation",
             });
-            return startSandboxJob(
-              preparation.state!.sandboxId,
-              "render-job-tts-v3",
-              renderJobCommand(preparation.state!),
+            return startRenderJob(
+              preparation.state!,
+              `render-job-v4-${attempt}`,
               eduvidsTTSSandboxEnvironment(),
             );
           },
         );
-        const rendered = await waitForJob(
-          `render-tts-v3-${attempt}`,
-          renderJob,
-        );
+        const rendered = await waitForJob(`render-v4-${attempt}`, renderJob);
         if (rendered.exitCode === 0) break;
+        if (rendered.exitCode === POSTPROCESS_FAILED_EXIT)
+          throw new WorkflowNonRetryableError(
+            `Video processing failed: ${rendered.error}`,
+          );
         error = rendered.error ?? "Manim render failed";
         await context.run(`cleanup-failed-render-${attempt}`, () =>
           cleanupSandbox(preparation.state!.sandboxId),
@@ -419,15 +419,6 @@ export const { POST } = serve<VideoGenerationPayload>(
     }
     if (!prepared)
       throw new WorkflowNonRetryableError("No validated render available");
-
-    const processing = await context.run("launch-postprocess", () =>
-      startPostprocess(prepared!),
-    );
-    const processed = await waitForJob("postprocess", processing);
-    if (processed.exitCode !== 0)
-      throw new WorkflowNonRetryableError(
-        `Video processing failed: ${processed.error}`,
-      );
 
     const uploadUrl = await context.run("upload-video", async () => {
       const existing = await artifactStore.find(jobId, "uploadUrl");
