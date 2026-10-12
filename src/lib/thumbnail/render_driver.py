@@ -409,13 +409,15 @@ def video_seconds(path):
 
 def merge_segments(cfg, scene, count):
     """Join a split scene's segments into one movie: their pictures in order,
-    with the last segment's soundtrack, which holds all of the scene's
-    narration at full-render timing."""
+    with the soundtrack of the last segment that rendered anything. That
+    segment fast-forwarded through everything before it and played on to the
+    scene's end, so it holds all of the narration at full-render timing. (A
+    segment whose span holds no animation writes no movie.)"""
     root = Path(cfg["media_dir"])
     parts = [root / "segments" / f"{scene}.{index}.segment.mp4" for index in range(count)]
     present = [part for part in parts if part.exists()]
-    if not parts[-1].exists():
-        raise RuntimeError(f"last segment of {scene} is missing")
+    if not present:
+        raise RuntimeError(f"no segment of {scene} rendered")
     # Pictures only: a segment's soundtrack runs past its last frame, and the
     # concat demuxer would advance by that longer duration, leaving gaps.
     pictures = []
@@ -430,7 +432,7 @@ def merge_segments(cfg, scene, count):
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
         subprocess.run(
-            ["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(listing), "-i", str(parts[-1]),
+            ["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(listing), "-i", str(present[-1]),
              "-map", "0:v", "-map", "1:a?", "-c", "copy", str(target)],
             check=True, timeout=300,
         )

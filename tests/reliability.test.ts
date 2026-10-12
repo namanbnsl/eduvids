@@ -1192,6 +1192,26 @@ test("house encoding supports legacy FFmpeg and PyAV Manim writers", async () =>
   ]);
 });
 
+test("a scene split into timeline segments joins into the same movie as a whole render", async (t) => {
+  try {
+    await exec("python3", ["-c", "import manim, manim_voiceover"]);
+    await exec("ffmpeg", ["-version"]);
+  } catch {
+    t.skip("manim, manim-voiceover and ffmpeg are not installed");
+    return;
+  }
+  const folder = await mkdtemp(join(tmpdir(), "eduvids-segments-"));
+  try {
+    await exec(
+      "python3",
+      [join(process.cwd(), "tests/render-segments.py"), folder],
+      { cwd: folder, timeout: 240_000 },
+    );
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
 test("real Manim geometry keeps grouped labels, overlay lanes and projected 3D layouts clear", async (t) => {
   if (!(await thumbnailToolchainAvailable())) {
     t.skip("manim and xelatex are not installed");
