@@ -75,6 +75,16 @@ STYLE
 - Spell out acronyms phonetically on first use ("dee en ay") unless universally spoken as a word.
 - Define every term the first time it appears, briefly and in plain words.
 
+MAKE IT SEEN, NOT JUST SAID
+The animator can only draw what you give it. Abstract sentences become text on a black screen; concrete sentences become pictures that teach. Write lines that hand the animator a picture:
+- ANCHOR IN SOMETHING REAL. Before the abstraction, name a thing the viewer could hold or see: a grain of salt, a glass of water, a stadium of people, a falling apple, a bank balance. Then go from it to the idea.
+- TRAVEL THROUGH SCALE. When size or number is the point, take the viewer there in steps instead of quoting it: "Here is a grain of salt. Zoom in a thousand times and it is a grid of hundreds of atoms. Pick one. Zoom again." Give each step a real, approximate magnitude.
+- MAKE NUMBERS COUNTABLE. Turn rates and probabilities into a crowd you can count: "Picture a thousand people. Ten of them are sick." Turn ratios into side-by-side sizes: "If the nucleus were a marble, the atom would be a football stadium."
+- OPEN THINGS UP. To explain what something is made of, look inside it: "Crack the nucleus open and you find protons and neutrons."
+- FOLLOW ONE THING. For a process, follow one particle, one dollar, one signal, one molecule from start to finish so the viewer has someone to watch.
+- PREDICT, THEN SHOW. Ask the viewer to guess before the reveal ("Which one hits the ground first?"), then let the picture answer.
+- Use real numbers and say when a picture is not to scale. Never invent statistics.
+
 BANNED PHRASES
 "great question", "it is important to note", "simply put", "essentially", "basically", "fascinating", "mind-blowing", "the beauty of", "the magic of", "journey", "dive in", "unlock", "delve", "at the end of the day", "and that is it", "in summary", "to recap", "next time you", "you now understand", "feel capable".
 
@@ -88,6 +98,7 @@ FINAL CHECK (silently, before answering)
 - Is there a tempting wrong answer or a genuine surprise?
 - Is there exactly one running example, revisited at the payoff?
 - Does every line give the animator one concrete thing to reveal, move, compare, trace, or highlight?
+- Is there at least one journey through scale, countable crowd, look inside, or followed particle where the topic allows it?
 - Is every banned phrase absent, and could any line be cut without loss? Cut it.
 `;
 
@@ -119,6 +130,23 @@ Choose the clearest visually impactful representation for each concept:
 - If explaining a formula → use "formula_explanation" with each variable color-coded by role and the term being spoken highlighted in ACCENT.
 - If comparing things → use "comparison" with side-by-side visuals (PRIMARY against SECONDARY) and smooth transitions.
 - Use "geometry_diagram" with filled shapes, soft fills, color-coded edges, and labeled measurements for anything geometric.
+
+VISUAL DEVICES — how a scene teaches, not just what it shows:
+A label and a diagram tell; a device lets the viewer see the idea happen. Give every scene one device and name it in "visualDevice". The animator has a ready-made helper for each.
+- "zoom_journey": start on something familiar and travel through scale into one member of it, swapping in finer detail at each level (a grain of salt → a lattice of hundreds of atoms → one atom → its nucleus; a city → a street → one house; a leaf → a cell → a chloroplast). Show a population first, then zoom into one. Never show a lone small object when the point is that there are countless of them.
+- "population": a countable crowd of dots or people where a share lights up (1 in 100 is sick; 9 of 1000 test positive). Use it for probability, statistics, rates, risk, and anything "out of N".
+- "to_scale": objects side by side at their true relative sizes on one baseline (Earth beside the Sun; a cell beside a virus). The gap itself is the lesson.
+- "exploded_view": a whole that pulls apart into labelled parts, then reassembles (an atom's nucleus into protons and neutrons; an equation into its terms; a cell into organelles).
+- "process_flow": particles streaming along a path to show something moving through a system (current in a circuit, blood through a heart, heat along a bar, money through an economy, signals along a neuron). Follow one particle in ACCENT.
+- "spotlight": everything else dims while one part stays lit, so attention goes exactly where the narration points.
+- "before_after": a faded ghost of the old state stays visible while the new state forms on top, so the change itself is visible.
+- "live_tracker": a ValueTracker drives a point, area, vector or readout continuously while a number counts along (slopes, rates, limits, optimisation).
+- "morph": one shape or formula transforms into its meaning (a circle unrolls into a triangle; an equation simplifies step by step).
+- "predict_reveal": pose the visual question, hold a beat with the setup on screen, then animate the answer.
+- "build_up": the hero assembles piece by piece in the order the narration names them.
+Use devices purposefully: the opening scene should use the most striking device the topic allows (usually zoom_journey, population, to_scale or predict_reveal). Avoid using the same device in more than two consecutive scenes. Plain "build_up" should be the minority.
+Recognisable props are available, so plan them instead of abstract boxes: atom (Bohr model with any number of protons, neutrons and electrons), molecule (ball-and-stick from element symbols), person (icon for populations), die, cell (animal cell with nucleus and organelles), plus crowds of any of them.
+Honesty: a picture can be schematic, but quoted magnitudes must be real. When a zoom compresses scale, use a scale bar ("1 mm" → "1 nm") and say the real number in narration.
 
 VISUAL HOUSE STYLE — the video shares its thumbnail's look; content first, never template-like:
 - A plain near-black canvas with the mathematical visual occupying the frame. Do not design cards, panels, pills, borders, badges, fake interfaces, decorative gradients, or branding.
@@ -170,7 +198,9 @@ The output is an array of scene objects. Each object has:
 - "chapterTitle": optional string, 2-5 plain words. Set it ONLY on a scene that starts a new section of the story (usually 4-7 per full video, including the first scene). It becomes a YouTube chapter, so make it specific and curiosity-led ("The slope that shouldn't exist", "Shrinking the gap"), never generic ("Introduction", "Conclusion", "Summary").
 - "narration": the voiceover text for this scene
 - "visualType": one of "title", "formula_explanation", "graph_plot", "geometry_diagram", "comparison", "worked_example", "summary", "bullet_points", "3d_visualization"
-- "elements": array of {id, type, content, color?} where type is "text"|"math"|"label"|"diagram"|"graph"|"axis"|"shape"|"surface"|"vector"|"region"
+- "visualDevice": one of "zoom_journey", "population", "to_scale", "exploded_view", "process_flow", "spotlight", "before_after", "live_tracker", "morph", "predict_reveal", "build_up"
+- "storyboard": one or two sentences describing the scene's motion from first frame to last frame, with real magnitudes ("Open on a grain of salt with a 1 mm scale bar; it dissolves into a lattice of ~2000 atoms; zoom 1000x into one atom as the bar reads 0.1 nm; the dot opens into a sodium atom with 11 electrons on three shells.")
+- "elements": array of {id, type, content, color?} where type is "text"|"math"|"label"|"diagram"|"graph"|"axis"|"shape"|"surface"|"vector"|"region"|"population"|"prop". A "population" element is one crowd (count it as a single element, however many members it has); describe its size, member ("dot", "person", "square" or a prop) and highlighted share. A "prop" element is one of: atom, molecule, person, die, cell; give its parameters (e.g. "atom protons=11 neutrons=12 electrons=11").
 - "layout": one of "center_single", "top_title_center_content", "top_title_center_content_bottom_labels", "left_right_split", "stacked_vertical"
 - "maxSimultaneousElements": number 1-5
 - "transitionIn": one of "write", "fade_in", "create"
@@ -190,6 +220,8 @@ EXAMPLE 1 — formula scene with role-based color-coding:
     "chapterTitle": "Why pi r squared",
     "narration": "The area of a circle is pi times the radius squared.",
     "visualType": "formula_explanation",
+    "visualDevice": "build_up",
+    "storyboard": "A filled circle draws itself, a radius sweeps out from the centre, and the formula writes beside it with r squared in ACCENT.",
     "elements": [
       {"id": "title", "type": "text", "content": "Area of a circle", "color": "INK"},
       {"id": "formula", "type": "math", "content": "A = \\\\pi r^2"},
@@ -216,6 +248,8 @@ EXAMPLE 2 — graph scene:
     "sceneId": "Scene03Graph",
     "narration": "Here is the parabola y equals x squared, with the area under the curve shaded.",
     "visualType": "graph_plot",
+    "visualDevice": "live_tracker",
+    "storyboard": "The parabola traces from x=-3 to 3, the area from 0 to 2 fills in, then a tangent rides the curve to x=1.",
     "elements": [
       {"id": "axes", "type": "axis", "content": "x: -3 to 3, y: 0 to 9"},
       {"id": "curve", "type": "graph", "content": "y = x^2", "color": "PRIMARY"},
@@ -242,6 +276,8 @@ EXAMPLE 3 — 3D visualization:
     "sceneId": "Scene05Surface",
     "narration": "Let's visualize this function as a three-dimensional surface.",
     "visualType": "3d_visualization",
+    "visualDevice": "build_up",
+    "storyboard": "Axes draw, the surface fades in from flat, and the camera turns 16 degrees to reveal the alternating hills and valleys.",
     "elements": [
       {"id": "surface", "type": "surface", "content": "z = sin(x) * cos(y), x: -3 to 3, y: -3 to 3, camera phi=75° theta=-45°, slow rotation", "color": "PRIMARY"},
       {"id": "axes3d", "type": "axis", "content": "3D axes x: -3 to 3, y: -3 to 3, z: -1 to 1"},
@@ -257,6 +293,60 @@ EXAMPLE 3 — 3D visualization:
     "labels": [
       {"targetElementId": "surface", "labelText": "z = sin(x)cos(y)", "position": "above"}
     ]
+  }
+]
+
+EXAMPLE 4 — zoom journey (a population first, then one member, then inside it):
+[
+  {
+    "sceneId": "Scene01GrainOfSalt",
+    "chapterTitle": "Inside a grain of salt",
+    "narration": "Here is a single grain of salt, about a millimetre across. Zoom in a million times and it turns into a grid of atoms. Pick one of them. Zoom in again and that dot becomes a sodium atom, with eleven electrons on three shells.",
+    "visualType": "geometry_diagram",
+    "visualDevice": "zoom_journey",
+    "storyboard": "Open on a solid square grain with a 1 mm scale bar; it dissolves into a lattice of about 2000 dots; one dot turns ACCENT and the view zooms toward it as the bar reads 1 nm; the other atoms dim, a second zoom fills the frame, and the dot opens into a sodium atom.",
+    "elements": [
+      {"id": "title", "type": "text", "content": "Inside a grain of salt", "color": "INK"},
+      {"id": "grain", "type": "shape", "content": "solid square grain of salt", "color": "PRIMARY"},
+      {"id": "lattice", "type": "population", "content": "lattice of 2000 dots filling the grain; one central dot highlighted", "color": "PRIMARY"},
+      {"id": "sodium", "type": "prop", "content": "atom protons=11 neutrons=12 electrons=11", "color": "PRIMARY"},
+      {"id": "scale", "type": "label", "content": "scale bar 1 mm, then 1 nm", "color": "MUTED"}
+    ],
+    "layout": "top_title_center_content",
+    "maxSimultaneousElements": 4,
+    "transitionIn": "fade_in",
+    "clearPrevious": true,
+    "beats": [
+      {"narration": "Here is a single grain of salt, about a millimetre across.", "focusElementIds": ["grain", "scale"]},
+      {"narration": "Zoom in a million times and it turns into a grid of atoms.", "focusElementIds": ["lattice", "scale"]},
+      {"narration": "Pick one of them.", "focusElementIds": ["lattice"]},
+      {"narration": "Zoom in again and that dot becomes a sodium atom, with eleven electrons on three shells.", "focusElementIds": ["sodium"]}
+    ],
+    "labels": []
+  }
+]
+
+EXAMPLE 5 — population (make a probability countable):
+[
+  {
+    "sceneId": "Scene02ThousandPeople",
+    "narration": "Picture a thousand people. On average, ten of them actually have the disease.",
+    "visualType": "comparison",
+    "visualDevice": "population",
+    "storyboard": "A grid of 1000 person icons in MUTED fades in; ten of them light up in ACCENT; the rest dim.",
+    "elements": [
+      {"id": "people", "type": "population", "content": "1000 person icons in a block; 10 highlighted as sick", "color": "MUTED"},
+      {"id": "count", "type": "math", "content": "10 / 1000 = 1\\\\%", "color": "ACCENT"}
+    ],
+    "layout": "left_right_split",
+    "maxSimultaneousElements": 2,
+    "transitionIn": "fade_in",
+    "clearPrevious": true,
+    "beats": [
+      {"narration": "Picture a thousand people.", "focusElementIds": ["people"]},
+      {"narration": "On average, ten of them actually have the disease.", "focusElementIds": ["people", "count"]}
+    ],
+    "labels": []
   }
 ]
 `;
@@ -286,7 +376,7 @@ Name each scene class exactly as its scene-plan sceneId (Scene01Intro, Scene02De
 
 VISUAL HOUSE STYLE
 The house style is applied automatically after your imports: it sets the canvas, sets every Text() and MathTex() in Computer Modern (as in 3Blue1Brown and Welch Labs videos), and defines this video's palette, shared with its thumbnail. Do not set background colors, fonts, or font weights yourself.
-These names are already defined and imported for you. Use them directly, and never redefine them: PRIMARY, ACCENT, SECONDARY, TERTIARY, INK, MUTED, header, caption, layout_scene, lock_layout, fixed_overlay, place_3d_in_content, place_in_content, content_box, balanced_text, pop_in, pulse, shade_surface.
+These names are already defined and imported for you. Use them directly, and never redefine them: PRIMARY, ACCENT, SECONDARY, TERTIARY, INK, MUTED, header, caption, layout_scene, lock_layout, fixed_overlay, place_3d_in_content, place_in_content, content_box, balanced_text, pop_in, pulse, shade_surface, crowd, zoom_to, reveal_detail, scale_bar, spotlight, release, explode, assemble, flow, to_scale, ghost, atom, molecule, person, die, cell.
 - Color by role, using these names (never hex strings):
   PRIMARY — the main object: the curve, the shape, the surface.
   ACCENT — the one detail the narration points at right now: the tangent point, the key term, the answer. One thing at a time; it means "look here".
@@ -327,11 +417,67 @@ MOTION THAT HOLDS ATTENTION
 - To color part of a formula, pass its parts as separate strings and color by tex: f = MathTex(r"A", r"=", r"\\pi r^2"); f.set_color_by_tex(r"\\pi r^2", ACCENT). A formula written as one string has exactly one part, so never index it as if it had more.
 
 ═══════════════════════════════════════════════════════════════════════════════
+VISUAL DEVICES (each scene-plan entry names one in "visualDevice"; follow its "storyboard")
+═══════════════════════════════════════════════════════════════════════════════
+
+These helpers make the device-driven scenes cheap to write and fast to render. All are 2D-scene helpers (not for ThreeDScene).
+
+zoom_journey — a population first, then one member, then inside it:
+  lattice = crowd(2000)                                  # ONE path of 2000 dots filling the content area (landscape or portrait); item="person"|"square"|"dot"
+  place_in_content(lattice, above=title, fill=0.7)
+  bar = scale_bar(r"1\\,\\text{mm}")                       # lower-right ruler; stays put during zooms
+  self.play(FadeIn(lattice), FadeIn(bar))
+  one = lattice.item()                                   # ACCENT copy of the middle member (lattice.item(i) for another)
+  self.play(pop_in(one))
+  self.play(zoom_to(self, one, fill=0.08), bar.relabel(r"1\\,\\text{nm}"), run_time=tracker.duration * 0.7)
+  self.play(spotlight(self, one))                        # neighbours dim, the chosen one stays lit
+  self.play(zoom_to(self, one), run_time=2)              # second level: the member fills about half the content area
+  sodium = atom(11, 12)                                  # Bohr model; also atom(1) for hydrogen
+  place_in_content(sodium, above=title, fill=0.8)
+  self.play(FadeOut(lattice), reveal_detail(one, sodium))   # the dot opens into the detailed object
+  self.play(sodium.orbit(0.5, run_time=3))               # electrons circle their shells
+  zoom_to(scene, target, factor=None, fill=0.55) zooms everything except the title, captions and scale bar. Members leaving the content area are hidden. Chain zooms for a powers-of-ten journey, and use factor=0.1 to zoom back out.
+
+population — make "out of N" countable:
+  people = crowd(100, item="person", color=MUTED)       # pass width=, height= only for a smaller block
+  sick = people.subset(range(0, 100, 10), color=ACCENT, grow=1.3)  # one recoloured path over the crowd; grow makes a small share stand out
+  layout_scene(VGroup(people, sick), title=title, side=MathTex(r"10\\%", font_size=72, color=ACCENT))
+  self.play(FadeIn(people)); self.play(FadeIn(sick))
+  Person crowds stay fast up to about 1000; beyond that use item="dot" or "square". Pick shares deterministically (range, or a fixed list), never random. Pick members with item(), subset() or nearest() before zooming.
+
+to_scale — true relative sizes on one baseline:
+  earth = Circle(radius=1, color=PRIMARY, fill_opacity=1); sun = Circle(radius=1, color=SECONDARY, fill_opacity=1)
+  pair = to_scale(earth, sun, sizes=[1, 109], height=4)
+  place_in_content(pair, above=title, fill=0.85)
+
+exploded_view — open something up, then put it back:
+  carbon = atom(6); place_in_content(carbon, above=title)
+  self.play(explode(carbon.nucleus, factor=0.9))         # parts move outward from the centre
+  self.play(assemble(carbon.nucleus))
+  explode works on any VGroup: an equation's parts, a cell(), a molecule's atoms.
+
+process_flow — something moving through a system:
+  loop = RoundedRectangle(width=6, height=3, corner_radius=0.4, color=MUTED)
+  current = flow(loop, count=14, speed=1.5)              # dots keep moving along the path during narration
+  self.play(Create(loop)); self.add(current)
+  current.stop()                                         # before a long still hold
+  Follow one particle: give the story one ACCENT dot (Dot().move_to(...)) moved with MoveAlongPath.
+
+spotlight — attention: self.play(spotlight(self, formula[2])) dims everything else; self.play(release(self)) restores it.
+before_after — keep the old state as a faint reference: old = ghost(curve); self.add(old); self.play(Transform(curve, new_curve)).
+props — atom(protons, neutrons, electrons), molecule([("O", (0, 0)), ("H", (-0.8, -0.6)), ("H", (0.8, -0.6))], [(0, 1), (0, 2)]) with (i, j, 2) for a double bond, person(), die(value), cell(). They are ordinary VGroups: scale, move, label, and transform them freely. Prefer a prop over an abstract circle or box whenever the subject has one.
+
+Device rules:
+- A population or crowd is ONE element, however many members it has. Never build crowds from loops of Dot() or Circle(), never LaggedStart over hundreds of items, and never always_redraw a crowd; use crowd(), .item(), .subset().
+- Narrate scale honestly: a scale_bar label and the narration must agree on the real magnitude.
+- Give zooms room: run_time 2-3s (or about 70 percent of the beat). A zoom is the motion of its beat; don't stack other moves on top of it.
+
+═══════════════════════════════════════════════════════════════════════════════
 SCENE PLAN
 ═══════════════════════════════════════════════════════════════════════════════
 
 You will receive a scene plan as JSON. Follow it exactly for scene structure,
-element types, layout choices, and timing beats. Map each plan entry to a scene class.
+element types, layout choices, and timing beats. Map each plan entry to a scene class. Realise each entry's "visualDevice" with the matching helper above and follow its "storyboard" from first frame to last.
 Create exactly one voiceover block per beat, using that beat's narration verbatim.
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -422,7 +568,7 @@ CRITICAL REQUIREMENTS
    ❌ Text("x = 2", ...)
    ❌ Text("100%", ...)
 8. Label every formula, shape, axis, and graph. Color-code labels to match their elements.
-9. Max 4-5 elements on screen. FadeOut old content before showing new. Use self.wait(1) between elements.
+9. Max 4-5 elements on screen (a crowd() counts as one). FadeOut old content before showing new. Use self.wait(1) between elements.
 10. Use .next_to() with buff>=0.4 for positioning.
 11. Each scene is self-contained — no shared state between scene classes.
 12. 3D objects must NOT use checkerboard patterns. Surfaces are shaded by height in PRIMARY automatically; to use another role, call shade_surface(surface, SECONDARY). Never pass two different checkerboard_colors.

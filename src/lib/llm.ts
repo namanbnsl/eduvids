@@ -659,7 +659,9 @@ export interface ScenePlanElement {
     | "shape"
     | "surface"
     | "vector"
-    | "region";
+    | "region"
+    | "population"
+    | "prop";
   content: string;
   color?: string;
 }
@@ -681,6 +683,10 @@ export interface ScenePlanEntry {
   chapterTitle?: string;
   narration: string;
   visualType: string;
+  /** How the scene teaches: zoom_journey, population, to_scale, ... */
+  visualDevice?: string;
+  /** The scene's motion from first frame to last, with real magnitudes. */
+  storyboard?: string;
   elements: ScenePlanElement[];
   layout: string;
   maxSimultaneousElements: number;

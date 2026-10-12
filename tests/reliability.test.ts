@@ -37,6 +37,9 @@ import {
   videoRenderFlags,
 } from "../src/lib/video-style";
 import {
+  MANIM_SYSTEM_PROMPT,
+  SCENE_PLAN_SYSTEM_PROMPT,
+  VOICEOVER_SYSTEM_PROMPT,
   VOICEOVER_SERVICE_IMPORT_TOKEN,
   VOICEOVER_SERVICE_SETTER_TOKEN,
 } from "../src/prompt";
@@ -1215,6 +1218,123 @@ test("real Manim geometry keeps grouped labels, overlay lanes and projected 3D l
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
+});
+
+test("storytelling helpers zoom, crowd, spotlight and draw props correctly in real Manim", async (t) => {
+  if (!(await thumbnailToolchainAvailable())) {
+    t.skip("manim and xelatex are not installed");
+    return;
+  }
+  const folder = await mkdtemp(join(tmpdir(), "eduvids-devices-"));
+  try {
+    const assets = await loadVideoStyleAssets("azure-coral");
+    await mkdir(join(folder, "eduvids-fonts"));
+    await writeFile(join(folder, "eduvids_style.py"), assets.module);
+    for (const { name, data } of assets.fonts)
+      await writeFile(join(folder, "eduvids-fonts", name), data);
+    await exec(
+      "python3",
+      [join(process.cwd(), "tests/visual-devices.py"), folder],
+      { cwd: folder, timeout: 240_000 },
+    );
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("every storytelling helper the Manim prompt names is exported by the house style", async () => {
+  const source = await readFile(
+    join(process.cwd(), "src/lib/thumbnail/video_style.py"),
+    "utf8",
+  );
+  const exported = new Set(
+    [...source.matchAll(/__all__\s*\+?=\s*\[([\s\S]*?)\]/g)].flatMap(
+      ([, names]) => [...names!.matchAll(/"(\w+)"/g)].map(([, name]) => name!),
+    ),
+  );
+  const listed = MANIM_SYSTEM_PROMPT.match(
+    /never redefine them: ([^.]+)\./,
+  )![1]!
+    .split(",")
+    .map((name) => name.trim());
+  for (const name of listed) assert.ok(exported.has(name), name);
+  for (const name of [
+    "crowd",
+    "zoom_to",
+    "reveal_detail",
+    "scale_bar",
+    "spotlight",
+    "release",
+    "explode",
+    "assemble",
+    "flow",
+    "to_scale",
+    "ghost",
+    "atom",
+    "molecule",
+    "person",
+    "die",
+    "cell",
+  ]) {
+    assert.ok(listed.includes(name), `prompt lists ${name}`);
+  }
+});
+
+test("the planner names a visual device per scene and the narrator writes for pictures", () => {
+  const devices = [
+    "zoom_journey",
+    "population",
+    "to_scale",
+    "exploded_view",
+    "process_flow",
+    "spotlight",
+    "before_after",
+    "live_tracker",
+    "morph",
+    "predict_reveal",
+    "build_up",
+  ];
+  for (const device of devices) {
+    assert.match(SCENE_PLAN_SYSTEM_PROMPT, new RegExp(`"${device}"`));
+  }
+  // Every scene in every example names a device and a storyboard.
+  const examples = SCENE_PLAN_SYSTEM_PROMPT.split("EXAMPLE ").slice(1);
+  assert.ok(examples.length >= 5);
+  for (const example of examples) {
+    const json = example.slice(example.indexOf("["));
+    const scenes = JSON.parse(json.slice(0, json.lastIndexOf("]") + 1));
+    for (const scene of scenes) {
+      assert.ok(devices.includes(scene.visualDevice), scene.sceneId);
+      assert.ok(scene.storyboard.length > 20, scene.sceneId);
+      assert.equal(
+        scene.beats.map((beat: { narration: string }) => beat.narration).join(" "),
+        scene.narration,
+      );
+    }
+  }
+  assert.match(VOICEOVER_SYSTEM_PROMPT, /TRAVEL THROUGH SCALE/);
+  assert.match(VOICEOVER_SYSTEM_PROMPT, /MAKE NUMBERS COUNTABLE/);
+});
+
+test("scene timing keeps the planned device and storyboard", () => {
+  const [scene] = normalizeScenePlanTiming([
+    {
+      sceneId: "Scene01Salt",
+      narration: "Here is a grain of salt.",
+      visualType: "geometry_diagram",
+      visualDevice: "zoom_journey",
+      storyboard: "A grain dissolves into a lattice and we zoom into one atom.",
+      elements: [{ id: "grain", type: "shape", content: "square" }],
+      layout: "center_single",
+      maxSimultaneousElements: 2,
+      transitionIn: "fade_in",
+      clearPrevious: true,
+      labels: [],
+      beats: [],
+    },
+  ]);
+  assert.equal(scene!.visualDevice, "zoom_journey");
+  assert.match(scene!.storyboard!, /lattice/);
 });
 
 test("house style sets text and math on one type scale and keeps copy in frame", async (t) => {

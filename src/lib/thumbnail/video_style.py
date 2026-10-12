@@ -483,6 +483,7 @@ def header(title, eyebrow=None, font_size=52):
     group = manim.VGroup(balanced_text(str(title), font_size=font_size, max_lines=2))
     group.to_corner(manim.UL, buff=EDGE)
     group._eduvids_header = True
+    group.set_z_index(50)  # zoomed or moving content passes beneath it
     lock_layout(group)
     return group
 
@@ -521,6 +522,7 @@ def caption(text, font_size=32, color=None):
     """A reserved bottom annotation, outside the hero's content rectangle."""
     mob = balanced_text(text, font_size=font_size, color=color or MUTED, max_lines=2)
     mob.to_edge(manim.DOWN, buff=EDGE)
+    mob._eduvids_overlay = True  # a screen lane: zoom_to leaves it in place
     return lock_layout(mob)
 
 
@@ -1113,4 +1115,644 @@ __all__ = [
     "header", "content_box", "place_in_content", "sentence_case",
     "caption", "layout_scene", "lock_layout", "fixed_overlay", "place_3d_in_content",
     "glow", "shade_surface", "pop_in", "pulse", "AXIS_COLOR", *_named,
+]
+
+# ---------------------------------------------------------------------------
+# Visual storytelling: show scale, populations, insides and processes, so an
+# idea is seen rather than only named. A crowd of a thousand atoms zooms in
+# to one atom, which then opens up into its nucleus and shells.
+#
+# Built for Cairo speed: a crowd is ONE path (one draw call, one colour) with
+# the picked item drawn on top as its own mobject; a zoom transforms points
+# in place; nothing here adds an updater except flow(), which is motion.
+# ---------------------------------------------------------------------------
+
+
+def _item_template(item, size):
+    """A unit-sized VMobject outline for one member of a crowd."""
+    if isinstance(item, manim.VMobject):
+        mob = item.copy()
+    elif item == "square":
+        mob = manim.Square(side_length=1)
+    elif item == "person":
+        mob = person(height=1)
+    else:
+        # Four cubic arcs are indistinguishable from eight at crowd sizes and
+        # halve Cairo's per-curve path cost.
+        mob = manim.Circle(radius=0.5, num_components=5)
+    parts = [m for m in mob.family_members_with_points()]
+    template = manim.VMobject()
+    for part in parts:
+        template.append_points(part.points)
+    template.move_to(manim.ORIGIN)
+    if template.height > 0:
+        template.scale(size / max(template.height, template.width))
+    return template
+
+
+class Crowd(manim.VMobject):
+    """Many identical items as one path: thousands cost one draw call.
+
+    ``crowd.item(i)`` is a separate copy of item ``i`` to spotlight, zoom into
+    or transform; ``crowd.subset(indices, color)`` recolours a share of the
+    crowd ("one in a hundred") as another Crowd drawn on top.
+    """
+
+    def __init__(self, positions, template, color=None, opacity=1.0, **kwargs):
+        super().__init__(**kwargs)
+        self._stride = len(template.points)
+        positions = np.array(positions, dtype=float).reshape(-1, 3)
+        if len(positions):
+            self.points = (template.points[None, :, :] + positions[:, None, :]).reshape(-1, 3)
+        self.set_fill(ManimColor(color) if color is not None else PRIMARY, opacity=opacity)
+        self.set_stroke(width=0)
+        self._eduvids_layout_locked = True  # unlabelled geometry: guard skips it
+
+    def __len__(self):
+        return len(self.points) // self._stride if self._stride else 0
+
+    def _items(self, points=None):
+        return (self.points if points is None else points).reshape(-1, self._stride, 3)
+
+    def _clip(self, points, top, bottom):
+        """Only the items to draw: those inside the frame that stay clear of
+        the title and caption lanes. Cairo then draws a zoomed-in lattice's
+        hundred visible dots instead of all of them. The full layout is kept
+        by the zoom, so a later zoom (in or out) starts from every item."""
+        items = self._items(points)
+        half_width = config.frame_width / 2
+        top = min(top, config.frame_height / 2)
+        bottom = max(bottom, -config.frame_height / 2)
+        lo, hi = items.min(axis=1), items.max(axis=1)
+        keep = (hi[:, 1] <= top) & (lo[:, 1] >= bottom) & (hi[:, 0] >= -half_width) & (lo[:, 0] <= half_width)
+        if keep.all():
+            return points
+        if not keep.any():
+            return np.zeros((0, 3))
+        return items[keep].reshape(-1, 3)
+
+    # Item indices refer to the layout before any zoom: pick items with
+    # item(), subset() or nearest() before zooming in.
+    def centers(self):
+        """Current centre of every item (follows moves and zooms)."""
+        return self._items().mean(axis=1)
+
+    def nearest(self, point=None):
+        """Index of the item closest to ``point`` (default: the middle)."""
+        point = self.get_center() if point is None else np.asarray(point)
+        return int(np.argmin(np.linalg.norm(self.centers() - point, axis=1)))
+
+    def _piece(self, indices, color, grow=1.0):
+        piece = Crowd([], manim.VMobject(), color=ManimColor(color) if color is not None else ACCENT)
+        piece._stride = self._stride
+        count = len(self)
+        # Generated code sometimes counts from 1 or past the end: wrap, don't fail.
+        indices = [int(i) % count for i in indices] if count else []
+        items = self._items()[indices]
+        if len(items):
+            if grow != 1:
+                # Each member swells about its own centre, so a lit share
+                # reads at a glance in a crowd of a thousand.
+                middles = items.mean(axis=1, keepdims=True)
+                items = middles + (items - middles) * grow
+            piece.points = items.reshape(-1, 3).copy()
+        piece.set_z_index(self.z_index + 1)
+        return piece
+
+    def item(self, index=None, color=None):
+        """A standalone copy of one item, in ACCENT, exactly on top of it."""
+        return self._piece([self.nearest() if index is None else index], color)
+
+    def subset(self, indices, color=None, grow=1.0):
+        """Items ``indices`` as one recoloured crowd drawn over this one;
+        ``grow`` (e.g. 1.4) enlarges each so a small share stands out."""
+        return self._piece(indices, color, grow)
+
+
+def crowd(count=400, width=None, height=None, item="dot", color=None, fill=0.72,
+          jitter=0.0, seed=7, opacity=1.0):
+    """``count`` items packed into a ``width`` x ``height`` block.
+
+    By default the block fills the content area below a header (landscape or
+    portrait), so a thousand people stay legible in a Short too.
+    ``item`` is "dot", "square", "person" or any VMobject (its outline is
+    reused). ``fill`` is the item size as a share of the grid spacing;
+    ``jitter`` (0-0.5) loosens the grid into a gas or a crowd of people.
+    A few thousand items still render quickly; for "billions", show a dense
+    block and say the number, then zoom_to one item.
+    """
+    count = max(1, int(count))
+    if width is None or height is None:
+        # Below a one-line header, above an optional caption.
+        top = config.frame_height / 2 - EDGE - 0.75 - HEADER_GAP
+        bottom = -config.frame_height / 2 + EDGE + 0.6
+        area_w, area_h = (config.frame_width - 2 * EDGE) * 0.92, (top - bottom) * 0.92
+        width = area_w if width is None else width
+        height = area_h if height is None else height
+    shape = _item_template(item, 1.0)
+    aspect = (shape.width / shape.height) if shape.height else 1.0  # tall people get narrow cells
+    ideal = np.sqrt(count * width / (height * aspect))
+    cols = max(1, int(np.ceil(ideal)))
+    # Prefer a column count that fills the last row (1000 -> 40 x 25).
+    for candidate in sorted(range(max(1, int(ideal * 0.9)), int(ideal * 1.12) + 2), key=lambda c: abs(c - ideal)):
+        if count % candidate == 0:
+            cols = candidate
+            break
+    rows = int(np.ceil(count / cols))
+    pitch = min(height / rows, width / (cols * aspect))
+    dx, dy = pitch * aspect, pitch
+    rng = np.random.default_rng(seed)
+    positions = []
+    last = count - (rows - 1) * cols  # a short last row is centred
+    for index in range(count):
+        r, c = divmod(index, cols)
+        width_here = last if r == rows - 1 else cols
+        x = (c - (width_here - 1) / 2) * dx
+        y = ((rows - 1) / 2 - r) * dy
+        if jitter:
+            x, y = np.array([x, y]) + rng.uniform(-jitter, jitter, 2) * np.array([dx, dy])
+        positions.append((x, y, 0.0))
+    mob = Crowd(positions, _item_template(item, max(dx, dy) * fill), color=color, opacity=opacity)
+    mob.rows, mob.cols = rows, cols  # index = row * cols + col, row 0 at the top
+    return mob
+
+
+def _screen_lane(mob):
+    return getattr(mob, "_eduvids_header", False) or getattr(mob, "_eduvids_overlay", False)
+
+
+def _lanes(scene):
+    """Title, caption and scale-bar mobjects wherever they sit. Playing an
+    AnimationGroup makes Manim regroup scene.mobjects under an anonymous
+    Group, so lanes are searched in every family, not only at the top."""
+    found, seen = [], set()
+    for top in scene.mobjects:
+        for mob in top.get_family():
+            if _screen_lane(mob) and id(mob) not in seen:
+                found.append(mob)
+                seen.update(id(m) for m in mob.get_family())
+    return found
+
+
+def _units(scene, protected):
+    """The largest pieces of the scene containing nothing in ``protected``
+    (ids): what a zoom moves or a spotlight dims."""
+    def walk(mob):
+        family = mob.get_family()
+        if id(mob) in protected:
+            return
+        if not any(id(m) in protected for m in family):
+            if any(m.has_points() for m in family):
+                yield mob
+            return
+        for sub in mob.submobjects:
+            yield from walk(sub)
+
+    for top in scene.mobjects:
+        yield from walk(top)
+
+
+class _ZoomPart(manim.Animation):
+    """Scale one top-level mobject about ``focus`` exponentially (a camera
+    zoom has constant perceived speed) while the focus glides to ``to``.
+    Crowd items that would cross the title or caption lane are hidden."""
+
+    def create_starting_mobject(self):
+        return self.mobject  # points are snapshotted instead of deep-copied
+
+    def __init__(self, mobject, focus, factor, shift, lane=None, **kwargs):
+        self.focus, self.factor, self.shift = np.asarray(focus), float(factor), np.asarray(shift)
+        self.lane = lane
+        super().__init__(mobject, **kwargs)
+
+    def begin(self):
+        self._snapshot = []
+        for mob in self.mobject.family_members_with_points():
+            points = mob.points
+            hidden = getattr(mob, "_eduvids_unclipped", None)
+            # A crowd clipped by an earlier zoom resumes from its full layout.
+            if hidden is not None and hidden[1].shape == points.shape and np.array_equal(hidden[1], points):
+                points = hidden[0]
+            self._snapshot.append((mob, points.copy()))
+        super().begin()
+
+    def interpolate_mobject(self, alpha):
+        t = self.rate_func(alpha)
+        k = self.factor ** t
+        for mob, points in self._snapshot:
+            moved = (points - self.focus) * k + self.focus + self.shift * t
+            if isinstance(mob, Crowd) and self.lane is not None:
+                shown = mob._clip(moved, *self.lane)
+                mob._eduvids_unclipped = (moved, shown)
+                mob.points = shown
+            else:
+                mob.points = moved
+
+
+def zoom_to(scene, target, factor=None, to=None, keep=(), fill=0.55, run_time=2.5,
+            rate_func=None):
+    """Zoom the whole picture into ``target`` (a mobject or a point).
+
+    Headers, captions, scale bars and anything in ``keep`` stay put, like
+    text on a camera lens. By default the target grows to about ``fill`` of
+    the content area and glides to its centre. ``factor`` < 1 zooms out;
+    ``factor=1`` pans. Play several in a row for a powers-of-ten journey,
+    swapping in finer detail between them with reveal_detail().
+    """
+    lanes = _lanes(scene)
+    title = next((mob for mob in lanes if getattr(mob, "_eduvids_header", False)), None)
+    notes = next((mob for mob in lanes if getattr(mob, "_eduvids_overlay", False) and mob.get_center()[1] < 0), None)
+    center, width, height = content_box(title, notes)
+    focus = np.asarray(target, dtype=float) if isinstance(target, (list, tuple, np.ndarray)) else target.get_center()
+    if factor is None:
+        size = max(target.height, target.width * height / width, 1e-3) if isinstance(target, manim.Mobject) else 1.0
+        factor = height * fill / size
+    factor = float(np.clip(factor, 1e-4, 1e4))
+    destination = center if to is None else np.asarray(to, dtype=float)
+    # In a ThreeDScene, screen overlays stay put like the title.
+    kept = _family_ids([*keep, *lanes, *getattr(scene.camera, "fixed_in_frame_mobjects", ())])
+    parts = list(_units(scene, kept))
+    if not parts:
+        return manim.Wait(run_time)
+    # Updaters keep running, so live readouts and flows follow the zoom.
+    kwargs = {"run_time": run_time, "rate_func": rate_func or manim.rate_functions.smooth,
+              "suspend_mobject_updating": False}
+    top = title.get_bottom()[1] - 0.15 if title is not None else np.inf
+    bottom = notes.get_top()[1] + 0.15 if notes is not None else -np.inf
+    return manim.AnimationGroup(*[_ZoomPart(mob, focus, factor, destination - focus, lane=(top, bottom), **kwargs)
+                                  for mob in parts])
+
+
+def reveal_detail(source, detail, run_time=1.2):
+    """Open ``source`` (a dot, a blob) into ``detail`` laid out where it ends."""
+    return manim.FadeTransform(source, detail, stretch=False, run_time=run_time)
+
+
+class ScaleBar(manim.VGroup):
+    """A short ruled bar in the lower right: '1 mm', then '1 nm' as you zoom."""
+
+    def __init__(self, label, length=1.2, color=None):
+        color = color or MUTED
+        bar = manim.Line(manim.LEFT * length / 2, manim.RIGHT * length / 2, color=color, stroke_width=3)
+        ticks = manim.VGroup(*[manim.Line(manim.UP * 0.09, manim.DOWN * 0.09, color=color, stroke_width=3).move_to(end)
+                               for end in (bar.get_start(), bar.get_end())])
+        text = MathTex(label, font_size=30, color=color).next_to(bar, manim.UP, buff=0.15)
+        super().__init__(manim.VGroup(bar, ticks), text)
+        self.to_corner(manim.DR, buff=EDGE)
+        self._eduvids_overlay = True
+        lock_layout(self)
+
+    def relabel(self, label, run_time=0.8):
+        new = MathTex(label, font_size=30, color=self[1].get_color()).move_to(self[1])
+        lock_layout(new)
+        return manim.Transform(self[1], new, run_time=run_time)
+
+
+def scale_bar(label, length=1.2, color=None):
+    return ScaleBar(label, length=length, color=color)
+
+
+def _alpha_arrays(mob):
+    out = []
+    for m in mob.get_family():
+        if isinstance(m, manim.VMobject):
+            out.append((m, *(np.array(getattr(m, name), dtype=float)[:, 3].copy()
+                              if len(getattr(m, name, [])) else None
+                              for name in ("fill_rgbas", "stroke_rgbas", "background_stroke_rgbas"))))
+    return out
+
+
+class _Dim(manim.Animation):
+    """Fade a unit's opacities to ``end`` x their originals, keeping relative
+    transparency (a soft fill stays softer than its outline)."""
+
+    def __init__(self, mobject, end, **kwargs):
+        self.end = end
+        super().__init__(mobject, **kwargs)
+
+    def create_starting_mobject(self):
+        return self.mobject
+
+    def begin(self):
+        if not hasattr(self.mobject, "_eduvids_alpha"):
+            self.mobject._eduvids_alpha = _alpha_arrays(self.mobject)
+            self.mobject._eduvids_dim = 1.0
+        self.start = self.mobject._eduvids_dim
+        super().begin()
+
+    def interpolate_mobject(self, alpha):
+        level = self.start + (self.end - self.start) * self.rate_func(alpha)
+        for m, *alphas in self.mobject._eduvids_alpha:
+            for name, base in zip(("fill_rgbas", "stroke_rgbas", "background_stroke_rgbas"), alphas):
+                rgbas = getattr(m, name, None)
+                if base is not None and rgbas is not None and len(rgbas) == len(base):
+                    rgbas[:, 3] = base * level
+        self.mobject._eduvids_dim = level
+
+    def clean_up_from_scene(self, scene):
+        super().clean_up_from_scene(scene)
+        if self.end >= 1:
+            del self.mobject._eduvids_alpha
+
+
+def spotlight(scene, *targets, dim=0.8, run_time=0.8):
+    """Dim everything except ``targets`` (no glow, no frame): look here.
+
+    Screen lanes (title, caption) stay lit. Undo with release(scene).
+    """
+    ids = _family_ids(targets)
+    units = list(_units(scene, ids | _family_ids(_lanes(scene))))
+    lit = [mob for mob in getattr(scene, "_eduvids_dimmed", []) if id(mob) in ids]
+    scene._eduvids_dimmed = units
+    animations = [_Dim(mob, 1 - dim, run_time=run_time) for mob in units]
+    animations += [_Dim(mob, 1.0, run_time=run_time) for mob in lit if hasattr(mob, "_eduvids_alpha")]
+    return manim.AnimationGroup(*animations) if animations else manim.Wait(run_time)
+
+
+def release(scene, run_time=0.8):
+    """Bring every dimmed object back to full strength."""
+    units = [mob for mob in getattr(scene, "_eduvids_dimmed", []) if hasattr(mob, "_eduvids_alpha")]
+    scene._eduvids_dimmed = []
+    animations = [_Dim(mob, 1.0, run_time=run_time) for mob in units]
+    return manim.AnimationGroup(*animations) if animations else manim.Wait(run_time)
+
+
+def explode(group, factor=0.6, run_time=1.4):
+    """Pull a group's parts away from its centre: an exploded view of what
+    something is made of. assemble(group) puts them back."""
+    center = group.get_center()
+    animations = []
+    for part in group.submobjects:
+        offset = (part.get_center() - center) * factor
+        part._eduvids_offset = getattr(part, "_eduvids_offset", 0) + offset
+        animations.append(part.animate.shift(offset))
+    return manim.AnimationGroup(*animations, run_time=run_time) if animations else manim.Wait(run_time)
+
+
+def assemble(group, run_time=1.2):
+    animations = []
+    for part in group.submobjects:
+        offset = getattr(part, "_eduvids_offset", None)
+        if offset is not None:
+            animations.append(part.animate.shift(-offset))
+            del part._eduvids_offset
+    return manim.AnimationGroup(*animations, run_time=run_time) if animations else manim.Wait(run_time)
+
+
+def _sample_path(points, per_curve=12):
+    """Points along a VMobject's Bezier curves and their running arc length."""
+    curves = points[: len(points) // 4 * 4].reshape(-1, 4, 3)
+    t = np.linspace(0, 1, per_curve, endpoint=False)[None, :, None]
+    p0, p1, p2, p3 = (curves[:, i][:, None, :] for i in range(4))
+    track = ((1 - t) ** 3 * p0 + 3 * (1 - t) ** 2 * t * p1 + 3 * (1 - t) * t * t * p2 + t ** 3 * p3).reshape(-1, 3)
+    track = np.vstack([track, curves[-1, 3]])
+    cumulative = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(track, axis=0), axis=1))])
+    return track, cumulative
+
+
+class Flow(manim.VMobject):
+    """Particles streaming along a path: current, blood, heat, signals.
+
+    The dots follow the path wherever it goes, including through a zoom."""
+
+    def __init__(self, path, count=12, speed=1.2, radius=0.07, color=None):
+        super().__init__()
+        self.path, self.count, self.speed, self.phase = path, count, speed, 0.0
+        self._path_points = None
+        self._dot = manim.Circle(radius=radius).points
+        self.set_fill(ManimColor(color) if color is not None else ACCENT, opacity=1)
+        self.set_stroke(width=0)
+        self._eduvids_layout_locked = True
+        self._redraw()
+        self.add_updater(lambda mob, dt: mob._advance(dt))
+
+    def _redraw(self):
+        points = self.path.points
+        if self._path_points is None or points.shape != self._path_points.shape or not np.array_equal(points, self._path_points):
+            self._path_points = points.copy()
+            self._track, self._cumulative = _sample_path(points)
+            self._length = max(self._cumulative[-1], 1e-6)
+        offsets = (self.phase + np.arange(self.count) / self.count) % 1 * self._length
+        centers = np.stack([np.interp(offsets, self._cumulative, self._track[:, k]) for k in range(3)], axis=1)
+        self.points = (self._dot[None] + centers[:, None]).reshape(-1, 3)
+
+    def _advance(self, dt):
+        self.phase = (self.phase + dt * self.speed / self._length) % 1
+        self._redraw()
+
+    def stop(self):
+        self.clear_updaters()
+        return self
+
+
+def flow(path, count=12, speed=1.2, radius=0.07, color=None):
+    if not path.has_points() and path.submobjects:
+        path = path.family_members_with_points()[0]
+    """Dots that keep moving along ``path`` while the narration runs.
+
+    The path itself can be any curve (a wire loop, an artery, an orbit);
+    draw it separately. Call .stop() before a long still hold.
+    """
+    return Flow(path, count=count, speed=speed, radius=radius, color=color)
+
+
+def to_scale(*mobjects, sizes, height=3.2, gap=0.7, min_height=0.04):
+    """Line things up at their true relative sizes on one baseline.
+
+    to_scale(earth, sun, sizes=[1, 109]) makes the gap in size visible
+    instead of only quoted; tiny objects stay a visible speck.
+    """
+    largest = max(sizes)
+    for mob, size in zip(mobjects, sizes):
+        if mob.height > 0 and largest > 0:
+            mob.scale_to_fit_height(max(height * size / largest, min_height))
+    return manim.VGroup(*mobjects).arrange(manim.RIGHT, buff=gap, aligned_edge=manim.DOWN)
+
+
+def ghost(mob, opacity=0.25):
+    """A faded copy left behind as a 'before' to compare with 'after'."""
+    copy = mob.copy()
+    for part in copy.get_family():
+        if isinstance(part, manim.VMobject):
+            part.set_fill(opacity=part.get_fill_opacity() * opacity, family=False)
+            part.set_stroke(opacity=part.get_stroke_opacity() * opacity, family=False)
+    copy.set_z_index(mob.z_index - 1)
+    lock_layout(copy)
+    return copy
+
+
+# ---------------------------------------------------------------------------
+# Props: recognisable, flat objects drawn in the house palette, so a video
+# about atoms shows an atom, and probability shows people or dice.
+# ---------------------------------------------------------------------------
+
+_SHELLS = (2, 8, 8, 18, 18, 32)
+
+
+class Atom(manim.VGroup):
+    """A Bohr-model atom: packed nucleus, faint orbits, electrons on them.
+
+    ``.protons`` and ``.neutrons`` are the nucleus balls by kind (to sort,
+    count or recolour them); ``.shells`` holds each shell's electrons."""
+
+    def __init__(self, protons=6, neutrons=None, electrons=None, radius=1.6,
+                 electron_color=None, proton_color=None, neutron_color=None):
+        neutrons = protons if neutrons is None else neutrons
+        electrons = protons if electrons is None else electrons
+        nucleons = protons + neutrons
+        ball = 0.11
+        rng = np.random.default_rng(protons * 31 + neutrons)
+        kinds = np.array([1] * protons + [0] * neutrons)
+        rng.shuffle(kinds)
+        nucleus = manim.VGroup()
+        golden = np.pi * (3 - np.sqrt(5))
+        for i, kind in enumerate(kinds):
+            r = ball * 0.95 * np.sqrt(i + 0.5)
+            angle = i * golden
+            tone = (proton_color or SECONDARY) if kind else (neutron_color or GREY_B)
+            nucleus.add(manim.Circle(radius=ball, stroke_color=BG, stroke_width=1.5,
+                                     fill_color=tone, fill_opacity=1).move_to([r * np.cos(angle), r * np.sin(angle), 0]))
+        if nucleons > 0:
+            # Innermost nucleons drawn last so the cluster reads as a ball.
+            nucleus.submobjects.reverse()
+            kinds = kinds[::-1]
+        self.protons = manim.VGroup(*[ball for ball, kind in zip(nucleus, kinds) if kind])
+        self.neutrons = manim.VGroup(*[ball for ball, kind in zip(nucleus, kinds) if not kind])
+        shells, counts, left = [], [], electrons
+        for capacity in _SHELLS:
+            if left <= 0:
+                break
+            counts.append(min(capacity, left))
+            left -= capacity
+        # Built at natural size (shells evenly spaced outside the nucleus),
+        # then scaled so the outermost orbit has the requested radius.
+        inner = (nucleus.width / 2 if nucleons else 0) + 0.45
+        orbits, dots = manim.VGroup(), manim.VGroup()
+        for k, n in enumerate(counts):
+            r = inner + 0.5 * k
+            orbit = manim.Circle(radius=r, stroke_color=MUTED, stroke_width=2, stroke_opacity=0.7)
+            orbits.add(orbit)
+            shell = manim.VGroup(*[
+                manim.Dot(radius=0.075, color=electron_color or PRIMARY).move_to(
+                    [r * np.cos(2 * np.pi * j / n + k * 0.6), r * np.sin(2 * np.pi * j / n + k * 0.6), 0])
+                for j in range(n)])
+            dots.add(shell)
+            shells.append(shell)
+        super().__init__(orbits, nucleus, dots)
+        self.orbits, self.nucleus, self.electrons, self.shells = orbits, nucleus, dots, shells
+        outer = inner + 0.5 * (len(counts) - 1) if counts else nucleus.width / 2
+        if outer > 0:
+            self.scale(radius / outer, about_point=nucleus.get_center() if nucleons else manim.ORIGIN)
+
+    def orbit(self, turns=0.5, run_time=3.0):
+        """Electrons circle their shells (inner shells faster); no updater."""
+        center = self.nucleus.get_center()
+        return manim.AnimationGroup(*[
+            manim.Rotate(shell, angle=2 * np.pi * turns / (k + 1) ** 0.5, about_point=center,
+                         rate_func=manim.rate_functions.linear)
+            for k, shell in enumerate(self.shells)], run_time=run_time)
+
+
+def atom(protons=6, neutrons=None, electrons=None, radius=1.6, **kwargs):
+    return Atom(protons, neutrons, electrons, radius=radius, **kwargs)
+
+
+_ELEMENT_COLORS = {"H": "GREY_A", "C": "GREY_C", "O": "RED", "N": "BLUE", "Na": "PURPLE",
+                   "Cl": "GREEN", "S": "YELLOW", "P": "ORANGE", "F": "TEAL", "Fe": "MAROON"}
+
+
+def molecule(atoms, bonds=(), scale=1.0, labels=True):
+    """atoms: [("O", (0, 0)), ("H", (-0.8, -0.6)), ...]; bonds: [(0, 1), (0, 2, 2)].
+
+    Element colours follow the usual CPK convention at house tones; the third
+    entry of a bond is its order (two parallel lines for a double bond).
+    """
+    group, balls, sticks = manim.VGroup(), manim.VGroup(), manim.VGroup()
+    centers = [np.array([x, y, 0.0]) * scale for _, (x, y) in atoms]
+    for bond in bonds:
+        i, j, order = (*bond, 1)[:3]
+        if not (0 <= i < len(centers) and 0 <= j < len(centers)):
+            continue
+        a, b = centers[i], centers[j]
+        normal = np.array([-(b - a)[1], (b - a)[0], 0])
+        normal = normal / (np.linalg.norm(normal) or 1) * 0.09 * scale
+        for k in range(order):
+            offset = normal * (k - (order - 1) / 2) * 2
+            sticks.add(manim.Line(a + offset, b + offset, color=GREY_B, stroke_width=6 * scale ** 0.5))
+    for (symbol, _), center in zip(atoms, centers):
+        r = (0.24 if symbol == "H" else 0.36) * scale
+        tone = globals().get(_ELEMENT_COLORS.get(symbol, "GREY_B"), MUTED)
+        ball = manim.Circle(radius=r, fill_color=tone, fill_opacity=1, stroke_color=BG, stroke_width=2).move_to(center)
+        if labels:
+            letter = Text(symbol, font_size=max(20, 30 * scale), color=BG, _fit=False).move_to(center)
+            lock_layout(letter)
+            ball = manim.VGroup(ball, letter)
+        balls.add(ball)
+    group.add(sticks, balls)
+    group.atoms, group.bonds = balls, sticks
+    return group
+
+
+def person(height=1.0, color=None):
+    """A simple head-and-shoulders figure for populations and probability."""
+    head = manim.Circle(radius=0.2, num_components=5).move_to([0, 0.3, 0])
+    # Shoulders: a rounded top, flat base.
+    p = lambda x, y: np.array([x, y, 0.0])
+    body = manim.VMobject()
+    body.start_new_path(p(-0.32, -0.5))
+    body.add_line_to(p(0.32, -0.5))
+    body.add_line_to(p(0.32, -0.2))
+    body.add_cubic_bezier_curve_to(p(0.32, 0.02), p(0.18, 0.06), p(0, 0.06))
+    body.add_cubic_bezier_curve_to(p(-0.18, 0.06), p(-0.32, 0.02), p(-0.32, -0.2))
+    body.add_line_to(p(-0.32, -0.5))
+    figure = manim.VMobject()
+    figure.append_points(head.points)
+    figure.append_points(body.points)
+    figure.set_fill(ManimColor(color) if color is not None else PRIMARY, opacity=1).set_stroke(width=0)
+    figure.scale_to_fit_height(height)
+    return figure
+
+
+_PIPS = {1: [(0, 0)], 2: [(-1, 1), (1, -1)], 3: [(-1, 1), (0, 0), (1, -1)],
+         4: [(-1, 1), (1, 1), (-1, -1), (1, -1)], 5: [(-1, 1), (1, 1), (0, 0), (-1, -1), (1, -1)],
+         6: [(-1, 1), (1, 1), (-1, 0), (1, 0), (-1, -1), (1, -1)]}
+
+
+def die(value=6, size=1.0, color=None, pip_color=None):
+    """A flat die face showing ``value`` (1-6)."""
+    face = manim.RoundedRectangle(width=size, height=size, corner_radius=size * 0.16,
+                                  stroke_color=ManimColor(color) if color is not None else PRIMARY, stroke_width=4,
+                                  fill_color=ManimColor(color) if color is not None else PRIMARY, fill_opacity=0.18)
+    pips = manim.VGroup(*[manim.Dot([x * size * 0.27, y * size * 0.27, 0], radius=size * 0.075,
+                                    color=pip_color or INK) for x, y in _PIPS[max(1, min(6, int(value)))]])
+    group = manim.VGroup(face, pips)
+    group.face, group.pips = face, pips
+    return group
+
+
+def cell(width=4.0, color=None):
+    """A flat animal cell: membrane, nucleus, a few organelles."""
+    tone = ManimColor(color) if color is not None else PRIMARY
+    membrane = manim.Ellipse(width=width, height=width * 0.68, stroke_color=tone, stroke_width=5,
+                             fill_color=tone, fill_opacity=0.12)
+    nucleus = manim.Circle(radius=width * 0.14, stroke_color=SECONDARY, stroke_width=4,
+                           fill_color=SECONDARY, fill_opacity=0.3).shift(manim.LEFT * width * 0.08 + manim.UP * width * 0.03)
+    nucleolus = manim.Dot(nucleus.get_center() + manim.RIGHT * width * 0.03, radius=width * 0.035, color=SECONDARY)
+    mitochondria = manim.VGroup(*[
+        manim.Ellipse(width=width * 0.17, height=width * 0.07, stroke_color=TERTIARY, stroke_width=3,
+                      fill_color=TERTIARY, fill_opacity=0.35).rotate(angle).move_to([x * width, y * width, 0])
+        for x, y, angle in ((0.25, 0.1, 0.5), (0.18, -0.15, -0.3), (-0.3, -0.12, 1.1))])
+    rng = np.random.default_rng(3)
+    ribosomes = manim.VGroup(*[
+        manim.Dot([x * width, y * width * 0.68, 0], radius=0.03 * width / 4, color=GREY_A)
+        for x, y in rng.uniform(-0.36, 0.36, (18, 2)) if (x / 0.4) ** 2 + (y / 0.4) ** 2 < 0.8])
+    group = manim.VGroup(membrane, ribosomes, mitochondria, nucleus, nucleolus)
+    group.membrane, group.nucleus, group.mitochondria = membrane, manim.VGroup(nucleus, nucleolus), mitochondria
+    return group
+
+
+__all__ += [
+    "Crowd", "crowd", "zoom_to", "reveal_detail", "ScaleBar", "scale_bar",
+    "spotlight", "release", "explode", "assemble", "Flow", "flow", "to_scale", "ghost",
+    "Atom", "atom", "molecule", "person", "die", "cell",
 ]
