@@ -16,6 +16,27 @@ import {
 
 export const VIDEO_STYLE_MARKER = "# __EDUVIDS_HOUSE_STYLE__";
 export const VIDEO_BACKGROUND = "#0E0F11";
+/** One quality profile for durable and synchronous render paths. */
+export function videoRenderFlags(resolution?: {
+  width: number;
+  height: number;
+}): string[] {
+  const flags = ["--disable_caching", "--format=mp4", "-qh", "--fps", "30"];
+  if (resolution) {
+    const dimension = (value: number) => {
+      if (!Number.isFinite(value) || value < 2)
+        throw new Error(
+          "Video dimensions must be finite and at least 2 pixels",
+        );
+      return Math.max(2, Math.round(value / 2) * 2);
+    };
+    flags.push(
+      "-r",
+      `${dimension(resolution.width)},${dimension(resolution.height)}`,
+    );
+  }
+  return flags;
+}
 const PALETTE_PLACEHOLDER = "__EDUVIDS_PALETTE__";
 const WATERMARK_PLACEHOLDER = "__EDUVIDS_WATERMARK__";
 /** Render driver (prefetch + parallel scenes), run as the sandbox render job. */

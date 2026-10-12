@@ -2,6 +2,7 @@ import { Sandbox } from "@e2b/code-interpreter";
 import type { PreparedSandboxState } from "@/lib/e2b";
 import {
   RENDER_DRIVER_PATH,
+  videoRenderFlags,
   WATERMARK_FONT_PYTHON,
   WATERMARK_STYLE,
 } from "@/lib/video-style";
@@ -146,14 +147,7 @@ export async function pollSandboxJobWindow(
 }
 
 function manimFlags(prepared: PreparedSandboxState): string[] {
-  const flags = ["--disable_caching", "--format=mp4", "-qm"];
-  const resolution = prepared.renderOptions?.resolution;
-  if (resolution)
-    flags.push(
-      "-r",
-      `${Math.round(resolution.width)},${Math.round(resolution.height)}`,
-    );
-  return flags;
+  return videoRenderFlags(prepared.renderOptions?.resolution);
 }
 
 export function renderCommand(prepared: PreparedSandboxState): string[] {
@@ -234,7 +228,7 @@ if len(paths) > 1:
 output = workdir / 'final.mp4'
 args = ['ffmpeg', '-y', '-i', str(video), '-f', 's16le', '-ar', str(RATE), '-ac', str(CHANNELS), '-i', str(soundtrack), '-map', '0:v:0', '-map', '1:a:0']
 if settings['watermark']:
-    args += ['-vf', "drawtext=fontfile=" + watermark_font + ":text='eduvids':${WATERMARK_STYLE}", '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p']
+    args += ['-vf', "drawtext=fontfile=" + watermark_font + ":text='eduvids':${WATERMARK_STYLE}", '-c:v', 'libx264', '-crf', '18', '-preset', 'fast', '-pix_fmt', 'yuv420p']
 else:
     args += ['-c:v', 'copy']
 args += ['-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', str(output)]

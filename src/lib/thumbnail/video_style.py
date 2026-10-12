@@ -12,9 +12,10 @@ canvas, typography and palette whatever the model wrote:
 - ``PRIMARY``/``ACCENT`` are the video's thumbnail palette; ``SECONDARY`` and
   ``TERTIARY`` support it. Manim's named colours are retuned to the same
   family, so ``BLUE`` or ``YELLOW`` still land on the house tones.
-- The canvas is a soft vignette; curves, dots and vectors glow in their own
-  colour; graphs draw bold round-capped curves on quiet axes; 3D surfaces
-  are shaded by height and lit, never checkerboarded.
+- The canvas is a soft vignette; crisp curves, dots and vectors have restrained
+  glow; 3D surfaces have smooth material lighting, without a patch wireframe.
+- Explicit responsive layouts reserve title, hero, formula and caption lanes;
+  the fallback guard handles nested labels and projected 3D screen overlays.
 - No block-capital tags: ``header()`` ignores eyebrows and all-caps copy is
   set in sentence case. ``pop_in`` and ``pulse`` give reveals some snap.
 
@@ -179,9 +180,18 @@ if not getattr(Camera.get_fill_rgbas, "__eduvids_graded__", False):
         normal = get_3d_vmob_unit_normal(face, 0)
         to_light = camera.light_source.points[0] - points[0]
         to_light = to_light / (np.linalg.norm(to_light) or 1)
-        facing = abs(float(np.dot(normal, to_light)))
+        # Smooth parametric vertex normals remove the per-patch lighting seams.
+        coefficients = getattr(face, "_eduvids_normal_coefficients", None)
+        normals = (_surface_basis(face) @ coefficients).T if coefficients is not None else (normal, normal)
         lit = np.array(rgbas, dtype=float)
-        lit[:, :3] = np.clip(lit[:, :3] * (0.5 + 0.75 * facing) + 0.22 * facing ** 16, 0, 1)
+        if len(lit) == 1:
+            lit = lit.repeat(2, axis=0)
+        for i in range(len(lit)):
+            n = normals[min(i, len(normals) - 1)]
+            n = n / (np.linalg.norm(n) or 1)
+            facing = abs(float(np.dot(n, to_light)))
+            # Restrained diffuse light retains the colour even at the peaks.
+            lit[i, :3] = np.clip(lit[i, :3] * (0.62 + 0.38 * facing) + 0.07 * facing ** 24, 0, 1)
         return lit
 
     _modified_graded.__eduvids_graded__ = True
@@ -227,8 +237,8 @@ if not getattr(_init_background, "__eduvids_vignette__", False):
 # halos of their own colour, so the lines the narration follows read as
 # light on the dark canvas. glow(mob) opts anything else in; glow(mob, False)
 # opts out.
-_GLOW_LAYERS = ((4.5, 0.07), (2.5, 0.15))
-_GLOW_DOT_LAYERS = ((0.36, 0.1), (0.22, 0.18))  # frame units around a dot
+_GLOW_LAYERS = ((3.0, 0.045), (1.8, 0.09))
+_GLOW_DOT_LAYERS = ((0.24, 0.07), (0.15, 0.12))  # frame units around a dot
 
 
 def _glow_types():
@@ -472,7 +482,7 @@ config.tex_template = HOUSE_TEX_TEMPLATE
 # ---------------------------------------------------------------------------
 
 AXIS_COLOR = ManimColor(_mix(MUTED, INK, 0.25))
-CURVE_WIDTH = 6
+CURVE_WIDTH = 4.5
 manim.NumberLine.set_default(
     font_size=26, tip_width=0.2, tip_height=0.2, color=AXIS_COLOR, stroke_width=2.5,
 )
@@ -598,23 +608,27 @@ def header(title, eyebrow=None, font_size=52):
     """
     group = manim.VGroup(balanced_text(str(title), font_size=font_size, max_lines=2))
     group.to_corner(manim.UL, buff=EDGE)
+    group._eduvids_header = True
+    lock_layout(group)
     return group
 
 
-def content_box(above=None):
+def content_box(above=None, below=None):
     """(center, width, height) of the free area below ``above`` (a header)."""
     top = config.frame_height / 2 - EDGE
     if above is not None:
         top = above.get_bottom()[1] - HEADER_GAP
     bottom = -config.frame_height / 2 + EDGE
+    if below is not None:
+        bottom = below.get_top()[1] + HEADER_GAP
     width = config.frame_width - 2 * EDGE
     height = max(top - bottom, 1.0)
     return np.array([0.0, (top + bottom) / 2, 0.0]), width, height
 
 
-def place_in_content(mob, above=None, fill=0.86, max_scale=1.6):
+def place_in_content(mob, above=None, fill=0.86, max_scale=1.6, below=None):
     """Scale the main visual to fill the content area and centre it there."""
-    center, width, height = content_box(above)
+    center, width, height = content_box(above, below)
     if mob.width > 0 and mob.height > 0:
         factor = min(width * fill / mob.width, height * fill / mob.height, max_scale)
         mob.scale(factor)
@@ -622,36 +636,192 @@ def place_in_content(mob, above=None, fill=0.86, max_scale=1.6):
     return mob
 
 
+def lock_layout(mob):
+    """Keep an explicitly arranged block aligned during progressive reveals."""
+    for part in mob.get_family():
+        part._eduvids_layout_locked = True
+    return mob
+
+
+def caption(text, font_size=32, color=None):
+    """A reserved bottom annotation, outside the hero's content rectangle."""
+    mob = balanced_text(text, font_size=font_size, color=color or MUTED, max_lines=2)
+    mob.to_edge(manim.DOWN, buff=EDGE)
+    return lock_layout(mob)
+
+
+def layout_scene(visual, title=None, notes=None, side=None, gap=0.7):
+    """Lay out the complete composition *before* animating its parts.
+
+    Reserve title and caption lanes. An optional equation/annotation column
+    is beside the hero in landscape, below it in portrait. Return the same
+    objects, so graphs' c2p coordinates and updaters remain valid.
+    """
+    center, width, height = content_box(title, notes)
+    if side is None:
+        place_in_content(visual, above=title, below=notes, fill=0.90)
+    else:
+        portrait = config.frame_height > config.frame_width
+        if portrait:
+            side_width, side_height = width, height * 0.30
+            hero_width, hero_height = width, height - side_height - gap
+            hero_center = center + manim.UP * (side_height + gap) / 2
+            side_center = center - manim.UP * (hero_height + gap) / 2
+        else:
+            side_width, side_height = (width - gap) * 0.34, height
+            hero_width, hero_height = width - side_width - gap, height
+            hero_center = center + manim.LEFT * (side_width + gap) / 2
+            side_center = center + manim.RIGHT * (hero_width + gap) / 2
+        for mob, w, h, point in ((visual, hero_width, hero_height, hero_center),
+                                  (side, side_width, side_height, side_center)):
+            if mob.width and mob.height:
+                mob.scale(min(w * 0.92 / mob.width, h * 0.90 / mob.height, 1.6))
+            mob.move_to(point)
+        lock_layout(side)
+    # The hero's annotations were included in its bounds and keep their anchors.
+    lock_layout(visual)
+    return visual
+
+
+def fixed_overlay(scene, *mobjects):
+    """Register screen typography without adding it ahead of its reveal.
+
+    ThreeDScene.add_fixed_in_frame_mobjects also adds the object immediately;
+    using it before FadeIn causes labels to appear too early.
+    """
+    if not isinstance(scene.camera, ThreeDCamera):
+        raise TypeError("fixed_overlay needs a Cairo ThreeDScene")
+    scene.camera.add_fixed_in_frame_mobjects(*mobjects)
+    for mob in mobjects:
+        mob.set_z_index(100)
+    return mobjects[0] if len(mobjects) == 1 else manim.VGroup(*mobjects)
+
+
+def place_3d_in_content(scene, mob, above=None, below=None, orbit=0.0, fill=0.88):
+    """Fit the *projected* hero for a bounded orbit, reserving overlay lanes.
+
+    Never use 2D width/height fitting for a 3D object: its silhouette is a
+    function of the camera angle. Camera frame_center also offsets overlays,
+    so centre the hero in the camera's screen axes instead.
+    """
+    camera = scene.camera
+    if not isinstance(camera, ThreeDCamera):
+        raise TypeError("place_3d_in_content needs a Cairo ThreeDScene")
+    center, width, height = content_box(above, below)
+    mob.move_to(manim.ORIGIN)
+    theta = camera.get_theta()
+    camera.reset_rotation_matrix()
+    rotation = camera.get_rotation_matrix().copy()
+    try:
+        for _ in range(5):
+            bounds = []
+            for angle in np.linspace(theta, theta + orbit, 9 if orbit else 1):
+                camera.set_theta(angle)
+                camera.reset_rotation_matrix()
+                points = camera.project_points(mob.get_all_points())
+                bounds.append((points[:, :2].min(axis=0), points[:, :2].max(axis=0)))
+            lo = np.min([b[0] for b in bounds], axis=0)
+            hi = np.max([b[1] for b in bounds], axis=0)
+            factor = min(width * fill / max(hi[0] - lo[0], 1e-6),
+                         height * fill / max(hi[1] - lo[1], 1e-6), 1.5)
+            # Smaller passes converge despite perspective changing with scale.
+            if abs(factor - 1) < 0.01:
+                break
+            mob.scale(factor, about_point=manim.ORIGIN)
+        camera.set_theta(theta)
+        camera.reset_rotation_matrix()
+        projected = camera.project_points(mob.get_all_points())[:, :2]
+        midpoint = (projected.min(axis=0) + projected.max(axis=0)) / 2
+        shift = np.array([center[0] - midpoint[0], center[1] - midpoint[1], 0.0])
+        # Offset perpendicular to the view; depth and the surface shape survive.
+        mob.shift(rotation.T @ (shift / camera.get_zoom()))
+    finally:
+        camera.set_theta(theta)
+        camera.reset_rotation_matrix()
+    return mob
+
+
 # ---------------------------------------------------------------------------
-# 3D: surfaces are lit by height, deep and saturated in the valleys and
-# bright on the peaks, with a fine tonal mesh instead of Manim's grey grid
-# and blue checkerboard. A surface the script colours itself (a checkerboard
+# 3D: surfaces are lit by height, with continuous normals and restrained
+# highlights. Same-colour seams close Cairo cracks without a patch grid.
+# A surface the script colours itself (a checkerboard
 # of distinct colours, set_fill_by_value) keeps the script's colours.
 # ---------------------------------------------------------------------------
 
-def shade_surface(surface, color=None, opacity=None, mesh=True):
+def shade_surface(surface, color=None, opacity=None, mesh=False):
     """Colour a Surface by height in one hue, from shadow to highlight."""
     faces = [face for face in surface.submobjects if face.has_points()]
     if not faces:
         return surface
     base = ManimColor(color) if color is not None else PRIMARY
     base_hex = base.to_hex()
-    low, high = _mix(base_hex, BG, 0.72), _mix(base_hex, INK, 0.5)
+    low, high = _mix(base_hex, BG, 0.40), _mix(base_hex, INK, 0.24)
     heights = np.array([face.get_center()[2] for face in faces])
     span = heights.max() - heights.min()
-    if span < 1e-6:
+    flat = span < 1e-6
+    if flat:
         # A flat sheet: shade by distance from its middle instead.
         centers = np.array([face.get_center()[:2] for face in faces])
         heights = -np.linalg.norm(centers - centers.mean(axis=0), axis=1)
         span = heights.max() - heights.min() or 1.0
-    levels = (heights - heights.min()) / span
+    minimum = heights.min()
+    levels = (heights - minimum) / span
+
+    def material(t):
+        t = float(np.clip(t, 0, 1))
+        return _mix(low, base_hex, t / 0.6) if t < 0.6 else _mix(base_hex, high, ((t - 0.6) / 0.4) ** 1.5)
+
     for face, t in zip(faces, levels):
-        tone = _mix(low, base_hex, t / 0.6) if t < 0.6 else _mix(base_hex, high, ((t - 0.6) / 0.4) ** 1.5)
-        face.set_fill(tone, opacity=face.get_fill_opacity() if opacity is None else opacity)
+        tone = material(t)
+        anchors = face.get_anchors()
+        # Both material and lighting interpolate across each patch, rather
+        # than jumping between uniform colours at every patch boundary.
+        colors = [tone, tone] if flat else [material((anchors[i][2] - minimum) / span) for i in (0, min(2, len(anchors) - 1))]
+        face.set_fill(colors, opacity=face.get_fill_opacity() if opacity is None else opacity)
         face._eduvids_shaded = True
         if mesh:
-            face.set_stroke(_mix(tone, INK, 0.25), width=0.5, opacity=0.25)
+            face.set_stroke(_mix(tone, INK, 0.12), width=0.35, opacity=0.16)
+        else:
+            # Same-colour hairline closes Cairo's anti-alias cracks without
+            # outlining all 2,000 patches as a distracting wireframe.
+            face.set_stroke(tone, width=0.5, opacity=1)
     return surface
+
+
+def _smooth_surface_normals(surface):
+    """Average shared corner normals for continuous Cairo patch lighting."""
+    from manim.mobject.three_d.three_d_utils import get_3d_vmob_unit_normal
+
+    corners, buckets = [], {}
+    for face in surface:
+        if not face.has_points():
+            continue
+        # Surface patches are closed four-sided VMobjects. Camera shading
+        # uses their first and last corner for its Cairo gradient.
+        anchors = face.get_anchors()
+        normal = get_3d_vmob_unit_normal(face, 0)
+        keys = [tuple(np.round(point, 5)) for point in anchors]
+        for key in keys:
+            buckets.setdefault(key, []).append(normal)
+        corners.append((face, keys))
+    averaged = {}
+    for key, normals in buckets.items():
+        # A parametric surface has consistent winding, including at seams.
+        normal = np.sum(normals, axis=0)
+        averaged[key] = normal / (np.linalg.norm(normal) or 1)
+    for face, keys in corners:
+        normals = np.array([averaged[keys[0]], averaged[keys[min(2, len(keys) - 1)]]]).T
+        face._eduvids_normal_coefficients = np.linalg.pinv(_surface_basis(face)) @ normals
+
+
+def _surface_basis(face):
+    anchors = face.get_anchors()
+    a, b = anchors[1] - anchors[0], anchors[3] - anchors[0]
+    a = a / (np.linalg.norm(a) or 1)
+    b = b / (np.linalg.norm(b) or 1)
+    n = np.cross(a, b)
+    n = n / (np.linalg.norm(n) or 1)
+    return np.column_stack((a, b, n))
 
 
 _surface_init = manim.Surface.__init__
@@ -659,6 +829,7 @@ _surface_checkerboard = manim.Surface.set_fill_by_checkerboard
 if not getattr(_surface_init, "__eduvids_shaded__", False):
 
     def _shaded_init(self, *args, **kwargs):
+        kwargs.setdefault("resolution", (48, 48))
         _surface_init(self, *args, **kwargs)
         try:
             colors = self.checkerboard_colors or [self.fill_color]
@@ -670,8 +841,8 @@ if not getattr(_surface_init, "__eduvids_shaded__", False):
                 base = ManimColor(hexes.pop())
             else:
                 return
-            mesh = "stroke_color" not in kwargs and "stroke_width" not in kwargs
-            shade_surface(self, base, mesh=mesh)
+            shade_surface(self, base)
+            _smooth_surface_normals(self)
         except Exception as error:
             manim.logger.warning(f"surface shading skipped: {error}")
         finally:
@@ -719,8 +890,8 @@ _REPLACING = {
     "CounterclockwiseTransform", "FadeTransform", "FadeTransformPieces",
     "TransformMatchingTex", "TransformMatchingShapes",
 }
-_PAD = 0.07          # breathing room around every glyph
-_SAFE = 0.3          # labels stay this far inside the frame
+_PAD = 0.12          # breathing room around the whole text block
+_SAFE = EDGE         # use the same safe area as explicit layouts
 _STEP, _REACH = 0.1, 2.2
 
 
@@ -731,18 +902,22 @@ def _is_label(mob):
     return bool(subs) and type(mob) in (manim.VGroup, manim.Group, manim.VDict) and all(_is_label(s) for s in subs)
 
 
-def _glyph_boxes(mob):
-    boxes = []
-    for leaf in mob.family_members_with_points():
-        if leaf.get_fill_opacity() < 0.05 and leaf.get_stroke_opacity() < 0.05:
-            continue
-        lo, hi = leaf.get_critical_point(manim.DL), leaf.get_critical_point(manim.UR)
-        boxes.append((lo[0], lo[1], hi[0], hi[1]))
-    return np.array(boxes, dtype=float).reshape(-1, 4)
+def _glyph_boxes(mob, camera=None):
+    # Glyph-level boxes allow another label to slip into word spaces or the
+    # middle of a multiline paragraph. Typography occupies one rectangle.
+    points = mob.get_all_points()
+    if not len(points):
+        return np.zeros((0, 4))
+    if camera is not None and isinstance(camera, ThreeDCamera):
+        points = camera.transform_points_pre_display(mob, points.copy())
+    lo, hi = points[:, :2].min(axis=0), points[:, :2].max(axis=0)
+    return np.array([[lo[0], lo[1], hi[0], hi[1]]])
 
 
-def _stroke_samples(leaf):
+def _stroke_samples(leaf, camera=None):
     points = leaf.points
+    if camera is not None and isinstance(camera, ThreeDCamera):
+        points = camera.transform_points_pre_display(leaf, points.copy())
     if len(points) < 4:
         return None
     curves = points[: len(points) // 4 * 4].reshape(-1, 4, 3)[:, :, :2]
@@ -774,21 +949,24 @@ def _obstacles(scene, skip, region):
                 continue
             if isinstance(mob, _LABEL_TYPES):
                 seen.update(id(m) for m in mob.get_family())
-                for box in _glyph_boxes(mob):
+                for box in _glyph_boxes(mob, scene.camera):
                     if near(box[:2], box[2:]):
                         boxes.append(box)
                 continue
             if not isinstance(mob, manim.VMobject) or not mob.has_points():
                 continue
             seen.add(id(mob))
-            lo, hi = mob.get_critical_point(manim.DL), mob.get_critical_point(manim.UR)
+            displayed = mob.points
+            if isinstance(scene.camera, ThreeDCamera):
+                displayed = scene.camera.transform_points_pre_display(mob, displayed.copy())
+            lo, hi = displayed.min(axis=0), displayed.max(axis=0)
             if not near(lo, hi):
                 continue
             if mob.get_stroke_width() > 0 and mob.get_stroke_opacity() > 0.05:
-                samples = _stroke_samples(mob)
+                samples = _stroke_samples(mob, scene.camera)
                 if samples is not None:
                     points.append(samples)
-            if mob.get_fill_opacity() > 0.5 and max(hi[0] - lo[0], hi[1] - lo[1]) < 0.6:
+            if mob.get_fill_opacity() > 0.5 and (isinstance(scene.camera, ThreeDCamera) or max(hi[0] - lo[0], hi[1] - lo[1]) < 0.6):
                 boxes.append((lo[0], lo[1], hi[0], hi[1]))
     points = np.concatenate(points) if points else np.zeros((0, 2))
     return points, np.array(boxes, dtype=float).reshape(-1, 4)
@@ -838,12 +1016,14 @@ _DIRECTIONS = [np.array(d, dtype=float) / np.linalg.norm(d) for d in _DIRECTIONS
 
 
 def _place(scene, unit, skip):
+    if getattr(unit, "_eduvids_layout_locked", False):
+        return
     glyphs = _glyph_boxes(unit)
     if not len(glyphs):
         return
     lo, hi = glyphs[:, :2].min(axis=0), glyphs[:, 2:].max(axis=0)
     region = (lo[0] - _REACH - 1, lo[1] - _REACH - 1, hi[0] + _REACH + 1, hi[1] + _REACH + 1)
-    outline = _inside_outline(glyphs, scene, skip)
+    outline = None if isinstance(scene.camera, ThreeDCamera) else _inside_outline(glyphs, scene, skip)
     if outline is not None:
         # Only the outline itself is in the way of a contained label.
         skip = skip | {id(m) for m in outline.get_family()}
@@ -856,7 +1036,8 @@ def _place(scene, unit, skip):
             if _clear(glyphs, offset, points, boxes):
                 unit.shift([offset[0], offset[1], 0])
                 return
-    # Nowhere clear nearby: at least keep it inside the frame.
+    # Record failure instead of silently claiming the fallback solved overlap.
+    manim.logger.warning("eduvids layout: no clear position for %s", getattr(unit, "original_text", type(unit).__name__))
     for radius in np.arange(_STEP, _REACH + 1e-9, _STEP):
         for direction in _DIRECTIONS:
             if _clear(glyphs, direction * radius, np.zeros((0, 2)), np.zeros((0, 4))):
@@ -874,11 +1055,50 @@ def _walk(animations):
 
 
 def _guarded(scene):
-    return not isinstance(scene, (manim.ThreeDScene, manim.MovingCameraScene))
+    return not isinstance(scene, manim.MovingCameraScene)
 
 
 def _family_ids(mobs):
     return {id(m) for mob in mobs for m in mob.get_family()}
+
+
+def _label_units(mob, scene):
+    """Walk mixed groups, treating aligned all-text blocks as one unit.
+
+    Never detach an axis number or a live/updater-owned annotation from its
+    coordinates. In 3D, only screen overlays can move in screen units.
+    """
+    if mob.updaters or getattr(mob, "_eduvids_layout_locked", False):
+        return
+    if isinstance(mob, (manim.Axes, manim.NumberLine, manim.NumberPlane)):
+        return
+    if _is_label(mob):
+        if isinstance(scene.camera, ThreeDCamera):
+            if not all(part in scene.camera.fixed_in_frame_mobjects for part in mob.family_members_with_points()):
+                return
+        yield mob
+        return
+    for sub in mob.submobjects:
+        yield from _label_units(sub, scene)
+
+
+def _arrange_units(scene, incoming, leaving=()):
+    # Make all incoming geometry and labels visible to the collision search
+    # before positioning the first label, even within the same play()/add().
+    original = list(scene.mobjects)
+    scene.mobjects = original + [mob for mob in incoming if mob not in original]
+    try:
+        skip = _family_ids(leaving)
+        if isinstance(scene.camera, ThreeDCamera):
+            scene.camera.reset_rotation_matrix()
+        for root in incoming:
+            for unit in _label_units(root, scene):
+                if getattr(unit, "_eduvids_placed", False):
+                    continue
+                _place(scene, unit, skip | _family_ids([unit]))
+                unit._eduvids_placed = True
+    finally:
+        scene.mobjects = original
 
 
 def _arrange_incoming(scene, animations):
@@ -899,26 +1119,7 @@ def _arrange_incoming(scene, animations):
                 incoming.append(target)
         elif mob is not None and id(mob) not in on_screen and not name.startswith(_LEAVING):
             incoming.append(mob)
-    skip = _family_ids(leaving)
-    for unit in incoming:
-        if getattr(unit, "_eduvids_placed", False) or unit.updaters or not _is_label(unit):
-            continue
-        _place(scene, unit, skip | _family_ids([unit]))
-        unit._eduvids_placed = True
-        # Later labels in this play must avoid this one too.
-        if unit not in scene.mobjects:
-            scene.mobjects.append(unit)
-            _pending.append((scene, unit))
-
-
-_pending = []
-
-
-def _flush_pending():
-    while _pending:
-        scene, unit = _pending.pop()
-        if unit in scene.mobjects:
-            scene.mobjects.remove(unit)
+    _arrange_units(scene, incoming, leaving)
 
 
 _play = manim.Scene.play
@@ -931,20 +1132,13 @@ if not getattr(_play, "__eduvids_guard__", False):
                 _arrange_incoming(self, args)
             except Exception as error:  # the guard must never fail a render
                 manim.logger.warning(f"layout guard skipped: {error}")
-            finally:
-                _flush_pending()
         return _play(self, *args, **kwargs)
 
     def _guarded_add(self, *mobjects):
         if _guarded(self):
             try:
                 on_screen = _family_ids(self.mobjects)
-                for mob in mobjects:
-                    if id(mob) in on_screen or getattr(mob, "_eduvids_placed", False):
-                        continue
-                    if not mob.updaters and _is_label(mob):
-                        _place(self, mob, _family_ids([mob]))
-                    mob._eduvids_placed = True
+                _arrange_units(self, [mob for mob in mobjects if id(mob) not in on_screen])
             except Exception as error:
                 manim.logger.warning(f"layout guard skipped: {error}")
         return _add(self, *mobjects)
@@ -952,6 +1146,27 @@ if not getattr(_play, "__eduvids_guard__", False):
     _guarded_play.__eduvids_guard__ = True
     manim.Scene.play = _guarded_play
     manim.Scene.add = _guarded_add
+
+# ---------------------------------------------------------------------------
+# Encoding: retain thin typography and gradients in Manim's intermediate
+# movies. PyAV opens the codec lazily on its first frame, so set its quality
+# after the stream is created and before any frame is written.
+# ---------------------------------------------------------------------------
+
+from manim.scene.scene_file_writer import SceneFileWriter
+
+_open_stream = SceneFileWriter.open_partial_movie_stream
+if not getattr(_open_stream, "__eduvids_quality__", False):
+
+    def _open_quality_stream(self, *args, **kwargs):
+        result = _open_stream(self, *args, **kwargs)
+        stream = getattr(self, "video_stream", None)
+        if stream is not None and stream.codec_context.name == "libx264":
+            stream.options = dict(stream.options, crf="18")
+        return result
+
+    _open_quality_stream.__eduvids_quality__ = True
+    SceneFileWriter.open_partial_movie_stream = _open_quality_stream
 
 # ---------------------------------------------------------------------------
 # Watermark: composited into each frame as it is written, so the finished
@@ -1021,5 +1236,6 @@ __all__ = [
     "HOUSE_TEX_TEMPLATE",
     "Text", "MarkupText", "MathTex", "Tex", "balanced_text",
     "header", "content_box", "place_in_content", "sentence_case",
+    "caption", "layout_scene", "lock_layout", "fixed_overlay", "place_3d_in_content",
     "glow", "shade_surface", "pop_in", "pulse", "AXIS_COLOR", *_named,
 ]
