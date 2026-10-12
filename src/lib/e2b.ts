@@ -12,6 +12,12 @@ import {
   buildThumbnailManimScript,
   THUMBNAIL_CLASS_NAMES,
 } from "@/lib/youtube-thumbnail";
+import {
+  applyManimHouseStyle,
+  HOUSE_LIGHT_PATH,
+  HOUSE_LIGHT_PY,
+  REGISTER_HOUSE_FONTS_COMMAND,
+} from "@/lib/visual-style";
 
 const MAX_COMMAND_OUTPUT_CHARS = 4000;
 const MAX_COMMAND_BUFFER_CHARS = 20000;
@@ -61,6 +67,22 @@ function injectScaledTextHelper(script: string): string {
   const insertAt = lastImportIndex + 1;
   lines.splice(insertAt, 0, "", SCALED_TEXT_HELPER);
   return lines.join("\n");
+}
+
+/**
+ * Makes CMU Serif visible to Pango and ships the thumbnail spotlight helper.
+ * Safe to call repeatedly on one sandbox.
+ */
+async function prepareHouseStyleAssets(sandbox: Sandbox): Promise<void> {
+  await sandbox.files.write(HOUSE_LIGHT_PATH, HOUSE_LIGHT_PY);
+  const fonts = await sandbox.commands.run(REGISTER_HOUSE_FONTS_COMMAND, {
+    timeoutMs: 60_000,
+  });
+  if (!fonts.stdout.includes("house-fonts-ok")) {
+    console.warn(
+      "CMU Serif is unavailable in the sandbox; Pango will fall back",
+    );
+  }
 }
 
 export function injectEduvidsCallout(
@@ -120,32 +142,28 @@ export function injectEduvidsCallout(
     : "Generate your own educational videos for free at eduvids dot app";
   const narrationLiteral = JSON.stringify(narration);
 
+  // End card in the house style: type on the background, no card or chrome.
   const contentLines = previousTitle
     ? [
-        `${bodyIndent}    end_card = RoundedRectangle(width=11.8, height=4.8, corner_radius=0.25, stroke_color=TEAL, stroke_width=2, fill_color=BLACK, fill_opacity=0.92)`,
-        `${bodyIndent}    eyebrow = Text("PREVIOUS VIDEO", font="EB Garamond", disable_ligatures=True, font_size=24, color=TEAL)`,
-        `${bodyIndent}    previous_title = Text(${JSON.stringify(previousTitle)}, font="EB Garamond", disable_ligatures=True, font_size=42, color=WHITE)`,
-        `${bodyIndent}    if previous_title.width > 10.5:`,
-        `${bodyIndent}        previous_title.scale_to_fit_width(10.5)`,
-        `${bodyIndent}    link_hint = Text("Link in description and top comment", font="EB Garamond", disable_ligatures=True, font_size=27, color=GRAY_A)`,
-        `${bodyIndent}    subscribe_hint = Text("Subscribe for the next visual", font="EB Garamond", disable_ligatures=True, font_size=25, color=YELLOW)`,
-        `${bodyIndent}    end_content = VGroup(eyebrow, previous_title, link_hint, subscribe_hint).arrange(DOWN, buff=0.42)`,
-        `${bodyIndent}    end_content.move_to(end_card.get_center())`,
-        `${bodyIndent}    self.play(FadeIn(end_card), FadeIn(eyebrow, shift=UP * 0.15), run_time=max(0.4, tracker.duration * 0.20))`,
-        `${bodyIndent}    self.play(FadeIn(previous_title, shift=UP * 0.15), FadeIn(link_hint), run_time=max(0.4, tracker.duration * 0.25))`,
-        `${bodyIndent}    self.play(FadeIn(subscribe_hint), run_time=max(0.4, tracker.duration * 0.15))`,
+        `${bodyIndent}    eyebrow = Text("Previous video", font_size=26, color=MUTED)`,
+        `${bodyIndent}    previous_title = Text(${JSON.stringify(previousTitle)}, font_size=46, color=INK)`,
+        `${bodyIndent}    if previous_title.width > 11.5:`,
+        `${bodyIndent}        previous_title.scale_to_fit_width(11.5)`,
+        `${bodyIndent}    rule = Line(LEFT * 1.2, RIGHT * 1.2, stroke_width=3, color=YELLOW)`,
+        `${bodyIndent}    link_hint = Text("Link in description and top comment", font_size=28, color=MUTED)`,
+        `${bodyIndent}    end_content = VGroup(eyebrow, previous_title, rule, link_hint).arrange(DOWN, buff=0.45).move_to(ORIGIN)`,
+        `${bodyIndent}    self.play(FadeIn(eyebrow, shift=UP * 0.15), run_time=max(0.4, tracker.duration * 0.15))`,
+        `${bodyIndent}    self.play(FadeIn(previous_title, shift=UP * 0.15), Create(rule), run_time=max(0.4, tracker.duration * 0.30))`,
+        `${bodyIndent}    self.play(FadeIn(link_hint), run_time=max(0.4, tracker.duration * 0.15))`,
         `${bodyIndent}    self.wait(max(0, tracker.get_remaining_duration()))`,
       ]
     : [
-        `${bodyIndent}    cta_title = Text("Generate your own educational videos for free!", font="EB Garamond", disable_ligatures=True, font_size=32)`,
-        `${bodyIndent}    cta_title.set_color(WHITE)`,
-        `${bodyIndent}    cta_link = Text("https://eduvids.app", font="EB Garamond", disable_ligatures=True, font_size=28)`,
-        `${bodyIndent}    cta_link.set_color(TEAL)`,
-        `${bodyIndent}    cta_link.next_to(cta_title, DOWN, buff=0.4)`,
-        `${bodyIndent}    cta_content = VGroup(cta_title, cta_link).move_to(ORIGIN)`,
-        `${bodyIndent}    self.play(FadeIn(cta_title, shift=UP * 0.3), FadeIn(cta_link, shift=UP * 0.3), run_time=max(0.4, tracker.duration * 0.35))`,
-        `${bodyIndent}    self.play(cta_link.animate.scale(1.08), run_time=max(0.3, tracker.duration * 0.20))`,
-        `${bodyIndent}    self.play(cta_link.animate.scale(1.0), run_time=max(0.3, tracker.duration * 0.20))`,
+        `${bodyIndent}    cta_title = Text("Make your own visual explanation", font_size=40, color=INK)`,
+        `${bodyIndent}    rule = Line(LEFT * 1.2, RIGHT * 1.2, stroke_width=3, color=YELLOW)`,
+        `${bodyIndent}    cta_link = Text("eduvids.app", font_size=34, color=BLUE)`,
+        `${bodyIndent}    cta_content = VGroup(cta_title, rule, cta_link).arrange(DOWN, buff=0.45).move_to(ORIGIN)`,
+        `${bodyIndent}    self.play(FadeIn(cta_title, shift=UP * 0.2), run_time=max(0.4, tracker.duration * 0.30))`,
+        `${bodyIndent}    self.play(Create(rule), FadeIn(cta_link, shift=UP * 0.2), run_time=max(0.4, tracker.duration * 0.30))`,
         `${bodyIndent}    self.wait(max(0, tracker.get_remaining_duration()))`,
       ];
 
@@ -575,12 +593,16 @@ export async function renderThumbnailCandidates({
     (_, index) => `/home/user/thumbnail-${index}.png`,
   );
 
+  await prepareHouseStyleAssets(sandbox);
   const fallbackScript = buildThumbnailManimScript({
     titles,
     topic,
     designSeed,
   });
-  await sandbox.files.write(scriptPath, generatedScript ?? fallbackScript);
+  await sandbox.files.write(
+    scriptPath,
+    applyManimHouseStyle(generatedScript ?? fallbackScript),
+  );
   await sandbox.files.write(
     runnerPath,
     [
@@ -624,6 +646,7 @@ export async function renderThumbnailCandidates({
       "        raise RuntimeError('No thumbnail output found for ' + scene_class)",
       "    newest = max(matches, key=lambda path: path.stat().st_mtime)",
       "    shutil.copyfile(newest, output_path)",
+      `    subprocess.run(['python', ${JSON.stringify(HOUSE_LIGHT_PATH)}, 'thumbnail', output_path, output_path], check=True)`,
     ].join("\n"),
   );
 
@@ -1045,7 +1068,9 @@ export async function startManimRender({
       EDUVIDS_TTS_SERVICE_SOURCE,
     );
 
-    let enhancedScript = heuristicFixedScript;
+    await prepareHouseStyleAssets(sandbox);
+
+    let enhancedScript = applyManimHouseStyle(heuristicFixedScript);
     enhancedScript = injectScaledTextHelper(enhancedScript);
     enhancedScript = injectSceneFadeOut(enhancedScript);
     enhancedScript = injectEduvidsCallout(enhancedScript, previousVideo);
@@ -1647,7 +1672,9 @@ export async function prepareManimSandbox({
       EDUVIDS_TTS_SERVICE_SOURCE,
     );
 
-    let enhancedScript = heuristicFixedScript;
+    await prepareHouseStyleAssets(sandbox);
+
+    let enhancedScript = applyManimHouseStyle(heuristicFixedScript);
     enhancedScript = injectScaledTextHelper(enhancedScript);
     enhancedScript = injectSceneFadeOut(enhancedScript);
     enhancedScript = injectEduvidsCallout(enhancedScript, previousVideo);

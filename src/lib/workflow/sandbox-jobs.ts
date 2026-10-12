@@ -1,5 +1,6 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import type { PreparedSandboxState } from "@/lib/e2b";
+import { HOUSE_STYLE } from "@/lib/visual-style";
 
 export const SANDBOX_JOB_TIMEOUT_SECONDS = 1_800;
 export const SANDBOX_POLL_WINDOW_MS = 150_000;
@@ -160,10 +161,14 @@ export function renderCommand(prepared: PreparedSandboxState): string[] {
   return args;
 }
 
+// Written next to the script by postprocessing (the workdir is /home/user).
+export const SCENE_DURATIONS_PATH = "/home/user/scene_durations.json";
+
 // Runs entirely in E2B; neither ffmpeg nor its retries occupy a Vercel request.
+// It also records each scene's rendered length for YouTube chapters.
 export function buildPostprocessScript(prepared: PreparedSandboxState): string {
-  return `import json, pathlib, subprocess, math
-settings = json.loads(${JSON.stringify(JSON.stringify({ base: prepared.baseVideosDir, workdir: prepared.scriptPath.slice(0, prepared.scriptPath.lastIndexOf("/")), scenes: prepared.sceneNames, watermark: prepared.applyWatermark, variant: prepared.variant }))})
+  return `import glob, json, pathlib, subprocess, math
+settings = json.loads(${JSON.stringify(JSON.stringify({ base: prepared.baseVideosDir, workdir: prepared.scriptPath.slice(0, prepared.scriptPath.lastIndexOf("/")), scenes: prepared.sceneNames, watermark: prepared.applyWatermark, variant: prepared.variant, ink: HOUSE_STYLE.ink }))})
 base = pathlib.Path(settings['base']) / 'script'
 workdir = pathlib.Path(settings['workdir'])
 paths = []
@@ -181,8 +186,8 @@ def duration(path):
     if not math.isfinite(value) or value <= 0:
         raise RuntimeError('Invalid video duration')
     return value
-for path in paths:
-    duration(path)
+timings = [{'scene': scene, 'seconds': duration(path)} for scene, path in zip(settings['scenes'], paths)]
+(workdir / 'scene_durations.json').write_text(json.dumps(timings))
 source = paths[0]
 if len(paths) > 1:
     listing = workdir / 'scenes.txt'
@@ -192,7 +197,12 @@ if len(paths) > 1:
 output = workdir / 'final.mp4'
 args = ['ffmpeg', '-y', '-i', str(source)]
 if settings['watermark']:
-    args += ['-vf', "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='eduvids':fontcolor=white:fontsize=24:x=w-tw-20:y=h-th-20", '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p']
+    # A quiet house-style mark: CMU Serif in translucent ink, scaled to the frame.
+    height = int(run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=height', '-of', 'csv=p=0', str(source)]))
+    size = max(16, round(height * 0.026))
+    font = (glob.glob('/usr/share/**/cmunrm.otf', recursive=True) + ['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'])[0]
+    mark = "drawtext=fontfile=" + font + ":text='eduvids':fontcolor=0x" + settings['ink'][1:] + "@0.42:fontsize=" + str(size) + ":x=w-tw-" + str(size) + ":y=h-th-" + str(size)
+    args += ['-vf', mark, '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p']
 else:
     args += ['-c:v', 'copy']
 args += ['-c:a', 'copy', '-movflags', '+faststart', str(output)]
@@ -227,4 +237,22 @@ export async function downloadVideo(sandboxId: string): Promise<string> {
 
 export async function cleanupSandbox(sandboxId: string): Promise<void> {
   await Sandbox.kill(sandboxId, { requestTimeoutMs: REQUEST_TIMEOUT_MS });
+}
+
+export type SceneDuration = { scene: string; seconds: number };
+
+export async function readSceneDurations(
+  sandboxId: string,
+): Promise<SceneDuration[]> {
+  const sandbox = await connectSandbox(sandboxId);
+  const raw = await sandbox.files.read(SCENE_DURATIONS_PATH);
+  const parsed = JSON.parse(raw) as unknown;
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter(
+    (entry): entry is SceneDuration =>
+      typeof entry?.scene === "string" &&
+      typeof entry?.seconds === "number" &&
+      Number.isFinite(entry.seconds) &&
+      entry.seconds > 0,
+  );
 }

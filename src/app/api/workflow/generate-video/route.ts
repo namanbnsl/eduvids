@@ -14,6 +14,7 @@ import {
   generateVideoDescription,
   manimVoiceoverTimingIssues,
   normalizeScenePlanTiming,
+  type ScenePlanEntry,
 } from "@/lib/llm";
 import {
   prepareManimSandbox,
@@ -29,6 +30,7 @@ import {
   startPostprocess,
   downloadVideo,
   cleanupSandbox,
+  readSceneDurations,
   type SandboxJob,
 } from "@/lib/workflow/sandbox-jobs";
 import { generationFailureMessage, safeError } from "@/lib/workflow/errors";
@@ -37,8 +39,10 @@ import { uploadImage, uploadVideo } from "@/lib/uploadthing";
 import { jobStore, artifactStore } from "@/lib/job-store";
 import { findPreviousYouTubeVideo } from "@/lib/youtube";
 import {
+  buildChapters,
   selectThumbnailPair,
   type ThumbnailPair,
+  type YouTubeChapter,
   type RelatedYouTubeVideo,
   type VideoTitleSet,
 } from "@/lib/youtube-metadata";
@@ -538,24 +542,45 @@ export const { POST } = serve<VideoGenerationPayload>(
       "generate-description",
       async () => {
         try {
-          const voiceoverScript = await artifactStore.get(
-            jobId,
-            "voiceoverScript",
-          );
-          const desc = await generateVideoDescription({
+          const [voiceoverScript, storedScenePlan] = await Promise.all([
+            artifactStore.get(jobId, "voiceoverScript"),
+            artifactStore.get(jobId, "scenePlan"),
+          ]);
+          const packaging = await generateVideoDescription({
             prompt,
             voiceoverScript,
             sessionId: chatId,
             variant,
           });
-          console.log("✅ Description generated:", { length: desc.length });
-          return desc;
+          // Chapters come from real rendered scene lengths, read while the
+          // sandbox is still alive. Shorts don't get chapters.
+          let chapters: YouTubeChapter[] = [];
+          if (variant !== "short") {
+            try {
+              chapters = buildChapters(
+                await readSceneDurations(prepared!.sandboxId),
+                JSON.parse(storedScenePlan) as ScenePlanEntry[],
+              );
+            } catch (error) {
+              console.warn("Chapter timing unavailable:", safeError(error));
+            }
+          }
+          console.log("✅ Description generated:", {
+            length: packaging.hook.length,
+            chapters: chapters.length,
+          });
+          return { ...packaging, chapters };
         } catch (err) {
           console.warn("Description generation failed (non-fatal):", err);
           return undefined;
         }
       },
     );
+    // Runs replayed from before chapters existed cached a plain string here.
+    const packaging =
+      typeof videoDescription === "string"
+        ? { hook: videoDescription, hashtags: [], tags: [], chapters: [] }
+        : videoDescription;
 
     await context.run("trigger-youtube-upload", async () => {
       if (
@@ -575,7 +600,10 @@ export const { POST } = serve<VideoGenerationPayload>(
         body: {
           videoUrl: uploadUrl,
           title: selectedThumbnailPair?.title ?? videoTitleSet?.selected,
-          description: videoDescription,
+          description: packaging?.hook,
+          hashtags: packaging?.hashtags,
+          tags: packaging?.tags,
+          chapters: packaging?.chapters,
           prompt,
           jobId,
           userId,

@@ -28,6 +28,7 @@ export const template = Template()
     "python3-pyaudio",
 
     "fonts-ebgaramond",
+    "fonts-cmu",
 
     "git",
     "curl",

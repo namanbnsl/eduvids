@@ -18,7 +18,13 @@ import { queryManimDocs } from "./deepwiki";
 
 import { jsonrepair } from "jsonrepair";
 import { franc } from "franc";
-import { parseVideoTitleSet, type VideoTitleSet } from "./youtube-metadata";
+import {
+  parseVideoDescriptionPackage,
+  parseVideoTitleSet,
+  type VideoDescriptionPackage,
+  type VideoTitleSet,
+} from "./youtube-metadata";
+import { applyManimHouseStyle } from "./visual-style";
 import {
   sanitizeGeneratedThumbnailScript,
   thumbnailManimScriptIssues,
@@ -188,11 +194,11 @@ function buildAugmentedSystemPrompt(base: string, language?: string): string {
     const nonEnglishHeader = `
 CRITICAL - ${langUpper} LANGUAGE DETECTED
 This video is in ${language.toUpperCase()}. IMPORTANT RULES:
-1. USE Text() FOR NON-MATHEMATICAL WORDS ONLY (no digits): Text("your text", font="EB Garamond", disable_ligatures=True, font_size=36, color=WHITE)
-2. USE MathTex() FOR ALL MATH AND FOR ANY NUMBERS OR DIGITS SHOWN ONSCREEN: MathTex(r"E = mc^2", font_size=44)
-3. If a label mixes words and numbers, split into Text() + MathTex() in a VGroup
-4. ALWAYS use font="EB Garamond", disable_ligatures=True for consistent typography
-5. For bullets in ${language}: Create Text() objects with font="EB Garamond", disable_ligatures=True and arrange them manually
+1. USE Text() FOR WORDS: Text("your text", font_size=36). The house font and ink color are applied automatically; do not pass font= or disable_ligatures=
+2. USE MathTex() FOR ALL MATHEMATICAL EXPRESSIONS: MathTex(r"E = mc^2", font_size=44)
+3. If a label mixes words and an equation, split into Text() + MathTex() in a VGroup
+4. Never pass a font argument; the renderer chooses a face that covers ${language}
+5. For bullets in ${language}: create Text() objects and arrange them manually
 6. Example correct usage:
    title = Text("${
      language === "spanish"
@@ -202,7 +208,7 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
          : language === "german"
            ? "Titel"
            : "Title"
-   }", font="EB Garamond", disable_ligatures=True, font_size=48, color=WHITE)
+   }", font_size=48)
    body = Text("${
      language === "spanish"
        ? "Contenido"
@@ -211,7 +217,7 @@ This video is in ${language.toUpperCase()}. IMPORTANT RULES:
          : language === "german"
            ? "Inhalt"
            : "Content"
-   }", font="EB Garamond", disable_ligatures=True, font_size=36, color=WHITE)
+   }", font_size=36, color=MUTED)
 7. LaTeX will NOT work for ${language} characters - it will show garbled text or errors
 
 `;
@@ -623,6 +629,8 @@ export interface ScenePlanBeat {
 
 export interface ScenePlanEntry {
   sceneId: string;
+  /** Starts a new YouTube chapter when present. */
+  chapterTitle?: string;
   narration: string;
   visualType: string;
   elements: ScenePlanElement[];
@@ -956,19 +964,9 @@ export function sanitizeManimScript(script: string): string {
     );
   }
 
-  // Keep every generated video in the same content-first visual system as its
-  // thumbnail, even if the model omits or overrides the requested background.
-  if (/config\.background_color\s*=/.test(result)) {
-    result = result.replace(
-      /config\.background_color\s*=\s*[^\n]+/,
-      'config.background_color = "#050505"',
-    );
-  } else {
-    result = result.replace(
-      /(from\s+manim\s+import\s+[^\n]+)/,
-      '$1\n\nconfig.background_color = "#050505"',
-    );
-  }
+  // Keep every generated video in the same house style as its thumbnail, even
+  // if the model omits or overrides the requested background or typography.
+  result = applyManimHouseStyle(result);
 
   // Remove duplicate import lines
   const seenImports = new Set<string>();
@@ -1177,25 +1175,37 @@ export async function generateVideoTitles({
   voiceoverScript,
   scenePlan,
 }: VideoTitleRequest): Promise<VideoTitleSet> {
-  const systemPrompt = `You package videos for eduvids, a cinematic visual math and science channel. Generate exactly three distinct title-and-thumbnail concepts, ordered strongest first.
+  const systemPrompt = `You package videos for eduvids, a minimal, beautifully animated math and science channel in the spirit of 3Blue1Brown, Welch Labs, and Veritasium. Generate exactly three title-and-thumbnail packages, ordered strongest first. The first package is published; the other two are kept for A/B testing.
 
-RULES:
-- Aim for 45-65 characters; never exceed 80
-- Create curiosity while making the subject immediately clear
-- Prefer natural use of Why, How, What, Visualized, Intuitive, Actually, In 3D, or Finally Makes Sense
-- Never use the words Explained, Basics, Introduction, or Lesson
-- Avoid hype, clickbait, vague promises, and repeated title structures
-- Use natural title case, not all caps
-- Pair each title with thumbnailText: either an empty string or at most 1-4 useful words such as a mathematical label, contrast, or short question. Prefer no text when the visual and notation are enough. Never write a generic slogan or repeat the title
-- Pair each title with visualConcept: one concrete, instantly readable mathematical or scientific hero composition that proves the title's promise. Describe the actual objects, graph, transformation, or relationship; never request cards, borders, badges, branding, decorative gradients, or stock imagery
-- Build a visual hook that creates title-specific tension: a surprising before-and-after, one anomalous feature, a prediction the viewer wants resolved, or a highlighted invariant. The title and image must complete one thought without duplicating each other
-- Pair each title with visualType, choosing exactly one of: function_plot, complex_plane, geometry, transformation, vector_field, wave, orbit, probability, network, atom, surface_3d, solid_3d. Prefer genuine 3D for surfaces, solids, spatial transformations, topology, vector geometry, molecular structure, and other concepts whose depth teaches something
-- Pair each title with mathNotation: a short, valid LaTeX fragment that is central to this exact topic, or an empty string when no notation genuinely helps. Never invent an equation merely to decorate the image
-- Pair each function_plot title with plotExpression and plotXRange. plotExpression must be the exact single-variable function supported by the source material, written with x, numbers, arithmetic, and sin/cos/tan/exp/log/sqrt/abs only. plotXRange is a useful two-number domain inside -20 to 20. For every other visualType, or when the source does not establish an exact function, return an empty plotExpression and [-5, 5]
-- Ground notation, graphs, labels, and claims only in the supplied source material. If exact mathematics is absent, choose a truthful geometric or conceptual visual instead of inventing a graph
-- Make all three title/thumbnail pairs distinct in both angle and visual composition
-- Strong examples: "What Even Is a Tensor? Visualized From 0D to 3D" / "Why Differentiation Actually Works" / "The 5 Ways Two Triangles Can Be Exactly the Same"
-- Return ONLY a JSON array of three objects with exactly these keys: title, thumbnailText, visualConcept, visualType, mathNotation, plotExpression, plotXRange`;
+WHAT WINS THE CLICK
+- The title and thumbnail are one sentence split in two: the image shows the strange thing, the title makes it matter. Never say the same thing twice.
+- The promise must be paid off by THIS video. Read the narration: its opening puzzle, its tempting wrong answer, and its payoff are your best raw material. Never promise a result the narration does not deliver.
+- Concrete beats abstract: a specific object, number, or claim ("A 99% Accurate Test Says You're Sick. You're Probably Not.") beats a topic label ("Understanding Bayes' Theorem").
+
+TITLE RULES
+- 30-60 characters is ideal and 70 is the hard ceiling. Put the subject in the first 40 characters, because mobile truncates.
+- Plain words a curious 15-year-old would use. Name the topic keyword exactly once, naturally.
+- Three DIFFERENT angles, one per package:
+  A. The hook: the video's opening puzzle or surprising claim as a statement or question ("Why the Slope at a Single Point Isn't a Paradox").
+  B. The search title: the clearest phrasing someone would actually type, made intriguing ("What a Derivative Actually Measures", "How Fourier Transforms Hear Every Note").
+  C. The bold claim or wrong intuition: a confident, specific, true statement ("Every Sound Is Secretly a Sum of Circles").
+- Use title case. No ALL CAPS words, no emoji, no colons with subtitles, no "| eduvids".
+- Never use: Explained, Basics, Introduction, Lesson, Tutorial, Ultimate, Mind-Blowing, Insane, You Won't Believe, Finally Makes Sense, Visualized.
+- Never use clickbait that the video does not deliver.
+
+THUMBNAIL RULES (one per title)
+- visualConcept: the single hero object from the video and the one anomaly that makes it strange, such as "parabola with a red point where secant lines collapse into the tangent". Under 120 characters, with real objects only. Never request cards, borders, badges, branding, gradients, or stock imagery.
+- thumbnailText, which deliberately differs by slot so the channel learns what works:
+  A: a 1-3 word hook that adds tension the title doesn't state, such as "0/0?", "9%?", "Not random", or "Impossible?". It may be math-like.
+  B: always an empty string. This slot is visual-only.
+  C: a 1-3 word question or verdict, such as "Guess?", "Same area", or "Wrong".
+  Never repeat words from the title, and never write a slogan.
+- visualType: exactly one of function_plot, complex_plane, geometry, transformation, vector_field, wave, orbit, probability, network, atom, surface_3d, solid_3d. Prefer genuine 3D only when depth teaches something.
+- mathNotation: a short valid LaTeX fragment central to this exact topic, or an empty string. Always empty for slot B. Never invent an equation to decorate.
+- plotExpression and plotXRange: for function_plot only, give the exact single-variable function from the source, using x, numbers, arithmetic, and sin/cos/tan/exp/log/sqrt/abs, with a two-number domain inside -20 to 20. Otherwise return an empty plotExpression and [-5, 5].
+- Ground every graph, label, and claim in the supplied source material. If exact mathematics is absent, choose a truthful geometric or conceptual visual.
+
+Return ONLY a JSON array of three objects with exactly these keys: title, thumbnailText, visualConcept, visualType, mathNotation, plotExpression, plotXRange`;
 
   const sourceMaterial = [
     voiceoverScript ? `NARRATION:\n${voiceoverScript.slice(0, 8_000)}` : "",
@@ -1309,21 +1319,21 @@ export async function generateVideoDescription({
   voiceoverScript,
   sessionId,
   variant,
-}: VideoDescriptionRequest): Promise<string> {
-  const systemPrompt = `You package videos for eduvids, a cinematic visual math and science channel. Write the sales-first opening of a YouTube description.
+}: VideoDescriptionRequest): Promise<VideoDescriptionPackage> {
+  const systemPrompt = `You package videos for eduvids, a minimal, beautifully animated math and science channel. Write the top of a YouTube description plus discovery metadata.
 
-RULES:
-- Output exactly two short, non-empty lines and no blank line
-- Line 1 opens with the central mystery, surprising result, or useful problem
-- Line 2 promises the specific visual intuition the viewer will gain
-- Naturally include 2-3 precise topic keywords across the two lines
-- Do not repeat the title or start with "In this video"
-- Never use generic phrases such as "dive into", "join us", "embark on", or "unlock the secrets"
-- Do not include calls-to-action, links, hashtags, timestamps, or labels
-- Keep the total under 500 characters
-- Output only the two lines`;
+HOOK (two lines; this is all most viewers see before "...more", and line 1 appears in search results)
+- Line 1, under 110 characters: the video's opening puzzle or surprising claim, phrased differently from the title and grounded in the narration.
+- Line 2, under 160 characters: the concrete thing the viewer will see and understand, naming the running example and 1-2 precise topic keywords.
+- Plain, confident words. Never start with "In this video". Never use "dive into", "join us", "embark", "unlock", "journey", "fascinating", or "mind-blowing".
+- No links, calls to action, timestamps, emoji, or labels.
 
-  const userPrompt = `Create a YouTube description for this ${
+HASHTAGS: 2-3 specific topic hashtags in CamelCase, from broad to specific (e.g. "#Math", "#Calculus", "#Derivatives"). No generic tags like #Education or #Learning.
+TAGS: 6-10 search phrases people would actually type to find this video (e.g. "what is a derivative", "derivative intuition").
+
+Return ONLY JSON: {"hook": ["line 1", "line 2"], "hashtags": ["#A", "#B"], "tags": ["phrase", "phrase"]}`;
+
+  const userPrompt = `Package this ${
     variant === "short" ? "vertical short" : "video"
   }.
 
@@ -1347,10 +1357,7 @@ ${voiceoverScript}`;
     googleModel,
   );
 
-  return text
-    .trim()
-    .replace(/^["']|["']$/g, "")
-    .slice(0, 500);
+  return parseVideoDescriptionPackage(text);
 }
 
 // ---------------------------------------------------------------------------

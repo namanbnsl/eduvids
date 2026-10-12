@@ -41,6 +41,7 @@ import {
 import type { PreparedSandboxState } from "../src/lib/e2b";
 import { uploadThingFetch } from "../src/lib/uploadthing";
 import { EDUVIDS_TTS_SERVICE_SOURCE } from "../src/lib/eduvids-tts-service";
+import { HOUSE_STYLE } from "../src/lib/visual-style";
 
 const exec = promisify(execFile);
 const state = (folder: string): PreparedSandboxState => ({
@@ -670,9 +671,14 @@ class Last(Scene):
   try {
     await writeFile(script, enhanced);
     await exec("python3", ["-m", "py_compile", script]);
-    assert.equal(enhanced.match(/PREVIOUS VIDEO/g)?.length, 1);
+    assert.equal(enhanced.match(/Previous video/g)?.length, 1);
     assert.ok(
-      enhanced.indexOf("PREVIOUS VIDEO") > enhanced.indexOf("class Last"),
+      enhanced.indexOf("Previous video") > enhanced.indexOf("class Last"),
+    );
+    // The end card is house-styled type: no card chrome, no ligature flag.
+    assert.doesNotMatch(
+      enhanced,
+      /RoundedRectangle|disable_ligatures|EB Garamond/,
     );
     assert.match(enhanced, /Link in description and top comment/);
   } finally {
@@ -739,7 +745,10 @@ test("thumbnail packaging creates three title-paired Manim scenes", async () => 
       assert.ok(source.includes(JSON.stringify(candidates[index])));
     }
     assert.doesNotMatch(source, /brand_mark|cinematic_frame|EDUVIDS/);
-    assert.match(source, /config\.background_color = "#050505"/);
+    assert.ok(
+      source.includes(`config.background_color = "${HOUSE_STYLE.background}"`),
+    );
+    assert.ok(source.includes("Text(line, weight=BOLD"));
     assert.notEqual(source, alternate);
     assert.doesNotMatch(source, /voiceover|bookmark/i);
   } finally {
@@ -831,7 +840,9 @@ test("sanitizing Python preserves comparisons and text containing angle brackets
   const sanitized = sanitizeManimScript(script);
   assert.ok(sanitized.includes('"<hello>"'));
   assert.ok(sanitized.includes("1 < x.width and x.width > 0"));
-  assert.match(sanitized, /config\.background_color = "#050505"/);
+  assert.ok(
+    sanitized.includes(`config.background_color = "${HOUSE_STYLE.background}"`),
+  );
 });
 
 test("model cancellation aborts the provider request", async () => {

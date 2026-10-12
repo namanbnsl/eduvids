@@ -1,8 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildChapters,
   buildPreviousVideoComment,
   buildYouTubeDescription,
+  formatChapterTimestamp,
+  parseVideoDescriptionPackage,
   parseVideoTitleSet,
   sanitizeThumbnailPlotExpression,
   selectThumbnailPair,
@@ -115,4 +118,104 @@ test("previous-video comment has one focused CTA", () => {
     buildPreviousVideoComment(previousVideo),
     "Previous: Why Differentiation Actually Works → https://www.youtube.com/watch?v=previous123",
   );
+});
+
+test("slot B is always the visual-only thumbnail", () => {
+  const titles = parseVideoTitleSet(
+    JSON.stringify(
+      [
+        "Why the Slope at a Single Point Isn't a Paradox",
+        "What a Derivative Actually Measures",
+        "Zoom In Forever and Curves Turn Into Lines",
+      ].map((title) => ({
+        title,
+        thumbnailText: "0/0?",
+        visualConcept: "parabola with a red tangent point",
+        visualType: "function_plot",
+        mathNotation: "f'(x)",
+        plotExpression: "x^2",
+        plotXRange: [-3, 3],
+      })),
+    ),
+  );
+  assert.equal(titles.thumbnailConcepts?.[0].text, "0/0?");
+  assert.equal(titles.thumbnailConcepts?.[1].text, "");
+  assert.equal(titles.thumbnailConcepts?.[1].mathNotation, "");
+  assert.equal(titles.thumbnailConcepts?.[2].text, "0/0?");
+});
+
+test("short punchy titles are accepted", () => {
+  const titles = parseVideoTitleSet(
+    '["The Phone Number Puzzle", "Why Primes Make Spirals", "The Scariest Chart in Math"]',
+  );
+  assert.equal(titles.selected, "The Phone Number Puzzle");
+});
+
+test("description package parses hook, hashtags and tags with a plain-text fallback", () => {
+  const parsed = parseVideoDescriptionPackage(`\`\`\`json
+{"hook": ["Pick one point on a curve. How steep is it there?", "One parabola and a shrinking secant line show what a derivative measures."],
+ "hashtags": ["#Math", "calculus", "#Instant Rate", "#!!"], "tags": ["What is a derivative", "derivative intuition", "x"]}
+\`\`\``);
+  assert.equal(parsed.hook.split("\n").length, 2);
+  assert.deepEqual(parsed.hashtags, ["#Math", "#Calculus", "#InstantRate"]);
+  assert.deepEqual(parsed.tags, [
+    "what is a derivative",
+    "derivative intuition",
+  ]);
+
+  const plain = parseVideoDescriptionPackage("Line one.\nLine two.");
+  assert.equal(plain.hook, "Line one.\nLine two.");
+  assert.deepEqual(plain.hashtags, []);
+});
+
+test("chapters follow rendered scene lengths and YouTube's chapter rules", () => {
+  const plan = [
+    { sceneId: "Scene01Intro", chapterTitle: "The slope that shouldn't exist" },
+    { sceneId: "Scene02Secant" },
+    { sceneId: "Scene03Shrink", chapterTitle: "Shrinking the gap" },
+    { sceneId: "Scene04Blip", chapterTitle: "Too short to keep" },
+    { sceneId: "Scene05Limit", chapterTitle: "The limit" },
+  ];
+  const timings = [
+    { scene: "Scene01Intro", seconds: 21.4 },
+    { scene: "Scene02Secant", seconds: 30 },
+    { scene: "Scene03Shrink", seconds: 40.2 },
+    { scene: "Scene04Blip", seconds: 4 },
+    { scene: "Scene05Limit", seconds: 65 },
+  ];
+  assert.deepEqual(buildChapters(timings, plan), [
+    { start: 0, title: "The slope that shouldn't exist" },
+    { start: 51.4, title: "Shrinking the gap" },
+    { start: 95.6, title: "The limit" },
+  ]);
+  // Class names that don't match the plan fall back to order when counts agree.
+  assert.equal(
+    buildChapters(
+      timings.map((timing, index) => ({ ...timing, scene: `Other${index}` })),
+      plan,
+    ).length,
+    3,
+  );
+  // Fewer than three usable chapters means no chapters at all.
+  assert.deepEqual(buildChapters(timings.slice(0, 2), plan.slice(0, 2)), []);
+  assert.equal(formatChapterTimestamp(95.6), "1:35");
+  assert.equal(formatChapterTimestamp(3725), "1:02:05");
+});
+
+test("description lists chapters before links and ends with hashtags", () => {
+  const result = buildYouTubeDescription({
+    salesCopy: "Hook one.\nHook two.",
+    previousVideo,
+    chapters: [
+      { start: 0, title: "The puzzle" },
+      { start: 42, title: "Shrinking the gap" },
+      { start: 125, title: "The limit" },
+    ],
+    hashtags: ["#Math", "#Calculus"],
+  });
+  assert.match(
+    result,
+    /\n\n0:00 The puzzle\n0:42 Shrinking the gap\n2:05 The limit\n\nPrevious:/,
+  );
+  assert.ok(result.endsWith("#Math #Calculus"));
 });

@@ -1,6 +1,10 @@
 import { jsonrepair } from "jsonrepair";
 
 const TITLE_LIMIT = 80;
+const TITLE_MINIMUM = 20;
+// Slot B is always the visual-only thumbnail, so every video ships one
+// text-free variant for A/B testing against the two headline variants.
+export const VISUAL_ONLY_THUMBNAIL_INDEX = 1;
 const BLOCKED_TITLE_WORDS = /\b(explained|basics|introduction|lesson)\b/i;
 
 export interface VideoTitleSet {
@@ -73,7 +77,11 @@ export function sanitizeThumbnailPlotExpression(value: unknown): string {
   const parsePrimary = (): boolean => {
     const token = tokenList[cursor];
     if (!token) return false;
-    if (/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(token) || token === "x" || token === "pi") {
+    if (
+      /^(?:\d+(?:\.\d*)?|\.\d+)$/.test(token) ||
+      token === "x" ||
+      token === "pi"
+    ) {
       cursor += 1;
       return true;
     }
@@ -192,7 +200,7 @@ export function parseVideoTitleSet(raw: string): VideoTitleSet {
       if (!candidate) return false;
       const { title } = candidate;
       return (
-        title.length >= 25 &&
+        title.length >= TITLE_MINIMUM &&
         title.length <= TITLE_LIMIT &&
         !BLOCKED_TITLE_WORDS.test(title)
       );
@@ -214,21 +222,27 @@ export function parseVideoTitleSet(raw: string): VideoTitleSet {
     string,
   ];
   const concepts = parsed.map(
-    ({
-      thumbnailText,
-      visualConcept,
-      visualType,
-      mathNotation,
-      plotExpression,
-      plotXRange,
-    }) => ({
-      text: thumbnailText ?? "",
-      visualConcept: visualConcept ?? "",
-      visualType,
-      mathNotation: mathNotation ?? "",
-      plotExpression: plotExpression ?? "",
-      plotXRange,
-    }),
+    (
+      {
+        thumbnailText,
+        visualConcept,
+        visualType,
+        mathNotation,
+        plotExpression,
+        plotXRange,
+      },
+      index,
+    ) => {
+      const visualOnly = index === VISUAL_ONLY_THUMBNAIL_INDEX;
+      return {
+        text: visualOnly ? "" : (thumbnailText ?? ""),
+        visualConcept: visualConcept ?? "",
+        visualType,
+        mathNotation: visualOnly ? "" : (mathNotation ?? ""),
+        plotExpression: plotExpression ?? "",
+        plotXRange,
+      };
+    },
   ) as [ThumbnailConcept, ThumbnailConcept, ThumbnailConcept];
   const hasCompleteConcepts = concepts.every(
     ({ text, visualConcept, visualType }) =>
@@ -275,14 +289,167 @@ function descriptionLines(copy: string): string[] {
   return sentences.length >= 2 ? sentences.slice(0, 2) : [normalized];
 }
 
+export interface VideoDescriptionPackage {
+  hook: string;
+  hashtags: string[];
+  tags: string[];
+}
+
+export interface YouTubeChapter {
+  start: number;
+  title: string;
+}
+
+export interface SceneTiming {
+  scene: string;
+  seconds: number;
+}
+
+const MIN_CHAPTER_SECONDS = 10;
+const MIN_CHAPTERS = 3;
+
+function cleanHashtag(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const words = value
+    .replace(/^#/, "")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+  if (!words.length) return null;
+  const tag = words
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join("");
+  return tag.length >= 2 && tag.length <= 30 ? `#${tag}` : null;
+}
+
+export function parseVideoDescriptionPackage(
+  raw: string,
+): VideoDescriptionPackage {
+  const text = raw
+    .replace(/```(?:json)?\s*/gi, "")
+    .replace(/```/g, "")
+    .trim();
+  const objectMatch = text.match(/\{[\s\S]*\}/);
+  if (objectMatch) {
+    try {
+      const parsed = JSON.parse(jsonrepair(objectMatch[0])) as Record<
+        string,
+        unknown
+      >;
+      const hookLines = (
+        Array.isArray(parsed.hook) ? parsed.hook : [parsed.hook]
+      )
+        .filter((line): line is string => typeof line === "string")
+        .map((line) => line.replace(/\s+/g, " ").trim())
+        .filter(Boolean)
+        .slice(0, 2);
+      const hashtags = [
+        ...new Set(
+          (Array.isArray(parsed.hashtags) ? parsed.hashtags : [])
+            .map(cleanHashtag)
+            .filter((tag): tag is string => tag !== null),
+        ),
+      ].slice(0, 3);
+      const tags = [
+        ...new Set(
+          (Array.isArray(parsed.tags) ? parsed.tags : [])
+            .filter((tag): tag is string => typeof tag === "string")
+            .map((tag) =>
+              tag
+                .replace(/[<>,#]/g, "")
+                .replace(/\s+/g, " ")
+                .trim()
+                .toLowerCase(),
+            )
+            .filter((tag) => tag.length >= 2 && tag.length <= 40),
+        ),
+      ].slice(0, 12);
+      if (hookLines.length) {
+        return { hook: hookLines.join("\n").slice(0, 500), hashtags, tags };
+      }
+    } catch {
+      // Fall through to treating the response as plain description copy.
+    }
+  }
+  return {
+    hook: text.replace(/^["']|["']$/g, "").slice(0, 500),
+    hashtags: [],
+    tags: [],
+  };
+}
+
+export function formatChapterTimestamp(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const rest = String(seconds % 60).padStart(2, "0");
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${rest}`
+    : `${minutes}:${rest}`;
+}
+
+/**
+ * Turns rendered scene durations plus the scene plan's chapterTitle markers
+ * into YouTube chapters. YouTube only shows chapters when the first starts at
+ * 0:00, there are at least three, and each lasts at least ten seconds, so
+ * short sections are merged and anything that can't satisfy that is dropped.
+ */
+export function buildChapters(
+  timings: SceneTiming[],
+  plan: { sceneId: string; chapterTitle?: string }[],
+): YouTubeChapter[] {
+  if (!timings.length || !plan.length) return [];
+  const titles = new Map(
+    plan.map(({ sceneId, chapterTitle }) => [
+      sceneId,
+      chapterTitle?.replace(/\s+/g, " ").trim().slice(0, 60),
+    ]),
+  );
+  const matchedByName = timings.every(({ scene }) => titles.has(scene));
+  if (!matchedByName && timings.length !== plan.length) return [];
+
+  const chapters: YouTubeChapter[] = [];
+  let elapsed = 0;
+  timings.forEach(({ scene, seconds }, index) => {
+    const title = matchedByName
+      ? titles.get(scene)
+      : plan[index]?.chapterTitle?.replace(/\s+/g, " ").trim().slice(0, 60);
+    if (index === 0) {
+      chapters.push({ start: 0, title: title || "The question" });
+    } else if (title) {
+      chapters.push({ start: elapsed, title });
+    }
+    elapsed += seconds;
+  });
+
+  // A too-short chapter folds into the one before it; the 0:00 chapter can't
+  // move, so when it is too short it absorbs the next one instead.
+  const length = (index: number) =>
+    (chapters[index + 1]?.start ?? elapsed) - chapters[index]!.start;
+  let short = chapters.findIndex(
+    (_, index) => length(index) < MIN_CHAPTER_SECONDS,
+  );
+  while (short !== -1 && chapters.length > 1) {
+    chapters.splice(short === 0 ? 1 : short, 1);
+    short = chapters.findIndex(
+      (_, index) => length(index) < MIN_CHAPTER_SECONDS,
+    );
+  }
+
+  return chapters.length >= MIN_CHAPTERS ? chapters : [];
+}
+
 export function buildYouTubeDescription({
   salesCopy,
   topic,
   previousVideo,
+  chapters = [],
+  hashtags = [],
 }: {
   salesCopy?: string;
   topic?: string;
   previousVideo?: RelatedYouTubeVideo;
+  chapters?: YouTubeChapter[];
+  hashtags?: string[];
 }): string {
   const topicExcerpt = (topic?.trim() || "this idea")
     .replace(/\s+/g, " ")
@@ -296,11 +463,20 @@ export function buildYouTubeDescription({
       ].join("\n");
   const blocks = [opening];
 
+  if (chapters.length) {
+    blocks.push(
+      chapters
+        .map(({ start, title }) => `${formatChapterTimestamp(start)} ${title}`)
+        .join("\n"),
+    );
+  }
+
   if (previousVideo) {
     blocks.push(`Previous: ${previousVideo.title} → ${previousVideo.watchUrl}`);
   }
 
-  blocks.push("Create your own visual explanation at https://eduvids.app");
+  blocks.push("Make your own visual explanation at https://eduvids.app");
+  if (hashtags.length) blocks.push(hashtags.slice(0, 3).join(" "));
   return blocks.join("\n\n");
 }
 
