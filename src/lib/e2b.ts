@@ -10,6 +10,7 @@ import type { RelatedYouTubeVideo } from "@/lib/youtube-metadata";
 import type { VideoTitleSet } from "@/lib/youtube-metadata";
 import {
   buildThumbnailSpecs,
+  FRAME_CANDIDATES,
   loadThumbnailAssets,
   type ThumbnailPalette,
 } from "@/lib/youtube-thumbnail";
@@ -86,37 +87,36 @@ export function injectEduvidsCallout(
     : "Generate your own educational videos for free at eduvids dot app";
   const narrationLiteral = JSON.stringify(narration);
 
-  // Same typography as the thumbnails: muted eyebrow, balanced SemiBold
-  // headline, accent for the one action. Names come from eduvids_style.
+  // House typography, as on the thumbnails: a large balanced SemiBold
+  // headline, a sentence-case lead-in, accent for the one action, and no
+  // block-capital tags. Names come from eduvids_style.
   const contentLines = previousTitle
     ? [
-        `${bodyIndent}    eyebrow = Text("PREVIOUS VIDEO", font_size=22, color=MUTED)`,
-        `${bodyIndent}    previous_title = balanced_text(${JSON.stringify(previousTitle)}, font_size=48, max_lines=3)`,
-        `${bodyIndent}    link_hint = Text("Link in description and top comment", font_size=28, color=MUTED)`,
-        `${bodyIndent}    subscribe_hint = Text("Subscribe for the next visual", font_size=28, color=ACCENT)`,
-        `${bodyIndent}    heading = VGroup(eyebrow, previous_title).arrange(DOWN, aligned_edge=LEFT, buff=0.24)`,
-        `${bodyIndent}    hints = VGroup(link_hint, subscribe_hint).arrange(DOWN, aligned_edge=LEFT, buff=0.2)`,
-        `${bodyIndent}    end_content = VGroup(heading, hints).arrange(DOWN, aligned_edge=LEFT, buff=0.56)`,
+        `${bodyIndent}    lead = Text("Watch next", font_size=36, color=MUTED)`,
+        `${bodyIndent}    previous_title = balanced_text(${JSON.stringify(previousTitle)}, font_size=60, max_lines=3)`,
+        `${bodyIndent}    link_hint = Text("Link in description and top comment", font_size=32, color=MUTED)`,
+        `${bodyIndent}    subscribe_hint = Text("Subscribe for the next visual", font_size=32, color=ACCENT)`,
+        `${bodyIndent}    heading = VGroup(lead, previous_title).arrange(DOWN, aligned_edge=LEFT, buff=0.3)`,
+        `${bodyIndent}    hints = VGroup(link_hint, subscribe_hint).arrange(DOWN, aligned_edge=LEFT, buff=0.22)`,
+        `${bodyIndent}    end_content = VGroup(heading, hints).arrange(DOWN, aligned_edge=LEFT, buff=0.6)`,
         `${bodyIndent}    if end_content.width > config.frame_width - 1.6:`,
         `${bodyIndent}        end_content.scale_to_fit_width(config.frame_width - 1.6)`,
         `${bodyIndent}    end_content.move_to(ORIGIN)`,
-        `${bodyIndent}    self.play(FadeIn(heading, shift=UP * 0.15), run_time=max(0.4, tracker.duration * 0.25))`,
+        `${bodyIndent}    self.play(FadeIn(lead, shift=UP * 0.15), pop_in(previous_title, scale=0.85), run_time=max(0.4, tracker.duration * 0.25))`,
         `${bodyIndent}    self.play(FadeIn(link_hint, shift=UP * 0.1), run_time=max(0.3, tracker.duration * 0.15))`,
-        `${bodyIndent}    self.play(FadeIn(subscribe_hint, shift=UP * 0.1), run_time=max(0.3, tracker.duration * 0.15))`,
+        `${bodyIndent}    self.play(pop_in(subscribe_hint), run_time=max(0.3, tracker.duration * 0.15))`,
         `${bodyIndent}    self.wait(max(0, tracker.get_remaining_duration()))`,
       ]
     : [
-        `${bodyIndent}    eyebrow = Text("MADE WITH EDUVIDS", font_size=22, color=MUTED)`,
-        `${bodyIndent}    cta_title = balanced_text("Generate your own educational videos for free", font_size=48, max_lines=3)`,
-        `${bodyIndent}    cta_link = Text("eduvids.app", font_size=36, color=ACCENT)`,
-        `${bodyIndent}    heading = VGroup(eyebrow, cta_title).arrange(DOWN, aligned_edge=LEFT, buff=0.24)`,
-        `${bodyIndent}    cta_content = VGroup(heading, cta_link).arrange(DOWN, aligned_edge=LEFT, buff=0.5)`,
+        `${bodyIndent}    cta_title = balanced_text("Generate your own educational videos for free", font_size=60, max_lines=3)`,
+        `${bodyIndent}    cta_link = Text("eduvids.app", font_size=44, color=ACCENT)`,
+        `${bodyIndent}    cta_content = VGroup(cta_title, cta_link).arrange(DOWN, aligned_edge=LEFT, buff=0.55)`,
         `${bodyIndent}    if cta_content.width > config.frame_width - 1.6:`,
         `${bodyIndent}        cta_content.scale_to_fit_width(config.frame_width - 1.6)`,
         `${bodyIndent}    cta_content.move_to(ORIGIN)`,
-        `${bodyIndent}    self.play(FadeIn(heading, shift=UP * 0.15), run_time=max(0.4, tracker.duration * 0.30))`,
-        `${bodyIndent}    self.play(FadeIn(cta_link, shift=UP * 0.1), run_time=max(0.3, tracker.duration * 0.20))`,
-        `${bodyIndent}    self.play(Indicate(cta_link, color=ACCENT, scale_factor=1.06), run_time=max(0.3, tracker.duration * 0.20))`,
+        `${bodyIndent}    self.play(pop_in(cta_title, scale=0.85), run_time=max(0.4, tracker.duration * 0.30))`,
+        `${bodyIndent}    self.play(pop_in(cta_link), run_time=max(0.3, tracker.duration * 0.20))`,
+        `${bodyIndent}    self.play(pulse(cta_link, scale=1.06), run_time=max(0.3, tracker.duration * 0.20))`,
         `${bodyIndent}    self.wait(max(0, tracker.get_remaining_duration()))`,
       ];
 
@@ -530,6 +530,8 @@ export interface PreparedSandboxState {
 
 const SANDBOX_TEMPLATE = "manim20-ffmpeg-bookmarks-latest";
 const THUMBNAIL_ROOT = "/home/user/eduvids-thumbnail";
+/** Where the postprocess step leaves the finished video. */
+const FINAL_VIDEO_PATH = "/home/user/final.mp4";
 
 export interface ThumbnailRenderResult {
   /** PNG data URLs in candidate order; null where that candidate failed. */
@@ -575,6 +577,32 @@ async function installVideoStyle(
  * safe mode, so one bad spec never takes the others down. If the video's
  * sandbox has already been reclaimed, a fresh one is used.
  */
+/**
+ * Frames from the finished video for the thumbnail, best first. The video
+ * is only there when thumbnails render in the video's own sandbox; a fresh
+ * sandbox (or any picker failure) yields none, and drawn visuals are used.
+ */
+async function pickVideoFrames(sandbox: Sandbox): Promise<string[]> {
+  try {
+    const result = await sandbox.commands.run(
+      `test -f ${FINAL_VIDEO_PATH} && cd ${THUMBNAIL_ROOT} && python frame_picker.py --video ${FINAL_VIDEO_PATH} --out-dir frames --count ${FRAME_CANDIDATES} || true`,
+      { timeoutMs: 90_000 },
+    );
+    const line = result.stdout.trim().split("\n").pop();
+    if (!line) return [];
+    const picked = JSON.parse(line) as { path?: unknown }[];
+    return picked
+      .map(({ path }) => path)
+      .filter((path): path is string => typeof path === "string");
+  } catch (error) {
+    console.warn(
+      "Frame picking failed; thumbnails use drawn visuals",
+      error instanceof Error ? error.message : error,
+    );
+    return [];
+  }
+}
+
 export async function renderThumbnailCandidates({
   prepared,
   titles,
@@ -603,11 +631,16 @@ export async function renderThumbnailCandidates({
   }
 
   try {
-    const specs = buildThumbnailSpecs({ titles, topic, designSeed });
     const assets = await loadThumbnailAssets();
     await sandbox.commands.run(
-      `rm -rf ${THUMBNAIL_ROOT}/out && mkdir -p ${THUMBNAIL_ROOT}/fonts`,
+      `rm -rf ${THUMBNAIL_ROOT}/out ${THUMBNAIL_ROOT}/frames && mkdir -p ${THUMBNAIL_ROOT}/fonts`,
     );
+    await sandbox.files.write(
+      `${THUMBNAIL_ROOT}/frame_picker.py`,
+      assets.framePicker,
+    );
+    const frames = await pickVideoFrames(sandbox);
+    const specs = buildThumbnailSpecs({ titles, topic, designSeed, frames });
     await Promise.all([
       sandbox.files.write(`${THUMBNAIL_ROOT}/renderer.py`, assets.renderer),
       sandbox.files.write(

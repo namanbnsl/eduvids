@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
       "./src/lib/thumbnail/renderer.py",
       "./src/lib/thumbnail/video_style.py",
       "./src/lib/thumbnail/render_driver.py",
+      "./src/lib/thumbnail/frame_picker.py",
       "./src/lib/thumbnail/fonts/*",
     ],
   },

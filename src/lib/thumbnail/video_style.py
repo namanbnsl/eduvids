@@ -12,6 +12,11 @@ canvas, typography and palette whatever the model wrote:
 - ``PRIMARY``/``ACCENT`` are the video's thumbnail palette; ``SECONDARY`` and
   ``TERTIARY`` support it. Manim's named colours are retuned to the same
   family, so ``BLUE`` or ``YELLOW`` still land on the house tones.
+- The canvas is a soft vignette; curves, dots and vectors glow in their own
+  colour; graphs draw bold round-capped curves on quiet axes; 3D surfaces
+  are shaded by height and lit, never checkerboarded.
+- No block-capital tags: ``header()`` ignores eyebrows and all-caps copy is
+  set in sentence case. ``pop_in`` and ``pulse`` give reveals some snap.
 
 Palette names and tones must match ``PALETTES`` in renderer.py.
 """
@@ -36,13 +41,13 @@ INK = "#EDEAE4"
 MUTED = "#8A8F98"
 
 HUES = {
-    "teal": "#46C2B8",
-    "azure": "#6AAEE8",
-    "violet": "#A595F0",
-    "rose": "#EE85B5",
-    "amber": "#F2B84B",
-    "coral": "#F07167",
-    "green": "#8CC97E",
+    "teal": "#2DD4BF",
+    "azure": "#4EA8FF",
+    "violet": "#9B7BFF",
+    "rose": "#FF5FA2",
+    "amber": "#FFC233",
+    "coral": "#FF6B5A",
+    "green": "#7BE07B",
 }
 
 # (primary, accent, secondary, tertiary). Supporting hues are chosen to stay
@@ -57,6 +62,8 @@ PALETTES = {
 
 
 def _rgb(hex_color):
+    if not isinstance(hex_color, str):
+        hex_color = ManimColor(hex_color).to_hex()
     value = hex_color.lstrip("#")
     return np.array([int(value[i:i + 2], 16) for i in (0, 2, 4)], dtype=float) / 255
 
@@ -154,10 +161,137 @@ if not getattr(Camera.get_fill_rgbas, "__eduvids_graded__", False):
 
     def _modified_graded(self, vmobject, rgbas):
         # Grade before shading so lit surfaces keep their falloff.
-        return _modified_rgbas(self, vmobject, _grade(rgbas))
+        graded = _grade(rgbas)
+        if getattr(vmobject, "_eduvids_shaded", False) and self.should_apply_shading:
+            try:
+                return _lit(self, vmobject, graded)
+            except Exception:
+                pass
+        return _modified_rgbas(self, vmobject, graded)
+
+    def _lit(camera, face, rgbas):
+        # Manim's lighting adds up to half a unit of white toward the light,
+        # flattening a height gradient to one pale tone. House surfaces get a
+        # two-sided Lambert term that keeps the hue, plus a soft highlight.
+        from manim.mobject.three_d.three_d_utils import get_3d_vmob_unit_normal
+
+        points = face.points
+        normal = get_3d_vmob_unit_normal(face, 0)
+        to_light = camera.light_source.points[0] - points[0]
+        to_light = to_light / (np.linalg.norm(to_light) or 1)
+        facing = abs(float(np.dot(normal, to_light)))
+        lit = np.array(rgbas, dtype=float)
+        lit[:, :3] = np.clip(lit[:, :3] * (0.5 + 0.75 * facing) + 0.22 * facing ** 16, 0, 1)
+        return lit
 
     _modified_graded.__eduvids_graded__ = True
     ThreeDCamera.modified_rgbas = _modified_graded
+
+# Canvas: a soft radial vignette around BG instead of a flat fill, lifting
+# the centre of the frame where the content sits. Lightly dithered so the
+# gradient does not band after encoding. Transparent cameras (the watermark)
+# keep their empty background.
+VIGNETTE_CENTER = "#15171C"
+VIGNETTE_EDGE = "#08090B"
+_vignettes = {}
+
+
+def vignette(width, height):
+    key = (width, height)
+    if key not in _vignettes:
+        ys, xs = np.mgrid[0:height, 0:width].astype(np.float32)
+        nx = (xs - width / 2) / (width / 2)
+        ny = (ys - height * 0.46) / (height / 2)
+        r = np.clip(np.sqrt(nx * nx * 0.62 + ny * ny * 0.9), 0, 1.4) / 1.4
+        t = (r * r * (3 - 2 * r))[:, :, None]
+        center = _rgb(VIGNETTE_CENTER).astype(np.float32) * 255
+        edge = _rgb(VIGNETTE_EDGE).astype(np.float32) * 255
+        noise = np.random.default_rng(7).random((height, width, 1), dtype=np.float32) - 0.5
+        rgb = np.clip(center * (1 - t) + edge * t + noise, 0, 255)
+        _vignettes[key] = rgb.astype(np.uint8)
+    return _vignettes[key]
+
+
+_init_background = Camera.init_background
+if not getattr(_init_background, "__eduvids_vignette__", False):
+
+    def _vignette_background(self):
+        _init_background(self)
+        if self.background_image is None and self.background_opacity >= 1 and self.n_channels == 4:
+            self.background[:, :, :3] = vignette(self.pixel_width, self.pixel_height)
+
+    _vignette_background.__eduvids_vignette__ = True
+    Camera.init_background = _vignette_background
+
+# Glow: curves, traced paths, dots and vectors are drawn over two soft
+# halos of their own colour, so the lines the narration follows read as
+# light on the dark canvas. glow(mob) opts anything else in; glow(mob, False)
+# opts out.
+_GLOW_LAYERS = ((4.5, 0.07), (2.5, 0.15))
+_GLOW_DOT_LAYERS = ((0.36, 0.1), (0.22, 0.18))  # frame units around a dot
+
+
+def _glow_types():
+    types = [manim.ParametricFunction, manim.TracedPath, manim.Dot]
+    for name in ("ImplicitFunction", "Vector"):
+        if hasattr(manim, name):
+            types.append(getattr(manim, name))
+    return tuple(types)
+
+
+_GLOWING = _glow_types()
+
+
+def _glows(vmobject):
+    flag = getattr(vmobject, "_eduvids_glow", None)
+    if flag is not None:
+        return flag
+    return isinstance(vmobject, _GLOWING)
+
+
+def glow(mob, on=True):
+    """Draw ``mob`` (and its parts) with the house glow, or without it."""
+    for part in mob.get_family():
+        part._eduvids_glow = on
+    return mob
+
+
+_apply_stroke = Camera.apply_stroke
+if not getattr(_apply_stroke, "__eduvids_glow__", False):
+    import cairo
+
+    def _glowing_stroke(self, ctx, vmobject, background=False):
+        if not background:
+            try:
+                if _glows(vmobject):
+                    _draw_glow(self, ctx, vmobject)
+            except Exception:  # glow is decoration; never fail a frame for it
+                pass
+        return _apply_stroke(self, ctx, vmobject, background)
+
+    def _draw_glow(self, ctx, vmobject):
+        width = vmobject.get_stroke_width()
+        if width > 0 and vmobject.get_stroke_opacity() > 0.05:
+            rgbas = np.array(self.get_stroke_rgbas(vmobject), dtype=float)
+            layers = [(width * factor * self.cairo_line_width_multiple, alpha) for factor, alpha in _GLOW_LAYERS]
+        elif isinstance(vmobject, manim.Dot) and vmobject.get_fill_opacity() > 0.05:
+            rgbas = np.array(self.get_fill_rgbas(vmobject), dtype=float)
+            layers = list(_GLOW_DOT_LAYERS)
+        else:
+            return
+        ctx.save()  # the path survives; cap, join and colour are restored
+        ctx.set_line_cap(cairo.LINE_CAP_ROUND)
+        ctx.set_line_join(cairo.LINE_JOIN_ROUND)
+        for line_width, alpha in layers:
+            halo = rgbas.copy()
+            halo[:, 3] *= alpha
+            self.set_cairo_context_color(ctx, halo, vmobject)
+            ctx.set_line_width(line_width)
+            ctx.stroke_preserve()
+        ctx.restore()
+
+    _glowing_stroke.__eduvids_glow__ = True
+    Camera.apply_stroke = _glowing_stroke
 
 # ---------------------------------------------------------------------------
 # Text: Inter Tight. Small sizes are set large and scaled down, because Pango
@@ -188,6 +322,40 @@ def _fit_frame(mob):
     return mob
 
 
+# Common short words in all-caps tags. Any other word of three letters or
+# fewer is taken for an acronym ("DNA", "FFT") and kept in capitals.
+_SMALL_WORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "do", "for", "how", "in",
+    "is", "it", "its", "of", "on", "or", "the", "to", "vs", "why", "who", "you",
+    "our", "we", "big", "key", "new", "old", "one", "two", "end", "all", "but",
+    "can", "not", "now", "way", "let", "set", "use", "up", "out", "sum", "law",
+    "map", "top", "low", "odd", "try", "get", "go", "so", "no", "my", "me",
+}
+
+
+def sentence_case(text):
+    """'WORKED EXAMPLE' -> 'Worked example'; 'DNA REPLICATION' -> 'DNA replication'.
+
+    Block-capital tags ("SUMMARY", "KEY IDEA") read as template chrome, so
+    all-caps copy is set in sentence case. Mixed-case text is left alone.
+    """
+    words = re.findall(r"[A-Z]+", text)
+    if not text.isupper() or not any(len(w) > 3 or w.lower() in _SMALL_WORDS for w in words):
+        return text
+
+    def word(match):
+        w = match.group(0)
+        if len(w) <= 3 and w.lower() not in _SMALL_WORDS:
+            return w
+        return w.lower()
+
+    out = re.sub(r"[A-Z]+", word, text)
+    for i, c in enumerate(out):
+        if c.isalpha():
+            return out[:i] + c.upper() + out[i + 1:]
+    return out
+
+
 def _house_text(base):
     class HouseText(base):
         def __init__(self, text, *args, _fit=True, **kwargs):
@@ -195,6 +363,8 @@ def _house_text(base):
             if isinstance(text, str):
                 # Typographic apostrophes, as on the thumbnails ("Euler’s").
                 text = _APOSTROPHE.sub("\u2019", text)
+                if base is manim.Text:
+                    text = sentence_case(text)
             kwargs["font"] = FONT
             size = kwargs.get("font_size") or manim.DEFAULT_FONT_SIZE
             weight = str(kwargs.get("weight") or "").upper()
@@ -294,9 +464,32 @@ HOUSE_TEX_TEMPLATE.add_to_preamble("\n".join([
 _STOCK_TEX_TEMPLATE = TexTemplate()
 _FALLBACK_TEX_TEMPLATE = TexTemplate(post_doc_commands=_size_command)
 config.tex_template = HOUSE_TEX_TEMPLATE
-# Axis numbers at caption size and small arrowheads, so the axes stay
-# quieter than the content they carry.
-manim.NumberLine.set_default(font_size=24, tip_width=0.18, tip_height=0.18)
+
+# ---------------------------------------------------------------------------
+# Graphs: bold, round-capped curves on quiet axes. Axis numbers sit at
+# caption size with small arrowheads, so the axes stay quieter than the
+# content they carry; plane grids are faint guides in the primary hue.
+# ---------------------------------------------------------------------------
+
+AXIS_COLOR = ManimColor(_mix(MUTED, INK, 0.25))
+CURVE_WIDTH = 6
+manim.NumberLine.set_default(
+    font_size=26, tip_width=0.2, tip_height=0.2, color=AXIS_COLOR, stroke_width=2.5,
+)
+manim.ParametricFunction.set_default(stroke_width=CURVE_WIDTH)
+manim.Dot.set_default(radius=0.1)
+manim.NumberPlane.set_default(
+    background_line_style={
+        "stroke_color": ManimColor(_mix(_roles[0], BG, 0.35)),
+        "stroke_width": 1.4,
+        "stroke_opacity": 0.4,
+    },
+    faded_line_style={
+        "stroke_color": ManimColor(_mix(_roles[0], BG, 0.35)),
+        "stroke_width": 0.8,
+        "stroke_opacity": 0.18,
+    },
+)
 
 
 def _is_stock(template):
@@ -397,13 +590,13 @@ EDGE = 0.6          # margin from every frame edge
 HEADER_GAP = 0.5    # space between the header and the content below it
 
 
-def header(title, eyebrow=None, font_size=44):
-    """Section title with an optional uppercase eyebrow, at the upper left."""
-    parts = []
-    if eyebrow:
-        parts.append(Text(str(eyebrow).upper(), font_size=22, color=MUTED))
-    parts.append(balanced_text(str(title), font_size=font_size, max_lines=2))
-    group = manim.VGroup(*parts).arrange(manim.DOWN, aligned_edge=manim.LEFT, buff=0.22)
+def header(title, eyebrow=None, font_size=52):
+    """Section title at the upper left, the same place in every scene.
+
+    ``eyebrow`` is accepted for older scripts and ignored: small block-capital
+    tags above titles ("SUMMARY", "WORKED EXAMPLE") read as template chrome.
+    """
+    group = manim.VGroup(balanced_text(str(title), font_size=font_size, max_lines=2))
     group.to_corner(manim.UL, buff=EDGE)
     return group
 
@@ -427,6 +620,88 @@ def place_in_content(mob, above=None, fill=0.86, max_scale=1.6):
         mob.scale(factor)
     mob.move_to(center)
     return mob
+
+
+# ---------------------------------------------------------------------------
+# 3D: surfaces are lit by height, deep and saturated in the valleys and
+# bright on the peaks, with a fine tonal mesh instead of Manim's grey grid
+# and blue checkerboard. A surface the script colours itself (a checkerboard
+# of distinct colours, set_fill_by_value) keeps the script's colours.
+# ---------------------------------------------------------------------------
+
+def shade_surface(surface, color=None, opacity=None, mesh=True):
+    """Colour a Surface by height in one hue, from shadow to highlight."""
+    faces = [face for face in surface.submobjects if face.has_points()]
+    if not faces:
+        return surface
+    base = ManimColor(color) if color is not None else PRIMARY
+    base_hex = base.to_hex()
+    low, high = _mix(base_hex, BG, 0.72), _mix(base_hex, INK, 0.5)
+    heights = np.array([face.get_center()[2] for face in faces])
+    span = heights.max() - heights.min()
+    if span < 1e-6:
+        # A flat sheet: shade by distance from its middle instead.
+        centers = np.array([face.get_center()[:2] for face in faces])
+        heights = -np.linalg.norm(centers - centers.mean(axis=0), axis=1)
+        span = heights.max() - heights.min() or 1.0
+    levels = (heights - heights.min()) / span
+    for face, t in zip(faces, levels):
+        tone = _mix(low, base_hex, t / 0.6) if t < 0.6 else _mix(base_hex, high, ((t - 0.6) / 0.4) ** 1.5)
+        face.set_fill(tone, opacity=face.get_fill_opacity() if opacity is None else opacity)
+        face._eduvids_shaded = True
+        if mesh:
+            face.set_stroke(_mix(tone, INK, 0.25), width=0.5, opacity=0.25)
+    return surface
+
+
+_surface_init = manim.Surface.__init__
+_surface_checkerboard = manim.Surface.set_fill_by_checkerboard
+if not getattr(_surface_init, "__eduvids_shaded__", False):
+
+    def _shaded_init(self, *args, **kwargs):
+        _surface_init(self, *args, **kwargs)
+        try:
+            colors = self.checkerboard_colors or [self.fill_color]
+            hexes = {ManimColor(c).to_hex() for c in colors}
+            stock = {ManimColor(manim.BLUE_D).to_hex(), ManimColor(manim.BLUE_E).to_hex()}
+            if hexes <= stock:
+                base = PRIMARY  # Manim's default blue: use the video's palette
+            elif len(hexes) == 1:
+                base = ManimColor(hexes.pop())
+            else:
+                return
+            mesh = "stroke_color" not in kwargs and "stroke_width" not in kwargs
+            shade_surface(self, base, mesh=mesh)
+        except Exception as error:
+            manim.logger.warning(f"surface shading skipped: {error}")
+        finally:
+            self._eduvids_ready = True
+
+    def _shaded_checkerboard(self, *colors, opacity=None):
+        if getattr(self, "_eduvids_ready", False) and len({ManimColor(c).to_hex() for c in colors}) == 1:
+            # A single-colour "checkerboard" asks for a solid surface: shade it.
+            return shade_surface(self, colors[0], opacity=opacity, mesh=False)
+        return _surface_checkerboard(self, *colors, opacity=opacity)
+
+    _shaded_init.__eduvids_shaded__ = True
+    manim.Surface.__init__ = _shaded_init
+    manim.Surface.set_fill_by_checkerboard = _shaded_checkerboard
+
+# ---------------------------------------------------------------------------
+# Motion: entrances with a little overshoot, so reveals land with energy.
+# ---------------------------------------------------------------------------
+
+
+def pop_in(*mobjects, scale=0.6, run_time=0.7, **kwargs):
+    """Grow in from ``scale`` with a slight overshoot: a reveal that lands."""
+    kwargs.setdefault("rate_func", manim.rate_functions.ease_out_back)
+    anims = [manim.FadeIn(mob, scale=scale, run_time=run_time, **kwargs) for mob in mobjects]
+    return anims[0] if len(anims) == 1 else manim.AnimationGroup(*anims, lag_ratio=0.12)
+
+
+def pulse(mob, color=None, scale=1.12, run_time=0.6):
+    """A quick swell-and-settle on the thing being named, in ACCENT."""
+    return manim.Indicate(mob, color=color or ACCENT, scale_factor=scale, run_time=run_time)
 
 
 # ---------------------------------------------------------------------------
@@ -745,5 +1020,6 @@ __all__ = [
     "PRIMARY", "ACCENT", "SECONDARY", "TERTIARY", "INK", "MUTED", "BG",
     "HOUSE_TEX_TEMPLATE",
     "Text", "MarkupText", "MathTex", "Tex", "balanced_text",
-    "header", "content_box", "place_in_content", *_named,
+    "header", "content_box", "place_in_content", "sentence_case",
+    "glow", "shade_surface", "pop_in", "pulse", "AXIS_COLOR", *_named,
 ]

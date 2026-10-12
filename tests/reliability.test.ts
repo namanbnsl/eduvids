@@ -675,10 +675,10 @@ class Last(Scene):
   try {
     await writeFile(script, enhanced);
     await exec("python3", ["-m", "py_compile", script]);
-    assert.equal(enhanced.match(/PREVIOUS VIDEO/g)?.length, 1);
-    assert.ok(
-      enhanced.indexOf("PREVIOUS VIDEO") > enhanced.indexOf("class Last"),
-    );
+    assert.equal(enhanced.match(/Watch next/g)?.length, 1);
+    assert.ok(enhanced.indexOf("Watch next") > enhanced.indexOf("class Last"));
+    // No block-capital tags on the end card.
+    assert.doesNotMatch(enhanced, /Text\("[A-Z ]{5,}"/);
     assert.match(enhanced, /Link in description and top comment/);
     // The end card uses the house typography, not a hard-coded font.
     assert.doesNotMatch(enhanced, /font=/);
@@ -749,6 +749,22 @@ test("thumbnail specs share one palette per video and keep each title's copy", (
   });
   assert.ok(bare.every(({ headline }) => headline === ""));
   assert.equal(bare[0].visual.type, "function_plot");
+
+  // Frames from the video lead the first candidates, keeping the drawn
+  // visual as a fallback; the last candidate stays drawn.
+  const framed = buildThumbnailSpecs({
+    titles: { ...titles, thumbnailConcepts: [...titles.thumbnailConcepts] },
+    topic: "derivative of e^x",
+    designSeed: "job-123",
+    frames: ["/f/0.png", "/f/1.png", "/f/2.png"],
+  });
+  assert.deepEqual(framed[0].visual, {
+    type: "frame",
+    path: "/f/0.png",
+    fallback: { type: "function_plot", expression: "exp(x)" },
+  });
+  assert.equal(framed[1].visual.type, "frame");
+  assert.equal(framed[2].visual.type, "equation");
 });
 
 async function thumbnailToolchainAvailable() {
@@ -1019,7 +1035,12 @@ config.media_dir = ${JSON.stringify(join(folder, "media"))}
 text, math = Text("H"), MathTex(r"\\text{H}")
 long = Text("An extremely long single line of copy that would run off the frame")
 card = balanced_text("Generate your own educational videos for free", font_size=48, max_width=6)
+titled = header("Transform of a constant", eyebrow="WORKED EXAMPLE")
+surface = Surface(lambda u, v: [u, v, u * v], u_range=[-1, 1], v_range=[-1, 1], resolution=6)
 print(json.dumps({
+    "tags": [Text(tag).original_text for tag in ("SUMMARY", "KEY IDEA", "DNA REPLICATION", "FFT")],
+    "header_parts": len(titled.submobjects),
+    "surface_tones": len({face.get_fill_color().to_hex() for face in surface}),
     "text": text.height, "math": math.height,
     "font": text.font, "blue": BLUE.to_hex(), "primary": PRIMARY.to_hex(),
     "long": long.width, "limit": config.frame_width - 1,
@@ -1035,9 +1056,20 @@ print(json.dumps({
     const result = JSON.parse(stdout.trim().split("\n").pop()!);
     assert.equal(result.font, "Inter Tight");
     assert.ok(Math.abs(result.math / result.text - 1) < 0.02, stdout);
-    assert.equal(result.blue.toUpperCase(), "#6AAEE8");
-    assert.equal(result.primary.toUpperCase(), "#6AAEE8");
+    assert.equal(result.blue.toUpperCase(), "#4EA8FF");
+    assert.equal(result.primary.toUpperCase(), "#4EA8FF");
     assert.ok(result.long <= result.limit + 1e-6);
+    // No block-capital tags: all-caps copy is set in sentence case, acronyms
+    // survive, and header() drops the eyebrow.
+    assert.deepEqual(result.tags, [
+      "Summary",
+      "Key idea",
+      "DNA replication",
+      "FFT",
+    ]);
+    assert.equal(result.header_parts, 1);
+    // Surfaces are shaded by height, not a two-tone checkerboard.
+    assert.ok(result.surface_tones > 4, stdout);
     assert.ok(result.card <= 6 + 1e-6);
     assert.ok(result.lines.length >= 2);
     // Wrapped, not shrunk: each line keeps roughly the requested size.
