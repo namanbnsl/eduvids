@@ -3,6 +3,7 @@ import { WorkflowNonRetryableError } from "@upstash/workflow";
 import { createHash } from "node:crypto";
 
 import {
+  alignVoiceoverDurations,
   detectLanguage,
   enforceVoiceoverService,
   generateVoiceoverScript,
@@ -173,12 +174,15 @@ export const { POST } = serve<VideoGenerationPayload>(
     });
 
     await context.run("ensure-manim-voiceover-timing-v3", async () => {
-      const [currentScript, voiceoverScript, storedScenePlan] =
+      const [storedScript, voiceoverScript, storedScenePlan] =
         await Promise.all([
           artifactStore.get(jobId, "manimScript"),
           artifactStore.get(jobId, "voiceoverScript"),
           artifactStore.get(jobId, "scenePlan"),
         ]);
+      const currentScript = alignVoiceoverDurations(storedScript);
+      if (currentScript !== storedScript)
+        await artifactStore.set(jobId, "manimScript", currentScript);
       const scenePlan = normalizeScenePlanTiming(JSON.parse(storedScenePlan));
       const expectedBeatCount = scenePlan.reduce(
         (count, scene) => count + scene.beats.length,
@@ -392,9 +396,25 @@ export const { POST } = serve<VideoGenerationPayload>(
           sessionId: chatId,
           voiceoverLanguage,
         });
-        if (fixed === script) throw new Error("Script repair made no changes");
-        await artifactStore.set(jobId, `repaired-${attempt}`, fixed);
-        await artifactStore.set(jobId, "manimScript", fixed);
+        // A repair that changes nothing would fail the same way again, so
+        // start over from the plan instead of retrying an identical script.
+        const next =
+          fixed !== script
+            ? fixed
+            : await generateManimScript({
+                prompt: generationPrompt,
+                voiceoverScript: await artifactStore.get(
+                  jobId,
+                  "voiceoverScript",
+                ),
+                sessionId: chatId,
+                scenePlan: JSON.parse(
+                  await artifactStore.get(jobId, "scenePlan"),
+                ),
+                voiceoverLanguage,
+              });
+        await artifactStore.set(jobId, `repaired-${attempt}`, next);
+        await artifactStore.set(jobId, "manimScript", next);
       });
     }
     if (!prepared)

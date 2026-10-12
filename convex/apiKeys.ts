@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
 const WINDOW_24H_MS = 86_400_000; // 24 hours
@@ -143,7 +143,7 @@ export const selectKey = mutation({
       args.numKeys < 1 ||
       args.numKeys > 100
     ) {
-      throw new Error("numKeys must be an integer between 1 and 100");
+      throw new ConvexError("numKeys must be an integer between 1 and 100");
     }
     const now = Date.now();
     const policy = resolveModelPolicy(args.model);
@@ -210,7 +210,7 @@ export const selectKey = mutation({
       .sort((a, b) => a.keyIndex - b.keyIndex);
 
     if (keys.length === 0) {
-      throw new Error(
+      throw new ConvexError(
         `No API keys registered for ${args.provider}/${args.model}`,
       );
     }
@@ -303,7 +303,7 @@ export const selectKey = mutation({
           ? null
           : Math.ceil(shortestWait / 1000);
 
-      throw new Error(
+      throw new ConvexError(
         waitSeconds == null
           ? `No available API keys for ${args.provider}/${args.model}; all keys are blocked.`
           : `No available API keys for ${args.provider}/${args.model}; retry after ~${waitSeconds}s.`,

@@ -16,6 +16,7 @@ import {
   renderJobCommand,
 } from "../src/lib/workflow/sandbox-jobs";
 import {
+  alignVoiceoverDurations,
   configureVoiceoverServicePrompt,
   enforceVoiceoverService,
   fixManimScript,
@@ -458,6 +459,31 @@ test("voiceover timing rejects long idle blocks before rendering", () => {
   assert.ok(issues.some((issue) => issue.includes("maximum is 22")));
   assert.ok(issues.some((issue) => issue.includes("final duration")));
   assert.ok(issues.some((issue) => issue.includes("2 planned beats")));
+});
+
+test("voiceover aligner closes every block with the guarded wait", () => {
+  const loose = `class Scene01(VoiceoverScene):
+    def construct(self):
+        with self.voiceover(text="First the diagram appears.") as tracker:
+            self.play(FadeIn(diagram), run_time=1)
+            self.wait(tracker.get_remaining_duration())
+        with self.voiceover(text="Then the arrow moves.") as t2:
+            self.play(arrow.animate.shift(RIGHT))
+            if show_label:
+                self.add(label)
+        # pause between beats
+        with self.voiceover(text="Already aligned.") as tracker:
+            self.play(Write(eq))
+            self.wait(max(0, tracker.get_remaining_duration()))
+        self.wait(1)`;
+  assert.ok(manimVoiceoverTimingIssues(loose, 3).length > 0);
+  const aligned = alignVoiceoverDurations(loose);
+  assert.deepEqual(manimVoiceoverTimingIssues(aligned, 3), []);
+  assert.match(
+    aligned,
+    /                self\.add\(label\)\n            self\.wait\(max\(0, t2\.get_remaining_duration\(\)\)\)\n/,
+  );
+  assert.equal(alignVoiceoverDurations(aligned), aligned);
 });
 
 test("voiceover timing accepts direct reveals and isolated narration holds", () => {

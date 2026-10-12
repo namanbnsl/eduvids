@@ -494,6 +494,59 @@ export function configureVoiceoverServicePrompt(
     );
 }
 
+// The model often ends a voiceover block without the closing hold, or writes it
+// unguarded. Both are mechanical to fix, so close every block the same way
+// instead of failing generation and spending another LLM call.
+export function alignVoiceoverDurations(script: string): string {
+  const lines = script.split("\n");
+
+  for (let index = 0; index < lines.length; index++) {
+    const header =
+      /^(\s*)with\s+self\.voiceover\(\s*text\s*=[\s\S]+\)\s+as\s+(\w+)\s*:\s*$/.exec(
+        lines[index],
+      );
+    if (!header) continue;
+
+    const blockIndent = indentationWidth(header[1]);
+    const tracker = header[2];
+    let bodyEnd = lines.length;
+    let lastBodyLine = -1;
+    let bodyIndent: string | undefined;
+    for (let candidate = index + 1; candidate < lines.length; candidate++) {
+      const trimmed = lines[candidate].trim();
+      if (!trimmed) continue;
+      if (trimmed.startsWith("#")) continue;
+      if (indentationWidth(lines[candidate]) <= blockIndent) {
+        bodyEnd = candidate;
+        break;
+      }
+      bodyIndent ??= lines[candidate].match(/^[ \t]*/)?.[0];
+      lastBodyLine = candidate;
+    }
+    if (lastBodyLine < 0 || bodyIndent === undefined) continue;
+
+    const canonical = `self.wait(max(0, ${tracker}.get_remaining_duration()))`;
+    const remaining = `${tracker}\\s*\\.\\s*get_remaining_duration\\(\\s*\\)`;
+    const looseWait = new RegExp(
+      `self\\.wait\\(\\s*(?:${remaining}|max\\(\\s*${remaining}\\s*,\\s*0(?:\\.0*)?\\s*\\)|max\\(\\s*0(?:\\.0*)?\\s*,\\s*${remaining}\\s*\\))\\s*(?:,[^()]*)?\\)`,
+      "g",
+    );
+    let aligned = false;
+    for (let line = index + 1; line <= lastBodyLine; line++) {
+      lines[line] = lines[line].replace(looseWait, canonical);
+      if (lines[line].includes(canonical)) aligned = true;
+    }
+
+    if (!aligned) {
+      lines.splice(lastBodyLine + 1, 0, `${bodyIndent}${canonical}`);
+      bodyEnd += 1;
+    }
+    index = bodyEnd - 1;
+  }
+
+  return lines.join("\n");
+}
+
 export function manimVoiceoverTimingIssues(
   script: string,
   expectedBeatCount = 0,
@@ -1163,7 +1216,10 @@ export async function generateManimScript({
           "Manim script generation returned no renderable scene class",
         );
       }
-      const enforced = enforceVoiceoverService(sanitized, detectedLanguage);
+      const enforced = enforceVoiceoverService(
+        alignVoiceoverDurations(sanitized),
+        detectedLanguage,
+      );
       const expectedBeatCount =
         timedScenePlan?.reduce(
           (count, scene) => count + (scene.beats?.length ?? 0),
@@ -1532,8 +1588,9 @@ function fixManimScriptHeuristically(
   script: string,
   errors: string,
 ): HeuristicFixResult {
-  let updated = script;
-  const notes: string[] = [];
+  let updated = alignVoiceoverDurations(script);
+  const notes: string[] =
+    updated === script ? [] : ["closed voiceover blocks with the aligned wait"];
 
   // fix_in_frame() is ManimGL-only; Manim Community uses self.add_fixed_in_frame_mobjects()
   if (

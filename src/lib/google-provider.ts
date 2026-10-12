@@ -2,6 +2,7 @@ import {
   createGoogleGenerativeAI,
   type GoogleGenerativeAIProvider,
 } from "@ai-sdk/google";
+import { ConvexError } from "convex/values";
 import { safeError } from "./workflow/errors";
 import { getConvexClient, api } from "./convex-server";
 
@@ -33,11 +34,20 @@ export const createGoogleProvider = async (
   if (!googleApiKeys.length)
     throw new Error("Missing Google Generative AI API keys");
   const convex = getConvexClient();
-  const { keyIndex } = await convex.mutation(apiKeysApi.selectKey, {
-    provider: PROVIDER_NAME,
-    model,
-    numKeys: googleApiKeys.length,
-  });
+  // Convex replaces plain error messages with "Server Error" in production;
+  // selectKey throws ConvexError so the reason (e.g. every key rate limited)
+  // reaches the workflow logs instead.
+  const { keyIndex } = await convex
+    .mutation(apiKeysApi.selectKey, {
+      provider: PROVIDER_NAME,
+      model,
+      numKeys: googleApiKeys.length,
+    })
+    .catch((e: unknown) => {
+      if (e instanceof ConvexError && typeof e.data === "string")
+        throw new Error(`Google API key selection failed: ${e.data}`);
+      throw e;
+    });
 
   const apiKey = googleApiKeys[keyIndex];
 
