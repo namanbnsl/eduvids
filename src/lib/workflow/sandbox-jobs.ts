@@ -276,7 +276,8 @@ if settings['watermark']:
     args += ['-vf', "drawtext=fontfile=" + watermark_font + ":text='eduvids':${WATERMARK_STYLE}", '-c:v', 'libx264', '-crf', '18', '-preset', 'fast', '-pix_fmt', 'yuv420p']
 else:
     args += ['-c:v', 'copy']
-args += ['-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', str(output)]
+# 128 kbit/s stereo AAC, what YouTube delivers; the narration is speech.
+args += ['-c:a', 'aac', '-b:a', '128k', '-shortest', '-movflags', '+faststart', str(output)]
 run(args)
 duration(output)
 `;
