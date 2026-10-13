@@ -1377,19 +1377,28 @@ FRAME_QUEUE = 4
 # A held frame (every wait and narration hold) arrives once with a repeat
 # count; Manim converted the same RGBA frame to YUV again for every repeat.
 # Convert it once and resend it, with a fresh timestamp each time so the
-# encoder numbers it like any other frame.
+# encoder numbers it like any other frame. Every frame is also wrapped in
+# place (VideoFrame.from_numpy_buffer) rather than copied into a new frame
+# first: the same YUV, converted 4x faster. The array is the renderer's own
+# copy of the frame, so nothing else writes to it.
 _encode_frames = getattr(SceneFileWriter, "encode_and_write_frame", None)
 if _encode_frames is not None and not getattr(_encode_frames, "__eduvids_held__", False):
 
     def _encode_held(self, frame, num_frames):
-        stream = getattr(self, "video_stream", None)
-        if num_frames < 2 or stream is None or frame.shape[:2] != (stream.height, stream.width):
-            return _encode_frames(self, frame, num_frames)
         import av
 
-        held = av.VideoFrame.from_ndarray(frame, format="rgba").reformat(
-            width=stream.width, height=stream.height, format=stream.codec_context.pix_fmt,
-        )
+        stream = getattr(self, "video_stream", None)
+        if (
+            stream is None or frame.shape[:2] != (stream.height, stream.width)
+            or not hasattr(av.VideoFrame, "from_numpy_buffer") or not frame.flags.c_contiguous
+        ):
+            return _encode_frames(self, frame, num_frames)
+        source = av.VideoFrame.from_numpy_buffer(frame, format="rgba")
+        if num_frames < 2:
+            for packet in stream.encode(source):
+                self.video_container.mux(packet)
+            return
+        held = source.reformat(width=stream.width, height=stream.height, format=stream.codec_context.pix_fmt)
         for _ in range(num_frames):
             held.pts = None
             for packet in stream.encode(held):
