@@ -1476,6 +1476,34 @@ if WATERMARK and WATERMARK != "__EDUVIDS_" + "WATERMARK__":
     SceneFileWriter.write_frame = _write_marked
 
 # ---------------------------------------------------------------------------
+# Scene soundtracks: Manim encodes each scene's audio to AAC only because an
+# MP4 will not hold WAV. The postprocess decodes every scene's audio again and
+# encodes the final soundtrack once, so store it losslessly (ALAC, also valid
+# in MP4): 5x cheaper than AAC, and one lossy generation fewer.
+# ---------------------------------------------------------------------------
+
+import manim.scene.scene_file_writer as _writer_module
+
+_convert_audio = _writer_module.convert_audio
+if not getattr(_convert_audio, "__eduvids_lossless__", False):
+
+    def _convert_lossless(input_path, output_path, codec_name):
+        if codec_name != "aac":
+            return _convert_audio(input_path, output_path, codec_name)
+        import av
+
+        with av.open(input_path) as source, av.open(output_path, "w", format="ipod") as output:
+            stream = output.add_stream("alac", rate=source.streams.audio[0].rate)
+            for frame in source.decode(source.streams.audio[0]):
+                for packet in stream.encode(frame):
+                    output.mux(packet)
+            for packet in stream.encode():
+                output.mux(packet)
+
+    _convert_lossless.__eduvids_lossless__ = True
+    _writer_module.convert_audio = _convert_lossless
+
+# ---------------------------------------------------------------------------
 # Errors: an exception raised while an animation plays (in an updater, an
 # always_redraw function, an interpolation) left Manim's encoder thread waiting
 # for frames forever, so the process never exited and the render job ran into
