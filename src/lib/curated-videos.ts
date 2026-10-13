@@ -3,7 +3,7 @@ export type CuratedVideo = {
   videoId: string;
   title: string;
   description: string;
-  subject: "Mathematics" | "Physics";
+  subject: "Mathematics" | "Physics" | "Chemistry" | "Probability";
   format: "Video" | "Short";
   publishedAt: string;
   featured?: boolean;
@@ -14,6 +14,49 @@ export type CuratedVideo = {
 // becoming public site pages automatically.
 export const CURATED_VIDEOS: CuratedVideo[] = [
   {
+    slug: "why-carbon-builds-organic-chemistry",
+    videoId: "EbyO-bgEnM0",
+    title: "Why Carbon Builds All of Organic Chemistry",
+    description:
+      "See how carbon’s four valence electrons let it form stable chains, rings and double bonds, the backbone behind every molecule in organic chemistry.",
+    subject: "Chemistry",
+    format: "Video",
+    publishedAt: "2026-10-13T00:00:00Z",
+    featured: true,
+  },
+  {
+    slug: "why-chemical-bonds-glow-without-heat",
+    videoId: "cSnrCTN_o48",
+    title: "Why Chemical Bonds Glow Without Any Heat",
+    description:
+      "Chemiluminescence explained visually: how a reaction leaves electrons in an excited state, and why they give that energy back as light instead of heat.",
+    subject: "Chemistry",
+    format: "Video",
+    publishedAt: "2026-10-13T00:00:00Z",
+    featured: true,
+  },
+  {
+    slug: "why-area-under-probability-curve-equals-one",
+    videoId: "EL--ACMS2x8",
+    title: "Why the Area Under a Curve Equals 1",
+    description:
+      "Why every probability density curve encloses an area of exactly 1, and how area under the curve becomes probability for a continuous random variable.",
+    subject: "Probability",
+    format: "Video",
+    publishedAt: "2026-10-13T00:00:00Z",
+    featured: true,
+  },
+  {
+    slug: "overlapping-events-inclusion-exclusion",
+    videoId: "7yo13GlUhKo",
+    title: "Why Overlapping Events Break Naive Addition",
+    description:
+      "Why P(A or B) is not simply P(A) + P(B) when events overlap, and how the inclusion–exclusion principle removes the outcomes counted twice.",
+    subject: "Probability",
+    format: "Video",
+    publishedAt: "2026-10-13T00:00:00Z",
+  },
+  {
     slug: "what-is-an-integral-explained-visually",
     videoId: "q9PI-TLRUow",
     title: "What Is an Integral? Calculus Explained Visually",
@@ -22,7 +65,6 @@ export const CURATED_VIDEOS: CuratedVideo[] = [
     subject: "Mathematics",
     format: "Short",
     publishedAt: "2026-09-11T17:52:32Z",
-    featured: true,
   },
   {
     slug: "navier-stokes-equations-from-scratch",
@@ -33,7 +75,6 @@ export const CURATED_VIDEOS: CuratedVideo[] = [
     subject: "Physics",
     format: "Video",
     publishedAt: "2026-09-11T17:41:29Z",
-    featured: true,
   },
   {
     slug: "geometry-of-hyperbolic-space-explained",
@@ -44,7 +85,6 @@ export const CURATED_VIDEOS: CuratedVideo[] = [
     subject: "Mathematics",
     format: "Video",
     publishedAt: "2026-09-11T17:45:21Z",
-    featured: true,
   },
   {
     slug: "complex-integration-from-first-principles",
