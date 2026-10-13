@@ -26,6 +26,12 @@ const Navbar = () => {
             Examples
           </Link>
           <Link
+            href="/topics"
+            className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+          >
+            Topics
+          </Link>
+          <Link
             href="/how-it-works"
             className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
           >

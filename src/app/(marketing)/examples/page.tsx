@@ -4,6 +4,7 @@ import { ArrowUpRight } from "lucide-react";
 
 import { VideoCard } from "@/components/marketing/video-card";
 import { CURATED_VIDEOS } from "@/lib/curated-videos";
+import { TOPICS } from "@/lib/topics";
 import {
   createMarketingMetadata,
   SITE_URL,
@@ -66,6 +67,17 @@ export default function ExamplesPage() {
       </section>
 
       <section className="mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-16">
+        <nav aria-label="Topics" className="mb-8 flex flex-wrap gap-2">
+          {TOPICS.map((topic) => (
+            <Link
+              key={topic.slug}
+              href={`/topics/${topic.slug}`}
+              className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+            >
+              {topic.name}
+            </Link>
+          ))}
+        </nav>
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           {CURATED_VIDEOS.map((video) => (
             <VideoCard key={video.videoId} video={video} />

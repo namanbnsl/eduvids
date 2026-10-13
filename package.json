@@ -13,7 +13,9 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
     "lint:fix": "next lint --fix",
     "preview": "next build && next start",
-    "check": "eslint && tsc --noEmit"
+    "check": "eslint && tsc --noEmit",
+    "youtube:descriptions": "node --import tsx scripts/youtube/update-descriptions.ts",
+    "youtube:transcripts": "node --import tsx scripts/youtube/export-transcripts.ts"
   },
   "dependencies": {
     "@ai-sdk/cerebras": "^2.0.5",

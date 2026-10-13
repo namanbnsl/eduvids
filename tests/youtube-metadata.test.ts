@@ -6,6 +6,8 @@ import {
   buildChapters,
   buildPreviousVideoComment,
   buildYouTubeDescription,
+  DESCRIPTION_CTA,
+  withDescriptionCta,
   parseVideoTitleSet,
   sanitizeThumbnailHeadline,
   sanitizeThumbnailLatex,
@@ -319,4 +321,20 @@ test("description lists chapters before links and ends with hashtags", () => {
     /\n\n0:00 The puzzle\n0:42 Shrinking the gap\n2:05 The limit\n\nPrevious:/,
   );
   assert.ok(result.endsWith("#Math #Calculus"));
+});
+
+test("old descriptions get the current call to action", () => {
+  assert.equal(
+    withDescriptionCta(
+      "Hook.\n\nMake your own visual explanation at https://eduvids.app\n\n#Math #Calculus",
+    ),
+    `Hook.\n\n${DESCRIPTION_CTA}\n\n#Math #Calculus`,
+  );
+  assert.equal(
+    withDescriptionCta("Hook.\n\n#Math #Calculus"),
+    `Hook.\n\n${DESCRIPTION_CTA}\n\n#Math #Calculus`,
+  );
+  assert.equal(withDescriptionCta("Hook."), `Hook.\n\n${DESCRIPTION_CTA}`);
+  assert.equal(withDescriptionCta(`Hook.\n\n${DESCRIPTION_CTA}`), null);
+  assert.equal(withDescriptionCta(""), DESCRIPTION_CTA);
 });

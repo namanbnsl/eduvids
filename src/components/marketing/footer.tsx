@@ -24,6 +24,12 @@ export function MarketingFooter() {
             Examples
           </Link>
           <Link
+            href="/topics"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            Topics
+          </Link>
+          <Link
             href="/how-it-works"
             className="text-muted-foreground hover:text-foreground"
           >

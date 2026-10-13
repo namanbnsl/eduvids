@@ -36,6 +36,7 @@ import { generationFailureMessage, safeError } from "@/lib/workflow/errors";
 import { getConvexClient, api } from "@/lib/convex-server";
 import { uploadImage, uploadVideo } from "@/lib/uploadthing";
 import { jobStore, artifactStore } from "@/lib/job-store";
+import { toStoryboard } from "@/lib/storyboard";
 import { findPreviousYouTubeVideo } from "@/lib/youtube";
 import { videoPalette } from "@/lib/video-style";
 import {
@@ -148,6 +149,11 @@ export const { POST } = serve<VideoGenerationPayload>(
           sessionId: chatId,
         });
         await artifactStore.set(jobId, "scenePlan", JSON.stringify(scenePlan));
+        await jobStore
+          .setStoryboard(jobId, toStoryboard(scenePlan))
+          .catch((error) =>
+            console.warn("Failed to publish storyboard", { jobId, error }),
+          );
         console.log("✅ Scene plan generated", {
           sceneCount: scenePlan.length,
         });

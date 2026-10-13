@@ -24,6 +24,7 @@ import { StyledResponse } from "@/components/ui/styled-response";
 // Icons
 import { Monitor, Smartphone } from "lucide-react";
 import { QuickActionCards } from "@/components/quick-action-cards";
+import { RemixGallery } from "@/components/remix-gallery";
 import { generateTopics } from "@/lib/actions/generate-topics";
 
 // Types
@@ -33,6 +34,8 @@ import type {
   GenerateVideoToolUIPart,
 } from "@/lib/types";
 import { useAuth } from "@clerk/nextjs";
+import posthog from "posthog-js";
+import type { CuratedVideo } from "@/lib/curated-videos";
 
 const VideoPlayer = dynamic(
   () => import("@/components/video-player").then((mod) => mod.VideoPlayer),
@@ -71,6 +74,26 @@ export function GeneratorHome() {
 
   const { messages, status, sendMessage } = useChat<ChatMessage>();
   const hasMessages = messages.length > 0;
+
+  // Links from example and topic pages open the composer with a prompt filled
+  // in: /?prompt=...&mode=video|short
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const prompt = params.get("prompt")?.trim();
+    if (!prompt) return;
+    setInput(prompt.slice(0, 500));
+    const mode = params.get("mode");
+    if (mode === "video" || mode === "short") setGenerationMode(mode);
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
+
+  const handleRemix = (video: CuratedVideo) => {
+    setInput(video.prompt);
+    setGenerationMode(video.format === "Short" ? "short" : "video");
+    setSubmitError(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    posthog.capture("remix_click", { video: video.slug });
+  };
 
   useEffect(() => {
     let isActive = true;
@@ -386,6 +409,8 @@ export function GeneratorHome() {
                   isLoading={areTopicsLoading}
                 />
               </div>
+
+              <RemixGallery onRemix={handleRemix} />
             </div>
           </div>
         )}

@@ -701,6 +701,38 @@ export function buildChapters(
   return chapters.length >= MIN_CHAPTERS ? chapters : [];
 }
 
+export const DESCRIPTION_CTA =
+  "Made with https://eduvids.app (free) · Star it: https://github.com/namanbnsl/eduvids";
+
+/**
+ * Brings an already-published description up to the current call to action.
+ * Replaces the first older eduvids.app line, or adds the line before the
+ * trailing hashtags. Returns null when the description is already current.
+ */
+export function withDescriptionCta(description: string): string | null {
+  if (description.includes(DESCRIPTION_CTA)) return null;
+  if (!description.trim()) return DESCRIPTION_CTA;
+
+  const lines = description.split("\n");
+  const oldCta = lines.findIndex(
+    (line) => /eduvids\.app/i.test(line) && !/github\.com/i.test(line),
+  );
+  if (oldCta !== -1) {
+    lines[oldCta] = DESCRIPTION_CTA;
+    return lines.join("\n");
+  }
+
+  const blocks = description.trimEnd().split(/\n{2,}/);
+  const last = blocks.at(-1) ?? "";
+  const endsWithHashtags = /^(#[\p{L}\p{N}_]+\s*)+$/u.test(last.trim());
+  if (endsWithHashtags && blocks.length > 1) {
+    blocks.splice(blocks.length - 1, 0, DESCRIPTION_CTA);
+  } else {
+    blocks.push(DESCRIPTION_CTA);
+  }
+  return blocks.join("\n\n");
+}
+
 export function buildYouTubeDescription({
   salesCopy,
   topic,
@@ -738,9 +770,7 @@ export function buildYouTubeDescription({
     blocks.push(`Previous: ${previousVideo.title} → ${previousVideo.watchUrl}`);
   }
 
-  blocks.push(
-    "Made with https://eduvids.app (free) · Star it: https://github.com/namanbnsl/eduvids",
-  );
+  blocks.push(DESCRIPTION_CTA);
   if (hashtags.length) blocks.push(hashtags.slice(0, 3).join(" "));
   return blocks.join("\n\n");
 }
