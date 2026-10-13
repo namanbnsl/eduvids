@@ -22,6 +22,7 @@ import {
   fixManimScript,
   manimVoiceoverTimingIssues,
   normalizeScenePlanTiming,
+  scenePlanVisualGaps,
   streamTextWithTracking,
   sanitizeManimScript,
 } from "../src/lib/llm";
@@ -37,6 +38,9 @@ import {
   videoRenderFlags,
 } from "../src/lib/video-style";
 import {
+  MANIM_SYSTEM_PROMPT,
+  SCENE_PLAN_SYSTEM_PROMPT,
+  VOICEOVER_SYSTEM_PROMPT,
   VOICEOVER_SERVICE_IMPORT_TOKEN,
   VOICEOVER_SERVICE_SETTER_TOKEN,
 } from "../src/prompt";
@@ -50,6 +54,7 @@ import {
   generationFailureMessage,
 } from "../src/lib/workflow/errors";
 import type { PreparedSandboxState } from "../src/lib/e2b";
+import type { ScenePlanEntry } from "../src/lib/llm";
 import { uploadThingFetch } from "../src/lib/uploadthing";
 import { EDUVIDS_TTS_SERVICE_SOURCE } from "../src/lib/eduvids-tts-service";
 
@@ -1215,6 +1220,210 @@ test("real Manim geometry keeps grouped labels, overlay lanes and projected 3D l
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
+});
+
+test("storytelling helpers zoom, crowd, spotlight and draw props correctly in real Manim", async (t) => {
+  if (!(await thumbnailToolchainAvailable())) {
+    t.skip("manim and xelatex are not installed");
+    return;
+  }
+  const folder = await mkdtemp(join(tmpdir(), "eduvids-devices-"));
+  try {
+    const assets = await loadVideoStyleAssets("azure-coral");
+    await mkdir(join(folder, "eduvids-fonts"));
+    await writeFile(join(folder, "eduvids_style.py"), assets.module);
+    for (const { name, data } of assets.fonts)
+      await writeFile(join(folder, "eduvids-fonts", name), data);
+    await exec(
+      "python3",
+      [join(process.cwd(), "tests/visual-devices.py"), folder],
+      { cwd: folder, timeout: 240_000 },
+    );
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("every storytelling helper the Manim prompt names is exported by the house style", async () => {
+  const source = await readFile(
+    join(process.cwd(), "src/lib/thumbnail/video_style.py"),
+    "utf8",
+  );
+  const exported = new Set(
+    [...source.matchAll(/__all__\s*\+?=\s*\[([\s\S]*?)\]/g)].flatMap(
+      ([, names]) => [...names!.matchAll(/"(\w+)"/g)].map(([, name]) => name!),
+    ),
+  );
+  const listed = MANIM_SYSTEM_PROMPT.match(
+    /never redefine them: ([^.]+)\./,
+  )![1]!
+    .split(",")
+    .map((name) => name.trim());
+  for (const name of listed) assert.ok(exported.has(name), name);
+  for (const name of [
+    "crowd",
+    "zoom_to",
+    "reveal_detail",
+    "scale_bar",
+    "spotlight",
+    "release",
+    "explode",
+    "assemble",
+    "flow",
+    "to_scale",
+    "ghost",
+    "atom",
+    "molecule",
+    "person",
+    "die",
+    "cell",
+    "link",
+    "block",
+    "balance",
+    "hop",
+    "area_model",
+    "split_bar",
+    "bars",
+    "cells",
+    "network",
+    "timeline",
+    "slider",
+    "callout",
+    "trail",
+    "gas",
+  ]) {
+    assert.ok(listed.includes(name), `prompt lists ${name}`);
+  }
+});
+
+test("the planner names a visual device per scene and the narrator writes for pictures", () => {
+  const devices = [
+    "zoom_journey",
+    "population",
+    "to_scale",
+    "exploded_view",
+    "process_flow",
+    "equation_link",
+    "balance",
+    "number_line",
+    "area_model",
+    "proportion_bar",
+    "chart",
+    "algorithm_steps",
+    "network_walk",
+    "timeline",
+    "parameter_sweep",
+    "labelled_anatomy",
+    "particles",
+    "trajectory",
+    "spotlight",
+    "before_after",
+    "live_tracker",
+    "morph",
+    "predict_reveal",
+    "analogy_morph",
+    "build_up",
+  ];
+  for (const device of devices) {
+    assert.match(SCENE_PLAN_SYSTEM_PROMPT, new RegExp(`"${device}"`));
+  }
+  // Every scene in every example names a device and a storyboard.
+  const examples = SCENE_PLAN_SYSTEM_PROMPT.split("EXAMPLE ").slice(1);
+  assert.ok(examples.length >= 5);
+  for (const example of examples) {
+    const json = example.slice(example.indexOf("["));
+    const scenes = JSON.parse(json.slice(0, json.lastIndexOf("]") + 1));
+    for (const scene of scenes) {
+      assert.ok(devices.includes(scene.visualDevice), scene.sceneId);
+      assert.ok(scene.storyboard.length > 20, scene.sceneId);
+      assert.equal(
+        scene.beats.map((beat: { narration: string }) => beat.narration).join(" "),
+        scene.narration,
+      );
+    }
+  }
+  assert.match(VOICEOVER_SYSTEM_PROMPT, /TRAVEL THROUGH SCALE/);
+  assert.match(VOICEOVER_SYSTEM_PROMPT, /MAKE NUMBERS COUNTABLE/);
+  assert.match(VOICEOVER_SYSTEM_PROMPT, /GIVE EVERY QUANTITY A BODY/);
+  assert.match(SCENE_PLAN_SYSTEM_PROMPT, /Every scene has a hero picture/);
+  assert.match(SCENE_PLAN_SYSTEM_PROMPT, /VISUAL VOCABULARY BY SUBJECT/);
+});
+
+test("prompts carry no control characters from collapsed escapes", () => {
+  // A single backslash in the TypeScript source turns \text into a tab and
+  // \, into a comma, so the model would copy broken LaTeX.
+  for (const prompt of [
+    MANIM_SYSTEM_PROMPT,
+    SCENE_PLAN_SYSTEM_PROMPT,
+    VOICEOVER_SYSTEM_PROMPT,
+  ]) {
+    assert.doesNotMatch(prompt, /[\t\x08\x0b\x0c]/);
+  }
+  for (const latex of MANIM_SYSTEM_PROMPT.matchAll(/r"([^"]*)"/g)) {
+    assert.doesNotMatch(latex[1]!, /(^|[^\\]),\\(?:text|mathrm)/, latex[1]);
+  }
+});
+
+test("scene plan gaps flag text-only, unlinked formula, missing and repeated devices", () => {
+  const scene = (
+    sceneId: string,
+    types: string[],
+    visualDevice?: string,
+  ): ScenePlanEntry => ({
+    sceneId,
+    narration: "x",
+    visualType: "formula_explanation",
+    visualDevice,
+    elements: types.map((type, index) => ({
+      id: `e${index}`,
+      type: type as ScenePlanEntry["elements"][number]["type"],
+      content: "x",
+    })),
+    layout: "center_single",
+    maxSimultaneousElements: 3,
+    transitionIn: "write",
+    clearPrevious: true,
+    labels: [],
+    beats: [],
+  });
+  const gaps = scenePlanVisualGaps([
+    scene("S1", ["text", "math"], "morph"),
+    scene("S2", ["text"], "morph"),
+    scene("S3", ["shape", "math"], "morph"),
+    scene("S4", ["shape", "math"], "equation_link"),
+    scene("S5", ["prop"]),
+  ]);
+  assert.match(gaps.join("\n"), /S1: only text and formulas/);
+  assert.match(gaps.join("\n"), /S2: only text is planned/);
+  assert.match(gaps.join("\n"), /S3: tie the formula/);
+  assert.match(gaps.join("\n"), /S3: third "morph" scene in a row/);
+  assert.ok(!gaps.some((gap) => gap.startsWith("S4")));
+  assert.match(gaps.join("\n"), /S5: no visual device/);
+  assert.deepEqual(
+    scenePlanVisualGaps([scene("Good", ["population"], "population")]),
+    [],
+  );
+});
+
+test("scene timing keeps the planned device and storyboard", () => {
+  const [scene] = normalizeScenePlanTiming([
+    {
+      sceneId: "Scene01Salt",
+      narration: "Here is a grain of salt.",
+      visualType: "geometry_diagram",
+      visualDevice: "zoom_journey",
+      storyboard: "A grain dissolves into a lattice and we zoom into one atom.",
+      elements: [{ id: "grain", type: "shape", content: "square" }],
+      layout: "center_single",
+      maxSimultaneousElements: 2,
+      transitionIn: "fade_in",
+      clearPrevious: true,
+      labels: [],
+      beats: [],
+    },
+  ]);
+  assert.equal(scene!.visualDevice, "zoom_journey");
+  assert.match(scene!.storyboard!, /lattice/);
 });
 
 test("house style sets text and math on one type scale and keeps copy in frame", async (t) => {
