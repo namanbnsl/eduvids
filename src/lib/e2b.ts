@@ -552,12 +552,12 @@ async function installVideoStyle(
   { watermark = false }: { watermark?: boolean } = {},
 ): Promise<void> {
   const assets = await loadVideoStyleAssets(palette, { watermark });
+  // Find and create the font directory in one round trip.
   const site = (
     await sandbox.commands.run(
-      `python -c "import site; print(site.getusersitepackages())"`,
+      `python -c "import os, site; p = site.getusersitepackages(); os.makedirs(os.path.join(p, 'eduvids-fonts'), exist_ok=True); print(p)"`,
     )
   ).stdout.trim();
-  await sandbox.commands.run(`mkdir -p "${site}/eduvids-fonts"`);
   await Promise.all([
     sandbox.files.write(`${site}/eduvids_style.py`, assets.module),
     sandbox.files.write(RENDER_DRIVER_PATH, assets.driver),
@@ -585,23 +585,28 @@ export async function renderThumbnailCandidates({
   topic,
   designSeed,
 }: {
-  prepared: PreparedSandboxState;
+  /** The video's sandbox, if it is idle; otherwise a fresh one is used. */
+  prepared?: PreparedSandboxState;
   titles: VideoTitleSet;
   topic: string;
   designSeed: string;
 }): Promise<ThumbnailRenderResult> {
-  let sandbox: Sandbox;
+  let sandbox: Sandbox | undefined;
   let ownsSandbox = false;
-  try {
-    sandbox = await Sandbox.connect(prepared.sandboxId, {
-      timeoutMs: 3_600_000,
-      requestTimeoutMs: 180_000,
-    });
-  } catch (error) {
-    console.warn(
-      "Video sandbox unavailable for thumbnails; starting a fresh one",
-      error instanceof Error ? error.message : error,
-    );
+  if (prepared) {
+    try {
+      sandbox = await Sandbox.connect(prepared.sandboxId, {
+        timeoutMs: 3_600_000,
+        requestTimeoutMs: 180_000,
+      });
+    } catch (error) {
+      console.warn(
+        "Video sandbox unavailable for thumbnails; starting a fresh one",
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+  if (!sandbox) {
     sandbox = await Sandbox.create(SANDBOX_TEMPLATE, { timeoutMs: 600_000 });
     ownsSandbox = true;
   }
@@ -1652,22 +1657,19 @@ export async function prepareManimSandbox({
     const mediaDir = `/home/user/media`;
     const baseVideosDir = `${mediaDir}/videos`;
 
-    await sandbox.files.write(
-      EDUVIDS_TTS_SERVICE_PATH,
-      EDUVIDS_TTS_SERVICE_SOURCE,
-    );
-    await installVideoStyle(
-      sandbox,
-      palette ?? videoPalette(sessionId ?? prompt),
-      { watermark: applyWatermark },
-    );
-
     let enhancedScript = heuristicFixedScript;
     enhancedScript = applyVideoStyle(enhancedScript);
     enhancedScript = injectSceneFadeOut(enhancedScript);
     enhancedScript = injectEduvidsCallout(enhancedScript, previousVideo);
 
-    await sandbox.files.write(scriptPath, enhancedScript);
+    const ready = sandbox;
+    await Promise.all([
+      ready.files.write(EDUVIDS_TTS_SERVICE_PATH, EDUVIDS_TTS_SERVICE_SOURCE),
+      installVideoStyle(ready, palette ?? videoPalette(sessionId ?? prompt), {
+        watermark: applyWatermark,
+      }),
+      ready.files.write(scriptPath, enhancedScript),
+    ]);
 
     // Pre-render validation
     let currentScript = enhancedScript;
@@ -1713,18 +1715,21 @@ export async function prepareManimSandbox({
       }
     }
 
-    await runCommandOrThrow(buildAstValidationCommand(scriptPath), {
-      description: "AST validation",
-      stage: "ast-guard",
-      timeoutMs: 20_000,
-    });
-
-    await runCommandOrThrow(buildSceneValidationCommand(scriptPath), {
-      description: "Scene validation",
-      stage: "scene-validation",
-      // Importing manim alone takes ~8s on a cold sandbox.
-      timeoutMs: 60_000,
-    });
+    // One round trip: the AST guard must pass before the scene validation
+    // executes the script, so `set -e` stops at the first failure.
+    await runCommandOrThrow(
+      [
+        "set -e",
+        buildAstValidationCommand(scriptPath),
+        buildSceneValidationCommand(scriptPath),
+      ].join("\n"),
+      {
+        description: "AST and scene validation",
+        stage: "scene-validation",
+        // Importing manim alone takes ~8s on a cold sandbox.
+        timeoutMs: 60_000,
+      },
+    );
 
     if (!latexEnvironmentVerified) {
       await runCommandOrThrow(`latex --version`, {

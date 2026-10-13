@@ -64,8 +64,24 @@ class EncodingCompatibilityTests(unittest.TestCase):
                 if codec is not None:
                     self.assertEqual(
                         writer.video_stream.options,
-                        {"crf": "18" if codec == "libx264" else "23", "preset": "medium"},
+                        {"crf": "16", "preset": "superfast", "bf": "0"} if codec == "libx264"
+                        else {"crf": "23", "preset": "medium"},
                     )
+
+    def test_frame_queue_is_bounded(self):
+        from queue import Queue
+
+        class Writer:
+            def open_partial_movie_stream(self, *args, **kwargs):
+                self.video_stream = SimpleNamespace(codec_context=SimpleNamespace(name="libx264"), options={})
+                self.queue = Queue()
+
+        exec(hook, {"SceneFileWriter": Writer})
+        writer = Writer()
+        writer.open_partial_movie_stream()
+        # Manim's queue is unbounded; at 8 MB a 1080p frame that held ~1 GB.
+        self.assertGreater(writer.queue.maxsize, 0)
+        self.assertLessEqual(writer.queue.maxsize, 8)
 
 
 if __name__ == "__main__":

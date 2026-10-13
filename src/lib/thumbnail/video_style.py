@@ -171,10 +171,260 @@ if not getattr(Camera.get_fill_rgbas, "__eduvids_graded__", False):
         graded = _grade(rgbas)
         if getattr(vmobject, "_eduvids_shaded", False) and self.should_apply_shading:
             try:
+                entry = getattr(self, "_eduvids_light", {}).get(id(vmobject))
+                if entry is not None and entry[0] is vmobject:
+                    return _apply_light(graded, entry[1])
                 return _lit(self, vmobject, graded)
             except Exception:
                 pass
         return _modified_rgbas(self, vmobject, graded)
+
+    def _apply_light(rgbas, factors):
+        lit = np.array(rgbas, dtype=float)
+        if len(lit) == 1:
+            lit = lit.repeat(2, axis=0)
+        rows = factors[np.minimum(np.arange(len(lit)), len(factors) - 1)]
+        lit[:, :3] = np.clip(lit[:, :3] * rows[:, None], 0, 1)
+        return lit
+
+    def _unit(vectors, axis=-1):
+        norms = np.linalg.norm(vectors, axis=axis, keepdims=True)
+        return vectors / np.where(norms == 0, 1, norms)
+
+    def _light_factors(camera, faces):
+        """``_lit``'s diffuse factor at both gradient ends, for many faces at
+        once: one numpy pass per frame instead of ~30 small calls per face,
+        twice (fill and stroke) per face."""
+        points = np.array([face.points[:8] for face in faces])
+        coefficients = np.array([face._eduvids_normal_coefficients for face in faces])
+        origin = points[:, 0]
+        a = _unit(points[:, 3] - origin)  # anchors 1 and 3, as in _surface_basis
+        b = _unit(points[:, 7] - origin)
+        basis = np.stack((a, b, _unit(np.cross(a, b))), axis=2)
+        normals = _unit(basis @ coefficients, axis=1)
+        to_light = _unit(camera.light_source.points[0] - origin)
+        facing = np.abs(np.einsum("kij,ki->kj", normals, to_light))
+        return 0.62 + 0.38 * facing
+
+    def _litable(mob):
+        points = getattr(mob, "points", None)
+        return (
+            getattr(mob, "_eduvids_shaded", False)
+            and getattr(mob, "_eduvids_normal_coefficients", None) is not None
+            and getattr(mob, "n_points_per_cubic_curve", 0) == 4
+            and points is not None and len(points) >= 8
+        )
+
+    _stock_reference_point = manim.Mobject.get_z_index_reference_point
+
+    def _depth_key(rotation):
+        def key(mob):
+            if not getattr(mob, "shade_in_3d", False):
+                return np.inf
+            points = mob.points
+            if (
+                isinstance(mob, manim.VMobject) and not mob.submobjects
+                and type(mob).get_z_index_reference_point is _stock_reference_point
+                and getattr(mob, "z_index_group", mob) is mob and len(points) > 1
+            ):
+                # Mobject.get_center() for a leaf VMobject: the box centre of
+                # its anchors, without walking the generic family machinery.
+                step = mob.n_points_per_cubic_curve
+                anchors = np.concatenate((points[::step], points[step - 1::step]))
+                center = (anchors.min(axis=0) + anchors.max(axis=0)) / 2
+            else:
+                center = mob.get_z_index_reference_point()
+            # The same expression as ThreeDCamera's own key, so ties between
+            # patches break exactly as they did.
+            return np.dot(center, rotation.T)[2]
+        return key
+
+    def _depth_keys(mobjects, rotation):
+        """ThreeDCamera's sort keys. Surface patches (leaf VMobjects of 16
+        points) are keyed in one pass; stacked matmul rounds exactly like
+        the per-patch np.dot, so ties break as they always did."""
+        key = _depth_key(rotation)
+        keys = [None] * len(mobjects)
+        patches = []
+        for index, mob in enumerate(mobjects):
+            if (
+                getattr(mob, "shade_in_3d", False) and isinstance(mob, manim.VMobject)
+                and not mob.submobjects and len(mob.points) == 16 and mob.n_points_per_cubic_curve == 4
+                and type(mob).get_z_index_reference_point is _stock_reference_point
+                and getattr(mob, "z_index_group", mob) is mob
+            ):
+                patches.append(index)
+            else:
+                keys[index] = key(mob)
+        if patches:
+            anchors = np.array([mobjects[index].points for index in patches])[:, [0, 4, 8, 12, 3, 7, 11, 15]]
+            centers = (anchors.min(axis=1) + anchors.max(axis=1)) / 2
+            for index, value in zip(patches, np.matmul(centers[:, None, :], rotation.T)[:, 0, 2]):
+                keys[index] = value
+        return keys
+
+    def _get_mobjects_to_display(self, *args, **kwargs):
+        mobjects = Camera.get_mobjects_to_display(self, *args, **kwargs)
+        keys = _depth_keys(mobjects, self.get_rotation_matrix())
+        mobjects = [mobjects[i] for i in sorted(range(len(mobjects)), key=keys.__getitem__)]
+        self._eduvids_light = {}
+        if self.should_apply_shading:
+            faces = [mob for mob in mobjects if _litable(mob)]
+            if faces:
+                try:
+                    factors = _light_factors(self, faces)
+                    self._eduvids_light = {id(face): (face, row) for face, row in zip(faces, factors)}
+                except Exception:
+                    pass  # per-face lighting below still applies
+        return mobjects
+
+    _capture_3d = ThreeDCamera.capture_mobjects
+
+    _frame = [0, False]  # frame number, inside a capture
+
+    def _capture_lit(self, *args, **kwargs):
+        _frame[0] += 1
+        _frame[1] = True
+        try:
+            return _capture_3d(self, *args, **kwargs)
+        finally:
+            _frame[1] = False
+            self._eduvids_light = {}  # factors are valid for one frame only
+
+    def _shaded_axes(self):
+        # ThreeDAxes gives every piece of an axis a gradient spanning the
+        # whole axis, recomputed by walking the axis's family for each
+        # piece's fill and stroke: ~200 walks a frame. The axis cannot move
+        # while one frame is drawn, so compute it once per axis per frame.
+        def make_func(axis):
+            vect = self.light_source
+            cache = [None, None]
+
+            def ends():
+                if _frame[1] and cache[0] == _frame[0]:
+                    return cache[1]
+                value = (axis.get_edge_center(-vect), axis.get_edge_center(vect))
+                if _frame[1]:
+                    cache[0], cache[1] = _frame[0], value
+                return value
+            return ends
+
+        for axis in self:
+            for submob in axis.family_members_with_points():
+                submob.get_gradient_start_and_end_points = make_func(axis)
+                submob.get_unit_normal = lambda a: np.ones(3)
+                submob.set_sheen(0.2)
+
+    manim.ThreeDAxes._set_axis_shading = _shaded_axes
+
+    def _patch(mob, camera):
+        """A surface patch the batched drawing below reproduces exactly."""
+        return (
+            _litable(mob) and len(mob.points) == 16 and mob.background_stroke_width == 0
+            and mob not in camera.fixed_in_frame_mobjects
+            and mob not in camera.fixed_orientation_mobjects
+        )
+
+    def _close_2d(p0, p1, atol):
+        # VMobject.consider_points_equals_2d, for arrays of points.
+        return (np.abs(p0[..., 0] - p1[..., 0]) <= atol + 1e-5 * np.abs(p1[..., 0])) & (
+            np.abs(p0[..., 1] - p1[..., 1]) <= atol + 1e-5 * np.abs(p1[..., 1])
+        )
+
+    def _set_color(ctx, rgbas, start, end):
+        if len(rgbas) == 1:
+            ctx.set_source_rgba(*rgbas[0][2::-1], rgbas[0][3])
+            return
+        pattern = cairo.LinearGradient(start[0], start[1], end[0], end[1])
+        offsets = (0.0, 1.0) if len(rgbas) == 2 else np.linspace(0, 1, len(rgbas))
+        for rgba, offset in zip(rgbas, offsets):
+            pattern.add_color_stop_rgba(offset, *rgba[2::-1], rgba[3])
+        ctx.set_source(pattern)
+
+    def _lit_colors(camera, faces, rgbas):
+        """camera.get_fill_rgbas / get_stroke_rgbas for a batch of patches:
+        graded and lit in one pass when every face has the same number of
+        colour stops (two for the fill, one for the stroke)."""
+        light = getattr(camera, "_eduvids_light", {})
+        entries = [light.get(id(face)) for face in faces]
+        stops = {len(row) for row in rgbas}
+        if (
+            camera.should_apply_shading
+            and all(entry is not None and entry[0] is face for entry, face in zip(entries, faces))
+            and stops in ({1}, {2})
+        ):
+            stacked = _grade(np.concatenate(rgbas)).reshape(len(faces), stops.pop(), 4)
+            if stacked.shape[1] == 1:  # _apply_light lights a single stop at both ends
+                stacked = stacked.repeat(2, axis=1)
+            factors = np.array([entry[1] for entry in entries])
+            lit = np.array(stacked, dtype=float)
+            lit[:, :, :3] = np.clip(lit[:, :, :3] * factors[:, :, None], 0, 1)
+            return lit
+        return None
+
+    def _draw_patches(camera, ctx, faces):
+        """Camera.display_vectorized for many surface patches: one projection
+        for all of them, then the same Cairo calls Manim makes for each."""
+        points = np.array([face.points for face in faces])
+        finite = np.isfinite(points).all(axis=(1, 2))
+        projected = camera.project_points(points.reshape(-1, 3)).reshape(points.shape)
+        atol = np.array([face.tolerance_for_point_equality for face in faces])[:, None]
+        # A patch is one path unless consecutive curves come apart on screen.
+        joined = _close_2d(projected[:, [3, 7, 11]], projected[:, [4, 8, 12]], atol).all(axis=1)
+        closed = _close_2d(projected[:, 0], projected[:, 15], atol[:, 0])
+        fills = _lit_colors(camera, faces, [face.get_fill_rgbas() for face in faces])
+        widths = [face.get_stroke_width() for face in faces]
+        stroked = [face for face, width in zip(faces, widths) if width]
+        strokes = _lit_colors(camera, stroked, [face.get_stroke_rgbas() for face in stroked]) if stroked else None
+        stroke_index = 0
+        for index, face in enumerate(faces):
+            width = widths[index]
+            if not (finite[index] and joined[index]):
+                camera.display_vectorized(face, ctx)
+                stroke_index += bool(width)
+                continue
+            p = projected[index]
+            ctx.new_path()
+            ctx.new_sub_path()
+            ctx.move_to(p[0, 0], p[0, 1])
+            for i in (1, 5, 9, 13):
+                ctx.curve_to(p[i, 0], p[i, 1], p[i + 1, 0], p[i + 1, 1], p[i + 2, 0], p[i + 2, 1])
+            if closed[index]:
+                ctx.close_path()
+            # Gradient ends: get_3d_vmob_start/end_corner, points 0 and 6.
+            _set_color(ctx, fills[index] if fills is not None else camera.get_fill_rgbas(face), p[0], p[6])
+            ctx.fill_preserve()
+            if width:
+                colors = strokes[stroke_index] if strokes is not None else camera.get_stroke_rgbas(face)
+                stroke_index += 1
+                _set_color(ctx, colors, p[0], p[6])
+                ctx.set_line_width(width * camera.cairo_line_width_multiple)
+                if face.joint_type != manim.LineJointType.AUTO:
+                    ctx.set_line_join(LINE_JOIN_MAP[face.joint_type])
+                if face.cap_style != manim.CapStyleType.AUTO:
+                    ctx.set_line_cap(CAP_STYLE_MAP[face.cap_style])
+                ctx.stroke_preserve()
+
+    def _display_batched(self, vmobjects, pixel_array):
+        ctx = self.get_cairo_context(pixel_array)
+        run = []
+        for vmobject in vmobjects:
+            if _patch(vmobject, self):
+                run.append(vmobject)
+                continue
+            if run:
+                _draw_patches(self, ctx, run)
+                run = []
+            self.display_vectorized(vmobject, ctx)
+        if run:
+            _draw_patches(self, ctx, run)
+
+    import cairo
+    from manim.camera.camera import CAP_STYLE_MAP, LINE_JOIN_MAP
+
+    ThreeDCamera.get_mobjects_to_display = _get_mobjects_to_display
+    ThreeDCamera.capture_mobjects = _capture_lit
+    ThreeDCamera.display_multiple_non_background_colored_vmobjects = _display_batched
 
     def _lit(camera, face, rgbas):
         # Manim's lighting adds up to half a unit of white toward the light,
@@ -202,6 +452,89 @@ if not getattr(Camera.get_fill_rgbas, "__eduvids_graded__", False):
 
     _modified_graded.__eduvids_graded__ = True
     ThreeDCamera.modified_rgbas = _modified_graded
+
+# ---------------------------------------------------------------------------
+# Drawing: the same Cairo calls as Manim, with less Python per frame.
+# ---------------------------------------------------------------------------
+
+_set_path = Camera.set_cairo_context_path
+_set_pixels = Camera.set_pixel_array
+if not getattr(_set_path, "__eduvids_fast__", False):
+
+    def _fast_path(self, ctx, vmobject):
+        """Camera.set_cairo_context_path with the subpath breaks found in one
+        numpy pass instead of one Python comparison per curve."""
+        points = self.transform_points_pre_display(vmobject, vmobject.points)
+        if len(points) == 0:
+            return self
+        if vmobject.n_points_per_cubic_curve != 4 or len(points) % 4:
+            return _set_path(self, ctx, vmobject)
+        # VMobject.consider_points_equals_2d(points[n - 1], points[n]) at every
+        # curve boundary n; a subpath starts wherever the two differ.
+        atol = vmobject.tolerance_for_point_equality
+        ends, starts = points[3:-1:4], points[4::4]
+        joined = (np.abs(ends[:, 0] - starts[:, 0]) <= atol + 1e-5 * np.abs(starts[:, 0])) & (
+            np.abs(ends[:, 1] - starts[:, 1]) <= atol + 1e-5 * np.abs(starts[:, 1])
+        )
+        breaks = [0, *((np.flatnonzero(~joined) + 1) * 4).tolist(), len(points)]
+        xy = points[:, :2].tolist()
+        ctx.new_path()
+        for first, end in zip(breaks[:-1], breaks[1:]):
+            ctx.new_sub_path()
+            ctx.move_to(*xy[first])
+            for k in range(first, end, 4):
+                ctx.curve_to(*xy[k + 1], *xy[k + 2], *xy[k + 3])
+            if vmobject.consider_points_equals_2d(points[first], points[end - 1]):
+                ctx.close_path()
+        return self
+
+    def _fast_pixels(self, pixel_array, convert_from_floats=False):
+        # Manim copies the frame into a new array, then into the canvas.
+        current = getattr(self, "pixel_array", None)
+        if (
+            not convert_from_floats and isinstance(pixel_array, np.ndarray)
+            and current is not None and current.shape == pixel_array.shape
+        ):
+            current[:, :, :] = pixel_array
+            return None
+        return _set_pixels(self, pixel_array, convert_from_floats)
+
+    _get_family = manim.Mobject.get_family
+
+    def _fast_family(self, recurse=True):
+        """Mobject.get_family without building and deduplicating a list at
+        every level: for a tree (no submobject twice) that is exactly the
+        pre-order walk. Anything shared falls back to Manim's own walk."""
+        family, seen, stack = [], set(), [self]
+        while stack:
+            mob = stack.pop()
+            if id(mob) in seen:
+                return _get_family(self, recurse)
+            seen.add(id(mob))
+            family.append(mob)
+            stack.extend(reversed(mob.submobjects))
+        return family
+
+    # Copying a glyph (every DecimalNumber rebuilt by always_redraw copies its
+    # cached digits each frame) deep-copied the parsed SVG path it was built
+    # from, most of the copy's cost. Manim reads path_obj only while building
+    # the glyph's points, so copies share it instead.
+    from manim.mobject.svg.svg_mobject import VMobjectFromSVGPath
+
+    _deepcopy_mobject = manim.Mobject.__deepcopy__
+
+    def _share_svg_path(self, memo):
+        path = self.__dict__.get("path_obj")
+        if path is not None:
+            memo[id(path)] = path
+        return _deepcopy_mobject(self, memo)
+
+    VMobjectFromSVGPath.__deepcopy__ = _share_svg_path
+
+    _fast_path.__eduvids_fast__ = True
+    Camera.set_cairo_context_path = _fast_path
+    Camera.set_pixel_array = _fast_pixels
+    manim.Mobject.get_family = _fast_family
 
 # Canvas: flat BG (config.background_color), as in 3Blue1Brown and Welch Labs
 # videos. Strokes are drawn as-is, without halos.
@@ -1039,11 +1372,59 @@ if _open_stream is not None and not getattr(_open_stream, "__eduvids_quality__",
         result = _open_stream(self, *args, **kwargs)
         stream = getattr(self, "video_stream", None)
         if stream is not None and stream.codec_context.name == "libx264":
-            stream.options = dict(stream.options, crf="18")
+            # Measured against a lossless render of house scenes: superfast at
+            # CRF 16 without B-frames matches the old medium/CRF 18 (SSIM
+            # 0.99982, PSNR 60.5 vs 59.8 dB) with half the encoder CPU. Without
+            # B-frames x264 buffers no frames ahead: ~75 MB less per render, so
+            # two renders fit a 1 GB sandbox. Files are ~2.8x the old size
+            # (~1 Mbit/s at 1080p).
+            stream.options = dict(stream.options, crf="16", preset="superfast", bf="0")
+        # Manim queues finished frames for the encoder thread without limit.
+        # Each 1080p frame is 8 MB, so a fast scene piled up ~1 GB waiting
+        # for x264; a short queue keeps both threads busy at a fixed cost.
+        queue = getattr(self, "queue", None)
+        if queue is not None and not queue.maxsize:
+            queue.maxsize = FRAME_QUEUE
         return result
 
     _open_quality_stream.__eduvids_quality__ = True
     SceneFileWriter.open_partial_movie_stream = _open_quality_stream
+
+FRAME_QUEUE = 4
+
+# A held frame (every wait and narration hold) arrives once with a repeat
+# count; Manim converted the same RGBA frame to YUV again for every repeat.
+# Convert it once and resend it, with a fresh timestamp each time so the
+# encoder numbers it like any other frame. Every frame is also wrapped in
+# place (VideoFrame.from_numpy_buffer) rather than copied into a new frame
+# first: the same YUV, converted 4x faster. The array is the renderer's own
+# copy of the frame, so nothing else writes to it.
+_encode_frames = getattr(SceneFileWriter, "encode_and_write_frame", None)
+if _encode_frames is not None and not getattr(_encode_frames, "__eduvids_held__", False):
+
+    def _encode_held(self, frame, num_frames):
+        import av
+
+        stream = getattr(self, "video_stream", None)
+        if (
+            stream is None or frame.shape[:2] != (stream.height, stream.width)
+            or not hasattr(av.VideoFrame, "from_numpy_buffer") or not frame.flags.c_contiguous
+        ):
+            return _encode_frames(self, frame, num_frames)
+        source = av.VideoFrame.from_numpy_buffer(frame, format="rgba")
+        if num_frames < 2:
+            for packet in stream.encode(source):
+                self.video_container.mux(packet)
+            return
+        held = source.reformat(width=stream.width, height=stream.height, format=stream.codec_context.pix_fmt)
+        for _ in range(num_frames):
+            held.pts = None
+            for packet in stream.encode(held):
+                self.video_container.mux(packet)
+
+    _encode_held.__eduvids_held__ = True
+    SceneFileWriter.encode_and_write_frame = _encode_held
+
 
 # ---------------------------------------------------------------------------
 # Watermark: composited into each frame as it is written, so the finished
@@ -1096,7 +1477,14 @@ if WATERMARK and WATERMARK != "__EDUVIDS_" + "WATERMARK__":
             patch = _watermark_patch(frame.shape[1], frame.shape[0])
             if patch is not None:
                 y0, y1, x0, x1, rgb, a = patch
-                marked = frame.copy()
+                # The Cairo renderer hands over a fresh copy of each frame
+                # (renderer.get_frame), so mark that copy without another
+                # 8 MB copy. Anything that may be shared is copied first.
+                camera = getattr(getattr(self, "renderer", None), "camera", None)
+                shared = frame.base is not None or not frame.flags.writeable or (
+                    camera is not None and frame is getattr(camera, "pixel_array", None)
+                )
+                marked = frame.copy() if shared else frame
                 region = marked[y0:y1, x0:x1, :3].astype(float)
                 marked[y0:y1, x0:x1, :3] = (region * (1 - a) + rgb * a).astype(frame.dtype)
                 _last[0], _last[1] = frame, marked
@@ -1104,6 +1492,151 @@ if WATERMARK and WATERMARK != "__EDUVIDS_" + "WATERMARK__":
         return _write_frame(self, frame, *args, **kwargs)
 
     SceneFileWriter.write_frame = _write_marked
+
+# ---------------------------------------------------------------------------
+# Scene soundtracks: Manim encodes each scene's audio to AAC only because an
+# MP4 will not hold WAV. The postprocess decodes every scene's audio again and
+# encodes the final soundtrack once, so store it losslessly (ALAC, also valid
+# in MP4): 5x cheaper than AAC, and one lossy generation fewer.
+# ---------------------------------------------------------------------------
+
+import manim.scene.scene_file_writer as _writer_module
+
+_convert_audio = _writer_module.convert_audio
+if not getattr(_convert_audio, "__eduvids_lossless__", False):
+
+    def _convert_lossless(input_path, output_path, codec_name):
+        if codec_name != "aac":
+            return _convert_audio(input_path, output_path, codec_name)
+        import av
+
+        with av.open(input_path) as source, av.open(output_path, "w", format="ipod") as output:
+            stream = output.add_stream("alac", rate=source.streams.audio[0].rate)
+            for frame in source.decode(source.streams.audio[0]):
+                for packet in stream.encode(frame):
+                    output.mux(packet)
+            for packet in stream.encode():
+                output.mux(packet)
+
+    _convert_lossless.__eduvids_lossless__ = True
+    _writer_module.convert_audio = _convert_lossless
+
+# ---------------------------------------------------------------------------
+# Errors: an exception raised while an animation plays (in an updater, an
+# always_redraw function, an interpolation) left Manim's encoder thread waiting
+# for frames forever, so the process never exited and the render job ran into
+# its 30-minute timeout instead of reporting the error for repair. Let the
+# thread finish so the error surfaces at once.
+# ---------------------------------------------------------------------------
+
+from manim.renderer.cairo_renderer import CairoRenderer as _CairoRenderer
+
+_renderer_play = _CairoRenderer.play
+if not getattr(_renderer_play, "__eduvids_release__", False):
+
+    def _play_releasing_writer(self, scene, *args, **kwargs):
+        try:
+            return _renderer_play(self, scene, *args, **kwargs)
+        except BaseException:
+            writer = getattr(self, "file_writer", None)
+            thread = getattr(writer, "writer_thread", None)
+            if thread is not None and thread.is_alive():
+                writer.queue.put((-1, None))
+            raise
+
+    _play_releasing_writer.__eduvids_release__ = True
+    _CairoRenderer.play = _play_releasing_writer
+
+# ---------------------------------------------------------------------------
+# Segments: the render driver can split one long scene across processes.
+# EDUVIDS_SEGMENT="start,end" (seconds) renders only the scene's frames in
+# that span, counted the way a whole render counts them, and fast-forwards
+# through the rest. Every process numbers frames identically, so the segments
+# partition the whole render's frames, even inside one long animation (a
+# camera move), and their movies concatenate into the full scene.
+# ---------------------------------------------------------------------------
+
+_SEGMENT = os.environ.get("EDUVIDS_SEGMENT")
+if _SEGMENT:
+    from manim.renderer.cairo_renderer import CairoRenderer
+    from manim.utils.exceptions import EndSceneEarlyException
+    from tqdm import tqdm
+
+    _segment_first, _segment_last = (round(float(value) * config.frame_rate) for value in _SEGMENT.split(","))
+
+    def _frame_count(scene):
+        """Frames this play adds to a whole render (see CairoRenderer.play)."""
+        dt = 1 / config.frame_rate
+        if scene.is_current_animation_frozen_frame():
+            return int(scene.duration / dt)
+        return len(np.arange(0, scene.duration, dt))
+
+    _cairo_skipping = CairoRenderer.update_skipping_status
+    _cairo_play = CairoRenderer.play
+    _cairo_freeze = CairoRenderer.freeze_current_frame
+    _compile = manim.Scene.compile_animation_data
+    _progression = manim.Scene._get_animation_time_progression
+
+    def _segment_skipping(self):
+        _cairo_skipping(self)
+        if getattr(self, "_eduvids_frame", 0) >= _segment_last:
+            self.skip_animations = True
+            raise EndSceneEarlyException()
+
+    def _segment_compile(self, *args, **kwargs):
+        result = _compile(self, *args, **kwargs)
+        start = getattr(self.renderer, "_eduvids_frame", 0)
+        self.renderer._eduvids_span = (start, start + _frame_count(self))
+        if start + _frame_count(self) <= _segment_first:
+            self.renderer.skip_animations = True  # wholly before the segment
+        return result
+
+    def _overlap(renderer, count):
+        start, _ = renderer._eduvids_span
+        return max(0, _segment_first - start), min(count, _segment_last - start)
+
+    def _segment_progression(self, animations, duration):
+        times = _progression(self, animations, duration)
+        if self.renderer.skip_animations:
+            # A rendered animation's updaters last run at its final frame's
+            # time, not at its run time; stop there too, so dt-driven updaters
+            # (a dot flowing along a path) keep the whole render's phase.
+            times.close()
+            return tqdm(list(np.arange(0, duration, 1 / config.frame_rate))[-1:], disable=True)
+        low, high = _overlap(self.renderer, len(times.iterable))
+        kept = list(times.iterable)[low:high]
+        times.close()
+        return tqdm(kept, disable=True)
+
+    def _segment_freeze(self, duration):
+        low, high = _overlap(self, int(duration / (1 / config.frame_rate)))
+        if high > low:
+            self.add_frame(self.get_frame(), num_frames=high - low)
+
+    def _segment_play(self, scene, *args, **kwargs):
+        before = self.time
+        _cairo_play(self, scene, *args, **kwargs)
+        start, end = self._eduvids_span
+        self._eduvids_frame = end
+        # As far as a whole render would have advanced, so narration added
+        # later (and the soundtrack) lands on the same frames.
+        self.time = before + (end - start) / config.frame_rate
+
+    _update_frame = CairoRenderer.update_frame
+
+    def _segment_update_frame(self, *args, **kwargs):
+        # A skipped animation writes no frames, so drawing its static
+        # background or held frame (a full 3D render each) is wasted.
+        if self.skip_animations:
+            return None
+        return _update_frame(self, *args, **kwargs)
+
+    CairoRenderer.update_frame = _segment_update_frame
+    CairoRenderer.update_skipping_status = _segment_skipping
+    CairoRenderer.play = _segment_play
+    CairoRenderer.freeze_current_frame = _segment_freeze
+    manim.Scene.compile_animation_data = _segment_compile
+    manim.Scene._get_animation_time_progression = _segment_progression
 
 # Export the neutrals as colours too, so they work with interpolate_color().
 INK, MUTED, BG = ManimColor(INK), ManimColor(MUTED), ManimColor(BG)

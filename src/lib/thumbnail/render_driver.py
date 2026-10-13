@@ -7,17 +7,31 @@
    one per CPU (paying TeX's ~1.3s start-up once per batch instead of once
    per formula). Both fill the same caches Manim reads, so the render itself
    only waits on drawing. Anything missed here is simply produced on demand.
-2. Render. Scenes are split across parallel Manim processes, balanced by
-   narration length, each with its own media directory. A process killed by
-   the OS (memory) is retried alone; a script error is reported as-is so the
-   workflow can repair the script.
+   Both run in processes forked from the render server (below), so the
+   driver itself never imports Manim and stays small.
+2. Render. Every scene is its own Manim process, pulled from a queue most
+   expensive first (3D scenes count several times their narration) by one
+   worker slot per CPU that memory allows. Slots keep their media directory,
+   so later scenes reuse earlier formula caches. A process killed by the OS
+   (memory) is retried alone at the end; a script error stops the queue and
+   is reported as-is, so the workflow can repair the script without waiting
+   for the remaining scenes.
+   Render processes fork from one server process that has already
+   imported Manim (see Zygote), so each starts in
+   milliseconds instead of ~2 s and shares that ~150 MB of imports instead
+   of holding its own copy. They are also the first thing the kernel kills
+   under memory pressure, and a killed render is retried alone.
+3. Postprocess (optional). When the config names a postprocess script, it
+   runs as soon as every scene has rendered, in the same job.
 
-Config: {"script", "scenes", "media_dir", "manim_args", "prefetch_dir"}.
+Config: {"script", "scenes", "media_dir", "manim_args", "prefetch_dir",
+"postprocess"}.
 """
 
 import ast
 import concurrent.futures
 import json
+import math
 import os
 import re
 import shutil
@@ -25,11 +39,24 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from pathlib import Path
 
-# 1080p Cairo arrays, background buffers, 48x48 surfaces and encoder buffers.
-# The old 720p allowance oversubscribed small sandboxes at the new quality.
-MB_PER_RENDER = 768
+# Measured on the sample video (scripts/bench): driver, render server and
+# shared imports take ~180 MB; each render forked from the server adds ~210 MB
+# more (x264 without B-frames, a 4-frame queue). Budgets carry ~20% headroom;
+# a render the kernel kills anyway is retried alone.
+SERVER_MB = 160
+MB_PER_RENDER = 256
+# Cost per character of narration, relative to a 2D scene. Lit 3D surfaces
+# draw thousands of patches every frame.
+THREE_D_FACTOR = 4
+# Exit code when every scene rendered but the postprocess failed
+# (POSTPROCESS_FAILED_EXIT in sandbox-jobs.ts).
+POSTPROCESS_FAILED = 86
+# Shortest stretch of scene time worth its own process (each pays Manim's
+# start-up and fast-forwards through the scene up to its start).
+MIN_SEGMENT_SECONDS = 2.5
 DIGITS = list("0123456789") + ["-", ".", ","]
 LABEL_METHODS = {"get_graph_label", "get_axis_labels", "get_x_axis_label", "get_y_axis_label", "get_tex", "BraceLabel"}
 TEX_CLASSES = {"MathTex", "Tex"}
@@ -59,14 +86,50 @@ def _call_name(node):
     return None
 
 
+def _base_name(node):
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
+# A segment counts frames from run times alone and fast-forwards skipped
+# animations in one step. These make a scene's frames, sounds or drawing
+# depend on every earlier frame (a traced path records one point per frame),
+# so such a scene renders whole.
+UNSPLITTABLE_CALLS = {"wait_until", "add_sound", "next_section", "TracedPath", "trail"}
+
+
+def narrated_seconds(source, scenes):
+    """Rough scene length from narration (about 15 characters a second, plus
+    the closing fade); used only to place split points. 0 for a scene that
+    must render whole."""
+    chars = {name: 0 for name in scenes}
+    whole = set()
+    for cls in ast.parse(source).body:
+        if isinstance(cls, ast.ClassDef) and cls.name in chars:
+            for node in ast.walk(cls):
+                if not isinstance(node, ast.Call):
+                    continue
+                if _call_name(node) == "voiceover":
+                    chars[cls.name] += sum(len(_string(k.value) or "") for k in node.keywords if k.arg == "text")
+                if _call_name(node) in UNSPLITTABLE_CALLS or any(k.arg == "stop_condition" for k in node.keywords):
+                    whole.add(cls.name)
+    return {name: 0 if name in whole else count / 15 + 1.5 for name, count in chars.items()}
+
+
 def analyse(source, scenes):
     """Narration lines, literal formulas, and a cost weight per scene."""
     tree = ast.parse(source)
     narration, formulas = [], []
     weights = {name: 400 for name in scenes}
+    three_d = set()
     for cls in tree.body:
         if not isinstance(cls, ast.ClassDef):
             continue
+        if any("ThreeD" in (_base_name(base) or "") for base in cls.bases):
+            three_d.add(cls.name)
         for node in ast.walk(cls):
             if not isinstance(node, ast.Call):
                 continue
@@ -99,12 +162,36 @@ def analyse(source, scenes):
                 values += [_string(k.value) for k in node.keywords if k.arg in ("label", "x_label", "y_label", "text")]
                 formulas.extend(("MathTex", [value], {}) for value in values if value)
     formulas.extend(("MathTex", [digit], {}) for digit in DIGITS)
+    for name in three_d & weights.keys():
+        weights[name] *= THREE_D_FACTOR
     return narration, formulas, weights
 
 
 # ---------------------------------------------------------------------------
 # Prefetch: audio
 # ---------------------------------------------------------------------------
+
+def _audio_task(narration, directory, marker):
+    """In a server child: fetch narration; write the provider to marker as
+    soon as the first line settles, so rendering can start."""
+    def on_first(provider):
+        target = Path(marker)
+        target.with_suffix(".tmp").write_text(json.dumps({"provider": provider}))
+        target.with_suffix(".tmp").replace(target)
+
+    sys.path.insert(0, "/home/user")
+    prefetch_audio(narration, Path(directory), on_first)
+
+
+def _formulas_task(formulas, media_dirs, workers, result_path):
+    sys.path.insert(0, "/home/user")
+    try:
+        done, total = prefetch_formulas([tuple(f) for f in formulas], [Path(m) for m in media_dirs], workers)
+        result = {"done": done, "total": total}
+    except Exception as error:
+        result = {"error": str(error)}
+    Path(result_path).write_text(json.dumps(result))
+
 
 def prefetch_audio(narration, directory, on_first):
     try:
@@ -253,32 +340,359 @@ def available_mb():
     return 1024
 
 
-def balance(scenes, weights, workers):
-    """Longest-first assignment, then each group keeps the script's order."""
-    groups = [[] for _ in range(workers)]
-    loads = [0] * workers
-    for scene in sorted(scenes, key=lambda name: -weights.get(name, 0)):
-        index = loads.index(min(loads))
-        groups[index].append(scene)
-        loads[index] += weights.get(scene, 0)
+def usable_cpus():
+    """CPUs this process may run on, respecting affinity and a cgroup quota
+    (os.cpu_count() reports the host's CPUs inside a container)."""
+    try:
+        cpus = len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        cpus = os.cpu_count() or 1
+    try:
+        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()[:2]
+        if quota != "max":
+            cpus = min(cpus, max(1, int(int(quota) / int(period))))
+    except (OSError, ValueError):
+        pass
+    return max(1, cpus)
+
+
+def plan(scenes, weights, seconds, workers):
+    """Render tasks, most expensive scene first. A scene costing well over an even
+    share of the work is split into segments of its timeline (see
+    EDUVIDS_SEGMENT in video_style.py), so one long 3D scene cannot hold up
+    the whole video while the other workers sit idle. Ties keep the script's
+    order. Each task is (scene, segment index, segment count, start, end)."""
+    share = sum(weights.get(name, 0) for name in scenes) / max(1, workers)
+    tasks = []
+    for name in scenes:
+        weight = weights.get(name, 0)
+        count = 1
+        if workers > 1 and weight > 1.25 * share:
+            # Half-share segments: cost is uneven within a scene (a camera
+            # move costs far more than a held frame), so finer pieces balance.
+            count = min(workers, math.ceil(2 * weight / share), int(seconds.get(name, 0) // MIN_SEGMENT_SECONDS))
+        count = max(1, count)
+        # Cut short of the estimated end, so the last segment always renders
+        # something (it carries the scene's whole soundtrack).
+        bounds = [seconds.get(name, 0) * 0.85 * index / count for index in range(count)] + [1e9]
+        for index in range(count):
+            tasks.append((name, index, count, bounds[index], bounds[index + 1], weight))
+    # Ordered by the whole scene's cost: a split scene is the long pole, and
+    # its cost is uneven within it, so all of its segments start first.
     order = {name: i for i, name in enumerate(scenes)}
-    return [sorted(group, key=order.get) for group in groups if group]
+    tasks.sort(key=lambda task: (-task[5], order[task[0]], task[1]))
+    return [task[:5] for task in tasks]
 
 
-def render(cfg, groups, media_dirs, env):
-    procs = []
-    for index, group in enumerate(groups):
-        log_path = Path(cfg["media_dir"]) / f"render-{index}.log"
-        handle = open(log_path, "w")
-        command = ["manim", cfg["script"], *group, "--media_dir", str(media_dirs[index]), *cfg["manim_args"]]
-        procs.append((group, media_dirs[index], log_path, handle, subprocess.Popen(command, stdout=handle, stderr=subprocess.STDOUT, env=env)))
-    failures = []
-    for group, media, log_path, handle, proc in procs:
-        code = proc.wait()
-        handle.close()
-        if code != 0:
-            failures.append((group, media, log_path, code))
+def scene_output(media, scene):
+    found = [p for p in Path(media).rglob(scene + ".mp4") if "partial_movie_files" not in p.parts]
+    return found[0] if len(found) == 1 else None
+
+
+# ---------------------------------------------------------------------------
+# Render server ("zygote"): one process that imports Manim once and forks a
+# child per task. Children start in milliseconds instead of ~2 s and share the
+# ~150 MB of imports copy-on-write, which is what lets two renders fit a 1 GB
+# sandbox. The protocol is JSON lines: requests on the server's stdin,
+# {"id", "pid"} and {"id", "exit"} replies on its stdout.
+# ---------------------------------------------------------------------------
+
+PRELOAD = ["manim", "manim_voiceover.voiceover_scene"]
+
+
+def _child_setup(env, log_path=None):
+    """In a forked child: the task's environment and output, and first in
+    line for the OOM killer (a killed render is retried; the driver and the
+    sandbox's own services must live)."""
+    os.environ.clear()
+    os.environ.update(env)
+    # sys.path was fixed when the server started; honour the task's
+    # PYTHONPATH as a fresh interpreter would.
+    for entry in reversed(env.get("PYTHONPATH", "").split(os.pathsep)):
+        if entry and entry not in sys.path:
+            sys.path.insert(0, entry)
+    devnull = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(devnull, 0)
+    if log_path is not None:
+        handle = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+        os.dup2(handle, 1)
+        os.dup2(handle, 2)
+    else:
+        os.dup2(2, 1)  # the server's stdout is its reply channel
+    try:
+        with open("/proc/self/oom_score_adj", "w") as score:
+            score.write("1000")
+    except OSError:
+        pass
+
+
+def _run_request(request):
+    _child_setup(request["env"], request.get("log"))
+    code = 1
+    try:
+        if "argv" in request:
+            sys.argv = request["argv"]
+            from manim.__main__ import main as manim_main
+
+            manim_main()
+            code = 0
+        else:
+            globals()[request["call"]](*request["args"])
+            code = 0
+    except SystemExit as exit:
+        code = exit.code if isinstance(exit.code, int) else (0 if exit.code is None else 1)
+    except BaseException:
+        traceback.print_exc()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(code)  # no stray thread can keep the process alive
+
+
+def zygote_main():
+    import gc
+    import select
+    import signal
+
+    for module in PRELOAD:
+        try:
+            __import__(module)
+        except Exception as error:
+            print(f"[eduvids-render] could not preload {module}: {error}", file=sys.stderr, flush=True)
+    gc.collect()
+    gc.freeze()  # keep the collector from touching (and copying) shared pages
+    out = sys.stdout
+
+    def reply(message):
+        out.write(json.dumps(message) + "\n")
+        out.flush()
+
+    children, buffer, open_input = {}, b"", True
+    while open_input or children:
+        ready = select.select([0], [], [], 0.05)[0] if open_input else []
+        if ready:
+            data = os.read(0, 1 << 16)
+            if not data:
+                open_input = False  # the driver is gone: stop its renders
+                for pid in children:
+                    try:
+                        os.kill(pid, signal.SIGTERM)
+                    except OSError:
+                        pass
+            buffer += data
+            while b"\n" in buffer:
+                line, buffer = buffer.split(b"\n", 1)
+                request = json.loads(line)
+                pid = os.fork()
+                if pid == 0:
+                    try:
+                        _run_request(request)
+                    finally:
+                        os._exit(1)
+                children[pid] = request["id"]
+                reply({"id": request["id"], "pid": pid})
+        while children:
+            try:
+                pid, status = os.waitpid(-1, os.WNOHANG)
+            except ChildProcessError:
+                children.clear()
+                break
+            if pid == 0:
+                break
+            reply({"id": children.pop(pid, None), "exit": os.waitstatus_to_exitcode(status)})
+
+
+class Zygote:
+    """The driver's handle on the render server."""
+
+    def __init__(self):
+        import threading
+
+        self.proc = subprocess.Popen([sys.executable, os.path.abspath(__file__), "--zygote"],
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.pids, self.exits, self.next_id = {}, {}, 0
+        self.lock = threading.Condition()
+        threading.Thread(target=self._read, daemon=True).start()
+
+    def _read(self):
+        for line in self.proc.stdout:
+            message = json.loads(line)
+            with self.lock:
+                if "pid" in message:
+                    self.pids[message["id"]] = message["pid"]
+                else:
+                    self.exits[message["id"]] = message["exit"]
+                self.lock.notify_all()
+        with self.lock:  # the server died: nothing it started will report
+            for task_id in range(self.next_id):
+                self.exits.setdefault(task_id, -9)
+            self.lock.notify_all()
+
+    def start(self, request):
+        with self.lock:
+            task_id = self.next_id
+            self.next_id += 1
+        self.proc.stdin.write((json.dumps(dict(request, id=task_id)) + "\n").encode())
+        self.proc.stdin.flush()
+        return task_id
+
+    def exit_code(self, task_id, timeout=None):
+        with self.lock:
+            self.lock.wait_for(lambda: task_id in self.exits, timeout=timeout)
+            return self.exits.get(task_id)
+
+    def kill(self, task_id, sig=15):
+        with self.lock:
+            self.lock.wait_for(lambda: task_id in self.pids or task_id in self.exits, timeout=10)
+            pid = self.pids.get(task_id)
+        if pid and task_id not in self.exits:
+            try:
+                os.kill(pid, sig)
+            except OSError:
+                pass
+
+    def close(self):
+        try:
+            self.proc.stdin.close()
+            self.proc.wait(timeout=30)
+        except Exception:
+            self.proc.kill()
+
+
+_zygote = None
+
+
+def zygote():
+    """The render server, or None where it cannot start (renders then run as
+    ordinary subprocesses)."""
+    global _zygote
+    if _zygote is None:
+        try:
+            _zygote = Zygote()
+        except OSError as error:
+            log(f"render server unavailable ({error}); using subprocesses")
+            _zygote = False
+    return _zygote or None
+
+
+class Job:
+    def __init__(self, cfg, task, slot, media, env):
+        self.task, self.slot, self.media = task, slot, media
+        scene, index, count, start, end = task
+        self.name = scene if count == 1 else f"{scene}.{index}"
+        self.log_path = Path(cfg["media_dir"]) / f"render-{self.name}.log"
+        env = dict(env)
+        if count > 1:
+            env["EDUVIDS_SEGMENT"] = f"{start},{end}"
+        command = ["manim", cfg["script"], scene, "--media_dir", str(media), *cfg["manim_args"]]
+        self.server, self.handle = zygote(), None
+        if self.server:
+            self.id = self.server.start({"argv": command, "env": env, "log": str(self.log_path)})
+        else:
+            self.handle = open(self.log_path, "w")
+            self.proc = subprocess.Popen(command, stdout=self.handle, stderr=subprocess.STDOUT, env=env)
+        self.started = time.time()
+
+    def done(self):
+        if self.server:
+            return self.server.exit_code(self.id, timeout=0) is not None
+        return self.proc.poll() is not None
+
+    def terminate(self):
+        if self.server:
+            self.server.kill(self.id)
+        else:
+            self.proc.terminate()
+
+    def finish(self, segments_dir):
+        if self.server:
+            code = self.server.exit_code(self.id)
+        else:
+            self.handle.close()
+            code = self.proc.returncode
+        scene, index, count, _, _ = self.task
+        if code == 0 and count > 1:
+            # Move the segment out of the slot before another job reuses it.
+            output = scene_output(self.media, scene)
+            if output is not None:
+                output.rename(segments_dir / f"{scene}.{index}.segment.mp4")
+        return code
+
+
+def render(cfg, tasks, media_dirs, env):
+    """Run every task, at most one per media directory at a time. Returns
+    (task, log_path, code, media) failures; a script error (positive exit
+    code) stops the queue and the running scenes, since the workflow repairs
+    and re-renders the whole script anyway."""
+    segments_dir = Path(cfg["media_dir"]) / "segments"
+    segments_dir.mkdir(parents=True, exist_ok=True)
+    pending = list(tasks)
+    free = list(range(len(media_dirs)))
+    running, failures = [], []
+    while pending or running:
+        while pending and free and not any(failure[2] > 0 for failure in failures):
+            slot = free.pop(0)
+            running.append(Job(cfg, pending.pop(0), slot, media_dirs[slot], env))
+        if not running:
+            break
+        time.sleep(0.05)
+        for job in [job for job in running if job.done()]:
+            running.remove(job)
+            free.append(job.slot)
+            code = job.finish(segments_dir)
+            log(f"{job.name} {'rendered' if code == 0 else f'failed ({code})'} in {time.time() - job.started:.1f}s")
+            if code != 0:
+                failures.append((job.task, job.log_path, code, job.media))
+                if code > 0:
+                    pending.clear()
+                    for other in running:
+                        other.terminate()
     return failures
+
+
+def video_seconds(path):
+    return float(subprocess.check_output(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(path)], timeout=60,
+    ).decode().strip())
+
+
+def merge_segments(cfg, scene, count):
+    """Join a split scene's segments into one movie: their pictures in order,
+    with the soundtrack of the last segment that rendered anything. That
+    segment fast-forwarded through everything before it and played on to the
+    scene's end, so it holds all of the narration at full-render timing. (A
+    segment whose span holds no animation writes no movie.)"""
+    root = Path(cfg["media_dir"])
+    parts = [root / "segments" / f"{scene}.{index}.segment.mp4" for index in range(count)]
+    present = [part for part in parts if part.exists()]
+    if not present:
+        raise RuntimeError(f"no segment of {scene} rendered")
+    # Pictures only: a segment's soundtrack runs past its last frame, and the
+    # concat demuxer would advance by that longer duration, leaving gaps.
+    pictures = []
+    for part in present:
+        picture = part.with_suffix(".video.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(part), "-map", "0:v", "-c", "copy", str(picture)],
+                       check=True, timeout=300)
+        pictures.append(picture)
+    listing = root / "segments" / f"{scene}.txt"
+    listing.write_text("".join(f"file '{picture}'\n" for picture in pictures))
+    target = root / "merged" / f"{scene}.mp4"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(listing), "-i", str(present[-1]),
+             "-map", "0:v", "-map", "1:a?", "-c", "copy", str(target)],
+            check=True, timeout=300,
+        )
+        expected = sum(video_seconds(picture) for picture in pictures)
+        if abs(video_seconds(target) - expected) > 0.05:
+            raise RuntimeError(f"joined {scene} lasts {video_seconds(target):.2f}s, expected {expected:.2f}s")
+    except Exception:
+        target.unlink(missing_ok=True)  # never leave a second candidate
+        raise
+    for part in present + pictures:
+        part.unlink()
 
 
 def tail(path, limit=5000):
@@ -298,66 +712,123 @@ def main():
     except SyntaxError:
         narration, formulas, weights = [], [], {name: 1 for name in scenes}
 
-    workers = max(1, min(os.cpu_count() or 1, len(scenes), available_mb() // MB_PER_RENDER))
+    workers = max(1, min(usable_cpus(), len(scenes), (available_mb() - SERVER_MB) // MB_PER_RENDER))
     media_dirs = [media_root / f"p{index}" for index in range(workers)]
     for media in media_dirs:
         (media / "Tex").mkdir(parents=True, exist_ok=True)
 
     prefetch_dir = Path(cfg.get("prefetch_dir") or media_root / "audio-prefetch")
     prefetch_dir.mkdir(parents=True, exist_ok=True)
-    # Import everything before starting threads: concurrent first imports of
-    # overlapping packages deadlock on Python's module locks.
-    sys.path.insert(0, "/home/user")
-    for module in ("manim", "eduvids_style", "eduvids_tts"):
+    env = dict(os.environ, EDUVIDS_TTS_PREFETCH_DIR=str(prefetch_dir))
+    # Narration downloads (network bound) while formulas compile, each in a
+    # child of the render server; the driver itself never imports Manim.
+    server = zygote()
+    if server:
+        marker, result_path = prefetch_dir / ".provider.json", media_root / "formulas.json"
+        for stale in (marker, result_path):
+            stale.unlink(missing_ok=True)
+        audio = server.start({"call": "_audio_task", "args": [narration, str(prefetch_dir), str(marker)], "env": env})
+        compiling = server.start({"call": "_formulas_task", "env": env,
+                                  "args": [formulas, [str(m) for m in media_dirs], workers, str(result_path)]})
+        server.exit_code(compiling, timeout=600)
         try:
-            __import__(module)
+            result = json.loads(result_path.read_text())
+            if "error" in result:
+                log(f"formula prefetch skipped: {result['error']}")
+            else:
+                log(f"formulas precompiled: {result['done']}/{result['total']} at {time.time() - started:.1f}s")
+        except (OSError, ValueError) as error:
+            log(f"formula prefetch skipped: {error}")
+        # Rendering starts once the provider has answered; the remaining lines
+        # keep downloading while scenes render and each waits only for its own.
+        deadline, provider = time.time() + 90, None
+        while time.time() < deadline:
+            if marker.exists():
+                provider = json.loads(marker.read_text()).get("provider")
+                break
+            if server.exit_code(audio, timeout=0) is not None:
+                break
+            time.sleep(0.05)
+    else:
+        sys.path.insert(0, "/home/user")
+        first = concurrent.futures.Future()
+
+        def on_first(found):
+            if not first.done():
+                first.set_result(found)
+
+        pool = concurrent.futures.ThreadPoolExecutor(1)
+        audio = pool.submit(prefetch_audio, narration, prefetch_dir, on_first)
+        try:
+            done, total = prefetch_formulas(formulas, media_dirs, workers)
+            log(f"formulas precompiled: {done}/{total} at {time.time() - started:.1f}s")
         except Exception as error:
-            log(f"could not import {module}: {error}")
-    first = concurrent.futures.Future()
-
-    def on_first(provider):
-        if not first.done():
-            first.set_result(provider)
-
-    pool = concurrent.futures.ThreadPoolExecutor(1)
-    audio = pool.submit(prefetch_audio, narration, prefetch_dir, on_first)
-    try:
-        done, total = prefetch_formulas(formulas, media_dirs, workers)
-        log(f"formulas precompiled: {done}/{total} at {time.time() - started:.1f}s")
-    except Exception as error:
-        log(f"formula prefetch skipped: {error}")
-    # Rendering starts once the provider has answered; the remaining lines
-    # keep downloading while scenes render and each waits only for its own.
-    try:
-        provider = first.result(timeout=90)
-    except concurrent.futures.TimeoutError:
-        provider = None
+            log(f"formula prefetch skipped: {error}")
+        try:
+            provider = first.result(timeout=90)
+        except concurrent.futures.TimeoutError:
+            provider = None
     log(f"rendering starts at {time.time() - started:.1f}s (audio provider: {provider})")
 
-    env = dict(os.environ, EDUVIDS_TTS_PREFETCH_DIR=str(prefetch_dir))
     if provider:
         env["EDUVIDS_TTS_PROVIDER"] = provider
-    groups = balance(scenes, weights, workers)
-    log(f"rendering {len(scenes)} scenes in {len(groups)} processes: {groups}")
-    failures = render(cfg, groups, media_dirs, env)
-    audio.result()
-    pool.shutdown()
+    try:
+        seconds = narrated_seconds(source, scenes)
+    except SyntaxError:
+        seconds = {}
+    tasks = plan(scenes, weights, seconds, workers)
+    names = [task[0] if task[2] == 1 else f"{task[0]}.{task[1]}" for task in tasks]
+    log(f"rendering {len(scenes)} scenes as {len(tasks)} tasks on {workers} workers, in order {names}")
+    failures = render(cfg, tasks, media_dirs, env)
+    if server:
+        server.exit_code(audio, timeout=300)
+    else:
+        audio.result()
+        pool.shutdown()
 
     # Killed by the OS (negative code) rather than a script error: retry alone.
-    killed = [failure for failure in failures if failure[3] < 0]
-    if killed:
+    # In its own media directory, so a truncated first attempt is replaced.
+    killed = [failure for failure in failures if failure[2] < 0]
+    if killed and not any(failure[2] > 0 for failure in failures):
         log(f"retrying {len(killed)} killed render(s) one at a time")
-        retry = []
-        for group, media, _, _ in killed:
-            retry += render(cfg, [group], [media], env)
-        failures = [failure for failure in failures if failure[3] >= 0] + retry
+        failures = []
+        for task, _, _, media in killed:
+            failures += render(cfg, [task], [media], env)
+
+    # Join split scenes; if that fails, render the scene whole instead.
+    if not failures:
+        for scene in scenes:
+            count = next((task[2] for task in tasks if task[0] == scene), 1)
+            if count < 2:
+                continue
+            try:
+                merge_segments(cfg, scene, count)
+            except Exception as error:
+                log(f"could not join {scene} ({error}); rendering it whole")
+                failures += render(cfg, [(scene, 0, 1, 0, 1e9)], media_dirs[:1], env)
 
     log(f"render finished in {time.time() - started:.1f}s")
     if failures:
-        group, _, log_path, code = failures[0]
-        print(f"Manim failed (exit {code}) rendering {group}:\n{tail(log_path)}", flush=True)
+        errors = [failure for failure in failures if failure[2] > 0] or failures
+        (scene, *_), log_path, code, _ = errors[0]
+        print(f"Manim failed (exit {code}) rendering {scene}:\n{tail(log_path)}", flush=True)
         sys.exit(code if code > 0 else 1)
+
+    postprocess = cfg.get("postprocess")
+    if postprocess:
+        result = subprocess.run([sys.executable, postprocess], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        log(f"postprocess finished at {time.time() - started:.1f}s")
+        if result.returncode != 0:
+            print("Postprocess failed:\n" + result.stdout.decode("utf-8", errors="replace")[-5000:], flush=True)
+            sys.exit(POSTPROCESS_FAILED)  # not a script error: no repair
 
 
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:] == ["--zygote"]:
+        zygote_main()
+    else:
+        try:
+            main()
+        finally:
+            if _zygote:
+                _zygote.close()

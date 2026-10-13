@@ -1177,6 +1177,8 @@ test("all render paths use 1080p at 30fps and preserve portrait dimensions", () 
     "-qh",
     "--fps",
     "30",
+    // No PyPI version check after every render.
+    "--silent",
   ]);
   assert.deepEqual(videoRenderFlags({ width: 1080, height: 1920 }).slice(-2), [
     "-r",
@@ -1195,6 +1197,72 @@ test("house encoding supports legacy FFmpeg and PyAV Manim writers", async () =>
     join(process.cwd(), "tests/video-encoding.py"),
     join(process.cwd(), "src/lib/thumbnail/video_style.py"),
   ]);
+});
+
+test("an error raised during an animation ends the render at once instead of hanging", async (t) => {
+  if (!(await thumbnailToolchainAvailable())) {
+    t.skip("manim and xelatex are not installed");
+    return;
+  }
+  const folder = await mkdtemp(join(tmpdir(), "eduvids-error-"));
+  try {
+    const assets = await loadVideoStyleAssets("teal-amber");
+    await mkdir(join(folder, "eduvids-fonts"));
+    await writeFile(join(folder, "eduvids_style.py"), assets.module);
+    for (const { name, data } of assets.fonts)
+      await writeFile(join(folder, "eduvids-fonts", name), data);
+    await writeFile(
+      join(folder, "boom.py"),
+      `from manim import *
+from eduvids_style import *
+class Boom(Scene):
+    def construct(self):
+        dot = Dot()
+        def fail(mob, dt):
+            if self.renderer.time > 0.5:
+                raise ValueError("script error mid-animation")
+        dot.add_updater(fail)
+        self.add(dot)
+        self.play(dot.animate.shift(RIGHT), run_time=2)
+`,
+    );
+    const started = Date.now();
+    // Manim's encoder thread used to wait for frames forever, so the process
+    // never exited and the render job ran into its 30-minute timeout.
+    await assert.rejects(
+      exec(
+        "python3",
+        ["-m", "manim", "boom.py", "Boom", "--disable_caching", "-ql"],
+        { cwd: folder, timeout: 120_000, killSignal: "SIGKILL" },
+      ),
+      (error: { stderr?: string; stdout?: string; killed?: boolean }) =>
+        !error.killed &&
+        /script error mid-animation/.test(`${error.stdout}${error.stderr}`),
+    );
+    assert.ok(Date.now() - started < 60_000);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("a scene split into timeline segments joins into the same movie as a whole render", async (t) => {
+  try {
+    await exec("python3", ["-c", "import manim, manim_voiceover"]);
+    await exec("ffmpeg", ["-version"]);
+  } catch {
+    t.skip("manim, manim-voiceover and ffmpeg are not installed");
+    return;
+  }
+  const folder = await mkdtemp(join(tmpdir(), "eduvids-segments-"));
+  try {
+    await exec(
+      "python3",
+      [join(process.cwd(), "tests/render-segments.py"), folder],
+      { cwd: folder, timeout: 240_000 },
+    );
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
 });
 
 test("real Manim geometry keeps grouped labels, overlay lanes and projected 3D layouts clear", async (t) => {
@@ -1515,9 +1583,11 @@ test("the render job runs the driver with Manim flags, and in-frame watermarks s
       "-qh",
       "--fps",
       "30",
+      "--silent",
       "-r",
       "720,1280",
     ],
+    postprocess: "/home/user/postprocess.py",
   });
   assert.match(buildPostprocessScript(prepared), /\\"watermark\\":false/);
   assert.match(
@@ -1526,7 +1596,7 @@ test("the render job runs the driver with Manim flags, and in-frame watermarks s
   );
 });
 
-test("render driver finds narration and formulas and balances scenes by narration", async (t) => {
+test("render driver finds narration and formulas, and plans the costliest scenes first, splitting one that would hold up the rest", async (t) => {
   try {
     await exec("python3", ["-c", "import ast"]);
   } catch {
@@ -1544,7 +1614,11 @@ test("render driver finds narration and formulas and balances scenes by narratio
     "    def construct(self):",
     '        with self.voiceover(text="short") as t:',
     "            pass",
-    "class C(Scene):",
+    "class D(VoiceoverScene, ThreeDScene):",
+    "    def construct(self):",
+    `        with self.voiceover(text="${"d".repeat(900)}") as t:`,
+    "            path = TracedPath(dot.get_center)",
+    "class C(VoiceoverScene, ThreeDScene):",
     "    def construct(self):",
     `        with self.voiceover(text="${"c".repeat(500)}") as t:`,
     "            pass",
@@ -1554,15 +1628,47 @@ test("render driver finds narration and formulas and balances scenes by narratio
     `import json, sys
 sys.path.insert(0, "src/lib/thumbnail")
 import render_driver as d
-narration, formulas, weights = d.analyse(json.loads(sys.argv[1]), ["A", "B", "C"])
-print(json.dumps({"narration": len(narration), "formulas": [f[1] for f in formulas[:2]], "groups": d.balance(["A", "B", "C"], weights, 2)}))`,
+scenes = ["A", "B", "C", "D"]
+narration, formulas, weights = d.analyse(json.loads(sys.argv[1]), scenes)
+seconds = d.narrated_seconds(json.loads(sys.argv[1]), scenes)
+print(json.dumps({"narration": len(narration), "formulas": [f[1] for f in formulas[:2]], "weights": weights,
+                  "one": d.plan(scenes, weights, seconds, 1), "four": d.plan(scenes, weights, seconds, 4)}))`,
     JSON.stringify(source),
   ]);
   const result = JSON.parse(stdout);
-  assert.equal(result.narration, 3);
+  assert.equal(result.narration, 4);
+  // A traced path records a point per frame: that scene never splits.
+  assert.ok(
+    result.four.every((task: unknown[]) => task[0] !== "D" || task[2] === 1),
+    stdout,
+  );
   assert.deepEqual(result.formulas, [["x^2", "=", "y"], ["y=x^2"]]);
-  // The long scene renders alone; the two shorter ones share a process.
-  assert.deepEqual(result.groups, [["A"], ["B", "C"]]);
+  // A lit 3D scene costs several times its narration.
+  assert.ok(result.weights.C > result.weights.A, stdout);
+  // One worker: whole scenes, most expensive first.
+  assert.deepEqual(
+    result.one.map((task: unknown[]) => [task[0], task[2]]),
+    [
+      ["D", 1],
+      ["C", 1],
+      ["A", 1],
+      ["B", 1],
+    ],
+  );
+  // Four workers: the 3D scene is cut into contiguous segments of its
+  // timeline, each still queued ahead of the cheap scene; the last segment
+  // runs to the scene's end.
+  const names = result.four.map((task: unknown[]) => task[0]);
+  const segments = result.four.filter((task: unknown[]) => task[0] === "C");
+  assert.ok(segments.length >= 2, stdout);
+  assert.ok(names.lastIndexOf("C") < names.indexOf("B"), stdout);
+  for (let index = 0; index < segments.length; index++) {
+    assert.equal(segments[index][1], index);
+    assert.equal(segments[index][2], segments.length);
+    if (index > 0) assert.equal(segments[index][3], segments[index - 1][4]);
+  }
+  assert.equal(segments[0][3], 0);
+  assert.ok(segments.at(-1)[4] > 1e6);
 });
 
 test("layout guard moves a label off a line and inside the frame, but keeps a value inside its circle", async (t) => {
