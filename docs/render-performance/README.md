@@ -10,8 +10,8 @@ Before is `696bf4e` (main). Both sides ran on the same machine.
 
 | Setup | Before | After |
 | --- | --- | --- |
-| Today's sandbox (2 vCPU, 1 GB) | 348.7 s | 81.0 s (4.3×) |
-| 4 vCPU | 268.7 s | 51.1 s (5.3×) |
+| Today's sandbox (2 vCPU, 1 GB) | 348.7 s | 77.9 s (4.5×) |
+| 4 vCPU | 268.7 s | 49.0 s (5.5×) |
 | One 48×48 lit surface scene, 16 s (2 vCPU) | 426.5 s | 83.4 s (5.1×) |
 | Memory per render process | 0.75–1 GB | ~210 MB, plus ~180 MB shared |
 | Script error raised during an animation | hung until the 30 min job timeout | fails in ~3 s |
@@ -35,8 +35,8 @@ Across every frame of the two videos PSNR averages 57 dB, with the worst frame
 at 50 dB.
 
 - The drawing changes are pixel-identical to Manim's own drawing. That covers
-  the 3D batching, depth sort, axis shading, path building, canvas reset and
-  family walks. Checked over four camera angles and several surface types, and
+  the 3D batching, depth sort, axis shading, path building, canvas reset,
+  family walks and glyph copies. Checked over four camera angles and several surface types, and
   over thousands of decoded 2D frames.
 - Handing frames to the encoder without a copy, and converting held frames
   once, decodes identically.
@@ -56,6 +56,7 @@ at 50 dB.
 | Batched 3D lighting, projection, depth sort and drawing | A lit surface spent most of each frame in per-patch Python |
 | ThreeDAxes shading computed once per frame | It walked each axis ~200 times a frame |
 | Faster `get_family`, path building and canvas reset | Same results with less Python per frame; 2D scenes ~30% faster |
+| Copies share a glyph's parsed SVG path | Copying text and formulas (every `always_redraw` readout, every frame) 4–6× faster |
 | Frames handed to x264 without a copy; held frames converted once | Frame conversion 4× faster |
 | x264 superfast, CRF 16, no B-frames | Half the encoder CPU, ~75 MB less per render, same quality |
 | Bounded frame queue | Manim could queue ~1 GB of 8 MB frames |
