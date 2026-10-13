@@ -22,7 +22,16 @@ export function videoRenderFlags(resolution?: {
   width: number;
   height: number;
 }): string[] {
-  const flags = ["--disable_caching", "--format=mp4", "-qh", "--fps", "30"];
+  // --silent: Manim otherwise asks PyPI for its latest version after every
+  // render, synchronously, with a 10 s timeout.
+  const flags = [
+    "--disable_caching",
+    "--format=mp4",
+    "-qh",
+    "--fps",
+    "30",
+    "--silent",
+  ];
   if (resolution) {
     const dimension = (value: number) => {
       if (!Number.isFinite(value) || value < 2)
