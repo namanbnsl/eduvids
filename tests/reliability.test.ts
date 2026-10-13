@@ -22,6 +22,7 @@ import {
   fixManimScript,
   manimVoiceoverTimingIssues,
   normalizeScenePlanTiming,
+  scenePlanVisualGaps,
   streamTextWithTracking,
   sanitizeManimScript,
 } from "../src/lib/llm";
@@ -53,6 +54,7 @@ import {
   generationFailureMessage,
 } from "../src/lib/workflow/errors";
 import type { PreparedSandboxState } from "../src/lib/e2b";
+import type { ScenePlanEntry } from "../src/lib/llm";
 import { uploadThingFetch } from "../src/lib/uploadthing";
 import { EDUVIDS_TTS_SERVICE_SOURCE } from "../src/lib/eduvids-tts-service";
 
@@ -1275,6 +1277,20 @@ test("every storytelling helper the Manim prompt names is exported by the house 
     "person",
     "die",
     "cell",
+    "link",
+    "block",
+    "balance",
+    "hop",
+    "area_model",
+    "split_bar",
+    "bars",
+    "cells",
+    "network",
+    "timeline",
+    "slider",
+    "callout",
+    "trail",
+    "gas",
   ]) {
     assert.ok(listed.includes(name), `prompt lists ${name}`);
   }
@@ -1287,11 +1303,25 @@ test("the planner names a visual device per scene and the narrator writes for pi
     "to_scale",
     "exploded_view",
     "process_flow",
+    "equation_link",
+    "balance",
+    "number_line",
+    "area_model",
+    "proportion_bar",
+    "chart",
+    "algorithm_steps",
+    "network_walk",
+    "timeline",
+    "parameter_sweep",
+    "labelled_anatomy",
+    "particles",
+    "trajectory",
     "spotlight",
     "before_after",
     "live_tracker",
     "morph",
     "predict_reveal",
+    "analogy_morph",
     "build_up",
   ];
   for (const device of devices) {
@@ -1314,6 +1344,65 @@ test("the planner names a visual device per scene and the narrator writes for pi
   }
   assert.match(VOICEOVER_SYSTEM_PROMPT, /TRAVEL THROUGH SCALE/);
   assert.match(VOICEOVER_SYSTEM_PROMPT, /MAKE NUMBERS COUNTABLE/);
+  assert.match(VOICEOVER_SYSTEM_PROMPT, /GIVE EVERY QUANTITY A BODY/);
+  assert.match(SCENE_PLAN_SYSTEM_PROMPT, /Every scene has a hero picture/);
+  assert.match(SCENE_PLAN_SYSTEM_PROMPT, /VISUAL VOCABULARY BY SUBJECT/);
+});
+
+test("prompts carry no control characters from collapsed escapes", () => {
+  // A single backslash in the TypeScript source turns \text into a tab and
+  // \, into a comma, so the model would copy broken LaTeX.
+  for (const prompt of [
+    MANIM_SYSTEM_PROMPT,
+    SCENE_PLAN_SYSTEM_PROMPT,
+    VOICEOVER_SYSTEM_PROMPT,
+  ]) {
+    assert.doesNotMatch(prompt, /[\t\x08\x0b\x0c]/);
+  }
+  for (const latex of MANIM_SYSTEM_PROMPT.matchAll(/r"([^"]*)"/g)) {
+    assert.doesNotMatch(latex[1]!, /(^|[^\\]),\\(?:text|mathrm)/, latex[1]);
+  }
+});
+
+test("scene plan gaps flag text-only, unlinked formula, missing and repeated devices", () => {
+  const scene = (
+    sceneId: string,
+    types: string[],
+    visualDevice?: string,
+  ): ScenePlanEntry => ({
+    sceneId,
+    narration: "x",
+    visualType: "formula_explanation",
+    visualDevice,
+    elements: types.map((type, index) => ({
+      id: `e${index}`,
+      type: type as ScenePlanEntry["elements"][number]["type"],
+      content: "x",
+    })),
+    layout: "center_single",
+    maxSimultaneousElements: 3,
+    transitionIn: "write",
+    clearPrevious: true,
+    labels: [],
+    beats: [],
+  });
+  const gaps = scenePlanVisualGaps([
+    scene("S1", ["text", "math"], "morph"),
+    scene("S2", ["text"], "morph"),
+    scene("S3", ["shape", "math"], "morph"),
+    scene("S4", ["shape", "math"], "equation_link"),
+    scene("S5", ["prop"]),
+  ]);
+  assert.match(gaps.join("\n"), /S1: only text and formulas/);
+  assert.match(gaps.join("\n"), /S2: only text is planned/);
+  assert.match(gaps.join("\n"), /S3: tie the formula/);
+  assert.match(gaps.join("\n"), /S3: third "morph" scene in a row/);
+  assert.ok(!gaps.some((gap) => gap.startsWith("S4")));
+  assert.match(gaps.join("\n"), /S5: no visual device/);
+  assert.deepEqual(
+    scenePlanVisualGaps([scene("Good", ["population"], "population")]),
+    [],
+  );
 });
 
 test("scene timing keeps the planned device and storyboard", () => {

@@ -28,3 +28,42 @@ CURRENT = [
     "Follow one electron. It drifts about a tenth of a millimetre each second.",
     "The bulb lights at once because every electron in the loop starts moving together.",
 ]
+
+EQUATION = [
+    "Here is a puzzle: some number, plus one, makes three.",
+    "Think of it as a balance. A mystery box and one weight on the left, three weights on the right.",
+    "The beam is level, so both sides weigh the same.",
+    "Take one weight off each side, and it stays level.",
+    "So the box weighs two. That is all solving an equation means.",
+]
+
+SEARCH = [
+    "Find thirty one in this sorted list of seven numbers.",
+    "Don't start at the beginning. Check the middle one: seventeen.",
+    "Thirty one is bigger, so the whole left half can go.",
+    "Check the middle of what is left: thirty one. Found it in two steps.",
+    "Each check halves the list, so even a million names need only twenty checks.",
+]
+
+PYTHAGORAS = [
+    "Take a right triangle with sides three and four. The long side is five.",
+    "Build a square on each side.",
+    "The two small squares hold nine and sixteen tiles.",
+    "Slide them over, and twenty five tiles fill the big square exactly.",
+    "So a squared plus b squared equals c squared, for every right triangle.",
+]
+
+DEEPTIME = [
+    "Earth formed about four and a half billion years ago.",
+    "Life appeared within a billion years, as single cells.",
+    "Animals show up only in the last eighth of the story.",
+    "The dinosaurs died out sixty six million years ago, a sliver at the very end.",
+    "Zoom into that sliver, and all of human history is still a hair at the edge.",
+]
+
+PENDULUM = [
+    "A pendulum takes the same time for every swing.",
+    "Make the string longer, and every swing gets slower.",
+    "Make the bob heavier, and nothing changes at all.",
+    "Only length and gravity set the rhythm: T equals two pi root L over g.",
+]

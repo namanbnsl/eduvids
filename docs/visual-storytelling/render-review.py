@@ -20,7 +20,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 REPO = Path(__file__).resolve().parents[2]
 DOCS = Path(__file__).resolve().parent
-TOPICS = ["Atom", "Bayes", "Sun", "Current"]
+TOPICS = ["Atom", "Bayes", "Sun", "Current", "Equation", "Search", "Pythagoras", "DeepTime", "Pendulum"]
 FONT = REPO / "src/lib/thumbnail/fonts/cmunrm.otf"
 
 
@@ -37,8 +37,8 @@ def frame_at(video, seconds, destination):
 def storyboard(topic, videos, beats, work):
     """Two rows (before, after), one column per narration beat, each frame
     taken just before the beat ends, when its action has played out."""
-    from narration import ATOM, BAYES, SUN, CURRENT  # noqa: E402
-    lines = {"Atom": ATOM, "Bayes": BAYES, "Sun": SUN, "Current": CURRENT}[topic]
+    import narration  # noqa: E402
+    lines = getattr(narration, topic.upper())
     width = 480
     rows = []
     for variant in ("before", "after"):

@@ -4,7 +4,7 @@ best-case outputs of the old instructions, not deliberately weak ones."""
 from manim import *
 from manim_voiceover import VoiceoverScene
 from eduvids_style import *
-from narration import ATOM, BAYES, SUN, CURRENT
+from narration import ATOM, BAYES, SUN, CURRENT, EQUATION, SEARCH, PYTHAGORAS, DEEPTIME, PENDULUM
 
 
 class AtomBefore(VoiceoverScene):
@@ -114,3 +114,117 @@ class CurrentBefore(VoiceoverScene):
             self.play(pulse(formula), run_time=0.6)
         with self.voiceover(text=CURRENT[3]) as tracker:
             self.play(LaggedStart(*[Indicate(a, color=ACCENT) for a in arrows], lag_ratio=0.1), run_time=max(0.8, tracker.duration * 0.4))
+
+
+class EquationBefore(VoiceoverScene):
+    def construct(self):
+        title = header("Solving is balancing")
+        eq = MathTex("x", "+", "1", "=", "3", font_size=80)
+        place_in_content(eq, above=title, fill=0.5)
+        with self.voiceover(text=EQUATION[0]) as tracker:
+            self.play(FadeIn(title), Write(eq), run_time=max(0.8, tracker.duration * 0.5))
+        notes = caption("Both sides of an equation are equal")
+        with self.voiceover(text=EQUATION[1]) as tracker:
+            self.play(pulse(eq[0]), run_time=max(0.6, tracker.duration * 0.3))
+            self.play(FadeIn(notes), run_time=0.6)
+        with self.voiceover(text=EQUATION[2]) as tracker:
+            self.play(pulse(eq[3]), run_time=max(0.6, tracker.duration * 0.3))
+        step = MathTex("x", "+", "1", "-", "1", "=", "3", "-", "1", font_size=80).move_to(eq)
+        step[3:5].set_color(ACCENT); step[7:9].set_color(ACCENT)
+        with self.voiceover(text=EQUATION[3]) as tracker:
+            self.play(TransformMatchingTex(eq, step), run_time=max(0.8, tracker.duration * 0.4))
+        answer = MathTex("x", "=", "2", font_size=96).move_to(eq)
+        answer[2].set_color(ACCENT)
+        with self.voiceover(text=EQUATION[4]) as tracker:
+            self.play(TransformMatchingTex(step, answer), run_time=1)
+            self.play(pulse(answer), run_time=0.6)
+
+
+class SearchBefore(VoiceoverScene):
+    def construct(self):
+        title = header("Halve it every time")
+        listing = MathTex(r"[3, 8, 12, 17, 23, 31, 42]", font_size=56)
+        mid = MathTex(r"\text{mid} = 17", font_size=56, color=ACCENT)
+        rule = MathTex(r"31 > 17 \Rightarrow \text{search right half}", font_size=48)
+        found = MathTex(r"\text{found in } 2 \text{ steps}", font_size=48, color=ACCENT)
+        block_ = VGroup(listing, mid, rule, found).arrange(DOWN, buff=0.5)
+        place_in_content(block_, above=title, fill=0.8)
+        lock_layout(block_)
+        with self.voiceover(text=SEARCH[0]) as tracker:
+            self.play(FadeIn(title), Write(listing), run_time=max(0.8, tracker.duration * 0.5))
+        with self.voiceover(text=SEARCH[1]) as tracker:
+            self.play(Write(mid), run_time=1)
+        with self.voiceover(text=SEARCH[2]) as tracker:
+            self.play(Write(rule), run_time=1.2)
+        with self.voiceover(text=SEARCH[3]) as tracker:
+            self.play(FadeIn(found), run_time=1)
+        cost = MathTex(r"\log_2 1{,}000{,}000 \approx 20", font_size=72)
+        place_in_content(cost, above=title, fill=0.6)
+        with self.voiceover(text=SEARCH[4]) as tracker:
+            self.play(FadeOut(VGroup(listing, mid, rule, found)), run_time=0.5)
+            self.play(Write(cost), run_time=1.5)
+
+
+class PythagorasBefore(VoiceoverScene):
+    def construct(self):
+        title = header("Three squares, one triangle")
+        tri = Polygon(ORIGIN, RIGHT * 4 * 0.6, UP * 3 * 0.6, color=PRIMARY, fill_opacity=0.25)
+        labels = VGroup(MathTex("a = 3", font_size=40).next_to(tri, LEFT, buff=0.3),
+                        MathTex("b = 4", font_size=40).next_to(tri, DOWN, buff=0.3),
+                        MathTex("c = 5", font_size=40, color=ACCENT).move_to(tri.get_center() + UR * 0.7))
+        formula = MathTex("a^2", "+", "b^2", "=", "c^2", font_size=72)
+        layout_scene(VGroup(tri, labels), title=title, side=formula)
+        with self.voiceover(text=PYTHAGORAS[0]) as tracker:
+            self.play(FadeIn(title), Create(tri), run_time=max(0.8, tracker.duration * 0.4))
+            self.play(FadeIn(labels), run_time=0.8)
+        with self.voiceover(text=PYTHAGORAS[1]) as tracker:
+            self.play(Write(formula), run_time=max(0.8, tracker.duration * 0.5))
+        numbers = MathTex("9", "+", "16", "=", "25", font_size=72).move_to(formula)
+        with self.voiceover(text=PYTHAGORAS[2]) as tracker:
+            self.play(TransformMatchingTex(formula.copy(), numbers.next_to(formula, DOWN, buff=0.6)), run_time=1.2)
+        with self.voiceover(text=PYTHAGORAS[3]) as tracker:
+            self.play(pulse(numbers[4]), run_time=max(0.6, tracker.duration * 0.3))
+        with self.voiceover(text=PYTHAGORAS[4]) as tracker:
+            self.play(Circumscribe(formula, color=ACCENT), run_time=1.2)
+
+
+class DeepTimeBefore(VoiceoverScene):
+    def construct(self):
+        title = header("A sliver at the end")
+        rows = VGroup(*[VGroup(MathTex(when, font_size=40, color=ACCENT), Text(what, font_size=36))
+                        .arrange(RIGHT, buff=0.4) for when, what in (
+                            (r"4.5\text{ billion years ago}", "Earth forms"),
+                            (r"3.8\text{ billion years ago}", "first cells"),
+                            (r"540\text{ million years ago}", "first animals"),
+                            (r"66\text{ million years ago}", "dinosaurs end"),
+                            (r"300{,}000\text{ years ago}", "first humans"))])
+        rows.arrange(DOWN, aligned_edge=LEFT, buff=0.45)
+        place_in_content(rows, above=title, fill=0.75)
+        lock_layout(rows)
+        for k, line in enumerate(DEEPTIME):
+            with self.voiceover(text=line) as tracker:
+                if k == 0:
+                    self.play(FadeIn(title), run_time=0.5)
+                self.play(FadeIn(rows[k], shift=RIGHT * 0.2), run_time=max(0.6, tracker.duration * 0.4))
+
+
+class PendulumBefore(VoiceoverScene):
+    def construct(self):
+        title = header("What sets the swing")
+        pivot = UP * 1.6 + LEFT * 2.5
+        rod = Line(pivot, pivot + DOWN * 2.6 + RIGHT * 0.9, color=INK)
+        bob = Circle(radius=0.25, color=PRIMARY, fill_opacity=1).move_to(rod.get_end())
+        ceiling = Line(pivot + LEFT * 0.8, pivot + RIGHT * 0.8, color=GREY_B, stroke_width=5)
+        l_label = MathTex("L", font_size=44).next_to(rod.get_center(), RIGHT, buff=0.3)
+        m_label = MathTex("m", font_size=44).next_to(bob, RIGHT, buff=0.3)
+        formula = MathTex("T", "=", r"2\pi", r"\sqrt{\frac{L}{g}}", font_size=72)
+        layout_scene(VGroup(ceiling, rod, bob, l_label, m_label), title=title, side=formula)
+        notes = caption("The period does not depend on mass")
+        with self.voiceover(text=PENDULUM[0]) as tracker:
+            self.play(FadeIn(title), Create(ceiling), Create(rod), FadeIn(bob), run_time=max(0.8, tracker.duration * 0.5))
+        with self.voiceover(text=PENDULUM[1]) as tracker:
+            self.play(FadeIn(l_label), Write(formula), run_time=max(0.8, tracker.duration * 0.5))
+        with self.voiceover(text=PENDULUM[2]) as tracker:
+            self.play(FadeIn(m_label), FadeIn(notes), run_time=max(0.8, tracker.duration * 0.4))
+        with self.voiceover(text=PENDULUM[3]) as tracker:
+            self.play(pulse(formula[3]), run_time=1)
