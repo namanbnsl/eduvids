@@ -12,12 +12,6 @@
   <a href="https://x.com/eduvidsai">X</a>
 </p>
 
-<p align="center">
-  <a href="https://github.com/namanbnsl/eduvids/stargazers"><img src="https://img.shields.io/github/stars/namanbnsl/eduvids?style=flat&color=6d5dfc&labelColor=111" alt="Stars"></a>
-  <a href="https://www.youtube.com/@eduvids-ai"><img src="https://img.shields.io/youtube/channel/subscribers/UCws8TdWGs-Fo4UsBay3GtFA?style=flat&color=6d5dfc&labelColor=111&label=subscribers" alt="YouTube subscribers"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/namanbnsl/eduvids?style=flat&color=6d5dfc&labelColor=111" alt="License"></a>
-</p>
-
 <br>
 
 <table>
@@ -36,23 +30,6 @@
 Every frame above is drawn by code. eduvids plans the lesson, writes the narration, writes [Manim](https://www.manim.community/) scenes for each beat, renders them in a sandbox, and times the voice to the picture. You get back a landscape video or a vertical Short, with a thumbnail.
 
 Free, no sign-in needed. Works in other languages too.
-
-## Watch
-
-<table>
-  <tr>
-    <td width="33%"><a href="https://www.youtube.com/watch?v=ojDNu_YYGYk"><img src="https://i.ytimg.com/vi/ojDNu_YYGYk/maxresdefault.jpg" alt="Navier–Stokes Equations From Scratch"></a></td>
-    <td width="33%"><a href="https://www.youtube.com/watch?v=k2JPMU85-tI"><img src="https://i.ytimg.com/vi/k2JPMU85-tI/maxresdefault.jpg" alt="The Geometry of Hyperbolic Space Explained"></a></td>
-    <td width="33%"><a href="https://www.youtube.com/watch?v=rKyIAsPASd0"><img src="https://i.ytimg.com/vi/rKyIAsPASd0/maxresdefault.jpg" alt="Complex Integration Visualized From First Principles"></a></td>
-  </tr>
-  <tr>
-    <td>Navier–Stokes from scratch</td>
-    <td>Hyperbolic space</td>
-    <td>Complex integration</td>
-  </tr>
-</table>
-
-More at [eduvids.app/examples](https://eduvids.app/examples) and on [YouTube](https://www.youtube.com/@eduvids-ai).
 
 ## Run it yourself
 
