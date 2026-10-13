@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, ArrowUpRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight } from "lucide-react";
 import { notFound } from "next/navigation";
 
 import { VideoCard } from "@/components/marketing/video-card";
 import {
   CURATED_VIDEOS,
   getCuratedVideo,
+  getRemixHref,
+  getTranscript,
   getYouTubeThumbnail,
   getYouTubeUrl,
 } from "@/lib/curated-videos";
 import { SITE_URL, YOUTUBE_CHANNEL_URL } from "@/lib/site";
+import { getTopic } from "@/lib/topics";
 
 type PageProps = { params: Promise<{ slug: string }> };
 
@@ -51,9 +54,18 @@ export default async function ExamplePage({ params }: PageProps) {
   if (!video) notFound();
 
   const originalUrl = getYouTubeUrl(video);
+  const transcript = getTranscript(video);
+  const topics = video.topics.flatMap((slug) => getTopic(slug) ?? []);
+  // Same-topic videos first, then the rest of the library.
   const related = CURATED_VIDEOS.filter(
     (candidate) => candidate.slug !== video.slug,
-  ).slice(0, 3);
+  )
+    .sort(
+      (a, b) =>
+        Number(b.topics.some((t) => video.topics.includes(t))) -
+        Number(a.topics.some((t) => video.topics.includes(t))),
+    )
+    .slice(0, 3);
   const videoSchema = {
     "@context": "https://schema.org",
     "@type": "VideoObject",
@@ -64,6 +76,7 @@ export default async function ExamplePage({ params }: PageProps) {
     about: video.subject,
     inLanguage: "en",
     isFamilyFriendly: true,
+    ...(transcript ? { transcript } : {}),
     embedUrl: `https://www.youtube.com/embed/${video.videoId}`,
     contentUrl: originalUrl,
     url: `${SITE_URL}/examples/${video.slug}`,
@@ -91,9 +104,15 @@ export default async function ExamplePage({ params }: PageProps) {
 
         <header className="mt-8 max-w-4xl">
           <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-            <span className="rounded-full border border-border px-3 py-1.5">
-              {video.subject}
-            </span>
+            {topics.map((topic) => (
+              <Link
+                key={topic.slug}
+                href={`/topics/${topic.slug}`}
+                className="rounded-full border border-border px-3 py-1.5 hover:border-foreground/30 hover:text-foreground"
+              >
+                {topic.name}
+              </Link>
+            ))}
             <span className="rounded-full border border-border px-3 py-1.5">
               {video.format}
             </span>
@@ -124,15 +143,36 @@ export default async function ExamplePage({ params }: PageProps) {
             Selected from the official eduvids YouTube channel and presented
             here as an example of the product&apos;s output.
           </p>
-          <Link
-            href={originalUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium hover:border-foreground/30 hover:bg-card"
-          >
-            Watch on YouTube <ArrowUpRight className="size-4" />
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href={getRemixHref(video)}
+              className="inline-flex items-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-semibold text-background hover:bg-foreground/90"
+            >
+              Make your own version <ArrowRight className="size-4" />
+            </Link>
+            <Link
+              href={originalUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium hover:border-foreground/30 hover:bg-card"
+            >
+              Watch on YouTube <ArrowUpRight className="size-4" />
+            </Link>
+          </div>
         </div>
+
+        {transcript && (
+          <section className="border-b border-border/60 py-12">
+            <h2 className="text-2xl font-semibold tracking-tight">
+              Transcript
+            </h2>
+            <div className="mt-5 max-w-3xl space-y-4 text-sm leading-7 text-muted-foreground">
+              {transcript.split(/\n{2,}/).map((paragraph, index) => (
+                <p key={index}>{paragraph}</p>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="pt-12">
           <h2 className="text-2xl font-semibold tracking-tight">

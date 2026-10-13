@@ -1,5 +1,6 @@
 import { CURATED_VIDEOS } from "@/lib/curated-videos";
 import { GITHUB_URL, SITE_URL, YOUTUBE_CHANNEL_URL } from "@/lib/site";
+import { TOPICS } from "@/lib/topics";
 
 export const dynamic = "force-static";
 
@@ -7,6 +8,11 @@ export function GET() {
   const examples = CURATED_VIDEOS.map(
     (video) =>
       `- [${video.title}](${SITE_URL}/examples/${video.slug}): ${video.description}`,
+  ).join("\n");
+
+  const topics = TOPICS.map(
+    (topic) =>
+      `- [${topic.title}](${SITE_URL}/topics/${topic.slug}): ${topic.description}`,
   ).join("\n");
 
   const content = `# eduvids
@@ -22,6 +28,10 @@ export function GET() {
 - [About eduvids](${SITE_URL}/about)
 - [Official YouTube channel](${YOUTUBE_CHANNEL_URL})
 - [Open-source repository](${GITHUB_URL})
+
+## Topics
+
+${topics}
 
 ## Representative examples
 

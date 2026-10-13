@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { CURATED_VIDEOS } from "@/lib/curated-videos";
 import { SITE_URL } from "@/lib/site";
+import { TOPICS } from "@/lib/topics";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const publicPages: MetadataRoute.Sitemap = [
@@ -43,5 +44,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.75,
   }));
 
-  return [...publicPages, ...videoPages];
+  const topicPages: MetadataRoute.Sitemap = [
+    {
+      url: `${SITE_URL}/topics`,
+      lastModified: new Date("2026-10-13"),
+      changeFrequency: "weekly",
+      priority: 0.85,
+    },
+    ...TOPICS.map((topic) => ({
+      url: `${SITE_URL}/topics/${topic.slug}`,
+      lastModified: new Date("2026-10-13"),
+      changeFrequency: "weekly" as const,
+      priority: 0.85,
+    })),
+  ];
+
+  return [...publicPages, ...topicPages, ...videoPages];
 }

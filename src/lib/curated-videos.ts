@@ -1,3 +1,6 @@
+import { CURATED_TRANSCRIPTS } from "./curated-transcripts";
+import type { TopicSlug } from "./topics";
+
 export type CuratedVideo = {
   slug: string;
   videoId: string;
@@ -6,6 +9,12 @@ export type CuratedVideo = {
   subject: "Mathematics" | "Physics" | "Chemistry" | "Probability";
   format: "Video" | "Short";
   publishedAt: string;
+  /** Topic hubs this video is listed on (see `src/lib/topics.ts`). */
+  topics: TopicSlug[];
+  /** Starting prompt for "Make your own" on this video. */
+  prompt: string;
+  /** Plain-text narration, from `scripts/youtube/export-transcripts.ts`. */
+  transcript?: string;
   featured?: boolean;
 };
 
@@ -22,6 +31,9 @@ export const CURATED_VIDEOS: CuratedVideo[] = [
     subject: "Chemistry",
     format: "Video",
     publishedAt: "2026-10-13T00:00:00Z",
+    topics: ["chemistry"],
+    prompt:
+      "Why can carbon form so many different molecules? Show its four bonds building chains, rings and double bonds.",
     featured: true,
   },
   {
@@ -33,6 +45,9 @@ export const CURATED_VIDEOS: CuratedVideo[] = [
     subject: "Chemistry",
     format: "Video",
     publishedAt: "2026-10-13T00:00:00Z",
+    topics: ["chemistry"],
+    prompt:
+      "How does a glow stick make light without getting hot? Explain chemiluminescence step by step.",
     featured: true,
   },
   {
@@ -44,6 +59,9 @@ export const CURATED_VIDEOS: CuratedVideo[] = [
     subject: "Probability",
     format: "Video",
     publishedAt: "2026-10-13T00:00:00Z",
+    topics: ["probability", "calculus"],
+    prompt:
+      "Why must the total area under a probability density curve equal 1?",
     featured: true,
   },
   {
@@ -55,6 +73,9 @@ export const CURATED_VIDEOS: CuratedVideo[] = [
     subject: "Probability",
     format: "Video",
     publishedAt: "2026-10-13T00:00:00Z",
+    topics: ["probability"],
+    prompt:
+      "Why isn't P(A or B) just P(A) + P(B)? Show inclusion–exclusion with overlapping circles.",
   },
   {
     slug: "what-is-an-integral-explained-visually",
@@ -65,6 +86,9 @@ export const CURATED_VIDEOS: CuratedVideo[] = [
     subject: "Mathematics",
     format: "Short",
     publishedAt: "2026-09-11T17:52:32Z",
+    topics: ["mathematics", "calculus"],
+    prompt:
+      "What is an integral? Build it from thinner and thinner rectangles under a curve.",
   },
   {
     slug: "navier-stokes-equations-from-scratch",
@@ -75,6 +99,9 @@ export const CURATED_VIDEOS: CuratedVideo[] = [
     subject: "Physics",
     format: "Video",
     publishedAt: "2026-09-11T17:41:29Z",
+    topics: ["physics"],
+    prompt:
+      "Derive the Navier–Stokes equations from conservation of mass and momentum.",
   },
   {
     slug: "geometry-of-hyperbolic-space-explained",
@@ -85,6 +112,9 @@ export const CURATED_VIDEOS: CuratedVideo[] = [
     subject: "Mathematics",
     format: "Video",
     publishedAt: "2026-09-11T17:45:21Z",
+    topics: ["mathematics"],
+    prompt:
+      "What does hyperbolic space look like? Explore the Poincaré disk and its triangles.",
   },
   {
     slug: "complex-integration-from-first-principles",
@@ -95,6 +125,9 @@ export const CURATED_VIDEOS: CuratedVideo[] = [
     subject: "Mathematics",
     format: "Video",
     publishedAt: "2026-09-12T03:03:38Z",
+    topics: ["mathematics", "calculus"],
+    prompt:
+      "Explain integration along a path in the complex plane, up to the residue theorem.",
   },
   {
     slug: "chaos-of-a-double-pendulum",
@@ -105,6 +138,9 @@ export const CURATED_VIDEOS: CuratedVideo[] = [
     subject: "Physics",
     format: "Short",
     publishedAt: "2026-09-13T10:53:04Z",
+    topics: ["physics"],
+    prompt:
+      "Why does a double pendulum become unpredictable? Compare two that start almost the same.",
   },
   {
     slug: "gravitational-waves-stretch-spacetime",
@@ -115,6 +151,9 @@ export const CURATED_VIDEOS: CuratedVideo[] = [
     subject: "Physics",
     format: "Video",
     publishedAt: "2026-09-13T11:08:33Z",
+    topics: ["physics"],
+    prompt:
+      "How do gravitational waves stretch space, and how does LIGO detect them?",
   },
   {
     slug: "seven-million-dollar-math-problems",
@@ -125,6 +164,8 @@ export const CURATED_VIDEOS: CuratedVideo[] = [
     subject: "Mathematics",
     format: "Video",
     publishedAt: "2026-09-12T05:49:31Z",
+    topics: ["mathematics"],
+    prompt: "Give a visual tour of the seven Millennium Prize Problems.",
   },
   {
     slug: "pigeonhole-principle-explained-with-socks",
@@ -135,11 +176,37 @@ export const CURATED_VIDEOS: CuratedVideo[] = [
     subject: "Mathematics",
     format: "Video",
     publishedAt: "2026-09-11T17:31:06Z",
+    topics: ["mathematics"],
+    prompt:
+      "Explain the pigeonhole principle with socks in a drawer, then a surprising use of it.",
   },
 ];
 
 export function getCuratedVideo(slug: string) {
   return CURATED_VIDEOS.find((video) => video.slug === slug);
+}
+
+export function getTranscript(video: CuratedVideo): string | undefined {
+  return video.transcript ?? CURATED_TRANSCRIPTS[video.videoId];
+}
+
+export function getVideosForTopic(topic: TopicSlug) {
+  return CURATED_VIDEOS.filter((video) => video.topics.includes(topic));
+}
+
+/** Home-page link that opens the generator with a prompt filled in. */
+export function getCreateHref(
+  prompt: string,
+  mode: "video" | "short" = "video",
+) {
+  return `/?${new URLSearchParams({ prompt, mode })}`;
+}
+
+export function getRemixHref(video: CuratedVideo) {
+  return getCreateHref(
+    video.prompt,
+    video.format === "Short" ? "short" : "video",
+  );
 }
 
 export function getYouTubeThumbnail(videoId: string) {
