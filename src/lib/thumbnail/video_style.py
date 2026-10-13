@@ -239,9 +239,34 @@ if not getattr(Camera.get_fill_rgbas, "__eduvids_graded__", False):
             return np.dot(center, rotation.T)[2]
         return key
 
+    def _depth_keys(mobjects, rotation):
+        """ThreeDCamera's sort keys. Surface patches (leaf VMobjects of 16
+        points) are keyed in one pass; stacked matmul rounds exactly like
+        the per-patch np.dot, so ties break as they always did."""
+        key = _depth_key(rotation)
+        keys = [None] * len(mobjects)
+        patches = []
+        for index, mob in enumerate(mobjects):
+            if (
+                getattr(mob, "shade_in_3d", False) and isinstance(mob, manim.VMobject)
+                and not mob.submobjects and len(mob.points) == 16 and mob.n_points_per_cubic_curve == 4
+                and type(mob).get_z_index_reference_point is _stock_reference_point
+                and getattr(mob, "z_index_group", mob) is mob
+            ):
+                patches.append(index)
+            else:
+                keys[index] = key(mob)
+        if patches:
+            anchors = np.array([mobjects[index].points for index in patches])[:, [0, 4, 8, 12, 3, 7, 11, 15]]
+            centers = (anchors.min(axis=1) + anchors.max(axis=1)) / 2
+            for index, value in zip(patches, np.matmul(centers[:, None, :], rotation.T)[:, 0, 2]):
+                keys[index] = value
+        return keys
+
     def _get_mobjects_to_display(self, *args, **kwargs):
         mobjects = Camera.get_mobjects_to_display(self, *args, **kwargs)
-        mobjects = sorted(mobjects, key=_depth_key(self.get_rotation_matrix()))
+        keys = _depth_keys(mobjects, self.get_rotation_matrix())
+        mobjects = [mobjects[i] for i in sorted(range(len(mobjects)), key=keys.__getitem__)]
         self._eduvids_light = {}
         if self.should_apply_shading:
             faces = [mob for mob in mobjects if _litable(mob)]
@@ -255,11 +280,42 @@ if not getattr(Camera.get_fill_rgbas, "__eduvids_graded__", False):
 
     _capture_3d = ThreeDCamera.capture_mobjects
 
+    _frame = [0, False]  # frame number, inside a capture
+
     def _capture_lit(self, *args, **kwargs):
+        _frame[0] += 1
+        _frame[1] = True
         try:
             return _capture_3d(self, *args, **kwargs)
         finally:
+            _frame[1] = False
             self._eduvids_light = {}  # factors are valid for one frame only
+
+    def _shaded_axes(self):
+        # ThreeDAxes gives every piece of an axis a gradient spanning the
+        # whole axis, recomputed by walking the axis's family for each
+        # piece's fill and stroke: ~200 walks a frame. The axis cannot move
+        # while one frame is drawn, so compute it once per axis per frame.
+        def make_func(axis):
+            vect = self.light_source
+            cache = [None, None]
+
+            def ends():
+                if _frame[1] and cache[0] == _frame[0]:
+                    return cache[1]
+                value = (axis.get_edge_center(-vect), axis.get_edge_center(vect))
+                if _frame[1]:
+                    cache[0], cache[1] = _frame[0], value
+                return value
+            return ends
+
+        for axis in self:
+            for submob in axis.family_members_with_points():
+                submob.get_gradient_start_and_end_points = make_func(axis)
+                submob.get_unit_normal = lambda a: np.ones(3)
+                submob.set_sheen(0.2)
+
+    manim.ThreeDAxes._set_axis_shading = _shaded_axes
 
     def _patch(mob, camera):
         """A surface patch the batched drawing below reproduces exactly."""
@@ -287,15 +343,19 @@ if not getattr(Camera.get_fill_rgbas, "__eduvids_graded__", False):
 
     def _lit_colors(camera, faces, rgbas):
         """camera.get_fill_rgbas / get_stroke_rgbas for a batch of patches:
-        graded and lit in one pass when every face has two colour stops."""
+        graded and lit in one pass when every face has the same number of
+        colour stops (two for the fill, one for the stroke)."""
         light = getattr(camera, "_eduvids_light", {})
         entries = [light.get(id(face)) for face in faces]
+        stops = {len(row) for row in rgbas}
         if (
             camera.should_apply_shading
             and all(entry is not None and entry[0] is face for entry, face in zip(entries, faces))
-            and all(len(row) == 2 for row in rgbas)
+            and stops in ({1}, {2})
         ):
-            stacked = _grade(np.concatenate(rgbas)).reshape(len(faces), 2, 4)
+            stacked = _grade(np.concatenate(rgbas)).reshape(len(faces), stops.pop(), 4)
+            if stacked.shape[1] == 1:  # _apply_light lights a single stop at both ends
+                stacked = stacked.repeat(2, axis=1)
             factors = np.array([entry[1] for entry in entries])
             lit = np.array(stacked, dtype=float)
             lit[:, :, :3] = np.clip(lit[:, :, :3] * factors[:, :, None], 0, 1)
@@ -439,9 +499,26 @@ if not getattr(_set_path, "__eduvids_fast__", False):
             return None
         return _set_pixels(self, pixel_array, convert_from_floats)
 
+    _get_family = manim.Mobject.get_family
+
+    def _fast_family(self, recurse=True):
+        """Mobject.get_family without building and deduplicating a list at
+        every level: for a tree (no submobject twice) that is exactly the
+        pre-order walk. Anything shared falls back to Manim's own walk."""
+        family, seen, stack = [], set(), [self]
+        while stack:
+            mob = stack.pop()
+            if id(mob) in seen:
+                return _get_family(self, recurse)
+            seen.add(id(mob))
+            family.append(mob)
+            stack.extend(reversed(mob.submobjects))
+        return family
+
     _fast_path.__eduvids_fast__ = True
     Camera.set_cairo_context_path = _fast_path
     Camera.set_pixel_array = _fast_pixels
+    manim.Mobject.get_family = _fast_family
 
 # Canvas: flat BG (config.background_color), as in 3Blue1Brown and Welch Labs
 # videos. Strokes are drawn as-is, without halos.
