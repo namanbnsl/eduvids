@@ -515,6 +515,22 @@ if not getattr(_set_path, "__eduvids_fast__", False):
             stack.extend(reversed(mob.submobjects))
         return family
 
+    # Copying a glyph (every DecimalNumber rebuilt by always_redraw copies its
+    # cached digits each frame) deep-copied the parsed SVG path it was built
+    # from, most of the copy's cost. Manim reads path_obj only while building
+    # the glyph's points, so copies share it instead.
+    from manim.mobject.svg.svg_mobject import VMobjectFromSVGPath
+
+    _deepcopy_mobject = manim.Mobject.__deepcopy__
+
+    def _share_svg_path(self, memo):
+        path = self.__dict__.get("path_obj")
+        if path is not None:
+            memo[id(path)] = path
+        return _deepcopy_mobject(self, memo)
+
+    VMobjectFromSVGPath.__deepcopy__ = _share_svg_path
+
     _fast_path.__eduvids_fast__ = True
     Camera.set_cairo_context_path = _fast_path
     Camera.set_pixel_array = _fast_pixels
