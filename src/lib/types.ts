@@ -35,6 +35,12 @@ type JobProgressEntry = {
   at: string;
 };
 
+type StoryboardScene = {
+  /** Present on the scene that opens a chapter. */
+  chapter?: string;
+  caption: string;
+};
+
 type VideoJob = {
   id: string;
   description: string;
@@ -48,6 +54,7 @@ type VideoJob = {
   details?: string;
   youtubeStatus?: YoutubeStatus;
   progressLog?: JobProgressEntry[];
+  storyboard?: StoryboardScene[];
   youtubeUrl?: string;
   youtubeVideoId?: string;
   youtubeError?: string;
@@ -59,12 +66,16 @@ type VideoJob = {
 interface JobStore {
   create(
     description: string,
-    options?: { variant?: VideoVariant }
+    options?: { variant?: VideoVariant },
   ): Promise<VideoJob>;
   get(id: string): Promise<VideoJob | undefined>;
   setProgress(
     id: string,
-    update: { progress?: number; step?: string; details?: string }
+    update: { progress?: number; step?: string; details?: string },
+  ): Promise<VideoJob | undefined>;
+  setStoryboard(
+    id: string,
+    storyboard: StoryboardScene[],
   ): Promise<VideoJob | undefined>;
   setReady(id: string, videoUrl: string): Promise<VideoJob | undefined>;
   setError(id: string, message: string): Promise<VideoJob | undefined>;
@@ -75,7 +86,7 @@ interface JobStore {
       youtubeUrl?: string;
       youtubeVideoId?: string;
       youtubeError?: string;
-    }
+    },
   ): Promise<VideoJob | undefined>;
 }
 
@@ -141,4 +152,5 @@ export type {
   HeuristicOptions,
   HeuristicSeverity,
   JobProgressEntry,
+  StoryboardScene,
 };

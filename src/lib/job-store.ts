@@ -28,6 +28,7 @@ const kv = new VercelKV({
 import {
   JobStore,
   JobProgressEntry,
+  StoryboardScene,
   VideoJob,
   VideoVariant,
   YoutubeStatus,
@@ -140,6 +141,21 @@ class KVJobStore implements JobStore {
     const updatedWithLog = this.appendProgressLog(updated);
     await kv.set(this.key(id), updatedWithLog, { ex: this.ttlSeconds });
     return updatedWithLog;
+  }
+
+  async setStoryboard(
+    id: string,
+    storyboard: StoryboardScene[],
+  ): Promise<VideoJob | undefined> {
+    const job = await this.get(id);
+    if (!job) return undefined;
+    const updated: VideoJob = {
+      ...job,
+      storyboard,
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(this.key(id), updated, { ex: this.ttlSeconds });
+    return updated;
   }
 
   async setReady(id: string, videoUrl: string): Promise<VideoJob | undefined> {

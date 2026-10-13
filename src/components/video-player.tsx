@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   JobProgressEntry,
   JobStatus,
+  StoryboardScene,
   VideoJob,
   VideoVariant,
   YoutubeStatus,
@@ -16,6 +17,7 @@ import type {
 import { VideoProgressCard } from "@/components/ui/video-progress-card";
 import { SubscribePrompt } from "@/components/subscribe-prompt";
 import { ShareActions } from "@/components/share-actions";
+import { StoryboardCard } from "@/components/storyboard-card";
 
 // Icons
 import { Monitor, Smartphone, Youtube } from "lucide-react";
@@ -128,6 +130,7 @@ export function VideoPlayer({
   const [youtubeError, setYoutubeError] = useState<string | undefined>(
     undefined,
   );
+  const [storyboard, setStoryboard] = useState<StoryboardScene[]>([]);
   const [currentVariant, setCurrentVariant] = useState<VideoVariant>(
     initialVariant ?? "video",
   );
@@ -184,6 +187,7 @@ export function VideoPlayer({
           | "youtubeError"
           | "variant"
           | "progressLog"
+          | "storyboard"
         > & { jobId?: string })
       | null => {
       if (!job || typeof job !== "object") return null;
@@ -218,6 +222,7 @@ export function VideoPlayer({
         | "youtubeError"
         | "variant"
         | "progressLog"
+        | "storyboard"
       > & {
         jobId?: string;
       } = {
@@ -244,6 +249,22 @@ export function VideoPlayer({
               ? value.id
               : undefined,
       };
+
+      if (Array.isArray(value.storyboard)) {
+        const scenes = value.storyboard.flatMap((entry): StoryboardScene[] => {
+          if (!entry || typeof entry !== "object") return [];
+          const raw = entry as Record<string, unknown>;
+          if (typeof raw.caption !== "string" || !raw.caption) return [];
+          return [
+            {
+              caption: raw.caption,
+              chapter:
+                typeof raw.chapter === "string" ? raw.chapter : undefined,
+            },
+          ];
+        });
+        if (scenes.length) normalized.storyboard = scenes;
+      }
 
       if (Array.isArray(value.progressLog)) {
         const sanitizedLog = value.progressLog
@@ -301,6 +322,7 @@ export function VideoPlayer({
         return nextProgress;
       });
       if (parsed.step) setStep(parsed.step);
+      if (parsed.storyboard) setStoryboard(parsed.storyboard);
       setProgressDetails((prev) =>
         parsed.details !== undefined ? parsed.details : prev,
       );
@@ -366,6 +388,7 @@ export function VideoPlayer({
     setCurrentVariant(initialVariant ?? "video");
     setDisplayProgress(0);
     setProgressDetails(undefined);
+    setStoryboard([]);
   }, [jobId, initialVariant]);
 
   useEffect(() => {
@@ -609,6 +632,7 @@ export function VideoPlayer({
           stepLabel={stageTitle}
           progress={displayProgress}
         />
+        <StoryboardCard scenes={storyboard} />
         <SubscribePrompt />
       </div>
     );
