@@ -102,10 +102,12 @@ UNSPLITTABLE_CALLS = {"wait_until", "add_sound", "next_section", "TracedPath", "
 
 
 def narrated_seconds(source, scenes):
-    """Rough scene length from narration (about 15 characters a second, plus
-    the closing fade); used only to place split points. 0 for a scene that
-    must render whole."""
+    """Rough scene length from narration (about 15 characters a second, the
+    half-second lead before each line, see NARRATION_LEAD in video_style.py,
+    plus the closing fade); used only to place split points. 0 for a scene
+    that must render whole."""
     chars = {name: 0 for name in scenes}
+    lines = {name: 0 for name in scenes}
     whole = set()
     for cls in ast.parse(source).body:
         if isinstance(cls, ast.ClassDef) and cls.name in chars:
@@ -113,10 +115,11 @@ def narrated_seconds(source, scenes):
                 if not isinstance(node, ast.Call):
                     continue
                 if _call_name(node) == "voiceover":
+                    lines[cls.name] += 1
                     chars[cls.name] += sum(len(_string(k.value) or "") for k in node.keywords if k.arg == "text")
                 if _call_name(node) in UNSPLITTABLE_CALLS or any(k.arg == "stop_condition" for k in node.keywords):
                     whole.add(cls.name)
-    return {name: 0 if name in whole else count / 15 + 1.5 for name, count in chars.items()}
+    return {name: 0 if name in whole else count / 15 + 0.5 * lines[name] + 1.5 for name, count in chars.items()}
 
 
 def analyse(source, scenes):

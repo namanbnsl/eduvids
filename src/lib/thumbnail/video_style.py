@@ -1548,6 +1548,47 @@ if not getattr(_renderer_play, "__eduvids_release__", False):
     _CairoRenderer.play = _play_releasing_writer
 
 # ---------------------------------------------------------------------------
+# Show, then say: every voiceover block starts its narration NARRATION_LEAD
+# seconds after the block begins, so the beat's first animation is already on
+# screen when the narrator names it. The tracker's span grows by the same
+# lead, so the block's closing get_remaining_duration() hold still waits for
+# the whole line and the next beat never talks over this one.
+# ---------------------------------------------------------------------------
+
+NARRATION_LEAD = 0.5
+
+try:
+    from manim_voiceover import VoiceoverScene as _VoiceoverScene
+except ImportError:  # thumbnails and tests without the voiceover stack
+    _VoiceoverScene = None
+
+if _VoiceoverScene is not None and not getattr(_VoiceoverScene._add_voiceover_text, "__eduvids_lead__", False):
+    _add_voiceover_text = _VoiceoverScene._add_voiceover_text
+
+    def _add_voiceover_text_after_picture(self, *args, **kwargs):
+        add_sound, add_subcaption = self.add_sound, self.add_subcaption
+
+        def delayed_sound(sound_file, time_offset=0, *rest, **options):
+            return add_sound(sound_file, time_offset + NARRATION_LEAD, *rest, **options)
+
+        def delayed_subcaption(content, duration=1, offset=0):
+            return add_subcaption(content, duration=duration, offset=offset + NARRATION_LEAD)
+
+        self.add_sound, self.add_subcaption = delayed_sound, delayed_subcaption
+        try:
+            tracker = _add_voiceover_text(self, *args, **kwargs)
+        finally:
+            del self.add_sound, self.add_subcaption
+        tracker.duration += NARRATION_LEAD
+        tracker.end_t += NARRATION_LEAD
+        for mark in getattr(tracker, "bookmark_times", {}):
+            tracker.bookmark_times[mark] += NARRATION_LEAD
+        return tracker
+
+    _add_voiceover_text_after_picture.__eduvids_lead__ = True
+    _VoiceoverScene._add_voiceover_text = _add_voiceover_text_after_picture
+
+# ---------------------------------------------------------------------------
 # Segments: the render driver can split one long scene across processes.
 # EDUVIDS_SEGMENT="start,end" (seconds) renders only the scene's frames in
 # that span, counted the way a whole render counts them, and fast-forwards

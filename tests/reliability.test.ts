@@ -495,6 +495,49 @@ test("voiceover aligner closes every block with the guarded wait", () => {
   assert.equal(alignVoiceoverDurations(aligned), aligned);
 });
 
+test("voiceover aligner caps a slow opening reveal so the picture leads the voice", () => {
+  const script = `class Scene01(VoiceoverScene):
+    def construct(self):
+        with self.voiceover(text="Here is the parabola.") as tracker:
+            graph = axes.plot(lambda x: x**2)
+            self.play(Create(graph), FadeIn(label, shift=UP), run_time=max(0.4, tracker.duration * 0.35))
+            self.play(Create(tangent), run_time=max(0.4, tracker.duration * 0.45))
+            self.wait(max(0, tracker.get_remaining_duration()))
+        with self.voiceover(text="Slide the point along it.") as t2:
+            self.play(FadeIn(dot), t.animate.set_value(2), run_time=t2.duration * 0.8)
+            self.wait(max(0, t2.get_remaining_duration()))
+        with self.voiceover(text="The zoom is the motion of this beat.") as tracker:
+            self.play(zoom_to(self, one), run_time=tracker.duration * 0.7)
+            self.wait(max(0, tracker.get_remaining_duration()))
+        with self.voiceover(text="A fixed reveal is already quick.") as tracker:
+            self.play(Write(formula), run_time=1.5)
+            self.wait(max(0, tracker.get_remaining_duration()))
+        with self.voiceover(text="Two plays on one line stay as written.") as tracker:
+            self.play(FadeIn(a), run_time=tracker.duration * 0.3); self.play(FadeIn(b))
+            self.wait(max(0, tracker.get_remaining_duration()))`;
+  const aligned = alignVoiceoverDurations(script);
+  // Only the opening reveal is capped; later plays keep their share.
+  assert.ok(
+    aligned.includes(
+      "self.play(Create(graph), FadeIn(label, shift=UP), run_time=min(1.0, max(0.4, tracker.duration * 0.35)))",
+    ),
+    aligned,
+  );
+  assert.ok(
+    aligned.includes(
+      "self.play(Create(tangent), run_time=max(0.4, tracker.duration * 0.45))",
+    ),
+  );
+  // A reveal that also carries motion, a zoom, a fixed run time and an
+  // unparseable line are left as the model wrote them.
+  assert.ok(aligned.includes("t.animate.set_value(2), run_time=t2.duration * 0.8)"));
+  assert.ok(aligned.includes("self.play(zoom_to(self, one), run_time=tracker.duration * 0.7)"));
+  assert.ok(aligned.includes("self.play(Write(formula), run_time=1.5)"));
+  assert.ok(aligned.includes("self.play(FadeIn(a), run_time=tracker.duration * 0.3); self.play(FadeIn(b))"));
+  assert.deepEqual(manimVoiceoverTimingIssues(aligned, 5), []);
+  assert.equal(alignVoiceoverDurations(aligned), aligned);
+});
+
 test("voiceover timing accepts direct reveals and isolated narration holds", () => {
   const mixed = `class Scene01(VoiceoverScene):
     def construct(self):
@@ -1258,6 +1301,26 @@ test("a scene split into timeline segments joins into the same movie as a whole 
     await exec(
       "python3",
       [join(process.cwd(), "tests/render-segments.py"), folder],
+      { cwd: folder, timeout: 240_000 },
+    );
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("narration starts half a second after each beat's picture", async (t) => {
+  try {
+    await exec("python3", ["-c", "import manim, manim_voiceover"]);
+    await exec("ffmpeg", ["-version"]);
+  } catch {
+    t.skip("manim, manim-voiceover and ffmpeg are not installed");
+    return;
+  }
+  const folder = await mkdtemp(join(tmpdir(), "eduvids-lead-"));
+  try {
+    await exec(
+      "python3",
+      [join(process.cwd(), "tests/narration-lead.py"), folder],
       { cwd: folder, timeout: 240_000 },
     );
   } finally {
