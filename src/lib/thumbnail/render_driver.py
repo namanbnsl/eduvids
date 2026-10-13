@@ -94,9 +94,11 @@ def _base_name(node):
     return None
 
 
-# A segment counts frames from run times alone; these make a scene's frames
-# (or its sounds) depend on what was rendered before, so it renders whole.
-UNSPLITTABLE_CALLS = {"wait_until", "add_sound", "next_section"}
+# A segment counts frames from run times alone and fast-forwards skipped
+# animations in one step. These make a scene's frames, sounds or drawing
+# depend on every earlier frame (a traced path records one point per frame),
+# so such a scene renders whole.
+UNSPLITTABLE_CALLS = {"wait_until", "add_sound", "next_section", "TracedPath", "trail"}
 
 
 def narrated_seconds(source, scenes):

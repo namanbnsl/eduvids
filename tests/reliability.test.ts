@@ -1405,6 +1405,10 @@ test("render driver finds narration and formulas, and plans the costliest scenes
     "    def construct(self):",
     '        with self.voiceover(text="short") as t:',
     "            pass",
+    "class D(VoiceoverScene, ThreeDScene):",
+    "    def construct(self):",
+    `        with self.voiceover(text="${"d".repeat(900)}") as t:`,
+    "            path = TracedPath(dot.get_center)",
     "class C(VoiceoverScene, ThreeDScene):",
     "    def construct(self):",
     `        with self.voiceover(text="${"c".repeat(500)}") as t:`,
@@ -1415,7 +1419,7 @@ test("render driver finds narration and formulas, and plans the costliest scenes
     `import json, sys
 sys.path.insert(0, "src/lib/thumbnail")
 import render_driver as d
-scenes = ["A", "B", "C"]
+scenes = ["A", "B", "C", "D"]
 narration, formulas, weights = d.analyse(json.loads(sys.argv[1]), scenes)
 seconds = d.narrated_seconds(json.loads(sys.argv[1]), scenes)
 print(json.dumps({"narration": len(narration), "formulas": [f[1] for f in formulas[:2]], "weights": weights,
@@ -1423,7 +1427,12 @@ print(json.dumps({"narration": len(narration), "formulas": [f[1] for f in formul
     JSON.stringify(source),
   ]);
   const result = JSON.parse(stdout);
-  assert.equal(result.narration, 3);
+  assert.equal(result.narration, 4);
+  // A traced path records a point per frame: that scene never splits.
+  assert.ok(
+    result.four.every((task: unknown[]) => task[0] !== "D" || task[2] === 1),
+    stdout,
+  );
   assert.deepEqual(result.formulas, [["x^2", "=", "y"], ["y=x^2"]]);
   // A lit 3D scene costs several times its narration.
   assert.ok(result.weights.C > result.weights.A, stdout);
@@ -1431,6 +1440,7 @@ print(json.dumps({"narration": len(narration), "formulas": [f[1] for f in formul
   assert.deepEqual(
     result.one.map((task: unknown[]) => [task[0], task[2]]),
     [
+      ["D", 1],
       ["C", 1],
       ["A", 1],
       ["B", 1],
