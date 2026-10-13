@@ -1,85 +1,136 @@
-# 📚 eduvids
+<p align="center">
+  <a href="https://eduvids.app"><img src="docs/readme/banner.jpg" alt="eduvids" width="100%"></a>
+</p>
 
-![Vercel Deploy](https://img.shields.io/badge/deploy-vercel-black?logo=vercel)  
-![Manim](https://img.shields.io/badge/made%20with-manim-blue?logo=python)  
-![Stars](https://img.shields.io/github/stars/namanbnsl/eduvids?style=social)  
-![Issues](https://img.shields.io/github/issues/namanbnsl/eduvids)
+<p align="center">
+  Type a topic. Get a narrated, animated lesson.
+</p>
 
-**eduvids** lets you create educational videos using just text prompts.
+<p align="center">
+  <a href="https://eduvids.app"><b>eduvids.app</b></a> ·
+  <a href="https://www.youtube.com/@eduvids-ai">YouTube</a> ·
+  <a href="https://x.com/eduvidsai">X</a>
+</p>
 
-- 🌐 Try it here (no sign-in required): [https://eduvids.app](https://eduvids.app)
-- ▶️ Watch community creations: [eduvids on YouTube](https://www.youtube.com/channel/UCws8TdWGs-Fo4UsBay3GtFA)
-- X: [https://x.com/eduvidsai](https://x.com/eduvidsai)
+<p align="center">
+  <a href="https://github.com/namanbnsl/eduvids/stargazers"><img src="https://img.shields.io/github/stars/namanbnsl/eduvids?style=flat&color=6d5dfc&labelColor=111" alt="Stars"></a>
+  <a href="https://www.youtube.com/@eduvids-ai"><img src="https://img.shields.io/youtube/channel/subscribers/UCws8TdWGs-Fo4UsBay3GtFA?style=flat&color=6d5dfc&labelColor=111&label=subscribers" alt="YouTube subscribers"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/namanbnsl/eduvids?style=flat&color=6d5dfc&labelColor=111" alt="License"></a>
+</p>
 
----
+<br>
 
-## 🚀 Using the Online Version
+<table>
+  <tr>
+    <td><img src="docs/readme/atom.gif" alt="How small is an atom?"></td>
+    <td><img src="docs/readme/equation.gif" alt="Solving is balancing"></td>
+    <td><img src="docs/readme/pendulum.gif" alt="What sets the swing"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/readme/pythagoras.gif" alt="Three squares, one triangle"></td>
+    <td><img src="docs/readme/search.gif" alt="Halve it every time"></td>
+    <td><img src="docs/readme/bayes.gif" alt="Ninety-nine percent accurate"></td>
+  </tr>
+</table>
 
-1. Open [eduvids](https://eduvids.app).
-2. Enter any topic you'd like explained as a video, or press **Video** and enter the same. (you can also generate vertical YouTube Shorts)
-3. Wait while the servers render your video. (You can switch tabs, but don’t close it.)
-4. Once ready, the video will appear on the page, and you’ll get a notification.
+Every frame above is drawn by code. eduvids plans the lesson, writes the narration, writes [Manim](https://www.manim.community/) scenes for each beat, renders them in a sandbox, and times the voice to the picture. You get back a landscape video or a vertical Short, with a thumbnail.
 
-💡 **Tip:** If you accidentally close the tab or want to revisit your video, check the [eduvids YouTube Channel](https://www.youtube.com/@eduvids-ai)—your video will be uploaded there automatically. Links to all videos will also be available on the [eduvids X account](https://x.com/eduvidsai)
+Free, no sign-in needed. Works in other languages too.
 
----
+## Watch
 
-## 🛠️ Running Locally
+<table>
+  <tr>
+    <td width="33%"><a href="https://www.youtube.com/watch?v=ojDNu_YYGYk"><img src="https://i.ytimg.com/vi/ojDNu_YYGYk/maxresdefault.jpg" alt="Navier–Stokes Equations From Scratch"></a></td>
+    <td width="33%"><a href="https://www.youtube.com/watch?v=k2JPMU85-tI"><img src="https://i.ytimg.com/vi/k2JPMU85-tI/maxresdefault.jpg" alt="The Geometry of Hyperbolic Space Explained"></a></td>
+    <td width="33%"><a href="https://www.youtube.com/watch?v=rKyIAsPASd0"><img src="https://i.ytimg.com/vi/rKyIAsPASd0/maxresdefault.jpg" alt="Complex Integration Visualized From First Principles"></a></td>
+  </tr>
+  <tr>
+    <td>Navier–Stokes from scratch</td>
+    <td>Hyperbolic space</td>
+    <td>Complex integration</td>
+  </tr>
+</table>
 
-1. Clone the repository:
+More at [eduvids.app/examples](https://eduvids.app/examples) and on [YouTube](https://www.youtube.com/@eduvids-ai).
+
+## Run it yourself
+
+You need Node (or Bun), the [E2B CLI](https://e2b.dev/docs/cli), and accounts for the services below.
 
 ```bash
-# Clone the repository
 git clone https://github.com/namanbnsl/eduvids
 cd eduvids
-
-# Install dependencies (any of the following)
-npm install
-pnpm install
-yarn install
 bun install
-
 ```
 
-2. Install the E2B CLI from here: [https://e2b.dev/docs/cli](https://e2b.dev/docs/cli)
-
-3. Build the E2B sandbox (requires Docker):
+Build the render sandbox once:
 
 ```bash
-cd sandbox-templates/manim-ffmpeg-latex-voiceover-watermark # This is the latest template
-e2b template build --name manim-ffmpeg-latex-voiceover-watermark
+cd sandbox-templates/manim20-ffmpeg-bookmarks-latest
+npm install e2b
+E2B_API_KEY=... npm run e2b:build:prod
 ```
 
-4. Get your `GOOGLE_GENERATIVE_AI_API_KEY` from [https://aistudio.google.com/](https://aistudio.google.com/)
-5. Get your `E2B_API_KEY` from [https://e2b.dev](https://e2b.dev) or the `e2b.toml` file created after building the sandbox.
-6. Get your `KV_****` API KEYS from [https://vercel.com](https://vercel.com) by creating an Upstash storage service.
-7. Get your `UPLOADTHING_****` API KEYS from [https://uploadthing.com](https://uploadthing.com) by creating a new project.
-8. Rename `.env.example` to `.env` and fill in with your environment variables. (YouTube keys are optional)
+Copy `.env.example` to `.env` and fill it in:
 
-9. Run the server:
+| | |
+| --- | --- |
+| `GOOGLE_GENERATIVE_AI_API_KEY_1` | [Google AI Studio](https://aistudio.google.com/) — writes the lesson and the code. `_2`, `_3` are optional spares. |
+| `E2B_API_KEY` | [E2B](https://e2b.dev) — renders the video |
+| `CONVEX_DEPLOYMENT`, `NEXT_PUBLIC_CONVEX_URL` | [Convex](https://convex.dev) — chats and videos |
+| `QSTASH_*` | [Upstash](https://upstash.com) — runs the render workflow |
+| `KV_*` | Upstash Redis — job state |
+| `UPLOADTHING_*` | [UploadThing](https://uploadthing.com) — stores finished videos |
+| `NEXT_PUBLIC_CLERK_*`, `CLERK_*` | [Clerk](https://clerk.com) — accounts |
+
+Optional: `DEEPGRAM_API_KEY` or `OPENROUTER_API_KEY` for a better English voice (falls back to gTTS), PostHog for analytics, and the YouTube and X keys for auto-posting.
 
 ```bash
-# Start the development server
-npm run dev
+bun run dev
 ```
 
-10. Visit [http://localhost:3000](http://localhost:3000) and start using the app.
+Open [localhost:3000](http://localhost:3000).
 
----
+<details>
+<summary>Auto-upload to YouTube</summary>
 
-## 📺 Setting up automatic YouTube uploads (optional)
+<br>
 
-1. Visit Google Cloud Console and create an **OAuth desktop service**. Your `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` will be available here.
-2. Edit `helper/get_google_refresh_token.mjs` with your `CLIENT_ID` and `CLIENT_SECRET` at the given places.
-3. Getting your `GOOGLE_REFRESH_TOKEN`:
+1. In Google Cloud Console, create an OAuth client of type *Desktop app*. That gives you `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+2. Put them into `helper/get_google_refresh_token.mjs`, then run it and approve access for your channel:
 
-```bash
-# Visit the auth screen and allow permissions for your YouTube channel. The REFRESH_TOKEN will be visible on the console after that.
-node helper/get_google_refresh_token.mjs
-```
+   ```bash
+   node helper/get_google_refresh_token.mjs
+   ```
 
-4. Edit your `YOUTUBE_PRIVACY_STATUS` in `.env` based on what you want as the visibility for your videos `(public | unlisted | private)`. Default is `public`. If your refresh token predates previous-video linking, run the helper again so the new token includes channel and comment access.
+3. Copy the printed token into `GOOGLE_REFRESH_TOKEN`.
+4. Set `YOUTUBE_PRIVACY_STATUS` to `public`, `unlisted` or `private`, and optionally `YOUTUBE_PLAYLIST_ID`.
 
-## 📺 Setting up automatic X uploads (optional)
+</details>
 
-1. Visit the X developer API console and fill in the required values in `.env`
+<details>
+<summary>Auto-post to X</summary>
+
+<br>
+
+Create an app in the X developer console and add its keys to `.env`.
+
+</details>
+
+## How it looks, and why
+
+The design notes live in [`docs/`](docs), each with before/after renders and the scripts to reproduce them:
+
+- [Visual storytelling](docs/visual-storytelling) — show the idea, not a slide about it
+- [Video quality](docs/video-quality) — composition, labels, 3D
+- [Thumbnail layout](docs/thumbnail-layout)
+- [Render performance](docs/render-performance)
+
+## Contributing
+
+Issues and pull requests are welcome. If a video came out wrong, open an issue with the prompt — that's the most useful bug report there is.
+
+## License
+
+[MIT](LICENSE)
