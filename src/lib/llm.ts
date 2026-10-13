@@ -494,9 +494,89 @@ export function configureVoiceoverServicePrompt(
     );
 }
 
+// Animations that bring something new on screen. Opening a beat with one of
+// these stretched over a share of the narration finishes the picture after the
+// narrator has already named it.
+const REVEAL_ANIMATIONS = new Set([
+  "pop_in",
+  "FadeIn",
+  "Write",
+  "Create",
+  "DrawBorderThenFill",
+  "GrowFromCenter",
+  "GrowFromPoint",
+  "GrowFromEdge",
+  "GrowArrow",
+  "SpinInFromNothing",
+  "AddTextLetterByLetter",
+]);
+export const OPENING_REVEAL_MAX_SECONDS = 1;
+
+/**
+ * Top-level comma-separated pieces of a call's argument text, or null when the
+ * text is not one balanced argument list (`a); self.play(b`).
+ */
+function splitTopLevelArguments(text: string): string[] | null {
+  const parts: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let start = 0;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (quote) {
+      if (char === "\\") index++;
+      else if (char === quote) quote = null;
+    } else if (char === '"' || char === "'") quote = char;
+    else if ("([{".includes(char)) depth++;
+    else if (")]}".includes(char)) {
+      depth--;
+      if (depth < 0) return null;
+    } else if (char === "," && depth === 0) {
+      parts.push(text.slice(start, index));
+      start = index + 1;
+    }
+  }
+  if (depth !== 0 || quote) return null;
+  parts.push(text.slice(start));
+  return parts.map((part) => part.trim()).filter(Boolean);
+}
+
+/**
+ * Show, then say: narration starts a fixed lead after each voiceover block
+ * begins (NARRATION_LEAD in video_style.py), so the block's opening reveal must
+ * land quickly. Cap an opening reveal whose run time is a share of the
+ * narration (`run_time=tracker.duration * 0.35` on a six-second line is a
+ * two-second fade). Plays that also carry motion are left alone.
+ */
+function capOpeningReveal(line: string, tracker: string): string {
+  const call = /^(\s*self\.play\()(.*)(\)\s*)$/.exec(line);
+  if (!call) return line;
+  const args = splitTopLevelArguments(call[2]);
+  if (!args) return line;
+  const runTimeIndex = args.findIndex((arg) => /^run_time\s*=/.test(arg));
+  if (runTimeIndex < 0) return line;
+  const runTime = args[runTimeIndex].replace(/^run_time\s*=\s*/, "");
+  const tied = new RegExp(
+    `\\b${tracker}\\s*\\.\\s*(?:duration|get_remaining_duration)\\b`,
+  ).test(runTime);
+  if (!tied || /^min\(\s*1(?:\.0*)?\s*,/.test(runTime)) return line;
+  const animations = args.filter((arg) => !/^\w+\s*=/.test(arg));
+  const allReveals =
+    animations.length > 0 &&
+    animations.every((arg) => {
+      const name = /^([A-Za-z_]\w*)\s*\(/.exec(arg)?.[1];
+      return name !== undefined && REVEAL_ANIMATIONS.has(name);
+    });
+  if (!allReveals) return line;
+  args[runTimeIndex] =
+    `run_time=min(${OPENING_REVEAL_MAX_SECONDS.toFixed(1)}, ${runTime})`;
+  return `${call[1]}${args.join(", ")}${call[3]}`;
+}
+
 // The model often ends a voiceover block without the closing hold, or writes it
 // unguarded. Both are mechanical to fix, so close every block the same way
-// instead of failing generation and spending another LLM call.
+// instead of failing generation and spending another LLM call. The same goes
+// for a slow opening reveal, which would leave the picture behind the voice.
 export function alignVoiceoverDurations(script: string): string {
   const lines = script.split("\n");
 
@@ -524,6 +604,13 @@ export function alignVoiceoverDurations(script: string): string {
       lastBodyLine = candidate;
     }
     if (lastBodyLine < 0 || bodyIndent === undefined) continue;
+
+    for (let line = index + 1; line <= lastBodyLine; line++) {
+      if (!/^\s*self\.play\(/.test(lines[line])) continue;
+      if (lines[line].match(/^[ \t]*/)?.[0] === bodyIndent)
+        lines[line] = capOpeningReveal(lines[line], tracker);
+      break;
+    }
 
     const canonical = `self.wait(max(0, ${tracker}.get_remaining_duration()))`;
     const remaining = `${tracker}\\s*\\.\\s*get_remaining_duration\\(\\s*\\)`;

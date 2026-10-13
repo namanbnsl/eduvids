@@ -120,7 +120,7 @@ export function injectEduvidsCallout(
         `${bodyIndent}    lock_layout(cta_content)`,
         `${bodyIndent}    if isinstance(self, ThreeDScene):`,
         `${bodyIndent}        fixed_overlay(self, cta_content)`,
-        `${bodyIndent}    self.play(pop_in(cta_title, scale=0.85), run_time=max(0.4, tracker.duration * 0.30))`,
+        `${bodyIndent}    self.play(pop_in(cta_title, scale=0.85), run_time=0.7)`,
         `${bodyIndent}    self.play(pop_in(cta_link), run_time=max(0.3, tracker.duration * 0.20))`,
         `${bodyIndent}    self.play(pulse(cta_link, scale=1.06), run_time=max(0.3, tracker.duration * 0.20))`,
         `${bodyIndent}    self.wait(max(0, tracker.get_remaining_duration()))`,

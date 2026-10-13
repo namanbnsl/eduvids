@@ -478,6 +478,7 @@ MOTION THAT HOLDS ATTENTION
 - Open every scene with motion within the first second: draw the main object, never a static title card.
 - Reveal in the order the narration speaks: object first, then its label, then the relationship.
 - Animate the change itself: move a point along the curve with a ValueTracker, grow the area, swing the vector, morph the formula with TransformMatchingTex. Change is what the eye follows.
+- Show, then say: in every beat the thing being narrated appears or lights up first, and the voice follows half a second later. Open each voiceover block with its quick reveal (0.5-1.0s), never with a long animation that finishes after the narrator has named it.
 - Reveal key moments calmly: self.play(pop_in(result)) fades and grows a key result, dot or formula in on a smooth curve (no bounce). pop_in(a, b, c) staggers several. Use it for the moments that matter, Write for formulas being derived, Create for curves and shapes.
 - Use pulse(mob) (a quick swell in ACCENT), Circumscribe, or a brief Flash for the one thing being named. Do not highlight everything.
 - Keep the picture alive: drive a Dot, tangent line, vector or readout with a ValueTracker and always_redraw, and let a DecimalNumber count along with it. Morph equations with TransformMatchingTex instead of fading one out and another in.
@@ -602,7 +603,7 @@ particles — temperature as speed: box = gas(60, 4, 3, speed=1.0); self.add(box
 trajectory — self.add(trail(planet)) leaves a fading path behind a moving object.
 
 Device rules:
-- Never leave a formula unexplained by its picture: every symbol you name in narration gets a link() to the part it means, in the beat that names it.
+- Never leave a formula unexplained by its picture: every symbol you name in narration gets a link() to the part it means, as the first action of the beat that names it, so the link lands just before the word.
 - Never fill a scene with sentences. A title, summary or list scene still shows its picture; captions stay one short line.
 - A population or crowd is ONE element, however many members it has. Never build crowds from loops of Dot() or Circle(), never LaggedStart over hundreds of items, and never always_redraw a crowd; use crowd(), .item(), .subset().
 - Narrate scale honestly: a scale_bar label and the narration must agree on the real magnitude.
@@ -688,8 +689,9 @@ CRITICAL REQUIREMENTS
    Create exactly one "with self.voiceover(text=...) as tracker:" block for every scene-plan beat.
    Never merge beats into a long narration block. Each block must contain 1-2 visible actions tied to its focusElementIds.
    A block must never contain only self.wait(...). If its focus element is already visible, use a brief Indicate, Circumscribe, Transform, camera move, or other meaningful change that directs attention to the narrated idea.
-   Allocate about 80 percent of tracker.duration across those actions, proportional to their complexity.
-   Example with two actions: run_time=max(0.4, tracker.duration * 0.35), then run_time=max(0.4, tracker.duration * 0.45).
+   SHOW, THEN SAY: the picture leads the voice. Narration starts half a second into every block, so the block's FIRST action must put the narrated thing on screen quickly: a reveal (pop_in, FadeIn, Create, Write, GrowArrow, link, pulse) with a fixed run_time of 0.5-1.0 (up to 1.5 to Write a long formula), never a share of tracker.duration. Never open a block with self.wait() or a slow build-up; the viewer should see the thing just before hearing about it.
+   After that reveal, spread the beat's slower motion (a ValueTracker sweep, a zoom, a transform) over about 70 percent of the remaining time, proportional to complexity.
+   Example: self.play(pop_in(dot), run_time=0.7), then self.play(t.animate.set_value(2), run_time=max(0.6, (tracker.duration - 0.7) * 0.7)).
    End every block with self.wait(max(0, tracker.get_remaining_duration())) so narration and visuals finish together.
    Never use tracker.get_remaining_duration() as the run_time of Write(), Create(), or FadeIn; that makes a single animation unnaturally slow.
 5. Write() animations for Text and MathTex are WAY TOO SLOW if left to fill the voiceover duration.
