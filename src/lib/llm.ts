@@ -659,7 +659,9 @@ export interface ScenePlanElement {
     | "shape"
     | "surface"
     | "vector"
-    | "region";
+    | "region"
+    | "population"
+    | "prop";
   content: string;
   color?: string;
 }
@@ -681,6 +683,10 @@ export interface ScenePlanEntry {
   chapterTitle?: string;
   narration: string;
   visualType: string;
+  /** How the scene teaches: zoom_journey, population, to_scale, ... */
+  visualDevice?: string;
+  /** The scene's motion from first frame to last, with real magnitudes. */
+  storyboard?: string;
   elements: ScenePlanElement[];
   layout: string;
   maxSimultaneousElements: number;
@@ -762,6 +768,60 @@ export function normalizeScenePlanTiming(
       beats,
     };
   });
+}
+
+const PICTURE_ELEMENT_TYPES = new Set([
+  "diagram",
+  "graph",
+  "axis",
+  "shape",
+  "surface",
+  "vector",
+  "region",
+  "population",
+  "prop",
+]);
+
+/**
+ * Deterministic checks for scenes that would teach with words instead of
+ * pictures. The notes go to the animator with the plan, so a text-only or
+ * formula-only scene gets a picture rather than a slide.
+ */
+export function scenePlanVisualGaps(scenePlan: ScenePlanEntry[]): string[] {
+  const notes: string[] = [];
+  let run = 1;
+  scenePlan.forEach((scene, index) => {
+    const elements = Array.isArray(scene.elements) ? scene.elements : [];
+    const hasPicture = elements.some((element) =>
+      PICTURE_ELEMENT_TYPES.has(element.type),
+    );
+    const hasFormula = elements.some((element) => element.type === "math");
+    const device = scene.visualDevice?.trim();
+    if (!hasPicture) {
+      notes.push(
+        hasFormula
+          ? `${scene.sceneId}: only text and formulas are planned. Draw the thing the formula describes beside it and link() each symbol to its part.`
+          : `${scene.sceneId}: only text is planned. Show the idea as a picture (a prop, crowd, chart, timeline, diagram or graph); keep words to one short line.`,
+      );
+    } else if (hasFormula && device !== "equation_link") {
+      notes.push(
+        `${scene.sceneId}: tie the formula to the picture: give each symbol the colour of its part and link() them in the beat that names it.`,
+      );
+    }
+    if (!device) {
+      notes.push(
+        `${scene.sceneId}: no visual device was planned. Pick the clearest one for this idea from the system prompt's devices.`,
+      );
+    }
+    const previous = scenePlan[index - 1]?.visualDevice?.trim();
+    run = device && device === previous ? run + 1 : 1;
+    if (run === 3) {
+      notes.push(
+        `${scene.sceneId}: third "${device}" scene in a row. Vary the motion so the rhythm does not flatten.`,
+      );
+    }
+  });
+  return notes;
 }
 
 const SCENE_PLAN_MAX_RETRIES = 1; // Durable workflow retries, never nested model retries.
@@ -1181,6 +1241,13 @@ export async function generateManimScript({
     generationPromptParts.push(
       `SCENE PLAN (follow this structure exactly):\n${JSON.stringify(timedScenePlan, null, 2)}`,
     );
+    const visualGaps = scenePlanVisualGaps(timedScenePlan);
+    if (visualGaps.length > 0) {
+      console.warn("[generateManimScript] Visual gaps in the scene plan", visualGaps);
+      generationPromptParts.push(
+        `VISUAL GAPS IN THE PLAN (fix these while keeping its beats and narration):\n- ${visualGaps.join("\n- ")}`,
+      );
+    }
   }
 
   const generationPrompt = generationPromptParts.join("\n\n");

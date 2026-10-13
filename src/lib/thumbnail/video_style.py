@@ -816,6 +816,7 @@ def header(title, eyebrow=None, font_size=52):
     group = manim.VGroup(balanced_text(str(title), font_size=font_size, max_lines=2))
     group.to_corner(manim.UL, buff=EDGE)
     group._eduvids_header = True
+    group.set_z_index(50)  # zoomed or moving content passes beneath it
     lock_layout(group)
     return group
 
@@ -854,6 +855,7 @@ def caption(text, font_size=32, color=None):
     """A reserved bottom annotation, outside the hero's content rectangle."""
     mob = balanced_text(text, font_size=font_size, color=color or MUTED, max_lines=2)
     mob.to_edge(manim.DOWN, buff=EDGE)
+    mob._eduvids_overlay = True  # a screen lane: zoom_to leaves it in place
     return lock_layout(mob)
 
 
@@ -1646,4 +1648,1366 @@ __all__ = [
     "header", "content_box", "place_in_content", "sentence_case",
     "caption", "layout_scene", "lock_layout", "fixed_overlay", "place_3d_in_content",
     "glow", "shade_surface", "pop_in", "pulse", "AXIS_COLOR", *_named,
+]
+
+# ---------------------------------------------------------------------------
+# Visual storytelling: show scale, populations, insides and processes, so an
+# idea is seen rather than only named. A crowd of a thousand atoms zooms in
+# to one atom, which then opens up into its nucleus and shells.
+#
+# Built for Cairo speed: a crowd is ONE path (one draw call, one colour) with
+# the picked item drawn on top as its own mobject; a zoom transforms points
+# in place; nothing here adds an updater except flow(), which is motion.
+# ---------------------------------------------------------------------------
+
+
+def _item_template(item, size):
+    """A unit-sized VMobject outline for one member of a crowd."""
+    if isinstance(item, manim.VMobject):
+        mob = item.copy()
+    elif item == "square":
+        mob = manim.Square(side_length=1)
+    elif item == "person":
+        mob = person(height=1)
+    else:
+        # Four cubic arcs are indistinguishable from eight at crowd sizes and
+        # halve Cairo's per-curve path cost.
+        mob = manim.Circle(radius=0.5, num_components=5)
+    parts = [m for m in mob.family_members_with_points()]
+    template = manim.VMobject()
+    for part in parts:
+        template.append_points(part.points)
+    template.move_to(manim.ORIGIN)
+    if template.height > 0:
+        template.scale(size / max(template.height, template.width))
+    return template
+
+
+class Crowd(manim.VMobject):
+    """Many identical items as one path: thousands cost one draw call.
+
+    ``crowd.item(i)`` is a separate copy of item ``i`` to spotlight, zoom into
+    or transform; ``crowd.subset(indices, color)`` recolours a share of the
+    crowd ("one in a hundred") as another Crowd drawn on top.
+    """
+
+    def __init__(self, positions, template, color=None, opacity=1.0, **kwargs):
+        super().__init__(**kwargs)
+        self._stride = len(template.points)
+        positions = np.array(positions, dtype=float).reshape(-1, 3)
+        if len(positions):
+            self.points = (template.points[None, :, :] + positions[:, None, :]).reshape(-1, 3)
+        self.set_fill(ManimColor(color) if color is not None else PRIMARY, opacity=opacity)
+        self.set_stroke(width=0)
+        self._eduvids_layout_locked = True  # unlabelled geometry: guard skips it
+
+    def __len__(self):
+        return len(self.points) // self._stride if self._stride else 0
+
+    def _items(self, points=None):
+        return (self.points if points is None else points).reshape(-1, self._stride, 3)
+
+    def _clip(self, points, top, bottom):
+        """Only the items to draw: those inside the frame that stay clear of
+        the title and caption lanes. Cairo then draws a zoomed-in lattice's
+        hundred visible dots instead of all of them. The full layout is kept
+        by the zoom, so a later zoom (in or out) starts from every item."""
+        items = self._items(points)
+        half_width = config.frame_width / 2
+        top = min(top, config.frame_height / 2)
+        bottom = max(bottom, -config.frame_height / 2)
+        lo, hi = items.min(axis=1), items.max(axis=1)
+        keep = (hi[:, 1] <= top) & (lo[:, 1] >= bottom) & (hi[:, 0] >= -half_width) & (lo[:, 0] <= half_width)
+        if keep.all():
+            return points
+        if not keep.any():
+            return np.zeros((0, 3))
+        return items[keep].reshape(-1, 3)
+
+    # Item indices refer to the layout before any zoom: pick items with
+    # item(), subset() or nearest() before zooming in.
+    def centers(self):
+        """Current centre of every item (follows moves and zooms)."""
+        return self._items().mean(axis=1)
+
+    def nearest(self, point=None):
+        """Index of the item closest to ``point`` (default: the middle)."""
+        point = self.get_center() if point is None else np.asarray(point)
+        return int(np.argmin(np.linalg.norm(self.centers() - point, axis=1)))
+
+    def _piece(self, indices, color, grow=1.0):
+        piece = Crowd([], manim.VMobject(), color=ManimColor(color) if color is not None else ACCENT)
+        piece._stride = self._stride
+        count = len(self)
+        # Generated code sometimes counts from 1 or past the end: wrap, don't fail.
+        indices = [int(i) % count for i in indices] if count else []
+        items = self._items()[indices]
+        if len(items):
+            if grow != 1:
+                # Each member swells about its own centre, so a lit share
+                # reads at a glance in a crowd of a thousand.
+                middles = items.mean(axis=1, keepdims=True)
+                items = middles + (items - middles) * grow
+            piece.points = items.reshape(-1, 3).copy()
+        piece.set_z_index(self.z_index + 1)
+        return piece
+
+    def item(self, index=None, color=None):
+        """A standalone copy of one item, in ACCENT, exactly on top of it."""
+        return self._piece([self.nearest() if index is None else index], color)
+
+    def subset(self, indices, color=None, grow=1.0):
+        """Items ``indices`` as one recoloured crowd drawn over this one;
+        ``grow`` (e.g. 1.4) enlarges each so a small share stands out."""
+        return self._piece(indices, color, grow)
+
+
+def crowd(count=400, width=None, height=None, item="dot", color=None, fill=0.72,
+          jitter=0.0, seed=7, opacity=1.0):
+    """``count`` items packed into a ``width`` x ``height`` block.
+
+    By default the block fills the content area below a header (landscape or
+    portrait), so a thousand people stay legible in a Short too.
+    ``item`` is "dot", "square", "person" or any VMobject (its outline is
+    reused). ``fill`` is the item size as a share of the grid spacing;
+    ``jitter`` (0-0.5) loosens the grid into a gas or a crowd of people.
+    A few thousand items still render quickly; for "billions", show a dense
+    block and say the number, then zoom_to one item.
+    """
+    count = max(1, int(count))
+    if width is None or height is None:
+        # Below a one-line header, above an optional caption.
+        top = config.frame_height / 2 - EDGE - 0.75 - HEADER_GAP
+        bottom = -config.frame_height / 2 + EDGE + 0.6
+        area_w, area_h = (config.frame_width - 2 * EDGE) * 0.92, (top - bottom) * 0.92
+        width = area_w if width is None else width
+        height = area_h if height is None else height
+    shape = _item_template(item, 1.0)
+    aspect = (shape.width / shape.height) if shape.height else 1.0  # tall people get narrow cells
+    ideal = np.sqrt(count * width / (height * aspect))
+    cols = max(1, int(np.ceil(ideal)))
+    # Prefer a column count that fills the last row (1000 -> 40 x 25).
+    for candidate in sorted(range(max(1, int(ideal * 0.9)), int(ideal * 1.12) + 2), key=lambda c: abs(c - ideal)):
+        if count % candidate == 0:
+            cols = candidate
+            break
+    rows = int(np.ceil(count / cols))
+    pitch = min(height / rows, width / (cols * aspect))
+    dx, dy = pitch * aspect, pitch
+    rng = np.random.default_rng(seed)
+    positions = []
+    last = count - (rows - 1) * cols  # a short last row is centred
+    for index in range(count):
+        r, c = divmod(index, cols)
+        width_here = last if r == rows - 1 else cols
+        x = (c - (width_here - 1) / 2) * dx
+        y = ((rows - 1) / 2 - r) * dy
+        if jitter:
+            x, y = np.array([x, y]) + rng.uniform(-jitter, jitter, 2) * np.array([dx, dy])
+        positions.append((x, y, 0.0))
+    mob = Crowd(positions, _item_template(item, max(dx, dy) * fill), color=color, opacity=opacity)
+    mob.rows, mob.cols = rows, cols  # index = row * cols + col, row 0 at the top
+    return mob
+
+
+def _screen_lane(mob):
+    return getattr(mob, "_eduvids_header", False) or getattr(mob, "_eduvids_overlay", False)
+
+
+def _lanes(scene):
+    """Title, caption and scale-bar mobjects wherever they sit. Playing an
+    AnimationGroup makes Manim regroup scene.mobjects under an anonymous
+    Group, so lanes are searched in every family, not only at the top."""
+    found, seen = [], set()
+    for top in scene.mobjects:
+        for mob in top.get_family():
+            if _screen_lane(mob) and id(mob) not in seen:
+                found.append(mob)
+                seen.update(id(m) for m in mob.get_family())
+    return found
+
+
+def _units(scene, protected):
+    """The largest pieces of the scene containing nothing in ``protected``
+    (ids): what a zoom moves or a spotlight dims."""
+    def walk(mob):
+        family = mob.get_family()
+        if id(mob) in protected:
+            return
+        if not any(id(m) in protected for m in family):
+            if any(m.has_points() for m in family):
+                yield mob
+            return
+        for sub in mob.submobjects:
+            yield from walk(sub)
+
+    for top in scene.mobjects:
+        yield from walk(top)
+
+
+class _ZoomPart(manim.Animation):
+    """Scale one top-level mobject about ``focus`` exponentially (a camera
+    zoom has constant perceived speed) while the focus glides to ``to``.
+    Crowd items that would cross the title or caption lane are hidden."""
+
+    def create_starting_mobject(self):
+        return self.mobject  # points are snapshotted instead of deep-copied
+
+    def __init__(self, mobject, focus, factor, shift, lane=None, **kwargs):
+        self.focus, self.factor, self.shift = np.asarray(focus), float(factor), np.asarray(shift)
+        self.lane = lane
+        super().__init__(mobject, **kwargs)
+
+    def begin(self):
+        self._snapshot = []
+        for mob in self.mobject.family_members_with_points():
+            points = mob.points
+            hidden = getattr(mob, "_eduvids_unclipped", None)
+            # A crowd clipped by an earlier zoom resumes from its full layout.
+            if hidden is not None and hidden[1].shape == points.shape and np.array_equal(hidden[1], points):
+                points = hidden[0]
+            self._snapshot.append((mob, points.copy()))
+        super().begin()
+
+    def interpolate_mobject(self, alpha):
+        t = self.rate_func(alpha)
+        k = self.factor ** t
+        for mob, points in self._snapshot:
+            moved = (points - self.focus) * k + self.focus + self.shift * t
+            if isinstance(mob, Crowd) and self.lane is not None:
+                shown = mob._clip(moved, *self.lane)
+                mob._eduvids_unclipped = (moved, shown)
+                mob.points = shown
+            else:
+                mob.points = moved
+
+
+def zoom_to(scene, target, factor=None, to=None, keep=(), fill=0.55, run_time=2.5,
+            rate_func=None):
+    """Zoom the whole picture into ``target`` (a mobject or a point).
+
+    Headers, captions, scale bars and anything in ``keep`` stay put, like
+    text on a camera lens. By default the target grows to about ``fill`` of
+    the content area and glides to its centre. ``factor`` < 1 zooms out;
+    ``factor=1`` pans. Play several in a row for a powers-of-ten journey,
+    swapping in finer detail between them with reveal_detail().
+    """
+    lanes = _lanes(scene)
+    title = next((mob for mob in lanes if getattr(mob, "_eduvids_header", False)), None)
+    notes = next((mob for mob in lanes if getattr(mob, "_eduvids_overlay", False) and mob.get_center()[1] < 0), None)
+    center, width, height = content_box(title, notes)
+    focus = np.asarray(target, dtype=float) if isinstance(target, (list, tuple, np.ndarray)) else target.get_center()
+    if factor is None:
+        size = max(target.height, target.width * height / width, 1e-3) if isinstance(target, manim.Mobject) else 1.0
+        factor = height * fill / size
+    factor = float(np.clip(factor, 1e-4, 1e4))
+    destination = center if to is None else np.asarray(to, dtype=float)
+    # In a ThreeDScene, screen overlays stay put like the title.
+    kept = _family_ids([*keep, *lanes, *getattr(scene.camera, "fixed_in_frame_mobjects", ())])
+    parts = list(_units(scene, kept))
+    if not parts:
+        return manim.Wait(run_time)
+    # Updaters keep running, so live readouts and flows follow the zoom.
+    kwargs = {"run_time": run_time, "rate_func": rate_func or manim.rate_functions.smooth,
+              "suspend_mobject_updating": False}
+    top = title.get_bottom()[1] - 0.15 if title is not None else np.inf
+    bottom = notes.get_top()[1] + 0.15 if notes is not None else -np.inf
+    return manim.AnimationGroup(*[_ZoomPart(mob, focus, factor, destination - focus, lane=(top, bottom), **kwargs)
+                                  for mob in parts])
+
+
+def reveal_detail(source, detail, run_time=1.2):
+    """Open ``source`` (a dot, a blob) into ``detail`` laid out where it ends."""
+    return manim.FadeTransform(source, detail, stretch=False, run_time=run_time)
+
+
+class ScaleBar(manim.VGroup):
+    """A short ruled bar in the lower right: '1 mm', then '1 nm' as you zoom."""
+
+    def __init__(self, label, length=1.2, color=None):
+        color = color or MUTED
+        bar = manim.Line(manim.LEFT * length / 2, manim.RIGHT * length / 2, color=color, stroke_width=3)
+        ticks = manim.VGroup(*[manim.Line(manim.UP * 0.09, manim.DOWN * 0.09, color=color, stroke_width=3).move_to(end)
+                               for end in (bar.get_start(), bar.get_end())])
+        text = MathTex(label, font_size=30, color=color).next_to(bar, manim.UP, buff=0.15)
+        super().__init__(manim.VGroup(bar, ticks), text)
+        self.to_corner(manim.DR, buff=EDGE)
+        self._eduvids_overlay = True
+        lock_layout(self)
+
+    def relabel(self, label, run_time=0.8):
+        new = MathTex(label, font_size=30, color=self[1].get_color()).move_to(self[1])
+        lock_layout(new)
+        return manim.Transform(self[1], new, run_time=run_time)
+
+
+def scale_bar(label, length=1.2, color=None):
+    return ScaleBar(label, length=length, color=color)
+
+
+def _alpha_arrays(mob):
+    out = []
+    for m in mob.get_family():
+        if isinstance(m, manim.VMobject):
+            out.append((m, *(np.array(getattr(m, name), dtype=float)[:, 3].copy()
+                              if len(getattr(m, name, [])) else None
+                              for name in ("fill_rgbas", "stroke_rgbas", "background_stroke_rgbas"))))
+    return out
+
+
+class _Dim(manim.Animation):
+    """Fade a unit's opacities to ``end`` x their originals, keeping relative
+    transparency (a soft fill stays softer than its outline)."""
+
+    def __init__(self, mobject, end, **kwargs):
+        self.end = end
+        super().__init__(mobject, **kwargs)
+
+    def create_starting_mobject(self):
+        return self.mobject
+
+    def begin(self):
+        if not hasattr(self.mobject, "_eduvids_alpha"):
+            self.mobject._eduvids_alpha = _alpha_arrays(self.mobject)
+            self.mobject._eduvids_dim = 1.0
+        self.start = self.mobject._eduvids_dim
+        super().begin()
+
+    def interpolate_mobject(self, alpha):
+        level = self.start + (self.end - self.start) * self.rate_func(alpha)
+        for m, *alphas in self.mobject._eduvids_alpha:
+            for name, base in zip(("fill_rgbas", "stroke_rgbas", "background_stroke_rgbas"), alphas):
+                rgbas = getattr(m, name, None)
+                if base is not None and rgbas is not None and len(rgbas) == len(base):
+                    rgbas[:, 3] = base * level
+        self.mobject._eduvids_dim = level
+
+    def clean_up_from_scene(self, scene):
+        super().clean_up_from_scene(scene)
+        if self.end >= 1:
+            del self.mobject._eduvids_alpha
+
+
+def spotlight(scene, *targets, dim=0.8, run_time=0.8):
+    """Dim everything except ``targets`` (no glow, no frame): look here.
+
+    Screen lanes (title, caption) stay lit. Undo with release(scene).
+    """
+    ids = _family_ids(targets)
+    units = list(_units(scene, ids | _family_ids(_lanes(scene))))
+    lit = [mob for mob in getattr(scene, "_eduvids_dimmed", []) if id(mob) in ids]
+    scene._eduvids_dimmed = units
+    animations = [_Dim(mob, 1 - dim, run_time=run_time) for mob in units]
+    animations += [_Dim(mob, 1.0, run_time=run_time) for mob in lit if hasattr(mob, "_eduvids_alpha")]
+    return manim.AnimationGroup(*animations) if animations else manim.Wait(run_time)
+
+
+def release(scene, run_time=0.8):
+    """Bring every dimmed object back to full strength."""
+    units = [mob for mob in getattr(scene, "_eduvids_dimmed", []) if hasattr(mob, "_eduvids_alpha")]
+    scene._eduvids_dimmed = []
+    animations = [_Dim(mob, 1.0, run_time=run_time) for mob in units]
+    return manim.AnimationGroup(*animations) if animations else manim.Wait(run_time)
+
+
+def explode(group, factor=0.6, run_time=1.4):
+    """Pull a group's parts away from its centre: an exploded view of what
+    something is made of. assemble(group) puts them back."""
+    center = group.get_center()
+    animations = []
+    for part in group.submobjects:
+        offset = (part.get_center() - center) * factor
+        part._eduvids_offset = getattr(part, "_eduvids_offset", 0) + offset
+        animations.append(part.animate.shift(offset))
+    return manim.AnimationGroup(*animations, run_time=run_time) if animations else manim.Wait(run_time)
+
+
+def assemble(group, run_time=1.2):
+    animations = []
+    for part in group.submobjects:
+        offset = getattr(part, "_eduvids_offset", None)
+        if offset is not None:
+            animations.append(part.animate.shift(-offset))
+            del part._eduvids_offset
+    return manim.AnimationGroup(*animations, run_time=run_time) if animations else manim.Wait(run_time)
+
+
+def _sample_path(points, per_curve=12):
+    """Points along a VMobject's Bezier curves and their running arc length."""
+    curves = points[: len(points) // 4 * 4].reshape(-1, 4, 3)
+    t = np.linspace(0, 1, per_curve, endpoint=False)[None, :, None]
+    p0, p1, p2, p3 = (curves[:, i][:, None, :] for i in range(4))
+    track = ((1 - t) ** 3 * p0 + 3 * (1 - t) ** 2 * t * p1 + 3 * (1 - t) * t * t * p2 + t ** 3 * p3).reshape(-1, 3)
+    track = np.vstack([track, curves[-1, 3]])
+    cumulative = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(track, axis=0), axis=1))])
+    return track, cumulative
+
+
+class Flow(manim.VMobject):
+    """Particles streaming along a path: current, blood, heat, signals.
+
+    The dots follow the path wherever it goes, including through a zoom."""
+
+    def __init__(self, path, count=12, speed=1.2, radius=0.07, color=None):
+        super().__init__()
+        self.path, self.count, self.speed, self.phase = path, count, speed, 0.0
+        self._path_points = None
+        self._dot = manim.Circle(radius=radius).points
+        self.set_fill(ManimColor(color) if color is not None else ACCENT, opacity=1)
+        self.set_stroke(width=0)
+        self._eduvids_layout_locked = True
+        self._redraw()
+        self.add_updater(lambda mob, dt: mob._advance(dt))
+
+    def _redraw(self):
+        points = self.path.points
+        if self._path_points is None or points.shape != self._path_points.shape or not np.array_equal(points, self._path_points):
+            self._path_points = points.copy()
+            self._track, self._cumulative = _sample_path(points)
+            self._length = max(self._cumulative[-1], 1e-6)
+        offsets = (self.phase + np.arange(self.count) / self.count) % 1 * self._length
+        centers = np.stack([np.interp(offsets, self._cumulative, self._track[:, k]) for k in range(3)], axis=1)
+        self.points = (self._dot[None] + centers[:, None]).reshape(-1, 3)
+
+    def _advance(self, dt):
+        self.phase = (self.phase + dt * self.speed / self._length) % 1
+        self._redraw()
+
+    def stop(self):
+        self.clear_updaters()
+        return self
+
+
+def flow(path, count=12, speed=1.2, radius=0.07, color=None):
+    if not path.has_points() and path.submobjects:
+        path = path.family_members_with_points()[0]
+    """Dots that keep moving along ``path`` while the narration runs.
+
+    The path itself can be any curve (a wire loop, an artery, an orbit);
+    draw it separately. Call .stop() before a long still hold.
+    """
+    return Flow(path, count=count, speed=speed, radius=radius, color=color)
+
+
+def to_scale(*mobjects, sizes, height=3.2, gap=0.7, min_height=0.04):
+    """Line things up at their true relative sizes on one baseline.
+
+    to_scale(earth, sun, sizes=[1, 109]) makes the gap in size visible
+    instead of only quoted; tiny objects stay a visible speck.
+    """
+    largest = max(sizes)
+    for mob, size in zip(mobjects, sizes):
+        if mob.height > 0 and largest > 0:
+            mob.scale_to_fit_height(max(height * size / largest, min_height))
+    return manim.VGroup(*mobjects).arrange(manim.RIGHT, buff=gap, aligned_edge=manim.DOWN)
+
+
+def ghost(mob, opacity=0.25):
+    """A faded copy left behind as a 'before' to compare with 'after'."""
+    copy = mob.copy()
+    for part in copy.get_family():
+        if isinstance(part, manim.VMobject):
+            part.set_fill(opacity=part.get_fill_opacity() * opacity, family=False)
+            part.set_stroke(opacity=part.get_stroke_opacity() * opacity, family=False)
+    copy.set_z_index(mob.z_index - 1)
+    lock_layout(copy)
+    return copy
+
+
+# ---------------------------------------------------------------------------
+# Props: recognisable, flat objects drawn in the house palette, so a video
+# about atoms shows an atom, and probability shows people or dice.
+# ---------------------------------------------------------------------------
+
+_SHELLS = (2, 8, 8, 18, 18, 32)
+
+
+class Atom(manim.VGroup):
+    """A Bohr-model atom: packed nucleus, faint orbits, electrons on them.
+
+    ``.protons`` and ``.neutrons`` are the nucleus balls by kind (to sort,
+    count or recolour them); ``.shells`` holds each shell's electrons."""
+
+    def __init__(self, protons=6, neutrons=None, electrons=None, radius=1.6,
+                 electron_color=None, proton_color=None, neutron_color=None):
+        neutrons = protons if neutrons is None else neutrons
+        electrons = protons if electrons is None else electrons
+        nucleons = protons + neutrons
+        ball = 0.11
+        rng = np.random.default_rng(protons * 31 + neutrons)
+        kinds = np.array([1] * protons + [0] * neutrons)
+        rng.shuffle(kinds)
+        nucleus = manim.VGroup()
+        golden = np.pi * (3 - np.sqrt(5))
+        for i, kind in enumerate(kinds):
+            r = ball * 0.95 * np.sqrt(i + 0.5)
+            angle = i * golden
+            tone = (proton_color or SECONDARY) if kind else (neutron_color or GREY_B)
+            nucleus.add(manim.Circle(radius=ball, stroke_color=BG, stroke_width=1.5,
+                                     fill_color=tone, fill_opacity=1).move_to([r * np.cos(angle), r * np.sin(angle), 0]))
+        if nucleons > 0:
+            # Innermost nucleons drawn last so the cluster reads as a ball.
+            nucleus.submobjects.reverse()
+            kinds = kinds[::-1]
+        self.protons = manim.VGroup(*[ball for ball, kind in zip(nucleus, kinds) if kind])
+        self.neutrons = manim.VGroup(*[ball for ball, kind in zip(nucleus, kinds) if not kind])
+        shells, counts, left = [], [], electrons
+        for capacity in _SHELLS:
+            if left <= 0:
+                break
+            counts.append(min(capacity, left))
+            left -= capacity
+        # Built at natural size (shells evenly spaced outside the nucleus),
+        # then scaled so the outermost orbit has the requested radius.
+        inner = (nucleus.width / 2 if nucleons else 0) + 0.45
+        orbits, dots = manim.VGroup(), manim.VGroup()
+        for k, n in enumerate(counts):
+            r = inner + 0.5 * k
+            orbit = manim.Circle(radius=r, stroke_color=MUTED, stroke_width=2, stroke_opacity=0.7)
+            orbits.add(orbit)
+            shell = manim.VGroup(*[
+                manim.Dot(radius=0.075, color=electron_color or PRIMARY).move_to(
+                    [r * np.cos(2 * np.pi * j / n + k * 0.6), r * np.sin(2 * np.pi * j / n + k * 0.6), 0])
+                for j in range(n)])
+            dots.add(shell)
+            shells.append(shell)
+        super().__init__(orbits, nucleus, dots)
+        self.orbits, self.nucleus, self.electrons, self.shells = orbits, nucleus, dots, shells
+        outer = inner + 0.5 * (len(counts) - 1) if counts else nucleus.width / 2
+        if outer > 0:
+            self.scale(radius / outer, about_point=nucleus.get_center() if nucleons else manim.ORIGIN)
+
+    def orbit(self, turns=0.5, run_time=3.0):
+        """Electrons circle their shells (inner shells faster); no updater."""
+        center = self.nucleus.get_center()
+        return manim.AnimationGroup(*[
+            manim.Rotate(shell, angle=2 * np.pi * turns / (k + 1) ** 0.5, about_point=center,
+                         rate_func=manim.rate_functions.linear)
+            for k, shell in enumerate(self.shells)], run_time=run_time)
+
+
+def atom(protons=6, neutrons=None, electrons=None, radius=1.6, **kwargs):
+    return Atom(protons, neutrons, electrons, radius=radius, **kwargs)
+
+
+_ELEMENT_COLORS = {"H": "GREY_A", "C": "GREY_C", "O": "RED", "N": "BLUE", "Na": "PURPLE",
+                   "Cl": "GREEN", "S": "YELLOW", "P": "ORANGE", "F": "TEAL", "Fe": "MAROON"}
+
+
+def molecule(atoms, bonds=(), scale=1.0, labels=True):
+    """atoms: [("O", (0, 0)), ("H", (-0.8, -0.6)), ...]; bonds: [(0, 1), (0, 2, 2)].
+
+    Element colours follow the usual CPK convention at house tones; the third
+    entry of a bond is its order (two parallel lines for a double bond).
+    """
+    group, balls, sticks = manim.VGroup(), manim.VGroup(), manim.VGroup()
+    centers = [np.array([x, y, 0.0]) * scale for _, (x, y) in atoms]
+    for bond in bonds:
+        i, j, order = (*bond, 1)[:3]
+        if not (0 <= i < len(centers) and 0 <= j < len(centers)):
+            continue
+        a, b = centers[i], centers[j]
+        normal = np.array([-(b - a)[1], (b - a)[0], 0])
+        normal = normal / (np.linalg.norm(normal) or 1) * 0.09 * scale
+        for k in range(order):
+            offset = normal * (k - (order - 1) / 2) * 2
+            sticks.add(manim.Line(a + offset, b + offset, color=GREY_B, stroke_width=6 * scale ** 0.5))
+    for (symbol, _), center in zip(atoms, centers):
+        r = (0.24 if symbol == "H" else 0.36) * scale
+        tone = globals().get(_ELEMENT_COLORS.get(symbol, "GREY_B"), MUTED)
+        ball = manim.Circle(radius=r, fill_color=tone, fill_opacity=1, stroke_color=BG, stroke_width=2).move_to(center)
+        if labels:
+            letter = Text(symbol, font_size=max(20, 30 * scale), color=BG, _fit=False).move_to(center)
+            lock_layout(letter)
+            ball = manim.VGroup(ball, letter)
+        balls.add(ball)
+    group.add(sticks, balls)
+    group.atoms, group.bonds = balls, sticks
+    return group
+
+
+def person(height=1.0, color=None):
+    """A simple head-and-shoulders figure for populations and probability."""
+    head = manim.Circle(radius=0.2, num_components=5).move_to([0, 0.3, 0])
+    # Shoulders: a rounded top, flat base.
+    p = lambda x, y: np.array([x, y, 0.0])
+    body = manim.VMobject()
+    body.start_new_path(p(-0.32, -0.5))
+    body.add_line_to(p(0.32, -0.5))
+    body.add_line_to(p(0.32, -0.2))
+    body.add_cubic_bezier_curve_to(p(0.32, 0.02), p(0.18, 0.06), p(0, 0.06))
+    body.add_cubic_bezier_curve_to(p(-0.18, 0.06), p(-0.32, 0.02), p(-0.32, -0.2))
+    body.add_line_to(p(-0.32, -0.5))
+    figure = manim.VMobject()
+    figure.append_points(head.points)
+    figure.append_points(body.points)
+    figure.set_fill(ManimColor(color) if color is not None else PRIMARY, opacity=1).set_stroke(width=0)
+    figure.scale_to_fit_height(height)
+    return figure
+
+
+_PIPS = {1: [(0, 0)], 2: [(-1, 1), (1, -1)], 3: [(-1, 1), (0, 0), (1, -1)],
+         4: [(-1, 1), (1, 1), (-1, -1), (1, -1)], 5: [(-1, 1), (1, 1), (0, 0), (-1, -1), (1, -1)],
+         6: [(-1, 1), (1, 1), (-1, 0), (1, 0), (-1, -1), (1, -1)]}
+
+
+def die(value=6, size=1.0, color=None, pip_color=None):
+    """A flat die face showing ``value`` (1-6)."""
+    face = manim.RoundedRectangle(width=size, height=size, corner_radius=size * 0.16,
+                                  stroke_color=ManimColor(color) if color is not None else PRIMARY, stroke_width=4,
+                                  fill_color=ManimColor(color) if color is not None else PRIMARY, fill_opacity=0.18)
+    pips = manim.VGroup(*[manim.Dot([x * size * 0.27, y * size * 0.27, 0], radius=size * 0.075,
+                                    color=pip_color or INK) for x, y in _PIPS[max(1, min(6, int(value)))]])
+    group = manim.VGroup(face, pips)
+    group.face, group.pips = face, pips
+    return group
+
+
+def cell(width=4.0, color=None):
+    """A flat animal cell: membrane, nucleus, a few organelles."""
+    tone = ManimColor(color) if color is not None else PRIMARY
+    membrane = manim.Ellipse(width=width, height=width * 0.68, stroke_color=tone, stroke_width=5,
+                             fill_color=tone, fill_opacity=0.12)
+    nucleus = manim.Circle(radius=width * 0.14, stroke_color=SECONDARY, stroke_width=4,
+                           fill_color=SECONDARY, fill_opacity=0.3).shift(manim.LEFT * width * 0.08 + manim.UP * width * 0.03)
+    nucleolus = manim.Dot(nucleus.get_center() + manim.RIGHT * width * 0.03, radius=width * 0.035, color=SECONDARY)
+    mitochondria = manim.VGroup(*[
+        manim.Ellipse(width=width * 0.17, height=width * 0.07, stroke_color=TERTIARY, stroke_width=3,
+                      fill_color=TERTIARY, fill_opacity=0.35).rotate(angle).move_to([x * width, y * width, 0])
+        for x, y, angle in ((0.25, 0.1, 0.5), (0.18, -0.15, -0.3), (-0.3, -0.12, 1.1))])
+    rng = np.random.default_rng(3)
+    ribosomes = manim.VGroup(*[
+        manim.Dot([x * width, y * width * 0.68, 0], radius=0.03 * width / 4, color=GREY_A)
+        for x, y in rng.uniform(-0.36, 0.36, (18, 2)) if (x / 0.4) ** 2 + (y / 0.4) ** 2 < 0.8])
+    group = manim.VGroup(membrane, ribosomes, mitochondria, nucleus, nucleolus)
+    group.membrane, group.nucleus, group.mitochondria = membrane, manim.VGroup(nucleus, nucleolus), mitochondria
+    return group
+
+
+__all__ += [
+    "Crowd", "crowd", "zoom_to", "reveal_detail", "ScaleBar", "scale_bar",
+    "spotlight", "release", "explode", "assemble", "Flow", "flow", "to_scale", "ghost",
+    "Atom", "atom", "molecule", "person", "die", "cell",
+]
+
+# ---------------------------------------------------------------------------
+# A visual vocabulary for every subject. Equations tie to pictures, numbers
+# become lengths and areas, algorithms run on visible data, networks are
+# walked, history is laid out to scale, and parameters are knobs you turn.
+# None of these attach a lasting updater except trail() and gas(), which
+# are motion by nature; both advance in closed form, linear in dt.
+# ---------------------------------------------------------------------------
+
+_MATHY = re.compile(r"[0-9=+\-^_\\%$<>]")
+
+
+def _label(text, font_size=32, color=None):
+    """Words or numbers at label size: Text for words, MathTex once digits or
+    symbols appear (Text never carries digits in the house style)."""
+    text = str(text)
+    if _MATHY.search(text):
+        tex = text if "\\" in text or "^" in text or "_" in text else r"\text{" + text.replace("%", r"\%") + "}"
+        return MathTex(tex, font_size=font_size, color=color or INK)
+    return Text(text, font_size=font_size, color=color or INK)
+
+
+def link(term, *targets, color=None, run_time=1.2):
+    """Tie a formula term to the part of the picture it names: both swell in
+    one colour while a streak runs from the symbol to the shape."""
+    color = ManimColor(color) if color is not None else ACCENT
+    animations = [pulse(term, color=color, run_time=run_time)]
+    for target in targets:
+        animations.append(pulse(target, color=color, run_time=run_time))
+        try:
+            streak = manim.Line(term, target, buff=0.15, color=color, stroke_width=5)
+            animations.append(manim.ShowPassingFlash(streak, time_width=0.5, run_time=run_time))
+        except Exception:
+            pass
+    return manim.AnimationGroup(*animations)
+
+
+def block(text="", size=0.7, color=None, fill=0.35):
+    """A labelled unit: an unknown x, a 1 kg weight, a token, a byte. The
+    body is opaque (the hue mixed into the canvas), so nothing shows through."""
+    tone = ManimColor(color) if color is not None else PRIMARY
+    body = ManimColor(_mix(tone, BG, 1 - fill))
+    square = manim.RoundedRectangle(width=size, height=size, corner_radius=size * 0.12,
+                                    stroke_color=tone, stroke_width=3, fill_color=body, fill_opacity=1)
+    group = manim.VGroup(square)
+    if text != "":
+        mark = _label(text, font_size=max(24, 44 * size), color=INK)
+        mark.scale_to_fit_height(min(mark.height, size * 0.5)).move_to(square)
+        group.add(mark)
+    return lock_layout(group)
+
+
+class Balance(manim.VGroup):
+    """A balance scale for equations: whatever you do to one pan, do to the
+    other, and the beam stays level. Pans hang level as the beam tilts."""
+
+    def __init__(self, width=7.0, color=None):
+        super().__init__()
+        tone = ManimColor(color) if color is not None else GREY_B
+        self.span = width
+        post = manim.Polygon([-0.45, -1.6, 0], [0.45, -1.6, 0], [0, 0, 0], stroke_width=0,
+                             fill_color=tone, fill_opacity=1)
+        self.beam = manim.Line(manim.LEFT * width / 2, manim.RIGHT * width / 2, color=tone, stroke_width=7)
+        self.pans = manim.VGroup(*[self._pan(tone) for _ in range(2)])
+        self.loads = (manim.VGroup(), manim.VGroup())
+        self.angle = 0.0
+        self.add(post, self.beam, self.pans, *self.loads)
+        self._hang()
+        lock_layout(self)
+
+    def _pan(self, tone):
+        dish = manim.Line(manim.LEFT * 1.35, manim.RIGHT * 1.35, color=tone, stroke_width=6)
+        strings = manim.VGroup(manim.Line([0, 1.5, 0], dish.get_left(), color=tone, stroke_width=2),
+                               manim.Line([0, 1.5, 0], dish.get_right(), color=tone, stroke_width=2))
+        return manim.VGroup(strings, dish)
+
+    def _hang(self):
+        start, end = self.beam.get_start(), self.beam.get_end()
+        for pan, hook, load in zip(self.pans, (start, end), self.loads):
+            shift = hook - (pan.get_top())
+            pan.shift(shift)
+            if len(load):
+                load.next_to(pan[1], manim.UP, buff=0.04)
+
+    def _stack(self, side, mobjects):
+        """Copies of ``mobjects`` packed on a pan: one row when they fit the
+        dish, otherwise stacked rows, bottom row first, like weights."""
+        pan = self.pans[0 if side == "left" else 1]
+        target = manim.VGroup(*mobjects).copy()
+        if not len(target):
+            return target
+        target.arrange(manim.RIGHT, buff=0.06)
+        room = pan[1].width
+        if target.width > room:
+            cols = max(1, int((room + 0.06) // (target[0].width + 0.06)))
+            target.arrange_in_grid(cols=cols, buff=0.06, flow_order="ru")
+        target.next_to(pan[1], manim.UP, buff=0.04)
+        return target
+
+    def load(self, side, *mobjects, run_time=1.0):
+        """Animate items onto the "left" or "right" pan."""
+        group = self.loads[0 if side == "left" else 1]
+        items = [*group.submobjects, *mobjects]
+        target = self._stack(side, items)
+        for mob, spot in zip(mobjects, target[len(group.submobjects):]):
+            if np.allclose(mob.get_center(), 0):
+                mob.move_to(spot.get_center() + manim.UP * 1.2)  # unplaced: drop it onto the pan
+        moves = [manim.Transform(m, t) for m, t in zip(items, target)]
+        group.add(*mobjects)
+        return manim.AnimationGroup(*moves, run_time=run_time)
+
+    def unload(self, side, *mobjects, run_time=0.8):
+        """Lift items off a pan; what remains settles back into place."""
+        group = self.loads[0 if side == "left" else 1]
+        group.remove(*mobjects)
+        target = self._stack(side, group.submobjects)
+        anims = [manim.FadeOut(m, shift=manim.UP * 0.6) for m in mobjects]
+        anims += [manim.Transform(m, t) for m, t in zip(group.submobjects, target)]
+        return manim.AnimationGroup(*anims, run_time=run_time)
+
+    def tilt(self, angle, run_time=1.0):
+        """Tip the beam (radians, positive = left side down)."""
+        start = self.angle
+
+        def update(mob, alpha):
+            value = start + (angle - start) * manim.rate_functions.smooth(alpha)
+            mob.beam.rotate(value - mob.angle, about_point=mob.beam.get_center())
+            mob.angle = value
+            mob._hang()
+
+        return manim.UpdateFromAlphaFunc(self, update, run_time=run_time)
+
+    def level(self, run_time=1.0):
+        return self.tilt(0.0, run_time=run_time)
+
+
+def balance(width=7.0, color=None):
+    return Balance(width=width, color=color)
+
+
+def hop(line, start, end, text=None, color=None, height=None):
+    """A curved jump on a NumberLine from ``start`` to ``end`` (addition as
+    motion), with an optional label above the arc."""
+    tone = ManimColor(color) if color is not None else ACCENT
+    a, b = line.n2p(start), line.n2p(end)
+    arc = manim.CurvedArrow(a + manim.UP * 0.12, b + manim.UP * 0.12, angle=-np.pi / 2.2 if end >= start else np.pi / 2.2,
+                            color=tone, stroke_width=4, tip_length=0.18)
+    group = manim.VGroup(arc)
+    if text is not None:
+        tag = _label(text, font_size=32, color=tone)
+        tag.next_to(arc, manim.UP, buff=0.12)
+        group.add(tag)
+    return lock_layout(group)
+
+
+class AreaModel(manim.VGroup):
+    """Multiplication as area: a rectangle cut into labelled pieces, the
+    picture behind (a+b)^2, the distributive law and long multiplication."""
+
+    def __init__(self, widths, heights, top=None, side=None, cells=None, colors=None, unit=None, opacity=0.35):
+        super().__init__()
+        widths, heights = [float(w) for w in widths], [float(h) for h in heights]
+        unit = unit or min(6.0 / sum(widths), 4.0 / sum(heights))
+        palette = colors or [PRIMARY, SECONDARY, TERTIARY, ACCENT]
+        self.cells = []
+        pieces = manim.VGroup()
+        y = 0.0
+        for i, h in enumerate(heights):
+            row, x = [], 0.0
+            for j, w in enumerate(widths):
+                tone = ManimColor(palette[(i + j) % len(palette)] if colors is None or len(colors) <= 1
+                                  else palette[min(i * len(widths) + j, len(palette) - 1)])
+                rect = manim.Rectangle(width=w * unit, height=h * unit, stroke_color=tone, stroke_width=3,
+                                       fill_color=tone, fill_opacity=opacity)
+                rect.move_to([x + w * unit / 2, -(y + h * unit / 2), 0])
+                piece = manim.VGroup(rect)
+                if cells is not None:
+                    text = cells[i][j]
+                    if text not in (None, ""):
+                        mark = _label(text, font_size=40)
+                        mark.scale_to_fit_width(min(mark.width, rect.width * 0.8))
+                        mark.move_to(rect)
+                        piece.add(mark)
+                row.append(piece)
+                pieces.add(piece)
+                x += w * unit
+            self.cells.append(row)
+            y += h * unit
+        self.top_labels = manim.VGroup()
+        self.side_labels = manim.VGroup()
+        for j, text in enumerate(top or []):
+            cell = self.cells[0][j][0]
+            brace = manim.Brace(cell, manim.UP, buff=0.08, color=MUTED)
+            self.top_labels.add(manim.VGroup(brace, _label(text, 36).next_to(brace, manim.UP, buff=0.1)))
+        for i, text in enumerate(side or []):
+            cell = self.cells[i][0][0]
+            brace = manim.Brace(cell, manim.LEFT, buff=0.08, color=MUTED)
+            self.side_labels.add(manim.VGroup(brace, _label(text, 36).next_to(brace, manim.LEFT, buff=0.1)))
+        self.pieces = pieces
+        self.add(pieces, self.top_labels, self.side_labels)
+        self.move_to(manim.ORIGIN)
+        lock_layout(self)
+
+    def cell(self, i, j):
+        return self.cells[i][j]
+
+
+def area_model(widths, heights, top=None, side=None, cells=None, colors=None, unit=None):
+    return AreaModel(widths, heights, top=top, side=side, cells=cells, colors=colors, unit=unit)
+
+
+def split_bar(values, labels=None, colors=None, width=9.0, height=0.7):
+    """One bar cut in proportion: fractions, percentages, a budget, the air."""
+    total = float(sum(values)) or 1.0
+    palette = colors or [PRIMARY, SECONDARY, TERTIARY, ACCENT, MUTED]
+    segments, tags = manim.VGroup(), manim.VGroup()
+    x = -width / 2
+    for k, value in enumerate(values):
+        w = width * value / total
+        tone = ManimColor(palette[k % len(palette)])
+        seg = manim.Rectangle(width=max(w, 1e-3), height=height, stroke_color=BG, stroke_width=2,
+                              fill_color=tone, fill_opacity=0.85).move_to([x + w / 2, 0, 0])
+        segments.add(seg)
+        if labels is not None and k < len(labels) and labels[k] not in (None, ""):
+            tag = _label(labels[k], font_size=30, color=tone)
+            tag.next_to(seg, manim.DOWN if k % 2 == 0 else manim.UP, buff=0.2)
+            tags.add(tag)
+        x += w
+    group = manim.VGroup(segments, tags)
+    group.segments, group.labels = segments, tags
+    return lock_layout(group)
+
+
+class Bars(manim.VGroup):
+    """A bar chart built for motion: bars grow from the baseline and morph
+    to new values, with their numbers riding on top."""
+
+    def __init__(self, values, labels=None, max_value=None, height=4.0, bar_width=0.8, gap=0.5,
+                 color=None, colors=None, show_values=True, decimals=0):
+        super().__init__()
+        self._bar_height, self.decimals, self.show_values = height, decimals, show_values
+        self.max_value = float(max_value or max(values) or 1)
+        self.colors = colors
+        self.bar_color = ManimColor(color) if color is not None else PRIMARY
+        n = len(values)
+        span = n * bar_width + (n - 1) * gap
+        self.baseline = manim.Line([-span / 2 - 0.3, 0, 0], [span / 2 + 0.3, 0, 0], color=AXIS_COLOR, stroke_width=3)
+        self.bars, self.values, self.names = manim.VGroup(), manim.VGroup(), manim.VGroup()
+        for k, value in enumerate(values):
+            x = -span / 2 + bar_width / 2 + k * (bar_width + gap)
+            tone = ManimColor(colors[k % len(colors)]) if colors else self.bar_color
+            bar = manim.Rectangle(width=bar_width, height=self._h(value), stroke_width=0, fill_color=tone, fill_opacity=0.9)
+            bar.move_to([x, self._h(value) / 2, 0])
+            self.bars.add(bar)
+            self.values.add(self._number(value, bar))
+            if labels is not None and k < len(labels):
+                self.names.add(_label(labels[k], font_size=28, color=MUTED).next_to([x, 0, 0], manim.DOWN, buff=0.25))
+        self.add(self.baseline, self.bars, self.names, *([self.values] if show_values else []))
+        lock_layout(self)
+
+    def _h(self, value):
+        return max(self._bar_height * float(value) / self.max_value, 1e-3)
+
+    def _number(self, value, bar):
+        number = manim.DecimalNumber(value, num_decimal_places=self.decimals, font_size=30, color=INK)
+        return number.next_to(bar, manim.UP, buff=0.15)
+
+    def grow(self, run_time=1.4, lag=0.15):
+        """Bars rise from the baseline one after another; numbers follow."""
+        anims = [manim.GrowFromEdge(bar, manim.DOWN) for bar in self.bars]
+        group = manim.LaggedStart(*anims, lag_ratio=lag, run_time=run_time)
+        if not self.show_values:
+            return group
+        return manim.Succession(group, manim.FadeIn(self.values, shift=manim.UP * 0.1, run_time=0.4))
+
+    def set_values(self, values, run_time=1.2):
+        """Bars and their numbers morph to new values on the same baseline."""
+        animations = []
+        for bar, number, value in zip(self.bars, self.values, values):
+            target = bar.copy().stretch_to_fit_height(self._h(value)).align_to(self.baseline, manim.DOWN)
+            animations.append(manim.Transform(bar, target))
+            new = self._number(value, target)
+            animations.append(manim.Transform(number, new))
+        return manim.AnimationGroup(*animations, run_time=run_time)
+
+
+def bars(values, labels=None, **kwargs):
+    return Bars(values, labels=labels, **kwargs)
+
+
+class Cells(manim.VGroup):
+    """An array you can watch an algorithm run on: boxed values with their
+    indices, pointers that slide, swaps that arc, ranges that drop out."""
+
+    def __init__(self, values, size=0.9, color=None, indices=True):
+        super().__init__()
+        tone = ManimColor(color) if color is not None else PRIMARY
+        self.size = size
+        self.boxes, self.items, self.indices = manim.VGroup(), manim.VGroup(), manim.VGroup()
+        for k, value in enumerate(values):
+            box = manim.Square(side_length=size, stroke_color=tone, stroke_width=3, fill_color=tone, fill_opacity=0.12)
+            box.move_to([k * size, 0, 0])
+            self.boxes.add(box)
+            item = _label(value, font_size=40)
+            if item.width > size * 0.8 or item.height > size * 0.6:
+                item.scale(min(size * 0.8 / item.width, size * 0.6 / item.height))
+            self.items.add(item.move_to(box))
+            if indices:
+                self.indices.add(MathTex(str(k), font_size=26, color=MUTED).next_to(box, manim.DOWN, buff=0.15))
+        self.add(self.boxes, self.items, self.indices)
+        self.move_to(manim.ORIGIN)
+        lock_layout(self)
+
+    def __len__(self):
+        return len(self.boxes)
+
+    def pointer(self, index, text=None, color=None, side=None):
+        """An arrow (with an optional name like 'low' or 'mid') at a cell."""
+        tone = ManimColor(color) if color is not None else ACCENT
+        side = manim.UP if side is None else side
+        arrow = manim.Arrow(side * 0.9, manim.ORIGIN, buff=0, color=tone, stroke_width=5,
+                            max_tip_length_to_length_ratio=0.35)
+        group = manim.VGroup(arrow)
+        if text is not None:
+            group.add(_label(text, font_size=30, color=tone).next_to(arrow, side, buff=0.1))
+        group._side = side
+        self._park(group, index)
+        return lock_layout(group)
+
+    def _park(self, pointer, index):
+        box = self.boxes[index]
+        anchor = box.get_top() if np.dot(pointer._side, manim.UP) > 0 else self.indices[index].get_bottom() if len(self.indices) else box.get_bottom()
+        pointer.shift(anchor + pointer._side * 0.08 - pointer[0].get_end())
+        return pointer
+
+    def move(self, pointer, index, run_time=0.7):
+        """Slide a pointer to another cell."""
+        target = pointer.copy()
+        self._park(target, index)
+        return manim.Transform(pointer, target, run_time=run_time)
+
+    def mark(self, *indices, color=None, opacity=0.55, run_time=0.5):
+        """Fill cells (found, sorted, visited)."""
+        tone = ManimColor(color) if color is not None else ACCENT
+        return manim.AnimationGroup(*[self.boxes[i].animate.set_fill(tone, opacity=opacity).set_stroke(tone)
+                                      for i in indices], run_time=run_time)
+
+    def discard(self, indices, run_time=0.6):
+        """Grey out cells that are no longer in play (halved search range)."""
+        anims = []
+        for i in indices:
+            anims.append(self.boxes[i].animate.set_stroke(opacity=0.25).set_fill(opacity=0.03))
+            anims.append(self.items[i].animate.set_opacity(0.25))
+        return manim.AnimationGroup(*anims, run_time=run_time) if anims else manim.Wait(run_time)
+
+    def swap(self, i, j, run_time=0.9):
+        """Exchange two values along arcs (sorting)."""
+        a, b = self.items[i], self.items[j]
+        pa, pb = a.get_center().copy(), b.get_center().copy()
+        self.items.submobjects[i], self.items.submobjects[j] = b, a
+        return manim.AnimationGroup(a.animate(path_arc=-np.pi * 0.7).move_to(pb),
+                                    b.animate(path_arc=-np.pi * 0.7).move_to(pa), run_time=run_time)
+
+
+def cells(values, size=0.9, color=None, indices=True):
+    return Cells(values, size=size, color=color, indices=indices)
+
+
+def _layout_positions(names, edges, layout, root, seed=3):
+    n = len(names)
+    index = {name: k for k, name in enumerate(names)}
+    if isinstance(layout, dict):
+        return np.array([[*layout[name][:2], 0.0][:3] for name in names], dtype=float)
+    if layout == "circular":
+        angles = np.pi / 2 - np.arange(n) * 2 * np.pi / max(n, 1)
+        return np.stack([np.cos(angles), np.sin(angles), np.zeros(n)], axis=1) * 2
+    if layout == "tree":
+        children = {name: [] for name in names}
+        for a, b in edges:
+            children[a].append(b)
+        start = root if root is not None else names[0]
+        levels, seen, frontier = {}, {start}, [start]
+        depth = 0
+        while frontier:
+            for name in frontier:
+                levels[name] = depth
+            nxt = []
+            for name in frontier:
+                for child in children.get(name, []):
+                    if child not in seen:
+                        seen.add(child)
+                        nxt.append(child)
+            frontier, depth = nxt, depth + 1
+        for name in names:
+            levels.setdefault(name, depth)
+        # Leaves get consecutive slots; parents sit over their children.
+        xs, slot = {}, [0]
+
+        def place(name):
+            kids = [c for c in children.get(name, []) if levels.get(c) == levels[name] + 1]
+            if not kids:
+                xs[name] = slot[0]
+                slot[0] += 1
+            else:
+                for kid in kids:
+                    place(kid)
+                xs[name] = np.mean([xs[k] for k in kids])
+
+        place(start)
+        for name in names:
+            if name not in xs:
+                xs[name] = slot[0]
+                slot[0] += 1
+        return np.array([[xs[name], -levels[name] * 1.4, 0] for name in names], dtype=float)
+    # Spring layout (Fruchterman-Reingold), seeded so renders repeat.
+    rng = np.random.default_rng(seed)
+    pos = rng.uniform(-1, 1, (n, 2))
+    k = 1.0 / np.sqrt(max(n, 1))
+    pairs = [(index[a], index[b]) for a, b in edges]
+    temperature = 0.2
+    for _ in range(200):
+        delta = pos[:, None, :] - pos[None, :, :]
+        dist = np.linalg.norm(delta, axis=2) + np.eye(n)
+        force = (delta / dist[..., None] * (k * k / dist)[..., None]).sum(axis=1)
+        for a, b in pairs:
+            d = pos[a] - pos[b]
+            length = np.linalg.norm(d) or 1e-6
+            pull = d / length * length * length / k
+            force[a] -= pull
+            force[b] += pull
+        step = np.linalg.norm(force, axis=1, keepdims=True) + 1e-9
+        pos += force / step * np.minimum(step, temperature)
+        temperature *= 0.98
+    return np.column_stack([pos, np.zeros(n)])
+
+
+class Network(manim.VGroup):
+    """Nodes and links: graphs, trees, neural nets, food webs, social and
+    transport networks. walk() lights a path one step at a time."""
+
+    def __init__(self, nodes, edges, layout="spring", root=None, directed=False, weights=None,
+                 width=8.0, height=4.5, radius=0.32, color=None, labels=True):
+        super().__init__()
+        tone = ManimColor(color) if color is not None else PRIMARY
+        names = list(nodes)
+        positions = _layout_positions(names, edges, layout, root)
+        if len(names) > 1:
+            span = positions.max(axis=0) - positions.min(axis=0)
+            factor = min(width / (span[0] or 1), height / (span[1] or 1))
+            positions = (positions - (positions.max(axis=0) + positions.min(axis=0)) / 2) * factor
+        self._nodes, self._edges = {}, {}
+        node_group, edge_group, weight_group = manim.VGroup(), manim.VGroup(), manim.VGroup()
+        for name, point in zip(names, positions):
+            disc = manim.Circle(radius=radius, stroke_color=tone, stroke_width=3, fill_color=BG, fill_opacity=1)
+            node = manim.VGroup(disc).move_to(point)
+            if labels:
+                text = _label(name, font_size=30)
+                text.scale_to_fit_width(min(text.width, radius * 1.6)).move_to(point)
+                node.add(text)
+            self._nodes[name] = node
+            node_group.add(node)
+        for k, (a, b) in enumerate(edges):
+            start, end = self._nodes[a][0], self._nodes[b][0]
+            kind = manim.Arrow if directed else manim.Line
+            kwargs = {"buff": 0.02, "stroke_width": 3, "color": MUTED}
+            if directed:
+                kwargs.update(tip_length=0.18, max_tip_length_to_length_ratio=0.2)
+            line = kind(start, end, **kwargs)
+            self._edges[(a, b)] = line
+            if not directed:
+                self._edges[(b, a)] = line
+            edge_group.add(line)
+            if weights is not None and k < len(weights):
+                w = MathTex(str(weights[k]), font_size=26, color=MUTED)
+                normal = np.array([-(end.get_center() - start.get_center())[1], (end.get_center() - start.get_center())[0], 0])
+                normal = normal / (np.linalg.norm(normal) or 1)
+                w.move_to(line.get_center() + normal * 0.25)
+                weight_group.add(w)
+        self.nodes, self.links, self.weights = node_group, edge_group, weight_group
+        self.add(edge_group, weight_group, node_group)
+        lock_layout(self)
+
+    def node(self, name):
+        return self._nodes[name]
+
+    def edge(self, a, b):
+        return self._edges[(a, b)]
+
+    def light(self, *names, color=None, run_time=0.6):
+        tone = ManimColor(color) if color is not None else ACCENT
+        return manim.AnimationGroup(*[self._nodes[n][0].animate.set_stroke(tone, width=5).set_fill(tone, opacity=0.35)
+                                      for n in names], run_time=run_time)
+
+    def walk(self, path, color=None, step_time=0.6):
+        """Light a route node by node: each edge traces, then its node lights."""
+        tone = ManimColor(color) if color is not None else ACCENT
+        steps = [self.light(path[0], color=tone, run_time=step_time)]
+        for a, b in zip(path, path[1:]):
+            edge = self._edges.get((a, b))
+            if edge is not None:
+                trace = edge.copy().set_stroke(tone, width=6)
+                steps.append(manim.Create(trace, run_time=step_time))
+                self.add(trace)
+            steps.append(self.light(b, color=tone, run_time=step_time * 0.6))
+        return manim.Succession(*steps)
+
+
+def network(nodes, edges, layout="spring", **kwargs):
+    return Network(nodes, edges, layout=layout, **kwargs)
+
+
+def _nice(value):
+    """4.5e9 -> '4.5\\text{ billion}', 66e6 -> '66\\text{ million}'."""
+    magnitude = abs(value)
+    for size, word in ((1e12, "trillion"), (1e9, "billion"), (1e6, "million"), (1e3, "thousand")):
+        if magnitude >= size:
+            number = f"{value / size:.3g}"
+            return rf"{number}\text{{ {word}}}"
+    return f"{value:g}"
+
+
+def _nice_ticks(start, end, most=5):
+    """Round tick values (1, 2 or 5 x 10^k apart) between start and end."""
+    span = abs(end - start) or 1.0
+    raw = span / most
+    power = 10 ** np.floor(np.log10(raw))
+    step = next(m * power for m in (1, 2, 5, 10) if m * power >= raw)
+    low, high = min(start, end), max(start, end)
+    first = np.ceil(low / step) * step
+    values = list(np.arange(first, high + step * 1e-6, step))
+    return [float(v) if abs(v) > step * 1e-9 else 0.0 for v in values]
+
+
+class Timeline(manim.VGroup):
+    """Time laid out to scale, so gaps between events are visible: deep time,
+    history, a life cycle, the order of a process."""
+
+    def __init__(self, start, end, events=(), width=12.0, ticks=None, tick_labels=None, color=None, unit=""):
+        tone = ManimColor(color) if color is not None else PRIMARY
+        super().__init__()
+        self.start, self.end, self._span = float(start), float(end), width
+        axis = manim.Line([-width / 2, 0, 0], [width / 2, 0, 0], color=AXIS_COLOR, stroke_width=3)
+        ticks = _nice_ticks(start, end) if ticks is None else list(ticks)
+        tick_group = manim.VGroup()
+        texts = []
+        for k, t in enumerate(ticks):
+            mark = manim.Line(manim.UP * 0.1, manim.DOWN * 0.1, color=AXIS_COLOR, stroke_width=3).move_to(self.point(t))
+            text = tick_labels[k] if tick_labels is not None else _nice(t)
+            if unit and k == len(ticks) - 1 and tick_labels is None:
+                text += rf"\text{{ {unit}}}"
+            tex = MathTex(text, font_size=28, color=MUTED).next_to(mark, manim.DOWN, buff=0.15)
+            texts.append(tex)
+            tick_group.add(manim.VGroup(mark, tex))
+        if len(texts) > 1:
+            # Tick labels shrink together until neighbours clear each other.
+            spacing = width / (len(texts) - 1)
+            widest = max(t.width for t in texts[:-1]) if len(texts) > 1 else 0
+            if widest > spacing * 0.85:
+                for t in texts:
+                    t.scale(spacing * 0.85 / widest, about_edge=manim.UP)
+        self.event_marks = manim.VGroup()
+        for k, (t, text) in enumerate(events):
+            up = k % 2 == 0
+            dot = manim.Dot(self.point(t), radius=0.09, color=tone)
+            stem = manim.Line(self.point(t), self.point(t) + (manim.UP if up else manim.DOWN) * 0.7,
+                              color=tone, stroke_width=2, stroke_opacity=0.7)
+            tag = _label(text, font_size=32, color=INK).next_to(stem, manim.UP if up else manim.DOWN, buff=0.1)
+            self.event_marks.add(manim.VGroup(dot, stem, tag))
+        self.axis, self.ticks = axis, tick_group
+        self.add(axis, tick_group, self.event_marks)
+        lock_layout(self)
+
+    def point(self, t):
+        """Where time ``t`` sits on the axis (follows moves and zooms)."""
+        fraction = float(np.clip((float(t) - self.start) / ((self.end - self.start) or 1), 0, 1))
+        if getattr(self, "axis", None) is not None:
+            start, end = self.axis.get_start(), self.axis.get_end()
+            return start + (end - start) * fraction
+        return np.array([-self._span / 2 + self._span * fraction, 0, 0])
+
+    def event(self, index):
+        return self.event_marks[index]
+
+
+def timeline(start, end, events=(), **kwargs):
+    return Timeline(start, end, events, **kwargs)
+
+
+class Slider(manim.VGroup):
+    """A parameter you can see being turned: a knob on a track with its value.
+
+    Drive it with slider.slide_to(value): the tracker, knob and readout move in
+    one animation. Anything built with always_redraw from the same tracker
+    follows, so the cause and its effect move together."""
+
+    def __init__(self, tracker, low, high, name="", width=4.0, decimals=1, color=None, unit=""):
+        super().__init__()
+        tone = ManimColor(color) if color is not None else ACCENT
+        self.tracker, self.low, self.high = tracker, float(low), float(high)
+        self.track = manim.Line([-width / 2, 0, 0], [width / 2, 0, 0], color=AXIS_COLOR, stroke_width=4)
+        self.knob = manim.Dot(radius=0.13, color=tone)
+        self.readout = manim.DecimalNumber(tracker.get_value(), num_decimal_places=decimals, font_size=32, color=tone,
+                                           unit=unit or None)
+        parts = [self.track, self.knob, self.readout]
+        if name:
+            self.name = _label(name, font_size=30, color=MUTED).next_to(self.track, manim.LEFT, buff=0.3)
+            parts.append(self.name)
+        self.add(*parts)
+        self._sync()
+        lock_layout(self)
+
+    def _sync(self, *_):
+        fraction = np.clip((self.tracker.get_value() - self.low) / ((self.high - self.low) or 1), 0, 1)
+        self.knob.move_to(self.track.point_from_proportion(fraction))
+        self.readout.set_value(self.tracker.get_value())
+        self.readout.next_to(self.track, manim.RIGHT, buff=0.3)
+        return self
+
+    def slide_to(self, value, run_time=1.5, rate_func=None):
+        return manim.AnimationGroup(
+            self.tracker.animate(rate_func=rate_func or manim.rate_functions.smooth).set_value(value),
+            manim.UpdateFromFunc(self, self._sync), run_time=run_time)
+
+
+def slider(tracker, low, high, name="", **kwargs):
+    return Slider(tracker, low, high, name=name, **kwargs)
+
+
+def callout(target, text, direction=None, length=1.1, color=None):
+    """A leader line from a part of a diagram to its name, so labels never
+    float: anatomy, machine parts, regions of a graph."""
+    tone = ManimColor(color) if color is not None else INK
+    direction = np.array(manim.UR if direction is None else direction, dtype=float)
+    direction = direction / (np.linalg.norm(direction) or 1)
+    anchor = target.get_boundary_point(direction) if hasattr(target, "get_boundary_point") else target.get_center()
+    elbow = anchor + direction * length
+    line = manim.VMobject(stroke_color=MUTED, stroke_width=2)
+    end = elbow + (manim.RIGHT if direction[0] >= 0 else manim.LEFT) * 0.4
+    line.set_points_as_corners([anchor, elbow, end])
+    dot = manim.Dot(anchor, radius=0.05, color=MUTED)
+    tag = _label(text, font_size=30, color=tone).next_to(end, manim.RIGHT if direction[0] >= 0 else manim.LEFT, buff=0.12)
+    group = manim.VGroup(line, dot, tag)
+    group.line, group.label = line, tag
+    return lock_layout(group)
+
+
+def trail(mob, color=None, fade=1.6, width=3):
+    """The fading path a moving object leaves: orbits, projectiles, pendulums."""
+    tone = ManimColor(color) if color is not None else mob.get_color()
+    return manim.TracedPath(mob.get_center, stroke_color=tone, stroke_width=width, dissipating_time=fade)
+
+
+class Gas(manim.VMobject):
+    """Particles bouncing in a box, one path. Motion is exact for any step:
+    each coordinate reflects off the walls in closed form, so a long dt (or a
+    split render) lands where a frame-by-frame run would."""
+
+    def __init__(self, count=60, width=4.0, height=3.0, speed=1.0, radius=0.06, color=None, seed=5):
+        super().__init__()
+        rng = np.random.default_rng(seed)
+        self.size = np.array([width, height])
+        self._origin = rng.uniform(0, 1, (count, 2)) * self.size
+        angles = rng.uniform(0, 2 * np.pi, count)
+        self._velocity = np.stack([np.cos(angles), np.sin(angles)], axis=1) * rng.uniform(0.6, 1.4, (count, 1))
+        self.speed, self.time, self.radius = speed, 0.0, radius
+        self._dot = manim.Circle(radius=radius, num_components=5).points
+        self.box = None
+        self.set_fill(ManimColor(color) if color is not None else PRIMARY, opacity=1)
+        self.set_stroke(width=0)
+        self._anchor = np.array([-width / 2, -height / 2, 0.0])
+        self._eduvids_layout_locked = True
+        self._draw()
+        self.add_updater(lambda mob, dt: mob._advance(dt))
+
+    def _positions(self):
+        raw = self._origin + self._velocity * self.speed * self.time
+        period = 2 * self.size
+        folded = np.mod(raw, period)
+        folded = np.where(folded > self.size, period - folded, folded)
+        return folded
+
+    def _draw(self):
+        points = self._positions()
+        centers = np.column_stack([points, np.zeros(len(points))]) + self._anchor
+        self.points = (self._dot[None] + centers[:, None]).reshape(-1, 3)
+
+    def _advance(self, dt):
+        # The box may have been moved or scaled: re-anchor from its corner.
+        if self.box is not None:
+            self._anchor = self.box.get_corner(manim.DL) + self.radius
+        self.time += dt
+        self._draw()
+
+    def set_speed(self, speed):
+        """Hotter or colder: rebase so positions stay continuous."""
+        self._origin = self._positions()
+        self.time, self.speed = 0.0, speed
+        return self
+
+    def stop(self):
+        self.clear_updaters()
+        return self
+
+
+def gas(count=60, width=4.0, height=3.0, speed=1.0, radius=0.06, color=None, seed=5):
+    """Molecules in a container (temperature, pressure, diffusion). Returns
+    VGroup(box, particles); particles = group[1] with .set_speed() and .stop()."""
+    box = manim.Rectangle(width=width + 2 * radius, height=height + 2 * radius, color=GREY_B, stroke_width=4)
+    particles = Gas(count, width, height, speed, radius, color, seed)
+    particles.box = box
+    particles._anchor = box.get_corner(manim.DL) + radius
+    particles._draw()
+    group = manim.VGroup(box, particles)
+    group.box, group.particles = box, particles
+    return group
+
+
+__all__ += [
+    "link", "block", "Balance", "balance", "hop", "AreaModel", "area_model", "split_bar",
+    "Bars", "bars", "Cells", "cells", "Network", "network", "Timeline", "timeline", "Slider", "slider",
+    "callout", "trail", "Gas", "gas",
 ]
