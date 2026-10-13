@@ -20,11 +20,11 @@ The 2 vCPU run gives the driver 850 MB of free memory, which is what a 1 GB
 sandbox leaves. It fits two renders at once if at least ~670 MB is free; with
 less it renders one at a time.
 
-The production template builds with the E2B SDK defaults (2 vCPU, 1 GB). It now
-asks for 8 vCPU / 8 GB, which takes effect once the template is rebuilt:
-`npm run e2b:build:prod` in `sandbox-templates/manim20-ffmpeg-bookmarks-latest`.
-Set `E2B_TEMPLATE_CPU_COUNT` and `E2B_TEMPLATE_MEMORY_MB` to match your plan.
-The driver uses whatever the sandbox has.
+The production template builds at 2 vCPU / 1 GB unless you ask for more. For
+faster renders, set `E2B_TEMPLATE_CPU_COUNT` and `E2B_TEMPLATE_MEMORY_MB` and
+rebuild: `npm run e2b:build:prod` in
+`sandbox-templates/manim20-ffmpeg-bookmarks-latest`. 4 vCPU needs at least
+2 GB to run four renders at once. The driver uses whatever the sandbox has.
 
 ## Same picture
 
