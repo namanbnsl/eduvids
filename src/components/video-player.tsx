@@ -15,6 +15,7 @@ import type {
 // Components
 import { VideoProgressCard } from "@/components/ui/video-progress-card";
 import { SubscribePrompt } from "@/components/subscribe-prompt";
+import { ShareActions } from "@/components/share-actions";
 
 // Icons
 import { Monitor, Smartphone, Youtube } from "lucide-react";
@@ -642,6 +643,7 @@ export function VideoPlayer({
           Watch on YouTube
         </a>
       )}
+      <ShareActions url={youtubeUrl ?? videoUrl} topic={description} />
     </div>
   );
 }

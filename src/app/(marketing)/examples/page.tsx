@@ -13,7 +13,7 @@ import {
 export const metadata: Metadata = createMarketingMetadata({
   title: "AI-Generated Educational Video Examples",
   description:
-    "Watch curated math and physics explainers created with eduvids, an AI educational video generator for narrated visual lessons.",
+    "Watch curated math, physics, chemistry and probability explainers created with eduvids, a free AI educational video generator for narrated visual lessons.",
   path: "/examples",
 });
 
@@ -27,6 +27,7 @@ export default function ExamplesPage() {
     hasPart: CURATED_VIDEOS.map((video) => ({
       "@type": "VideoObject",
       name: video.title,
+      description: video.description,
       url: `${SITE_URL}/examples/${video.slug}`,
       thumbnailUrl: `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`,
       uploadDate: video.publishedAt,

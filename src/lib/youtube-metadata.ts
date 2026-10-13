@@ -738,7 +738,9 @@ export function buildYouTubeDescription({
     blocks.push(`Previous: ${previousVideo.title} → ${previousVideo.watchUrl}`);
   }
 
-  blocks.push("Make your own visual explanation at https://eduvids.app");
+  blocks.push(
+    "Made with https://eduvids.app (free) · Star it: https://github.com/namanbnsl/eduvids",
+  );
   if (hashtags.length) blocks.push(hashtags.slice(0, 3).join(" "));
   return blocks.join("\n\n");
 }

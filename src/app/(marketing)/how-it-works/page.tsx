@@ -75,7 +75,7 @@ export default function HowItWorksPage() {
             </h2>
             <div className="mt-6 space-y-4">
               {[
-                "Mathematics and physics concepts",
+                "Mathematics, physics and chemistry concepts",
                 "Visual intuition and step-by-step explanations",
                 "Landscape lessons and concise vertical Shorts",
               ].map((item) => (

@@ -215,6 +215,7 @@ test("description preserves a sales-first opening and adds deterministic links",
   assert.match(lines[1], /limits, slopes/);
   assert.match(result, /Previous: Why Differentiation Actually Works/);
   assert.match(result, /https:\/\/eduvids\.app/);
+  assert.match(result, /https:\/\/github\.com\/namanbnsl\/eduvids/);
 });
 
 test("previous-video comment has one focused CTA", () => {
