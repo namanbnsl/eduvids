@@ -1172,6 +1172,8 @@ test("all render paths use 1080p at 30fps and preserve portrait dimensions", () 
     "-qh",
     "--fps",
     "30",
+    // No PyPI version check after every render.
+    "--silent",
   ]);
   assert.deepEqual(videoRenderFlags({ width: 1080, height: 1920 }).slice(-2), [
     "-r",
@@ -1372,6 +1374,7 @@ test("the render job runs the driver with Manim flags, and in-frame watermarks s
       "-qh",
       "--fps",
       "30",
+      "--silent",
       "-r",
       "720,1280",
     ],

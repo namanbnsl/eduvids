@@ -1355,10 +1355,12 @@ if _open_stream is not None and not getattr(_open_stream, "__eduvids_quality__",
         stream = getattr(self, "video_stream", None)
         if stream is not None and stream.codec_context.name == "libx264":
             # Measured against a lossless render of house scenes: superfast at
-            # CRF 17 matches the old medium/CRF 18 (SSIM 0.99982, PSNR 60.6 vs
-            # 59.8 dB) with 35% less encoder CPU and half its memory, for
-            # about twice the bitrate (still ~1 Mbit/s at 1080p).
-            stream.options = dict(stream.options, crf="17", preset="superfast")
+            # CRF 16 without B-frames matches the old medium/CRF 18 (SSIM
+            # 0.99982, PSNR 60.5 vs 59.8 dB) with half the encoder CPU. Without
+            # B-frames x264 buffers no frames ahead: ~75 MB less per render, so
+            # two renders fit a 1 GB sandbox. Files are ~2.8x the old size
+            # (~1 Mbit/s at 1080p).
+            stream.options = dict(stream.options, crf="16", preset="superfast", bf="0")
         # Manim queues finished frames for the encoder thread without limit.
         # Each 1080p frame is 8 MB, so a fast scene piled up ~1 GB waiting
         # for x264; a short queue keeps both threads busy at a fixed cost.

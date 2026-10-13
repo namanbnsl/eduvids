@@ -64,7 +64,7 @@ class EncodingCompatibilityTests(unittest.TestCase):
                 if codec is not None:
                     self.assertEqual(
                         writer.video_stream.options,
-                        {"crf": "17", "preset": "superfast"} if codec == "libx264"
+                        {"crf": "16", "preset": "superfast", "bf": "0"} if codec == "libx264"
                         else {"crf": "23", "preset": "medium"},
                     )
 

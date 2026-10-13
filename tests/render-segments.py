@@ -163,6 +163,26 @@ class SegmentTests(unittest.TestCase):
         # A drifting dot would sit pixels away (well under 45 dB).
         self.assertGreater(worst_psnr(joined, whole), 50)
 
+    def test_render_server_marks_renders_for_the_oom_killer_and_reports_kills(self):
+        import signal
+        import time
+
+        server = driver.zygote()
+        self.assertTrue(server)
+        sleeper = WORK / "sleeper.py"
+        sleeper.write_text("import time\ntime.sleep(60)\n")
+        task = server.start({"argv": ["manim", str(sleeper)], "env": dict(self.env), "log": str(WORK / "sleeper.log")})
+        deadline = time.time() + 30
+        while task not in server.pids and time.time() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.5)
+        # A render is the kernel's first choice under memory pressure.
+        with open(f"/proc/{server.pids[task]}/oom_score_adj") as score:
+            self.assertEqual(score.read().strip(), "1000")
+        server.kill(task, signal.SIGKILL)
+        # Negative, like a Popen: the driver retries killed renders alone.
+        self.assertEqual(server.exit_code(task, timeout=30), -9)
+
 
 if __name__ == "__main__":
     unittest.main()

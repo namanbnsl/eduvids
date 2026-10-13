@@ -138,8 +138,10 @@ class VideoQualityTests(unittest.TestCase):
                 try:
                     # Matches the old medium/CRF 18 against a lossless render
                     # (see the comment in video_style.py) at far less CPU.
-                    self.assertEqual(writer.video_stream.options["crf"], "17")
+                    self.assertEqual(writer.video_stream.options["crf"], "16")
                     self.assertEqual(writer.video_stream.options["preset"], "superfast")
+                    # No B-frames: x264 buffers no frames ahead (less memory).
+                    self.assertEqual(writer.video_stream.options["bf"], "0")
                 finally:
                     # Stop Manim's frame-consumer thread as well as PyAV.
                     writer.close_partial_movie_stream()
