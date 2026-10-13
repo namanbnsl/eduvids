@@ -1502,8 +1502,10 @@ if WATERMARK and WATERMARK != "__EDUVIDS_" + "WATERMARK__":
 
 import manim.scene.scene_file_writer as _writer_module
 
-_convert_audio = _writer_module.convert_audio
-if not getattr(_convert_audio, "__eduvids_lossless__", False):
+# Older Manim builds have no convert_audio (they mux audio another way); leave
+# them as they are rather than fail the import.
+_convert_audio = getattr(_writer_module, "convert_audio", None)
+if _convert_audio is not None and not getattr(_convert_audio, "__eduvids_lossless__", False):
 
     def _convert_lossless(input_path, output_path, codec_name):
         if codec_name != "aac":
