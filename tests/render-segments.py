@@ -110,11 +110,13 @@ class SegmentTests(unittest.TestCase):
         self.assertGreater(worst_psnr(joined, self.whole), 50)
 
     def assertSameSoundtrack(self, joined):
-        # Same length and the same samples. The AAC encoder's padding of the
-        # final frame may differ by a few quanta (well below -50 dBFS).
+        # The same samples in the same places. The track's length may differ
+        # by Manim's millisecond rounding of trailing silence; the postprocess
+        # pads or trims every scene's audio to its picture anyway.
         a, b = audio(joined), audio(self.whole)
-        self.assertEqual(len(a), len(b))
-        self.assertLessEqual(int(abs(a - b).max()), 64)
+        self.assertLessEqual(abs(len(a) - len(b)), 2 * 16000 // 1000)
+        n = min(len(a), len(b))
+        self.assertLessEqual(int(abs(a[:n] - b[:n]).max()), 64)
 
     @classmethod
     def setUpClass(cls):
