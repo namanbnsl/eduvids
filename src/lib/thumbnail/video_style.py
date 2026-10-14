@@ -1392,6 +1392,33 @@ if _open_stream is not None and not getattr(_open_stream, "__eduvids_quality__",
 
 FRAME_QUEUE = 4
 
+# Manim < 0.19 pipes raw frames into an ffmpeg process instead. Its x264 runs
+# at preset medium with B-frames and a 40-frame lookahead: ~520 MB at 1080p,
+# so two renders in a 1 GB sandbox got their encoders OOM-killed (a
+# BrokenPipeError in write_frame). Give it the same settings as above: ~180 MB.
+X264_PIPE_OPTIONS = ["-preset", "superfast", "-crf", "16", "-bf", "0"]
+
+_open_pipe = getattr(SceneFileWriter, "open_movie_pipe", None)
+if _open_stream is None and _open_pipe is not None and not getattr(_open_pipe, "__eduvids_quality__", False):
+    import subprocess as _subprocess
+
+    def _open_quality_pipe(self, *args, **kwargs):
+        popen = _subprocess.Popen
+
+        def quality_popen(command, *popen_args, **popen_kwargs):
+            if isinstance(command, list) and "libx264" in command:
+                command = command[:-1] + X264_PIPE_OPTIONS + command[-1:]  # options go before the output path
+            return popen(command, *popen_args, **popen_kwargs)
+
+        _subprocess.Popen = quality_popen
+        try:
+            return _open_pipe(self, *args, **kwargs)
+        finally:
+            _subprocess.Popen = popen
+
+    _open_quality_pipe.__eduvids_quality__ = True
+    SceneFileWriter.open_movie_pipe = _open_quality_pipe
+
 # A held frame (every wait and narration hold) arrives once with a repeat
 # count; Manim converted the same RGBA frame to YUV again for every repeat.
 # Convert it once and resend it, with a fresh timestamp each time so the

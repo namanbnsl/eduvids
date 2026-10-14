@@ -55,8 +55,9 @@ pip install tqdm more-itertools tiktoken
 # whisper
 pip install git+https://github.com/openai/whisper.git
 
-# ✅ install manim normally but prevent numpy upgrade
-pip install manim --constraint <(echo "numpy==1.26.4")
+# ✅ manim 0.18.1: the last release that runs on numpy 1.x (0.19+ needs numpy 2).
+# It writes frames through an ffmpeg pipe, not PyAV; eduvids_style patches both.
+pip install manim==0.18.1 --constraint <(echo "numpy==1.26.4")
 
 # voiceover stack
 pip install manim-voiceover[gtts] stable-ts --constraint <(echo "numpy==1.26.4")
