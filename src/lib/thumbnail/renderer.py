@@ -20,6 +20,9 @@ Design system
 - One cool hue carries the visual; one warm hue marks the single focal detail
   and the accent words of the headline. No eyebrow or other small tag: the
   headline and the picture carry the thumbnail.
+- Curiosity devices are part of the system, not decoration: a struck-through
+  wrong intuition in the headline ("~~50%~~ 67%"), one short callout whose
+  warm arrow points at the hero's focal detail, and short copy set larger.
 - Layout is verified, not hoped for: the copy block, the hero, every label,
   the safe area and YouTube's duration badge are checked for collisions.
 """
@@ -61,8 +64,10 @@ def y_at(px: float) -> float:
 
 
 MARGIN_X, MARGIN_Y = 84, 72
-TEXT_COL_W = 528
-GUTTER = 56
+# Visual first: the hero column is wider than the copy column, and short
+# copy at the larger tiers still fits the narrower column.
+TEXT_COL_W = 480
+GUTTER = 48
 HERO_LEFT = MARGIN_X + TEXT_COL_W + GUTTER
 # YouTube draws the duration badge over the bottom-right corner.
 BADGE_ZONE = (WIDTH - 168, HEIGHT - 64, WIDTH, HEIGHT)
@@ -82,9 +87,11 @@ PALETTES = {
 
 # Type scale (em size in px). Headlines step down a tier only when the copy
 # cannot fit the column at the larger size.
-HEADLINE_TIERS = (92, 84, 76)
+# Short, punchy copy earns the larger tiers; it is what reads on a phone.
+HEADLINE_TIERS = (124, 108, 92, 84, 76)
 HEADLINE_LEADING = 1.06
 LABEL_SIZE = 34
+CALLOUT_SIZE = 60
 CAPTION_SIZE = 30
 EQUATION_SIZES = (92, 82, 72, 64)
 CAP_HEIGHT = 0.683  # Computer Modern cap height / em
@@ -328,6 +335,11 @@ class Typesetter:
             rf"\definecolor{{cool}}{{HTML}}{{{self.cool[1:]}}}",
             rf"\definecolor{{accent}}{{HTML}}{{{self.warm[1:]}}}",
             r"\newcommand{\hl}[1]{\textcolor{accent}{#1}}",
+            # The wrong intuition: muted words under a warm rule that overhangs
+            # both ends slightly, like a correction made by hand.
+            r"\newsavebox{\strikebox}",
+            r"\newcommand{\strike}[1]{\sbox{\strikebox}{\color{muted}#1}\usebox{\strikebox}"
+            r"\llap{\textcolor{accent}{\rule[0.25em]{\dimexpr\wd\strikebox+0.12em\relax}{0.075em}}\kern-0.06em}}",
             r"\setlength{\tabcolsep}{0pt}",
         ])
         template = TexTemplate(
@@ -500,8 +512,29 @@ def accent_range(headline: str, accent: str):
     return index, index + len(accent)
 
 
-def word_tex(word: Word, accent_span, safe: bool) -> str:
-    """Escape prose, keep validated $math$, colour the accent characters."""
+def strike_range(headline: str, strike: str, accent_span):
+    """The struck word must be one whole word of the copy, apart from the accent."""
+    span = accent_range(headline, strike.strip())
+    if span is None or " " in strike.strip():
+        return None
+    if accent_span and span[0] < accent_span[1] and span[1] > accent_span[0]:
+        return None
+    before = headline[span[0] - 1] if span[0] else " "
+    after = headline[span[1]] if span[1] < len(headline) else " "
+    return span if before in " ~" and after in " ~,.?!:;" else None
+
+
+def span_style(start: int, end: int, spans: dict):
+    for style, span in spans.items():
+        if span is not None and start < span[1] and end > span[0]:
+            return style
+    return None
+
+
+def word_tex(word: Word, accent_span, safe: bool, strike_span=None) -> str:
+    """Escape prose, keep validated $math$, colour the accent characters and
+    strike through the wrong intuition."""
+    spans = {"hl": accent_span, "strike": strike_span}
     parts = re.split(r"(\$[^$]*\$)", word.text)
     out, offset = [], word.start
     for part in parts:
@@ -509,30 +542,30 @@ def word_tex(word: Word, accent_span, safe: bool) -> str:
             continue
         span = (offset, offset + len(part))
         offset += len(part)
-        is_accent = accent_span is not None and span[0] < accent_span[1] and span[1] > accent_span[0]
         if part.startswith("$") and part.endswith("$") and len(part) > 1:
             latex = clean_latex(part[1:-1])
             if not latex or safe:
                 rendered = tex_escape(smart_punctuation(re.sub(r"\\[A-Za-z]+|[{}_^$]", "", part)))
             else:
                 rendered = f"${math_spacing(latex)}$"
-            out.append(rf"\hl{{{rendered}}}" if is_accent else rendered)
+            style = span_style(*span, spans)
+            out.append(rf"\{style}{{{rendered}}}" if style else rendered)
             continue
         text = smart_punctuation(part.replace("~", " "))
-        if accent_span is None:
+        if accent_span is None and strike_span is None:
             out.append(tex_escape(text))
             continue
         current, flag = "", None
         for position, char in enumerate(text):
             absolute = span[0] + position
-            inside = accent_span[0] <= absolute < accent_span[1]
-            if flag is not None and inside != flag:
-                out.append(rf"\hl{{{tex_escape(current)}}}" if flag else tex_escape(current))
+            inside = span_style(absolute, absolute + 1, spans)
+            if current and inside != flag:
+                out.append(rf"\{flag}{{{tex_escape(current)}}}" if flag else tex_escape(current))
                 current = ""
             current += char
             flag = inside
         if current:
-            out.append(rf"\hl{{{tex_escape(current)}}}" if flag else tex_escape(current))
+            out.append(rf"\{flag}{{{tex_escape(current)}}}" if flag else tex_escape(current))
     return "".join(out)
 
 
@@ -673,6 +706,87 @@ def place_labels(graphics, labels: list[Label], region, strict=True) -> list:
     return placed
 
 
+CALLOUT_EM_LIMIT = 7.5
+
+
+def callout_copy(value, ts, safe):
+    """A few words or one $math$ token beside the hero, e.g. "Why $0$?"."""
+    if not isinstance(value, str):
+        return None
+    value = re.sub(r"\s+", " ", value).strip()
+    if not value or len(value) > 28 or value.count("$") % 2 or len(value.split(" ")) > 3:
+        return None
+    if re.search(r"[\\{}#_^]", "".join(value.split("$")[::2])):
+        return None
+    if estimate_em(value) > CALLOUT_EM_LIMIT:
+        return None
+    words = split_words(value)
+    line = " ".join(word_tex(word, None, safe) for word in words)
+    return ts.block([line], CALLOUT_SIZE, "SemiBold", tracking=-1.0)
+
+
+def place_callout(callout, focus, graphics, labels, room, warm):
+    """Put the callout in clean space near the focal detail and return a warm
+    arrow from it to the detail, or None when there is no clean room."""
+    from manim import CurvedArrow
+
+    strokes = bezier_samples(graphics)
+    polygons = filled_polygons(graphics)
+    label_boxes = [bbox(label, u(10)) for label in labels]
+    badge = np.array([x_at(BADGE_ZONE[0]), y_at(BADGE_ZONE[3]), x_at(BADGE_ZONE[2]), y_at(BADGE_ZONE[1])])
+    hero_center = graphics.get_center()
+    outward = focus - hero_center
+    outward_angle = math.atan2(outward[1], outward[0]) if np.linalg.norm(outward[:2]) > 0.2 else math.pi / 2
+    half = np.array([callout.width / 2, callout.height / 2])
+    candidates = []
+    for step in range(16):
+        angle = step * math.pi / 8
+        turn = abs((angle - outward_angle + math.pi) % (2 * math.pi) - math.pi)
+        for gap in (1.1, 1.6, 2.2, 2.9):
+            candidates.append((turn + 0.35 * gap, angle, gap))
+    candidates.sort()
+    for _, angle, gap in candidates:
+        direction = np.array([math.cos(angle), math.sin(angle)])
+        reach = abs(direction[0]) * half[0] + abs(direction[1]) * half[1]
+        center = focus[:2] + direction * (gap + reach)
+        box = np.array([center[0] - half[0], center[1] - half[1], center[0] + half[0], center[1] + half[1]])
+        padded = box + np.array([-1, -1, 1, 1]) * u(14)
+        if padded[0] < room[0] or padded[1] < room[1] or padded[2] > room[2] or padded[3] > room[3]:
+            continue
+        if boxes_overlap(padded, badge) or any(boxes_overlap(padded, other) for other in label_boxes):
+            continue
+        inside = (strokes[:, 0] > padded[0]) & (strokes[:, 0] < padded[2]) & (strokes[:, 1] > padded[1]) & (strokes[:, 1] < padded[3])
+        if inside.any():
+            continue
+        corners = [(padded[0], padded[1]), (padded[2], padded[1]), (padded[0], padded[3]), (padded[2], padded[3]), tuple(center)]
+        if any(point_in_polygon(corner, polygon) for polygon in polygons for corner in corners):
+            continue
+        # The arrow leaves the box edge facing the detail and stops short of it.
+        towards = focus[:2] - center
+        distance = np.linalg.norm(towards)
+        unit = towards / max(distance, 1e-9)
+        exit_t = min(half[0] / max(abs(unit[0]), 1e-9), half[1] / max(abs(unit[1]), 1e-9))
+        start = center + unit * (exit_t + u(14))
+        end = focus[:2] - unit * u(26)
+        if np.linalg.norm(end - start) < u(60):
+            continue
+        start3, end3 = np.append(start, 0.0), np.append(end, 0.0)
+        # Bow the arrow away from the hero so it reads as an annotation.
+        arrows = [
+            CurvedArrow(start3, end3, angle=bend, color=warm, stroke_width=6, tip_length=u(24))
+            for bend in (0.55, -0.55)
+        ]
+        arrow = max(arrows, key=lambda a: np.linalg.norm(a.point_from_proportion(0.5) - hero_center))
+        if np.linalg.norm(arrow.point_from_proportion(0.5) - hero_center) < np.linalg.norm(((start3 + end3) / 2) - hero_center):
+            arrow = arrows[0]
+        arrow_box = bbox(arrow)
+        if arrow_box[0] < room[0] or arrow_box[2] > room[2] or arrow_box[3] > room[3] or arrow_box[1] < room[1] or any(boxes_overlap(arrow_box, other) for other in label_boxes):
+            continue
+        callout.move_to(np.append(center, 0.0))
+        return arrow
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Hero visuals
 # ---------------------------------------------------------------------------
@@ -681,6 +795,9 @@ def place_labels(graphics, labels: list[Label], region, strict=True) -> list:
 class Hero:
     graphics: object
     labels: list = field(default_factory=list)
+    # The warm focal detail, in the same coordinates as ``graphics``. A
+    # callout's arrow points here; None means the hero takes no callout.
+    focus: object = None
 
 
 def hex_mix(a: str, b: str, t: float) -> str:
@@ -780,6 +897,9 @@ def hero_function_plot(spec, cool, warm, ts, safe):
             for edge in (a, b):
                 graphics.add(stroke(Line(to_screen(edge, base), to_screen(edge, float(np.clip(f(edge), y0, y1)))), warm, 3, 0.9))
     graphics.add(curve)
+    focus = None
+    if kind == "area" and len(graphics) > 2:
+        focus = graphics[1].get_center()
     if kind in ("tangent", "point"):
         candidates = [number(spec.get("at"), None, x0, x1)] if number(spec.get("at"), None, x0, x1) is not None else []
         candidates += list(np.linspace(x0 + (x1 - x0) * 0.62, x0 + (x1 - x0) * 0.25, 9))
@@ -800,7 +920,8 @@ def hero_function_plot(spec, cool, warm, ts, safe):
             base = 0.0 if y0 <= 0 <= y1 else y0
             graphics.add(stroke(Line(to_screen(at, base), point), warm, 2.5, 0.5))
             graphics.add(Dot(point, radius=0.09, color=warm))
-    hero = Hero(graphics)
+            focus = point
+    hero = Hero(graphics, focus=focus)
     notation = "" if safe else clean_latex(spec.get("notation"))
     if notation:
         end = runs[-1][-1]
@@ -826,7 +947,8 @@ def hero_complex_plane(spec, cool, warm, ts, safe):
     graphics.add(Dot([0, 0, 0], radius=0.06, color=INK))
     names = {0.25: "i", 0.5: "-1", 0.75: "-i"}
     end_name = next((name for key, name in names.items() if abs(turn - key) < 1e-6), r"e^{i\theta}")
-    hero = Hero(graphics)
+    mid = turn * TAU / 2
+    hero = Hero(graphics, focus=radius * np.array([math.cos(mid), math.sin(mid), 0.0]))
     hero.labels.append(Label(ts.math("1", LABEL_SIZE), np.array([radius, 0, 0]), [DR, DOWN, UR]))
     hero.labels.append(Label(ts.math(end_name, LABEL_SIZE, "accent"), end, [UL, UR, LEFT, UP]))
     notation = "" if safe else clean_latex(spec.get("notation"))
@@ -862,7 +984,7 @@ def hero_wave(spec, cool, warm, ts, safe):
     graphics.add(DashedLine(center, [start_x, center[1], 0], dash_length=0.08).set_stroke(warm, 2, 0.7))
     graphics.add(stroke(smooth_path(samples), warm, 6))
     graphics.add(Dot(center, radius=0.07, color=warm))
-    return Hero(graphics)
+    return Hero(graphics, focus=center)
 
 
 def hero_probability(spec, cool, warm, ts, safe):
@@ -883,7 +1005,8 @@ def hero_probability(spec, cool, warm, ts, safe):
     for edge in (a, b):
         graphics.add(stroke(Line(to_screen(edge, 0), to_screen(edge, math.exp(-edge * edge / 2))), warm, 3, 0.9))
     graphics.add(curve)
-    hero = Hero(graphics)
+    middle = (a + b) / 2
+    hero = Hero(graphics, focus=to_screen(middle, math.exp(-middle * middle / 2) * 0.45))
     notation = "" if safe else clean_latex(spec.get("notation"))
     if notation:
         hero.labels.append(Label(ts.math(notation, 44), to_screen(0, 0), [DOWN], buff=u(28)))
@@ -903,6 +1026,7 @@ def hero_geometry(spec, cool, warm, ts, safe):
         right = Circle(radius=2.1).shift(RIGHT * 1.05).set_stroke(second, 3, 0.8).set_fill(second, 0.16)
         overlap = Intersection(left, right).set_stroke(warm, 3).set_fill(warm, 0.55)
         hero.graphics = VGroup(left, right, overlap)
+        hero.focus = overlap.get_center()
     elif shape == "pythagoras":
         a, b = 3.0, 2.0
         A, B, C = np.array([0, 0, 0.0]), np.array([a, 0, 0.0]), np.array([0, b, 0.0])
@@ -918,6 +1042,7 @@ def hero_geometry(spec, cool, warm, ts, safe):
         sq_c.set_stroke(warm, 3).set_fill(warm, 0.16)
         corner = VGroup(Line([0.28, 0, 0], [0.28, 0.28, 0]), Line([0.28, 0.28, 0], [0, 0.28, 0])).set_stroke(INK, 2, 0.7)
         hero.graphics = VGroup(sq_a, sq_b, sq_c, triangle, corner)
+        hero.focus = sq_c.get_center()
         hero.labels += [
             Label(ts.math("a^2", LABEL_SIZE, "cool"), sq_a.get_center(), [], inside=sq_a),
             Label(ts.math("b^2", LABEL_SIZE, "cool"), sq_b.get_center(), [], inside=sq_b),
@@ -929,6 +1054,8 @@ def hero_geometry(spec, cool, warm, ts, safe):
         polygon = RegularPolygon(n=sides).scale(2.6).set_stroke(warm, 3.5).set_fill(warm, 0.1)
         radius = stroke(Line([0, 0, 0], polygon.get_vertices()[0]), INK, 2.5, 0.7)
         hero.graphics = VGroup(polygon, circle, radius)
+        vertices = polygon.get_vertices()
+        hero.focus = (vertices[0] + vertices[1]) / 2
     else:
         A, B, C = np.array([-2.8, -1.6, 0.0]), np.array([2.8, -1.6, 0.0]), np.array([0.7, 2.0, 0.0])
         triangle = Polygon(A, B, C).set_stroke(INK, 4, 0.9)
@@ -941,6 +1068,7 @@ def hero_geometry(spec, cool, warm, ts, safe):
                 start, sweep = end, 2 * PI - sweep
             arcs.add(Arc(radius=0.62, start_angle=start, angle=sweep, arc_center=vertex).set_stroke(color, 6))
         hero.graphics = VGroup(triangle, arcs)
+        hero.focus = B + 0.3 * (C - B) / np.linalg.norm(C - B) + 0.3 * (A - B) / np.linalg.norm(A - B)
     notation = "" if safe else clean_latex(spec.get("notation"))
     if notation:
         hero.labels.append(Label(ts.math(notation, CAPTION_SIZE), hero.graphics.get_bottom(), [DOWN], buff=u(28), optional=True))
@@ -973,7 +1101,7 @@ def hero_transformation(spec, cool, warm, ts, safe):
     tip = dict(buff=0, max_tip_length_to_length_ratio=0.18, max_stroke_width_to_length_ratio=12)
     i_hat = Arrow([0, 0, 0], warp([1, 0]), stroke_width=7, color=warm, **tip)
     j_hat = Arrow([0, 0, 0], warp([0, 1]), stroke_width=7, color=INK, **tip)
-    hero = Hero(VGroup(ghost, warped, i_hat, j_hat))
+    hero = Hero(VGroup(ghost, warped, i_hat, j_hat), focus=warp([0.6, 0]))
     hero.labels.append(Label(ts.math(r"\hat{\imath}", LABEL_SIZE, "accent"), warp([1, 0]), [DR, RIGHT, DOWN, UR]))
     hero.labels.append(Label(ts.math(r"\hat{\jmath}", LABEL_SIZE), warp([0, 1]), [UL, UP, UR]))
     return hero
@@ -1025,6 +1153,7 @@ def hero_vector_field(spec, cool, warm, ts, safe):
     graphics = VGroup(arrows)
     if len(trail) > 10:
         graphics.add(stroke(smooth_path(trail[::3]), warm, 6))
+        return Hero(graphics, focus=np.append(trail[len(trail) // 3], 0.0))
     return Hero(graphics)
 
 
@@ -1047,7 +1176,7 @@ def hero_orbit(spec, cool, warm, ts, safe):
     graphics.add(orbit)
     graphics.add(Dot(focus, radius=0.2, color=warm))
     graphics.add(Dot(at(0.55), radius=0.11, color=INK))
-    return Hero(graphics)
+    return Hero(graphics, focus=focus)
 
 
 def hero_network(spec, cool, warm, ts, safe):
@@ -1074,7 +1203,8 @@ def hero_network(spec, cool, warm, ts, safe):
         for i, p in enumerate(layer):
             on_path = path[index] == i
             nodes.add(Circle(radius=0.2).move_to(p).set_stroke(warm if on_path else INK, 3, 1 if on_path else 0.7).set_fill(warm if on_path else BG, 1))
-    return Hero(VGroup(edges, highlight, nodes))
+    middle = len(positions) // 2
+    return Hero(VGroup(edges, highlight, nodes), focus=positions[middle][path[middle]])
 
 
 def hero_atom(spec, cool, warm, ts, safe):
@@ -1087,7 +1217,7 @@ def hero_atom(spec, cool, warm, ts, safe):
     for k, shell in enumerate(shells):
         point = shell.point_from_proportion((0.12 + 0.31 * k) % 1)
         electrons.add(Dot(point, radius=0.12, color=warm if k == 0 else cool))
-    return Hero(VGroup(shells, nucleus, electrons))
+    return Hero(VGroup(shells, nucleus, electrons), focus=electrons[0].get_center())
 
 
 def hero_energy_levels(spec, cool, warm, ts, safe):
@@ -1106,12 +1236,287 @@ def hero_energy_levels(spec, cool, warm, ts, safe):
         (0.45 + t, 0.23 * math.sin(3 * math.pi * t))
         for t in np.linspace(0, 2.3, 160)
     ]), warm, 5)
-    hero = Hero(VGroup(levels, transition, photon, Dot([0, top, 0], radius=0.12, color=warm)))
+    hero = Hero(VGroup(levels, transition, photon, Dot([0, top, 0], radius=0.12, color=warm)), focus=np.array([1.6, 0.0, 0.0]))
     hero.labels = [
         Label(ts.math(name, 48, "cool"), np.array([-2.4, y, 0]), [LEFT], buff=u(20))
         for name, y in ((r"E_{\mathrm{high}}", top), (r"E_{\mathrm{low}}", bottom))
     ]
     return hero
+
+
+def hero_spiral(spec, cool, warm, ts, safe):
+    """Fibonacci squares under the golden spiral, or primes in polar form."""
+    from manim import Arc, Dot, Polygon, VGroup
+
+    kind = "primes" if (not safe and spec.get("shape") == "primes") else "golden"
+    if kind == "primes":
+        # Each prime p at radius p, angle p radians: residues mod 44 and 710
+        # line up into the arms 3Blue1Brown made famous.
+        limit = 12000
+        sieve = np.ones(limit + 1, dtype=bool)
+        sieve[:2] = False
+        for k in range(2, int(limit ** 0.5) + 1):
+            if sieve[k]:
+                sieve[k * k::k] = False
+        primes = np.nonzero(sieve)[0]
+        dots = VGroup()
+        arm = VGroup()
+        for prime in primes:
+            point = np.array([prime * math.cos(prime), prime * math.sin(prime), 0.0]) / limit * 3.0
+            if prime % 44 == 13:
+                arm.add(Dot(point, radius=0.05, color=warm))
+            else:
+                dots.add(Dot(point, radius=0.036, color=cool).set_opacity(0.8))
+        focus = arm[len(arm) * 2 // 3].get_center()
+        return Hero(VGroup(dots, arm), focus=focus)
+
+    squares, arcs, labels = VGroup(), VGroup(), []
+    x0, y0, x1, y1 = 0.0, 0.0, 1.0, 1.0
+    placed = [((0.0, 0.0, 1.0, 1.0), "down")]
+    for index in range(7):
+        side = ("right", "up", "left", "down")[index % 4]
+        if side == "right":
+            size = y1 - y0
+            box = (x1, y0, x1 + size, y1)
+        elif side == "up":
+            size = x1 - x0
+            box = (x0, y1, x1, y1 + size)
+        elif side == "left":
+            size = y1 - y0
+            box = (x0 - size, y0, x0, y1)
+        else:
+            size = x1 - x0
+            box = (x0, y0 - size, x1, y0)
+        placed.append((box, side))
+        x0, y0, x1, y1 = min(x0, box[0]), min(y0, box[1]), max(x1, box[2]), max(y1, box[3])
+    # Arc centre corner and start angle per growth direction (counterclockwise).
+    corner = {"down": ((2, 3), math.pi), "right": ((0, 3), -math.pi / 2), "up": ((0, 1), 0.0), "left": ((2, 1), math.pi / 2)}
+    for order, (box, side) in enumerate(placed):
+        size = box[2] - box[0]
+        rect = Polygon([box[0], box[1], 0], [box[2], box[1], 0], [box[2], box[3], 0], [box[0], box[3], 0])
+        rect.set_stroke(cool, 3, 0.75).set_fill(cool, 0.05 + 0.025 * (order % 3))
+        squares.add(rect)
+        (cx, cy), start = corner[side]
+        arcs.add(Arc(radius=size, start_angle=start, angle=math.pi / 2, arc_center=[box[cx], box[cy], 0]))
+        if size >= 5 and not safe:
+            labels.append(Label(ts.math(str(int(size)), 44 if size < 13 else 56, "cool"), rect.get_center(), [], inside=rect))
+    spiral = VGroup(*arcs).set_stroke(warm, 7)
+    return Hero(VGroup(squares, spiral), labels, focus=np.array([0.5, 0.6, 0.0]))
+
+
+def integrate(step, state, dt, count):
+    """Fixed-step RK4; returns every state, including the first."""
+    states = [np.array(state, dtype=float)]
+    for _ in range(count):
+        y = states[-1]
+        k1 = step(y)
+        k2 = step(y + dt / 2 * k1)
+        k3 = step(y + dt / 2 * k2)
+        k4 = step(y + dt * k3)
+        states.append(y + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4))
+    return np.array(states)
+
+
+def hero_chaos(spec, cool, warm, ts, safe):
+    """Two starts a hair apart: identical for a while, then nothing alike."""
+    from manim import Circle, Dot, Line, VGroup
+
+    kind = "pendulum" if (not safe and spec.get("shape") == "pendulum") else "lorenz"
+    if kind == "lorenz":
+        def lorenz(v):
+            x, y, z = v
+            return np.array([10 * (y - x), x * (28 - z) - y, x * y - 8 / 3 * z])
+
+        a = integrate(lorenz, [1.0, 1.0, 1.0], 0.005, 7000)
+        b = integrate(lorenz, [1.0 + 1e-5, 1.0, 1.0], 0.005, 7000)
+        apart = int(np.argmax(np.linalg.norm(a - b, axis=1) > 0.5))
+        to_screen = lambda v: np.array([v[0] / 9.0, (v[2] - 25) / 9.0, 0.0])
+        cool_path = stroke(corner_path([to_screen(v) for v in a[400::2]]), cool, 2.2, 0.75)
+        warm_path = stroke(corner_path([to_screen(v) for v in b[apart:apart + 900:2]]), warm, 5)
+        return Hero(VGroup(cool_path, warm_path), focus=to_screen(b[apart]))
+
+    def pendulum(v):
+        t1, t2, w1, w2 = v
+        d = t1 - t2
+        den = 3 - math.cos(2 * d)
+        g = 9.81
+        a1 = (-3 * g * math.sin(t1) - g * math.sin(t1 - 2 * t2) - 2 * math.sin(d) * (w2 * w2 + w1 * w1 * math.cos(d))) / den
+        a2 = 2 * math.sin(d) * (2 * w1 * w1 + 2 * g * math.cos(t1) + w2 * w2 * math.cos(d)) / den
+        return np.array([w1, w2, a1, a2])
+
+    # Same release, a hair apart: after a few seconds the two pendulums are
+    # nowhere near each other. Show the shared start as a ghost and each
+    # pendulum now, with the short trail of its last swing.
+    steps = 1500
+    a = integrate(pendulum, [2.2, 2.6, 0.0, 0.0], 0.004, steps)
+    b = integrate(pendulum, [2.2, 2.6 + 2e-3, 0.0, 0.0], 0.004, steps)
+
+    def arms(v):
+        joint = np.array([math.sin(v[0]), -math.cos(v[0]), 0.0]) * 1.5
+        return joint, joint + np.array([math.sin(v[1]), -math.cos(v[1]), 0.0]) * 1.5
+
+    def pendulum_mob(v, color, opacity=1.0, width=6):
+        joint, end = arms(v)
+        rods = VGroup(Line([0, 0, 0], joint), Line(joint, end)).set_stroke(color, width, opacity)
+        bobs = VGroup(*[Circle(radius=0.15).move_to(p).set_stroke(color, 3, opacity).set_fill(BG if opacity < 1 else color, 1) for p in (joint, end)])
+        return VGroup(rods, bobs)
+
+    tail = 260
+    trail_a = stroke(smooth_path([arms(v)[1] for v in a[-tail::2]]), cool, 4, 0.7)
+    trail_b = stroke(smooth_path([arms(v)[1] for v in b[-tail::2]]), warm, 4, 0.7)
+    ghost = pendulum_mob(a[0], INK, 0.3, 4)
+    pivot = Dot([0, 0, 0], radius=0.08, color=INK)
+    reach = VGroup(stroke(Circle(radius=3.0), INK, 1.5, 0.12))
+    now_a, now_b = pendulum_mob(a[-1], cool), pendulum_mob(b[-1], warm)
+    return Hero(VGroup(reach, ghost, trail_a, trail_b, now_a, now_b, pivot), focus=arms(b[-1])[1])
+
+
+def hero_fractal(spec, cool, warm, ts, safe):
+    """Self-similarity with one warm copy to show the pattern repeats."""
+    from manim import Line, Polygon, VGroup
+
+    kind = spec.get("shape") if (not safe and spec.get("shape") in ("koch", "tree")) else "sierpinski"
+    if kind == "sierpinski":
+        triangles = []
+
+        def split(a, b, c, depth):
+            if depth == 0:
+                triangles.append((a, b, c))
+                return
+            ab, bc, ca = (a + b) / 2, (b + c) / 2, (c + a) / 2
+            split(a, ab, ca, depth - 1)
+            split(ab, b, bc, depth - 1)
+            split(ca, bc, c, depth - 1)
+
+        top = np.array([0.0, 2.6, 0.0])
+        left = np.array([-3.0, -2.6, 0.0])
+        right = np.array([3.0, -2.6, 0.0])
+        split(left, right, top, 5)
+        # The warm copy: the whole pattern again, one level down.
+        corner = (left, (left + right) / 2, (left + top) / 2)
+        group, highlight = VGroup(), VGroup()
+        for tri in triangles:
+            centroid = sum(tri) / 3
+            inside = all(np.cross(corner[(k + 1) % 3] - corner[k], centroid - corner[k])[2] >= -1e-9 for k in range(3))
+            mob = Polygon(*tri).set_stroke(width=0).set_fill(warm if inside else cool, 0.95 if inside else 0.8)
+            (highlight if inside else group).add(mob)
+        return Hero(VGroup(group, highlight), focus=sum(corner) / 3)
+
+    if kind == "koch":
+        def koch(points, depth):
+            for _ in range(depth):
+                refined = []
+                for p, q in zip(points, points[1:]):
+                    d = (q - p) / 3
+                    peak = p + d * 1.5 + np.array([-d[1], d[0], 0.0]) * math.sqrt(3) / 2
+                    refined += [p, p + d, peak, p + 2 * d]
+                points = refined + [points[-1]]
+            return points
+
+        corners = [np.array([2.6 * math.cos(a), 2.6 * math.sin(a), 0.0]) for a in (math.pi / 2, math.pi / 2 - 2 * math.pi / 3, math.pi / 2 + 2 * math.pi / 3)]
+        outline = []
+        for k in range(3):
+            outline += koch([corners[k], corners[(k + 1) % 3]], 4)[:-1]
+        snowflake = Polygon(*outline).set_stroke(cool, 3).set_fill(cool, 0.12)
+        # One first-generation spike, traced in warm.
+        side = koch([corners[0], corners[1]], 4)
+        spike = stroke(corner_path(side[len(side) // 4:len(side) // 2 + 1]), warm, 7)
+        return Hero(VGroup(snowflake, spike), focus=spike.point_from_proportion(0.5))
+
+    branches, path = VGroup(), VGroup()
+
+    def grow(start, angle, length, depth, on_path):
+        end = start + length * np.array([math.cos(angle), math.sin(angle), 0.0])
+        line = Line(start, end)
+        if on_path:
+            path.add(stroke(line, warm, 1.5 + depth * 0.8))
+        else:
+            branches.add(stroke(line, cool, 1 + depth * 0.7, 0.45 + 0.05 * depth))
+        if depth:
+            grow(end, angle + 0.42, length * 0.72, depth - 1, on_path)
+            grow(end, angle - 0.42, length * 0.72, depth - 1, False)
+        return end
+
+    grow(np.array([0.0, -3.0, 0.0]), math.pi / 2, 1.8, 9, True)
+    return Hero(VGroup(branches, path), focus=path[len(path) // 2].get_end())
+
+
+def hero_bars(spec, cool, warm, ts, safe):
+    """A few bars from the source data, one of them the surprise."""
+    from manim import Line, Rectangle, VGroup, DOWN
+
+    values = spec.get("values")
+    if safe or not (isinstance(values, list) and 2 <= len(values) <= 12 and all(number(v, None, 0, 1e9) is not None for v in values) and max(values) > 0):
+        values = [30.1, 17.6, 12.5, 9.7, 7.9, 6.7, 5.8, 5.1, 4.6]
+    values = [float(v) for v in values]
+    peak = max(values)
+    pick_index = spec.get("focus")
+    focus_index = int(pick_index) if isinstance(pick_index, int) and not isinstance(pick_index, bool) and 0 <= pick_index < len(values) else int(np.argmax(values))
+    width, height = 6.4, 4.4
+    slot = width / len(values)
+    bars = VGroup()
+    for index, value in enumerate(values):
+        h = max(value / peak * height, 0.04)
+        bar = Rectangle(width=slot * 0.72, height=h).move_to([-width / 2 + slot * (index + 0.5), -height / 2 + h / 2, 0])
+        if index == focus_index:
+            bar.set_stroke(warm, 3).set_fill(warm, 0.9)
+        else:
+            bar.set_stroke(cool, 3, 0.9).set_fill(cool, 0.28)
+        bars.add(bar)
+    baseline = stroke(Line([-width / 2 - 0.1, -height / 2, 0], [width / 2 + 0.1, -height / 2, 0]), INK, 2, 0.35)
+    hero = Hero(VGroup(baseline, bars), focus=bars[focus_index].get_top() + np.array([0, -0.15, 0]))
+    # One short name under each bar ("stay", "switch"); required, so the fit
+    # shrinks the bars to make room rather than dropping them.
+    names = spec.get("labels")
+    if not safe and isinstance(names, list) and len(names) == len(values) and all(isinstance(n, str) and BAR_LABEL.match(n) for n in names):
+        for index, (bar, name) in enumerate(zip(bars, names)):
+            color = "accent" if index == focus_index else "ink"
+            hero.labels.append(Label(ts.block([tex_escape(name.strip())], LABEL_SIZE + 6, "SemiBold", color=color), bar.get_bottom(), [DOWN], buff=u(18)))
+        return hero
+    notation = "" if safe else clean_latex(spec.get("notation"))
+    if notation:
+        hero.labels.append(Label(ts.math(notation, 40), np.array([0, -height / 2, 0]), [DOWN], buff=u(24)))
+    return hero
+
+
+BAR_LABEL = re.compile(r"^[A-Za-z0-9 .%'\-]{1,10}$")
+
+
+NUMBER_VALUE = re.compile(r"^[0-9.,%+\-/:=?!×≈∞− ]{1,9}$")
+
+
+def clean_number(value) -> str:
+    if not isinstance(value, str):
+        return ""
+    value = value.strip()
+    return value if NUMBER_VALUE.match(value) and re.search(r"[0-9∞?]", value) else ""
+
+
+def number_tex(value: str) -> str:
+    """Text figures, with the symbols CMU Serif lacks set from the math font."""
+    symbols = {"\u00d7": r"$\times$", "\u2248": r"$\approx$", "\u221e": r"$\infty$", "\u2212": r"$-$"}
+    return "".join(symbols.get(char) or tex_escape(char) for char in value)
+
+
+def hero_number(spec, cool, warm, ts, safe):
+    """One giant number; optionally the intuitive wrong one, struck through."""
+    from manim import VGroup, LEFT, UP
+
+    value = clean_number(spec.get("value"))
+    if not value:
+        raise LayoutError("number value is missing or not allowed")
+    was = "" if safe else clean_number(spec.get("was"))
+    mob = None
+    for size in (320, 280, 240, 200, 170, 140):
+        mob = ts.block([r"\hl{" + number_tex(value) + "}"], size, "SemiBold", tracking=-2.0)
+        if mob.width <= ts.region_w * 0.92:
+            break
+    graphics = VGroup(mob)
+    if was:
+        wrong = ts.block([r"\strike{" + number_tex(was) + "}"], 120, "SemiBold", tracking=-1.5)
+        wrong.next_to(mob, UP, buff=u(10), aligned_edge=LEFT)
+        graphics.add(wrong)
+    return Hero(graphics, focus=None)
 
 
 def rotation_matrix(phi, theta):
@@ -1273,6 +1678,11 @@ HEROES = {
     "surface_3d": hero_surface_3d,
     "solid_3d": hero_solid_3d,
     "equation": hero_equation,
+    "spiral": hero_spiral,
+    "chaos": hero_chaos,
+    "fractal": hero_fractal,
+    "bars": hero_bars,
+    "number": hero_number,
 }
 
 
@@ -1297,6 +1707,7 @@ def compose(spec: dict, font_dir: str, safe: bool):
     if has_copy:
         words = split_words(headline)
         accent_span = accent_range(headline, spec.get("accent") or "")
+        strike_span = strike_range(headline, spec.get("strike") or "", accent_span) if isinstance(spec.get("strike"), str) else None
         options = line_options(words, accent_span)
         column = u(TEXT_COL_W)
         candidates = sorted(
@@ -1306,12 +1717,14 @@ def compose(spec: dict, font_dir: str, safe: bool):
             if widest * u(size) <= column * 1.06
         )
         for _, size, lines in candidates[:6]:
-            rendered = [" ".join(word_tex(w, accent_span, safe) for w in words[a:b]) for a, b in lines]
+            rendered = [" ".join(word_tex(w, accent_span, safe, strike_span) for w in words[a:b]) for a, b in lines]
             # Display-size Computer Modern reads loose; tighten letter spacing.
             block = ts.block(rendered, size, "SemiBold", tracking=-1.5)
             if block.width <= column:
                 copy_block = block
                 report.update(size=size, lines=[" ".join(w.text for w in words[a:b]) for a, b in lines])
+                if strike_span:
+                    report["strike"] = headline[strike_span[0]:strike_span[1]]
                 break
         if copy_block is None:
             raise LayoutError("headline does not fit the copy column at any type size")
@@ -1322,7 +1735,7 @@ def compose(spec: dict, font_dir: str, safe: bool):
         hero_region = np.array([x_at(HERO_LEFT), -FRAME_H / 2 + u(MARGIN_Y), x_at(WIDTH - MARGIN_X), FRAME_H / 2 - u(MARGIN_Y)])
     else:
         text = None
-        hero_region = np.array([x_at(MARGIN_X + 120), -FRAME_H / 2 + u(MARGIN_Y), x_at(WIDTH - MARGIN_X - 120), FRAME_H / 2 - u(MARGIN_Y)])
+        hero_region = np.array([x_at(MARGIN_X + 60), -FRAME_H / 2 + u(MARGIN_Y), x_at(WIDTH - MARGIN_X - 60), FRAME_H / 2 - u(MARGIN_Y)])
     ts.region_w = hero_region[2] - hero_region[0]
 
     visual = spec.get("visual") if isinstance(spec.get("visual"), dict) else {}
@@ -1339,47 +1752,76 @@ def compose(spec: dict, font_dir: str, safe: bool):
     kind = visual.get("type") if visual.get("type") in HEROES else "equation"
     if safe and kind == "equation" and not clean_latex(visual.get("notation")):
         kind = "geometry"
+    if safe and kind == "number" and not clean_number(visual.get("value")):
+        kind = "geometry"
     try:
         hero = HEROES[kind](visual, cool, warm, ts, safe)
     except LayoutError:
         # A formula too wide for the hero column (e.g. Bayes' rule beside a
         # headline): the safe pass draws a neutral visual instead of failing.
-        if not (safe and kind == "equation"):
+        if not (safe and kind in ("equation", "number")):
             raise
         kind = "geometry"
         hero = HEROES[kind](visual, cool, warm, ts, safe)
     report["visual"] = kind
 
+    # A callout only joins a headline; the visual-only slot stays text-free.
+    callout = None
+    if text is not None and hero.focus is not None:
+        callout = callout_copy(spec.get("callout"), ts, safe)
+
     # Fit the graphics, then place labels at their fixed type size. If a label
     # cannot be placed cleanly or spills out of the region, shrink and retry.
+    # With a callout, each scale must also leave it clean room near the focus;
+    # if none does, the hero is fitted again without it.
     region_w = hero_region[2] - hero_region[0]
     region_h = hero_region[3] - hero_region[1]
     center = np.array([(hero_region[0] + hero_region[2]) / 2, (hero_region[1] + hero_region[3]) / 2, 0.0])
     graphics = hero.graphics
     origin = graphics.get_center().copy()
     offsets = [label.anchor - origin for label in hero.labels]
+    focus_offset = None if hero.focus is None else np.asarray(hero.focus, dtype=float) - origin
     base = min(region_w / max(graphics.width, 1e-6), region_h / max(graphics.height, 1e-6))
-    current, placed = 1.0, None
-    for shrink in (0.94, 0.86, 0.78, 0.70, 0.62):
-        graphics.scale(base * shrink / current)
-        current = base * shrink
-        graphics.move_to(center)
-        for label, offset in zip(hero.labels, offsets):
-            label.anchor = center + offset * current
-        try:
-            attempt = place_labels(graphics, hero.labels, hero_region, strict=True)
-        except LayoutError as error:
-            report["warnings"].append(f"{error} at scale {shrink}")
-            continue
-        group = VGroup(graphics, *attempt)
-        if group.width <= region_w + 1e-6 and group.height <= region_h + 1e-6:
-            shift = center - group.get_center()
-            group.shift(shift)
-            placed = attempt
-            break
-        report["warnings"].append(f"labels spill outside the hero region at scale {shrink}")
+    scale = {"current": 1.0}
+
+    def fit(with_callout):
+        for shrink in (0.94, 0.86, 0.78, 0.70, 0.62):
+            graphics.scale(base * shrink / scale["current"])
+            scale["current"] = base * shrink
+            graphics.move_to(center)
+            for label, offset in zip(hero.labels, offsets):
+                label.anchor = center + offset * scale["current"]
+            try:
+                attempt = place_labels(graphics, hero.labels, hero_region, strict=True)
+            except LayoutError as error:
+                report["warnings"].append(f"{error} at scale {shrink}")
+                continue
+            group = VGroup(graphics, *attempt)
+            if group.width > region_w + 1e-6 or group.height > region_h + 1e-6:
+                report["warnings"].append(f"labels spill outside the hero region at scale {shrink}")
+                continue
+            group.shift(center - group.get_center())
+            if not with_callout:
+                return attempt, None
+            focus = graphics.get_center() + focus_offset * scale["current"]
+            # The text block sits left of the hero; keep a gutter from it.
+            room = np.array([bbox(text, u(GUTTER / 2))[2], -FRAME_H / 2 + u(SAFE_PAD), FRAME_W / 2 - u(SAFE_PAD), FRAME_H / 2 - u(SAFE_PAD)])
+            pointer = place_callout(callout, focus, graphics, attempt, room, warm)
+            if pointer is not None:
+                return attempt, pointer
+        return None, None
+
+    placed, pointer = fit(callout is not None)
+    if callout is not None and placed is None:
+        report["notes"] = ["callout dropped: no clean room near the focal detail"]
+        placed, pointer = fit(False)
+    elif callout is not None:
+        report["callout"] = spec.get("callout")
     if placed is None:
         raise LayoutError("hero and its labels cannot fit the hero region")
+    if pointer is not None:
+        placed = placed + [callout]
+        graphics = VGroup(graphics, pointer)
 
     hero_group = VGroup(graphics, *placed)
     verify(text, hero_group, placed, graphics)

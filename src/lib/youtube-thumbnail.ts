@@ -32,6 +32,10 @@ export interface ThumbnailSpec {
   eyebrow: string;
   headline: string;
   accent: string;
+  /** One headline word drawn crossed out: the intuition the video corrects. */
+  strike: string;
+  /** Short copy beside the hero with a warm arrow to its focal detail. */
+  callout: string;
   visual: ThumbnailVisual;
 }
 
@@ -60,7 +64,39 @@ export function choosePalette(seed: string): ThumbnailPalette {
 }
 
 export function inferVisualType(text: string): ThumbnailVisualType {
+  return inferVisual(text).type;
+}
+
+/** A truthful default visual for text with no vetted concept. */
+export function inferVisual(text: string): ThumbnailVisual {
   const normalized = text.toLowerCase();
+  if (/\bprimes?\b|prime number/.test(normalized)) {
+    return { type: "spiral", shape: "primes" };
+  }
+  if (/fibonacci|golden ratio|golden spiral|phyllotaxis/.test(normalized)) {
+    return { type: "spiral", shape: "golden" };
+  }
+  if (/double pendulum/.test(normalized)) {
+    return { type: "chaos", shape: "pendulum" };
+  }
+  if (
+    /chaos|chaotic|butterfly effect|lorenz|strange attractor/.test(normalized)
+  ) {
+    return { type: "chaos", shape: "lorenz" };
+  }
+  if (/koch|snowflake|coastline/.test(normalized)) {
+    return { type: "fractal", shape: "koch" };
+  }
+  if (/fractal|sierpinski|self-similar|recursion|recursive/.test(normalized)) {
+    return { type: "fractal" };
+  }
+  if (/benford|histogram|leading digit/.test(normalized)) {
+    return { type: "bars" };
+  }
+  return { type: inferBaseVisualType(normalized) };
+}
+
+function inferBaseVisualType(normalized: string): ThumbnailVisualType {
   if (
     /luminescen|chemical.*glow|quantum.*(?:steps?|emission)|(?:photon|electron).*emission/.test(
       normalized,
@@ -133,19 +169,18 @@ export function buildThumbnailSpecs({
     // about rather than an unrelated formula.
     const drawn =
       concept?.visual &&
-      !(concept.visual.type === "equation" && !concept.visual.notation)
+      !(concept.visual.type === "equation" && !concept.visual.notation) &&
+      !(concept.visual.type === "number" && !concept.visual.value)
         ? concept.visual
-        : {
-            type: inferVisualType(
-              `${concept?.visualConcept ?? ""} ${title} ${topic}`,
-            ),
-          };
+        : inferVisual(`${concept?.visualConcept ?? ""} ${title} ${topic}`);
     return {
       title,
       palette,
       eyebrow: concept?.eyebrow ?? "",
       headline: concept?.headline ?? "",
       accent: concept?.accent ?? "",
+      strike: concept?.strike ?? "",
+      callout: concept?.callout ?? "",
       // Video frames carry their own spacing, captions and formula colours.
       // Use the vetted concept in every slot so the renderer can lay it out.
       visual: drawn,

@@ -35,7 +35,7 @@ with tempfile.TemporaryDirectory(prefix="thumbnail-layout-") as folder:
         for spec in specs:
             _, report = r.compose(spec, fonts, safe)
             assert report["visual"] == spec["visual"]["type"], report
-            assert not report["warnings"], report
+            assert all(" at scale " in warning for warning in report["warnings"]), report
     hero = r.hero_energy_levels({}, cool, warm, ts, False)
     levels = hero.graphics[0]
     assert abs(levels[0].width - levels[1].width) < 1e-6
@@ -43,4 +43,32 @@ with tempfile.TemporaryDirectory(prefix="thumbnail-layout-") as folder:
     assert hero.labels[0].mob.height * r.PX > 30
     assert hero.labels[1].mob.height * r.PX > 30
 
-print("Thumbnail geometry, label sizes, safe fallback and equation colours passed")
+    # Click-through devices: every new visual composes cleanly in both modes,
+    # the struck word and callout survive in full mode, and the visual-only
+    # slot never takes a callout.
+    ctr = REPO / "docs/thumbnail-ctr"
+    fixtures = json.loads((ctr / "after.json").read_text()) + json.loads((ctr / "package-after.json").read_text())
+    fixtures += [{"headline": "", "visual": {"type": "spiral"}}, {"headline": "Same start", "callout": "here", "visual": {"type": "chaos", "shape": "pendulum"}}]
+    fixtures += [{"headline": "Zero area", "callout": "a copy", "visual": {"type": "fractal", "shape": shape}} for shape in ("sierpinski", "koch", "tree")]
+    for safe in (False, True):
+        for spec in fixtures:
+            _, report = r.compose(spec, fonts, safe)
+            # Shrinking to make room for labels is expected; nothing else is.
+            assert all(" at scale " in warning for warning in report["warnings"]), (spec, report)
+            if not safe:
+                assert report["visual"] == spec["visual"]["type"], report
+                if spec.get("strike"):
+                    assert report.get("strike") == spec["strike"], report
+    _, report = r.compose({"headline": "Counted twice", "accent": "twice", "callout": "this part", "visual": {"type": "geometry", "shape": "venn"}}, fonts, False)
+    assert report.get("callout") == "this part", report
+    _, report = r.compose({"headline": "", "callout": "this part", "visual": {"type": "geometry", "shape": "venn"}}, fonts, False)
+    assert "callout" not in report, report
+
+    # The strike never swallows the accent or part of a word.
+    assert r.strike_range("Height Area is chance", "Height", (7, 11)) == (0, 6)
+    assert r.strike_range("Height Area is chance", "Area", (7, 11)) is None
+    assert r.strike_range("Heights rise", "Height", None) is None
+    assert r.callout_copy(r"\input{x}", ts, False) is None
+    assert r.clean_number("67%") == "67%" and r.clean_number("os.system") == ""
+
+print("Thumbnail geometry, label sizes, safe fallback, click-through devices and equation colours passed")

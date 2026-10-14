@@ -9,9 +9,12 @@ import {
   DESCRIPTION_CTA,
   withDescriptionCta,
   parseVideoTitleSet,
+  sanitizeThumbnailCallout,
   sanitizeThumbnailHeadline,
   sanitizeThumbnailLatex,
+  sanitizeThumbnailNumber,
   sanitizeThumbnailPlotExpression,
+  sanitizeThumbnailStrike,
   sanitizeThumbnailSurfaceExpression,
   sanitizeThumbnailVisual,
   selectThumbnailPair,
@@ -35,6 +38,99 @@ test("thumbnail concepts support energy transitions and overlapping sets", () =>
     type: "geometry",
     shape: "venn",
   });
+});
+
+test("brainstormed packages keep strike and callout copy, except on slot B", () => {
+  const titles = parseVideoTitleSet(
+    JSON.stringify({
+      ideas: ["Monty Hall Is Not 50/50", "Always Switch Doors", "Why Switch"],
+      packages: [
+        {
+          title: "Why Your Gut Gets the Monty Hall Problem Wrong",
+          eyebrow: "Probability",
+          headline: "Not 50% but 67%",
+          accent: "67%",
+          strike: "50%",
+          callout: "switch",
+          visualConcept: "a giant 67% over a struck 50%",
+          visual: { type: "number", value: "67%", was: "50%" },
+        },
+        {
+          title: "How the Monty Hall Problem Actually Works",
+          headline: "Ignored",
+          strike: "Ignored",
+          callout: "dropped",
+          visual: {
+            type: "bars",
+            values: [33.3, 66.7],
+            focus: 1,
+            labels: ["stay", "switch"],
+          },
+        },
+        {
+          title: "The Game Show Puzzle That Fooled Mathematicians",
+          headline: "Stay or switch?",
+          accent: "switch",
+          strike: "switch",
+          callout: "far too long for a callout",
+          visual: { type: "spiral", shape: "primes", rogue: 1 },
+        },
+      ],
+    }),
+  );
+  const [first, second, third] = titles.thumbnailConcepts!;
+  assert.equal(
+    titles.selected,
+    "Why Your Gut Gets the Monty Hall Problem Wrong",
+  );
+  assert.equal(first.strike, "50%");
+  assert.equal(first.callout, "switch");
+  assert.deepEqual(first.visual, { type: "number", value: "67%", was: "50%" });
+  assert.equal(second.headline, "");
+  assert.equal(second.strike, undefined);
+  assert.equal(second.callout, undefined);
+  assert.deepEqual(second.visual, {
+    type: "bars",
+    values: [33.3, 66.7],
+    focus: 1,
+    labels: ["stay", "switch"],
+  });
+  // The accent can't also be the crossed-out word.
+  assert.equal(third.strike, undefined);
+  assert.equal(third.callout, undefined);
+  assert.deepEqual(third.visual, { type: "spiral", shape: "primes" });
+});
+
+test("click-through copy and figures reject TeX and partial words", () => {
+  assert.equal(sanitizeThumbnailCallout("Why $0$?"), "Why $0$?");
+  assert.equal(sanitizeThumbnailCallout("\\input{x}"), "");
+  assert.equal(sanitizeThumbnailCallout("one two three four"), "");
+  assert.equal(
+    sanitizeThumbnailStrike("Height", "Height Area is chance", "Area"),
+    "Height",
+  );
+  assert.equal(
+    sanitizeThumbnailStrike("Heigh", "Height Area is chance", "Area"),
+    "",
+  );
+  assert.equal(
+    sanitizeThumbnailStrike("Area", "Height Area is chance", "Area"),
+    "",
+  );
+  assert.equal(sanitizeThumbnailStrike("two words", "two words here", ""), "");
+  assert.equal(sanitizeThumbnailNumber("0.999…"), "");
+  assert.equal(sanitizeThumbnailNumber("1/3"), "1/3");
+  assert.equal(sanitizeThumbnailNumber("67%"), "67%");
+  assert.equal(sanitizeThumbnailNumber("os.system"), "");
+  assert.equal(sanitizeThumbnailHeadline("Not 99% sure"), "Not 99% sure");
+  assert.deepEqual(
+    sanitizeThumbnailVisual("bars", {
+      values: [1, -2],
+      focus: 4,
+      labels: ["a", "b"],
+    }),
+    { type: "bars" },
+  );
 });
 
 test("title packaging keeps exactly three clean curiosity-led candidates", () => {

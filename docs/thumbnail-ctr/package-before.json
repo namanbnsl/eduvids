@@ -1,0 +1,5 @@
+[
+  {"title": "Why Switching Doors Doubles Your Odds", "palette": "azure-coral", "headline": "Switching wins two thirds", "accent": "two thirds", "visual": {"type": "equation", "notation": "P(\\text{win})=\\hl{\\tfrac{2}{3}}"}},
+  {"title": "How the Monty Hall Problem Actually Works", "palette": "azure-coral", "headline": "", "accent": "", "visual": {"type": "equation", "notation": "P(\\text{win}\\mid\\text{switch})=\\hl{\\tfrac{2}{3}}"}},
+  {"title": "The Game Show Puzzle That Fooled Mathematicians", "palette": "azure-coral", "headline": "Stay or switch?", "accent": "switch", "visual": {"type": "equation", "notation": "\\tfrac{1}{3}<\\hl{\\tfrac{2}{3}}"}}
+]

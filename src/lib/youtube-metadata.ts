@@ -28,6 +28,11 @@ export const THUMBNAIL_VISUAL_TYPES = [
   "surface_3d",
   "solid_3d",
   "equation",
+  "spiral",
+  "chaos",
+  "fractal",
+  "bars",
+  "number",
 ] as const;
 
 export type ThumbnailVisualType = (typeof THUMBNAIL_VISUAL_TYPES)[number];
@@ -50,6 +55,14 @@ export interface ThumbnailVisual {
   field?: "rotation" | "source" | "saddle" | "spiral";
   eccentricity?: number;
   layers?: number[];
+  /** bars: the data, in order; focus is the index of the surprising bar. */
+  values?: number[];
+  focus?: number;
+  /** bars: one short name per bar, e.g. ["stay", "switch"]. */
+  labels?: string[];
+  /** number: the giant figure, and optionally the intuitive wrong one. */
+  value?: string;
+  was?: string;
 }
 
 export interface ThumbnailConcept {
@@ -59,6 +72,10 @@ export interface ThumbnailConcept {
   headline: string;
   /** Exact substring of the headline painted in the warm accent colour. */
   accent: string;
+  /** One word of the headline shown crossed out: the wrong intuition. */
+  strike?: string;
+  /** A few words beside the hero; a warm arrow points at its focal detail. */
+  callout?: string;
   visualConcept: string;
   visual: ThumbnailVisual;
 }
@@ -355,12 +372,75 @@ export function sanitizeThumbnailVisual(
       });
     case "equation":
       return withoutUndefined({ type, notation });
+    case "spiral":
+      return withoutUndefined({
+        type,
+        shape: pick(raw.shape, ["golden", "primes"] as const),
+      });
+    case "chaos":
+      return withoutUndefined({
+        type,
+        shape: pick(raw.shape, ["lorenz", "pendulum"] as const),
+      });
+    case "fractal":
+      return withoutUndefined({
+        type,
+        shape: pick(raw.shape, ["sierpinski", "koch", "tree"] as const),
+      });
+    case "bars": {
+      const values = raw.values;
+      const valid =
+        Array.isArray(values) &&
+        values.length >= 2 &&
+        values.length <= 12 &&
+        values.every((entry) => finiteNumber(entry, 0, 1e9) !== undefined) &&
+        values.some((entry) => (entry as number) > 0);
+      const focus = raw.focus;
+      const labels = raw.labels;
+      const validLabels =
+        valid &&
+        Array.isArray(labels) &&
+        labels.length === (values as number[]).length &&
+        labels.every(
+          (label) =>
+            typeof label === "string" && /^[A-Za-z0-9 .%'-]{1,10}$/.test(label),
+        );
+      return withoutUndefined({
+        type,
+        notation,
+        values: valid ? (values as number[]) : undefined,
+        labels: validLabels ? (labels as string[]) : undefined,
+        focus:
+          valid &&
+          Number.isInteger(focus) &&
+          (focus as number) >= 0 &&
+          (focus as number) < (values as number[]).length
+            ? (focus as number)
+            : undefined,
+      });
+    }
+    case "number":
+      return withoutUndefined({
+        type,
+        value: sanitizeThumbnailNumber(raw.value) || undefined,
+        was: sanitizeThumbnailNumber(raw.was) || undefined,
+      });
     default:
       return { type };
   }
 }
 
+/** A giant figure such as "67%", "1/3" or "0.999…": digits and a few symbols. */
+export function sanitizeThumbnailNumber(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const figure = value.trim();
+  return /^[0-9.,%+\-/:=?!×≈∞− ]{1,9}$/.test(figure) && /[0-9∞?]/.test(figure)
+    ? figure
+    : "";
+}
+
 const HEADLINE_LIMIT = 34;
+const CALLOUT_LIMIT = 14;
 const EYEBROW_LIMIT = 24;
 
 /** Validate headline copy; invalid copy becomes empty (a visual-only thumbnail). */
@@ -374,17 +454,63 @@ export function sanitizeThumbnailHeadline(value: unknown): string {
   const mathSegments = headline.split("$").filter((_, index) => index % 2);
   if (mathSegments.some((segment) => !sanitizeThumbnailLatex(segment)))
     return "";
+  if (hasTexInProse(headline)) return "";
+  return headline;
+}
+
+/** Prose may not carry TeX syntax; % and & are escaped by the renderer. */
+function hasTexInProse(copy: string): boolean {
+  return /[\\{}#_^]/.test(
+    copy
+      .split("$")
+      .filter((_, index) => index % 2 === 0)
+      .join(""),
+  );
+}
+
+/** A short pointer beside the hero, e.g. "Why $0$?" or "Still 1". */
+export function sanitizeThumbnailCallout(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const callout = value.replace(/\s+/g, " ").trim();
+  if (!callout || callout.split("$").length % 2 === 0) return "";
   if (
-    /[\\{}#%&_^]/.test(
-      headline
-        .split("$")
-        .filter((_, i) => i % 2 === 0)
-        .join(""),
-    )
+    callout.split(" ").length > 3 ||
+    thumbnailCopyLength(callout) > CALLOUT_LIMIT
   ) {
     return "";
   }
-  return headline;
+  const mathSegments = callout.split("$").filter((_, index) => index % 2);
+  if (mathSegments.some((segment) => !sanitizeThumbnailLatex(segment)))
+    return "";
+  return hasTexInProse(callout) ? "" : callout;
+}
+
+/**
+ * The crossed-out wrong intuition: one whole word (or one $math$ token) of
+ * the headline, never the accent itself.
+ */
+export function sanitizeThumbnailStrike(
+  value: unknown,
+  headline: string,
+  accent: string,
+): string {
+  if (typeof value !== "string" || !headline) return "";
+  const strike = value.trim();
+  if (!strike || /\s/.test(strike.replace(/\$[^$]*\$/g, "m"))) return "";
+  const index = headline.indexOf(strike);
+  if (index < 0) return "";
+  const before = index ? headline[index - 1] : " ";
+  const after = headline[index + strike.length] ?? " ";
+  if (!/[ ~]/.test(before!) || !/[ ~,.?!:;]/.test(after)) return "";
+  const accentIndex = accent ? headline.indexOf(accent) : -1;
+  if (
+    accentIndex >= 0 &&
+    index < accentIndex + accent.length &&
+    accentIndex < index + strike.length
+  ) {
+    return "";
+  }
+  return strike;
 }
 
 function sanitizeEyebrow(value: unknown): string {
@@ -401,6 +527,19 @@ function parseCandidateArray(raw: string): unknown[] {
     .replace(/```(?:json)?\s*/gi, "")
     .replace(/```/g, "")
     .trim();
+  // The packaging prompt brainstorms first: {"ideas": [...], "packages": [...]}.
+  if (withoutFences.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(jsonrepair(withoutFences)) as unknown;
+      const packages =
+        parsed && typeof parsed === "object"
+          ? (parsed as Record<string, unknown>).packages
+          : undefined;
+      if (Array.isArray(packages)) return packages;
+    } catch {
+      // Fall through to the array and line parsers.
+    }
+  }
   const arrayMatch = withoutFences.match(/\[[\s\S]*\]/);
 
   if (arrayMatch) {
@@ -443,6 +582,8 @@ export function parseVideoTitleSet(raw: string): VideoTitleSet {
         headline.includes(record.accent.trim())
           ? record.accent.trim()
           : "";
+      const strike = sanitizeThumbnailStrike(record.strike, headline, accent);
+      const callout = headline ? sanitizeThumbnailCallout(record.callout) : "";
       return {
         title: cleanTitle(record.title),
         concept: visualType
@@ -450,6 +591,8 @@ export function parseVideoTitleSet(raw: string): VideoTitleSet {
               eyebrow: sanitizeEyebrow(record.eyebrow),
               headline,
               accent,
+              ...(strike ? { strike } : {}),
+              ...(callout ? { callout } : {}),
               visualConcept:
                 typeof record.visualConcept === "string"
                   ? record.visualConcept
@@ -493,11 +636,12 @@ export function parseVideoTitleSet(raw: string): VideoTitleSet {
     string,
     string,
   ];
-  const concepts = parsed.map(({ concept }, index) =>
-    concept && index === VISUAL_ONLY_THUMBNAIL_INDEX
-      ? { ...concept, headline: "", accent: "" }
-      : concept,
-  );
+  const concepts = parsed.map(({ concept }, index) => {
+    if (!concept || index !== VISUAL_ONLY_THUMBNAIL_INDEX) return concept;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { strike, callout, ...visualOnly } = concept;
+    return { ...visualOnly, headline: "", accent: "" };
+  });
   const hasCompleteConcepts = concepts.every(
     (concept): concept is ThumbnailConcept => concept !== undefined,
   );

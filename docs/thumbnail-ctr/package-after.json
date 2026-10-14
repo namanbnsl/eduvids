@@ -1,0 +1,5 @@
+[
+  {"title": "Why Your Gut Gets the Monty Hall Problem Wrong", "palette": "azure-coral", "headline": "Always switch", "accent": "switch", "visual": {"type": "number", "value": "67%", "was": "50%"}},
+  {"title": "How the Monty Hall Problem Actually Works", "palette": "azure-coral", "headline": "", "accent": "", "visual": {"type": "bars", "values": [33.3, 66.7], "focus": 1, "labels": ["stay", "switch"]}},
+  {"title": "The Game Show Puzzle That Fooled Mathematicians", "palette": "azure-coral", "headline": "It's not 50/50", "strike": "50/50", "accent": "not", "visual": {"type": "equation", "notation": "\\tfrac{1}{3}<\\hl{\\tfrac{2}{3}}"}}
+]
