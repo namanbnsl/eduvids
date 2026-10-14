@@ -1452,6 +1452,67 @@ if _encode_frames is not None and not getattr(_encode_frames, "__eduvids_held__"
     _encode_held.__eduvids_held__ = True
     SceneFileWriter.encode_and_write_frame = _encode_held
 
+# Manim >= 0.22 encodes each animation in a VideoSegmentEncoder built from a
+# resolved encoder spec (config.video_encoder_options), fed through a queue of
+# config.encoder_queue_size frames. Same x264 settings and queue as above,
+# and the same held-frame shortcut on the encoder's own write_frame.
+X264_OPTIONS = {"crf": "16", "preset": "superfast", "bf": "0"}
+
+try:
+    import manim._config.render_session as _render_session
+    from manim import config as _config
+    from manim.scene.video_segment_encoder import VideoSegmentEncoder as _SegmentEncoder
+except ImportError:  # Manim < 0.22
+    _render_session = _SegmentEncoder = None
+
+if _render_session is not None and not getattr(_render_session.resolve_video_encoder, "__eduvids_quality__", False):
+    import dataclasses as _dataclasses
+
+    _resolve_encoder = _render_session.resolve_video_encoder
+
+    def _resolve_house_encoder(*args, **kwargs):
+        spec = _resolve_encoder(*args, **kwargs)
+        if spec is not None and spec.codec == "libx264":
+            options = {**dict(spec.options), **X264_OPTIONS}  # over Manim's own crf=23
+            spec = _dataclasses.replace(spec, options=tuple(sorted(options.items())))
+        return spec
+
+    _resolve_house_encoder.__eduvids_quality__ = True
+    _render_session.resolve_video_encoder = _resolve_house_encoder
+    if getattr(_config, "encoder_queue_size", 0) > FRAME_QUEUE:
+        _config.encoder_queue_size = FRAME_QUEUE
+
+if _SegmentEncoder is not None and not getattr(_SegmentEncoder.write_frame, "__eduvids_held__", False):
+    from fractions import Fraction as _Fraction
+
+    _segment_write = _SegmentEncoder.write_frame
+
+    def _segment_write_held(self, pixels, *, repeat=1):
+        import av
+
+        if not hasattr(av.VideoFrame, "from_numpy_buffer"):
+            return _segment_write(self, pixels, repeat=repeat)
+        self._validate_frame(pixels, repeat)
+        rate = self.spec.frame_rate
+        time_base = _Fraction(rate.denominator, rate.numerator)
+        try:
+            # The writer owns the array (SceneFileWriter.write_frame), so it can
+            # be wrapped rather than copied.
+            frame = av.VideoFrame.from_numpy_buffer(pixels, format="rgba")
+            if repeat > 1:
+                frame = frame.reformat(format=self.spec.pixel_format)
+            for _ in range(repeat):
+                frame.pts = self._next_pts
+                frame.time_base = time_base
+                self._next_pts += 1
+                for packet in self._stream.encode(frame):
+                    self._container.mux(packet)
+        except BaseException as error:
+            raise self._operation_error("encode", error) from error
+
+    _segment_write_held.__eduvids_held__ = True
+    _SegmentEncoder.write_frame = _segment_write_held
+
 
 # ---------------------------------------------------------------------------
 # Watermark: composited into each frame as it is written, so the finished

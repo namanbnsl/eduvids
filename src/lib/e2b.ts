@@ -532,7 +532,9 @@ export interface PreparedSandboxState {
   previousVideo?: RelatedYouTubeVideo;
 }
 
-const SANDBOX_TEMPLATE = "manim20-ffmpeg-bookmarks-latest";
+// The E2B template renders run in (sandbox-templates/eduvids-render). Set
+// E2B_SANDBOX_TEMPLATE to roll back to an older build without a deploy.
+const SANDBOX_TEMPLATE = process.env.E2B_SANDBOX_TEMPLATE || "eduvids-manim22";
 const THUMBNAIL_ROOT = "/home/user/eduvids-thumbnail";
 
 export interface ThumbnailRenderResult {

@@ -44,7 +44,7 @@ bun install
 Build the render sandbox once:
 
 ```bash
-cd sandbox-templates/manim20-ffmpeg-bookmarks-latest
+cd sandbox-templates/eduvids-render
 npm install e2b
 E2B_API_KEY=... npm run e2b:build:prod
 ```

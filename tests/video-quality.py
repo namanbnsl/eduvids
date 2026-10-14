@@ -129,45 +129,62 @@ class VideoQualityTests(unittest.TestCase):
     def test_intermediate_movie_keeps_the_quality_profile(self):
         from manim.scene.scene_file_writer import SceneFileWriter
 
-        if not hasattr(SceneFileWriter, "open_partial_movie_stream"):
-            self.skipTest("legacy FFmpeg writer has no PyAV quality override")
         with TemporaryDirectory() as folder:
             with tempconfig({"media_dir": folder, "pixel_width": 160, "pixel_height": 90}):
-                writer = Scene().renderer.file_writer
-                writer.open_partial_movie_stream(Path(folder) / "probe.mp4")
-                try:
-                    # Matches the old medium/CRF 18 against a lossless render
-                    # (see the comment in video_style.py) at far less CPU.
-                    self.assertEqual(writer.video_stream.options["crf"], "16")
-                    self.assertEqual(writer.video_stream.options["preset"], "superfast")
-                    # No B-frames: x264 buffers no frames ahead (less memory).
-                    self.assertEqual(writer.video_stream.options["bf"], "0")
-                finally:
+                scene = Scene()
+                spec = getattr(getattr(scene, "session_spec", None), "video_encoder", None)
+                if spec is not None:  # Manim >= 0.22: a resolved encoder spec
+                    options = dict(spec.options)
+                    self.assertLessEqual(config.encoder_queue_size, style.FRAME_QUEUE)
+                elif hasattr(SceneFileWriter, "open_partial_movie_stream"):
+                    writer = scene.renderer.file_writer
+                    writer.open_partial_movie_stream(Path(folder) / "probe.mp4")
+                    options = dict(writer.video_stream.options)
                     # Stop Manim's frame-consumer thread as well as PyAV.
                     writer.close_partial_movie_stream()
+                else:
+                    self.skipTest("legacy FFmpeg writer (see tests/video-encoding.py)")
+        # Matches the old medium/CRF 18 against a lossless render (see the
+        # comment in video_style.py) at far less CPU.
+        self.assertEqual(options["crf"], "16")
+        self.assertEqual(options["preset"], "superfast")
+        # No B-frames: x264 buffers no frames ahead (less memory).
+        self.assertEqual(options["bf"], "0")
 
     def test_held_frames_match_frames_written_one_by_one(self):
-        import av
         from manim.scene.scene_file_writer import SceneFileWriter
 
-        if not hasattr(SceneFileWriter, "open_partial_movie_stream"):
+        if style._SegmentEncoder is None and not hasattr(SceneFileWriter, "encode_and_write_frame"):
             self.skipTest("legacy FFmpeg writer")
+        import av
+
         rng = np.random.default_rng(1)
         frames = [rng.integers(0, 255, (90, 160, 4), dtype=np.uint8) for _ in range(2)]
 
         def decoded(held):
             with TemporaryDirectory() as folder:
                 with tempconfig({"media_dir": folder, "pixel_width": 160, "pixel_height": 90}):
-                    writer = Scene().renderer.file_writer
+                    scene = Scene()
                     path = Path(folder) / "probe.mp4"
-                    writer.open_partial_movie_stream(path)
-                    for frame in frames:
-                        if held:
-                            writer.encode_and_write_frame(frame, 4)  # converted once, sent 4 times
-                        else:
-                            for _ in range(4):
-                                writer.encode_and_write_frame(frame, 1)
-                    writer.close_partial_movie_stream()
+                    if style._SegmentEncoder is not None:  # Manim >= 0.22
+                        encoder = style._SegmentEncoder(target=path, spec=scene.session_spec.video_encoder)
+                        for frame in frames:
+                            if held:
+                                encoder.write_frame(frame.copy(), repeat=4)  # converted once, sent 4 times
+                            else:  # Manim's own encoder, one frame at a time
+                                for _ in range(4):
+                                    style._segment_write(encoder, frame.copy(), repeat=1)
+                        encoder.finish()
+                    else:
+                        writer = scene.renderer.file_writer
+                        writer.open_partial_movie_stream(path)
+                        for frame in frames:
+                            if held:
+                                writer.encode_and_write_frame(frame, 4)  # converted once, sent 4 times
+                            else:
+                                for _ in range(4):
+                                    writer.encode_and_write_frame(frame, 1)
+                        writer.close_partial_movie_stream()
                     with av.open(str(path)) as container:
                         return [(f.pts, f.to_ndarray().tobytes()) for f in container.decode(video=0)]
 
@@ -175,7 +192,6 @@ class VideoQualityTests(unittest.TestCase):
         self.assertEqual(len(held), 8)
         self.assertEqual([pts for pts, _ in held], sorted({pts for pts, _ in held}))
         self.assertEqual(held, single)
-
 
 if __name__ == "__main__":
     unittest.main()
