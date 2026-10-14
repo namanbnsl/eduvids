@@ -1564,8 +1564,17 @@ try:
 except ImportError:  # thumbnails and tests without the voiceover stack
     _VoiceoverScene = None
 
-if _VoiceoverScene is not None and not getattr(_VoiceoverScene._add_voiceover_text, "__eduvids_lead__", False):
-    _add_voiceover_text = _VoiceoverScene._add_voiceover_text
+# manim-voiceover 0.4 moved the work into _add_voiceover_text (the public
+# add_voiceover_text delegates to it); 0.3.x does it all in add_voiceover_text.
+# Patch whichever one does the work, so the lead is applied exactly once.
+_VOICEOVER_TEXT_METHOD = (
+    "_add_voiceover_text" if hasattr(_VoiceoverScene, "_add_voiceover_text") else "add_voiceover_text"
+)
+
+if _VoiceoverScene is not None and not getattr(
+    getattr(_VoiceoverScene, _VOICEOVER_TEXT_METHOD), "__eduvids_lead__", False
+):
+    _add_voiceover_text = getattr(_VoiceoverScene, _VOICEOVER_TEXT_METHOD)
 
     def _add_voiceover_text_after_picture(self, *args, **kwargs):
         add_sound, add_subcaption = self.add_sound, self.add_subcaption
@@ -1588,7 +1597,7 @@ if _VoiceoverScene is not None and not getattr(_VoiceoverScene._add_voiceover_te
         return tracker
 
     _add_voiceover_text_after_picture.__eduvids_lead__ = True
-    _VoiceoverScene._add_voiceover_text = _add_voiceover_text_after_picture
+    setattr(_VoiceoverScene, _VOICEOVER_TEXT_METHOD, _add_voiceover_text_after_picture)
 
 # ---------------------------------------------------------------------------
 # Segments: the render driver can split one long scene across processes.
