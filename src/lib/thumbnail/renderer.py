@@ -151,9 +151,11 @@ def clean_expression(value, variables=("x",)) -> str:
 
 def clean_latex(value) -> str:
     """Allow a conservative LaTeX subset: math symbols, no file or macro access."""
-    if not isinstance(value, str):
+    # A tab or form feed here is a "\theta" or "\frac" that lost its backslash.
+    if not isinstance(value, str) or re.search(r"[\x00-\x1f]", value):
         return ""
-    latex = value.strip()
+    # "\\infty" is a line break before the letters "infty", never meant.
+    latex = re.sub(r"\\{2,}(?=[A-Za-z])", r"\\", value.strip())
     if not latex or len(latex) > 90:
         return ""
     if re.search(r"[#%~`\"@$]|\^\^", latex):

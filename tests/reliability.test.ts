@@ -1612,6 +1612,15 @@ test("scene plan gaps flag text-only, unlinked formula, missing and repeated dev
     ]),
     [],
   );
+  // A signature visual is drawn by its exact helper, never by hand.
+  const attractor = scene("Storm", ["surface"], "trajectory");
+  attractor.storyboard = "The strange attractor sweeps out its two wings in 3D.";
+  const equations = scene("Rules", ["shape", "math"], "equation_link");
+  equations.storyboard = "The three Lorenz equations write beside the convection roll.";
+  const notes = scenePlanVisualGaps([attractor, equations]).join("\n");
+  assert.match(notes, /Storm: draw the Lorenz attractor with lorenz\(\)/);
+  assert.match(notes, /lorenz\(three_d=True\)/);
+  assert.doesNotMatch(notes, /Rules: draw/);
 });
 
 test("scene timing keeps the planned device and storyboard", () => {

@@ -20,6 +20,7 @@ import {
   selectThumbnailPair,
   type RelatedYouTubeVideo,
 } from "../src/lib/youtube-metadata";
+import { protectLatexBackslashes } from "../src/lib/latex-json";
 
 const previousVideo: RelatedYouTubeVideo = {
   videoId: "previous123",
@@ -99,6 +100,38 @@ test("brainstormed packages keep strike and callout copy, except on slot B", () 
   assert.equal(third.strike, undefined);
   assert.equal(third.callout, undefined);
   assert.deepEqual(third.visual, { type: "spiral", shape: "primes" });
+});
+
+test("LaTeX written with one backslash survives the JSON parse", () => {
+  // The model writes "$\infty$" with a single backslash: invalid JSON that
+  // jsonrepair used to turn into "$infty$" (italic letters on the thumbnail).
+  const raw = String.raw`{"packages": [{
+    "title": "The Butterfly That Never Repeats",
+    "headline": "Never $\theta$ twice",
+    "callout": "$\infty$ loop",
+    "visual": {"type": "chaos", "shape": "lorenz"}
+  }, {
+    "title": "Chaos in Three Equations",
+    "visual": {"type": "chaos", "shape": "lorenz"}
+  }, {
+    "title": "Why Weather Forecasts Always Break",
+    "headline": "$\frac{dx}{dt}$ decides",
+    "visual": {"type": "chaos", "shape": "lorenz"}
+  }]}`;
+  // Slot B is visual-only, so its copy is not checked.
+  const [first, , third] = parseVideoTitleSet(raw).thumbnailConcepts!;
+  assert.equal(first.callout, String.raw`$\infty$ loop`);
+  assert.equal(first.headline, String.raw`Never $\theta$ twice`);
+  assert.equal(third.headline, String.raw`$\frac{dx}{dt}$ decides`);
+  // A real newline escape is left alone.
+  assert.equal(protectLatexBackslashes(String.raw`"a\nb"`), String.raw`"a\nb"`);
+  assert.equal(
+    protectLatexBackslashes(String.raw`"\\infty"`),
+    String.raw`"\\infty"`,
+  );
+  // Doubled in the decoded copy, it is a TeX line break: collapse it.
+  assert.equal(sanitizeThumbnailLatex(String.raw`\\infty`), String.raw`\infty`);
+  assert.equal(sanitizeThumbnailLatex("\theta"), ""); // a tab, then "heta"
 });
 
 test("click-through copy and figures reject TeX and partial words", () => {

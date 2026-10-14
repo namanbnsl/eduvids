@@ -34,6 +34,33 @@ class VideoQualityTests(unittest.TestCase):
         self.assertGreater(abs(label.get_center()[1]), label.height / 2)
         self.assertEqual(scene.mobjects, [])
 
+    def test_labels_clear_crowd_members(self):
+        # A crowd is one unstroked filled path; each member is an obstacle.
+        scene = Scene()
+        box = Rectangle(width=6, height=4)
+        dots = crowd(300, width=5.6, height=3.6)
+        scene.add(box, dots)
+        label = Text("Stretching and folding", font_size=28).move_to(box.get_bottom() + UP * 0.4)
+        style._arrange_incoming(scene, [Write(label)])
+        members = dots.centers()
+        self.assertGreater(box.get_bottom()[1] + 0.2 - label.get_top()[1], -0.25)
+        self.assertFalse(any(
+            label.get_left()[0] < x < label.get_right()[0] and label.get_bottom()[1] < y < label.get_top()[1]
+            for x, y, _ in members
+        ))
+
+    def test_labels_clear_where_moving_geometry_ends_up(self):
+        scene = Scene()
+        dots = VGroup(*[Dot([x, y, 0], radius=0.05) for x in np.linspace(-3, 0, 12) for y in np.linspace(-1.5, 1.5, 8)])
+        scene.add(dots)
+        label = Text("Stretching", font_size=28).move_to(DOWN * 2.2)
+        builder = dots.animate.shift(DOWN * 0.7).stretch(1.6, 0)
+        style._arrange_incoming(scene, [builder, Write(label)])
+        end = builder.mobject.target
+        self.assertGreater(end.get_bottom()[1] - label.get_top()[1], 0.1)
+        self.assertIs(scene.mobjects[0], dots)
+        self.assertEqual(len(scene.mobjects), 1)
+
     def test_explicit_blocks_keep_alignment_and_axis_anchors(self):
         scene = Scene()
         title = header("Derivatives measure change")
@@ -110,6 +137,64 @@ class VideoQualityTests(unittest.TestCase):
                     self.assertGreater(points[:, 1].min(), notes.get_top()[1] + 0.25)
                     self.assertLess(points[:, 0].max(), width / 2 - 0.4)
                     self.assertGreater(points[:, 0].min(), -width / 2 + 0.4)
+
+    def test_3d_lorenz_keeps_depth_and_fits_between_overlays(self):
+        scene = ThreeDScene()
+        scene.set_camera_orientation(phi=68 * DEGREES, theta=-50 * DEGREES)
+        title = header("A path that never repeats")
+        fixed_overlay(scene, title)
+        storm = lorenz(3000, three_d=True)
+        self.assertGreater(storm.depth, 1.0)
+        place_3d_in_content(scene, storm, above=title, orbit=20 * DEGREES)
+        for theta in np.linspace(-50, -30, 5):
+            scene.camera.set_theta(theta * DEGREES)
+            scene.camera.reset_rotation_matrix()
+            points = scene.camera.project_points(storm.get_all_points())
+            self.assertLess(points[:, 1].max(), title.get_bottom()[1])
+            self.assertGreater(points[:, 1].min(), -config.frame_height / 2 + 0.4)
+            self.assertLess(np.abs(points[:, 0]).max(), config.frame_width / 2 - 0.4)
+
+    def test_forgotten_3d_text_faces_the_viewer(self):
+        scene = ThreeDScene()
+        scene.set_camera_orientation(phi=70 * DEGREES, theta=-45 * DEGREES)
+        camera = scene.camera
+        title = Text("A saddle surface", font_size=48).to_corner(UL)
+        axes = ThreeDAxes(x_range=[-2, 2, 1], y_range=[-2, 2, 1], z_range=[-2, 2, 1],
+                          x_length=4, y_length=4, z_length=3, axis_config={"include_numbers": True})
+        tag = MathTex(r"(1.5, 0)", font_size=32).move_to(axes.c2p(1.5, 0, 1.6))
+        beside = MathTex("P", font_size=32).next_to(axes.c2p(2, 0, 0), RIGHT, buff=0.1)
+        scene.add(axes, title, tag, beside)
+        def parts(mob):
+            return mob.family_members_with_points()
+        self.assertTrue(all(part in camera.fixed_in_frame_mobjects for part in parts(title)))
+        for attached in (tag, beside, axes.x_axis.numbers):
+            self.assertTrue(all(part in camera.fixed_orientation_mobjects for part in parts(attached)))
+            self.assertFalse(any(part in camera.fixed_in_frame_mobjects for part in parts(attached)))
+        # The script's own choice wins, even after the guard guessed.
+        scene.add_fixed_orientation_mobjects(title)
+        self.assertFalse(any(part in camera.fixed_in_frame_mobjects for part in parts(title)))
+        scene.add_fixed_in_frame_mobjects(tag)
+        self.assertFalse(any(part in camera.fixed_orientation_mobjects for part in parts(tag)))
+
+    def test_a_second_graph_takes_its_own_colour(self):
+        scene = Scene()
+        axes = Axes(x_range=[-3, 3, 1], y_range=[-1, 9, 2], x_length=7, y_length=5)
+        f = axes.plot(lambda x: x ** 2, color=PRIMARY)
+        g = axes.plot(lambda x: 2 * x + 3, color=PRIMARY)
+        g_label = axes.get_graph_label(g, "2x+3", x_val=-2)
+        scene.add(axes, f)
+        style._arrange_incoming(scene, [Create(g), Write(g_label)])
+        self.assertEqual(f.get_color().to_hex(), PRIMARY.to_hex())
+        self.assertNotEqual(g.get_color().to_hex(), PRIMARY.to_hex())
+        self.assertEqual(g_label.get_color().to_hex(), g.get_color().to_hex())
+        # Morphing one curve into another is not a second curve.
+        h = axes.plot(lambda x: x ** 2 / 2, color=PRIMARY)
+        style._arrange_incoming(scene, [Transform(f, h)])
+        self.assertEqual(h.get_color().to_hex(), PRIMARY.to_hex())
+        # Nor is a faint ghost of an earlier state.
+        old = ghost(f)
+        style._arrange_incoming(scene, [FadeIn(old)])
+        self.assertEqual(old.get_stroke_color().to_hex(), f.get_stroke_color().to_hex())
 
     def test_surface_has_no_contrasting_patch_grid_and_lighting_rotates(self):
         scene = ThreeDScene()
