@@ -106,7 +106,7 @@ The design notes live in [`docs/`](docs), each with before/after renders and the
 
 ## Contributing
 
-Issues and pull requests are welcome. If a video came out wrong, open an issue with the prompt — that's the most useful bug report there is.
+Issues and pull requests are welcome. If a video came out wrong, open an issue with the prompt — that's the most useful bug report there is. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests and PR guidelines.
 
 ## License
 
