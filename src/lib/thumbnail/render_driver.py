@@ -613,12 +613,25 @@ class Job:
             self.handle.close()
             code = self.proc.returncode
         scene, index, count, _, _ = self.task
+        if code is not None and code > 0 and encoder_died(self.log_path):
+            code = -9  # the OS killed ffmpeg, not a script error: retry alone
         if code == 0 and count > 1:
             # Move the segment out of the slot before another job reuses it.
             output = scene_output(self.media, scene)
             if output is not None:
                 output.rename(segments_dir / f"{scene}.{index}.segment.mp4")
         return code
+
+
+def encoder_died(log_path):
+    """Whether a render failed only because its ffmpeg encoder vanished.
+    Manim pipes every frame into an ffmpeg child, which inherits the render's
+    first place in line for the OOM killer; when the kernel kills it, Manim
+    exits 1 with a BrokenPipeError, which no script change can cause or fix."""
+    try:
+        return "BrokenPipeError" in tail(log_path, 600)
+    except OSError:
+        return False
 
 
 def render(cfg, tasks, media_dirs, env):
