@@ -272,6 +272,63 @@ class VocabularyTests(unittest.TestCase):
         self.assertAlmostEqual(np.linalg.norm(start[:2]), 1, places=2)
         self.assertGreater(note.label.get_center()[0], disc.get_right()[0])
 
+    def test_strike_dims_the_guess_under_an_accent_rule(self):
+        scene = Scene()
+        guess = MathTex(r"50\%", font_size=96)
+        scene.add(guess)
+        left, right, middle = guess.get_left()[0], guess.get_right()[0], guess.get_center()[1]
+        animation = strike(guess)
+        run(scene, animation)
+        self.assertEqual(guess[0].get_color().to_hex().upper(), ManimColor(MUTED).to_hex().upper())
+        line = animation.line
+        self.assertLess(line.get_left()[0], left)
+        self.assertGreater(line.get_right()[0], right)
+        self.assertAlmostEqual(line.get_center()[1], middle, places=6)
+        self.assertIn(line, guess.submobjects)        # fades and moves with the guess
+        self.assertNotIn(line, scene.mobjects)
+        answer = MathTex(r"67\%", font_size=96)
+        run(scene, correct(guess, answer))
+        self.assertGreater(answer.get_left()[0], right)
+        self.assertEqual(answer.get_color().to_hex().upper(), ManimColor(ACCENT).to_hex().upper())
+
+    def test_point_at_arrow_ends_at_its_target_and_label_clears_it(self):
+        target = Circle(radius=1).shift(LEFT)
+        note = point_at(target, "this part", direction=UR)
+        tip = note.arrow.get_end()
+        self.assertLess(np.linalg.norm(tip - target.get_boundary_point(UR)), 0.2)
+        label = note.label
+        self.assertGreater(label.get_bottom()[1], target.get_top()[1] - 0.5)
+        self.assertFalse(any(isinstance(m, Text) and any(ch.isdigit() for ch in m.text) for m in note.get_family()))
+        self.assertTrue(note._eduvids_layout_locked)
+        edge = point_at(Dot(RIGHT * 6.5 + UP * 3.5), "far too close to the edge", direction=UR)
+        self.assertLessEqual(edge.label.get_right()[0], config.frame_width / 2 - style.EDGE + 1e-6)
+        self.assertLessEqual(edge.label.get_top()[1], config.frame_height / 2 - style.EDGE + 1e-6)
+
+    def test_big_number_reveal_ends_on_the_answer_with_the_guess_struck(self):
+        scene = Scene()
+        fig = big_number(r"67\%", was=r"50\%")
+        self.assertGreater(fig.figure.height, fig.was.height * 2)
+        self.assertGreater(fig.was.get_bottom()[1], fig.figure.get_top()[1])
+        run(scene, fig.reveal())
+        self.assertIn(fig.figure, scene.mobjects)
+
+    def test_signature_visuals_are_exact_and_cheap(self):
+        g = golden_spiral(8)
+        sizes = sorted(round(square.width / g.squares[0].width) for square in g.squares)
+        self.assertEqual(sizes, [1, 1, 2, 3, 5, 8, 13, 21])
+        spiral = prime_spiral(5000)
+        self.assertEqual(len(spiral.dots) + len(spiral.arm), 669)  # primes below 5000
+        self.assertEqual(spiral.dots.submobjects, [])                # one draw call
+        storm = lorenz(3000)
+        self.assertGreater(len(storm.path.points), 1000)
+        self.assertLess(np.linalg.norm(storm.fork.get_center() - storm.twin.get_start()), 0.2)
+        tri = sierpinski(4)
+        self.assertEqual(len(tri.corner.get_subpaths()) + len(tri.rest.get_subpaths()), 81)
+        self.assertEqual(len(tri.corner.get_subpaths()), 27)
+        self.assertGreater(len(koch(3).flake.get_vertices()), len(koch(1).flake.get_vertices()))
+        tree = fractal_tree(6)
+        self.assertEqual(len(tree.path.points) // 4, 7)  # one branch per level, root to leaf
+
     def test_gas_stays_in_its_box_and_long_steps_match_short_ones(self):
         a, b = gas(20, 4, 3, speed=2)[1], gas(20, 4, 3, speed=2)[1]
         for _ in range(100):

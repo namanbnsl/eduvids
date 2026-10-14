@@ -1425,6 +1425,16 @@ test("every storytelling helper the Manim prompt names is exported by the house 
     "callout",
     "trail",
     "gas",
+    "strike",
+    "correct",
+    "point_at",
+    "big_number",
+    "golden_spiral",
+    "prime_spiral",
+    "lorenz",
+    "sierpinski",
+    "koch",
+    "fractal_tree",
   ]) {
     assert.ok(listed.includes(name), `prompt lists ${name}`);
   }
@@ -1457,6 +1467,9 @@ test("the planner names a visual device per scene and the narrator writes for pi
     "predict_reveal",
     "analogy_morph",
     "build_up",
+    "correction",
+    "big_number",
+    "point_at",
   ];
   for (const device of devices) {
     assert.match(SCENE_PLAN_SYSTEM_PROMPT, new RegExp(`"${device}"`));
@@ -1481,6 +1494,8 @@ test("the planner names a visual device per scene and the narrator writes for pi
   assert.match(VOICEOVER_SYSTEM_PROMPT, /GIVE EVERY QUANTITY A BODY/);
   assert.match(SCENE_PLAN_SYSTEM_PROMPT, /Every scene has a hero picture/);
   assert.match(SCENE_PLAN_SYSTEM_PROMPT, /VISUAL VOCABULARY BY SUBJECT/);
+  assert.match(SCENE_PLAN_SYSTEM_PROMPT, /VISUAL FIRST, WITH ENGAGEMENT/);
+  assert.match(VOICEOVER_SYSTEM_PROMPT, /SAY THE GUESS OUT LOUD/);
 });
 
 test("prompts carry no control characters from collapsed escapes", () => {
@@ -1533,8 +1548,19 @@ test("scene plan gaps flag text-only, unlinked formula, missing and repeated dev
   assert.match(gaps.join("\n"), /S3: third "morph" scene in a row/);
   assert.ok(!gaps.some((gap) => gap.startsWith("S4")));
   assert.match(gaps.join("\n"), /S5: no visual device/);
+  assert.match(gaps.join("\n"), /No engagement beat is planned/);
+  assert.match(
+    scenePlanVisualGaps([
+      scene("Flat", ["shape", "math"], "equation_link"),
+      scene("Pay", ["prop"], "big_number"),
+    ]).join("\n"),
+    /Flat: open on the topic's most striking picture/,
+  );
   assert.deepEqual(
-    scenePlanVisualGaps([scene("Good", ["population"], "population")]),
+    scenePlanVisualGaps([
+      scene("Good", ["population"], "population"),
+      scene("Payoff", ["prop"], "point_at"),
+    ]),
     [],
   );
 });

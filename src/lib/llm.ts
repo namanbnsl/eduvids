@@ -908,8 +908,47 @@ export function scenePlanVisualGaps(scenePlan: ScenePlanEntry[]): string[] {
       );
     }
   });
+  // The video keeps the thumbnail's promise: a hook picture first, and the
+  // same engagement devices (struck guess, big number, pointer) inside.
+  const opening = scenePlan[0]?.visualDevice?.trim();
+  if (opening && !HOOK_DEVICES.has(opening)) {
+    notes.push(
+      `${scenePlan[0]!.sceneId}: open on the topic's most striking picture in the first second (a signature visual, crowd, zoom, big number or predict-reveal), not a "${opening}" build.`,
+    );
+  }
+  if (
+    scenePlan.length &&
+    !scenePlan.some((scene) =>
+      ENGAGEMENT_DEVICES.has(scene.visualDevice?.trim() ?? ""),
+    )
+  ) {
+    notes.push(
+      "No engagement beat is planned. Strike the tempting wrong answer with correct() where the narration names it, land the payoff with big_number() or point_at(), and point_at() the surprising detail of at least one picture.",
+    );
+  }
   return notes;
 }
+
+const ENGAGEMENT_DEVICES = new Set([
+  "correction",
+  "big_number",
+  "point_at",
+  "predict_reveal",
+]);
+
+const HOOK_DEVICES = new Set([
+  ...ENGAGEMENT_DEVICES,
+  "zoom_journey",
+  "population",
+  "to_scale",
+  "timeline",
+  "trajectory",
+  "parameter_sweep",
+  "particles",
+  "before_after",
+  "morph",
+  "live_tracker",
+]);
 
 const SCENE_PLAN_MAX_RETRIES = 1; // Durable workflow retries, never nested model retries.
 
@@ -1461,16 +1500,18 @@ THUMBNAIL COPY RULES
 - eyebrow: the field in 1-3 words, e.g. "Calculus", "Complex numbers", "Machine learning". It is metadata for picking the visual and is never drawn.
 - headline: 2-5 words, at most 26 characters, sentence case, no final period. Short copy is set much larger, and on a phone that is what reads, so cut every word you can. It completes the title's thought, never repeats it: the insight, the verdict or the tension. "The slope is the height", "Multiplying by $i$ turns", "Probably not sick", "Always switch".
 - accent: the exact substring of the headline that carries the payoff (1-2 words or one $math$ token). It is painted in the warm colour that also marks the focal detail of the visual, so pick the word the picture proves.
-- strike (optional, the most powerful device): one word, number or $math$ token of the headline drawn crossed out, as the wrong intuition the video corrects. The headline then reads as a correction: headline "50% 67%" with strike "50%", or "Not 99% sure" with strike "99%". Use it when the video breaks a common belief; it must not be the accent. Otherwise "".
-- callout (optional): 1-3 words or one $math$ token placed beside the visual, with a warm arrow pointing at its focal detail: "why?", "still 1", "$\\infty$ edge", "a copy". Use it when one detail of the picture is the surprise; never restate the headline. Otherwise "".
+- Every headline thumbnail (A and C) uses at least one engagement device, strike or callout; use both only when they don't crowd it. A plain headline beside a plain picture is the exception, kept for when neither would be truthful.
+- strike (the most powerful device): one word, number or $math$ token of the headline drawn crossed out, as the wrong intuition the video corrects. The headline then reads as a correction: headline "50% 67%" with strike "50%", or "Not 99% sure" with strike "99%". Use it whenever the video breaks a common belief (most do: read the narration's tempting wrong answer); it must not be the accent. Otherwise "".
+- callout: 1-3 words or one $math$ token placed beside the visual, with a warm arrow pointing at its focal detail: "why?", "still 1", "$\\infty$ edge", "a copy". Use it on every headline thumbnail without a strike, pointing at the one detail of the picture that is the surprise; never restate the headline. Otherwise "".
 - The three packages deliberately differ in copy so the channel learns what works:
-  A: a headline that states the tension or insight, with a strike or callout if one fits.
+  A: a headline that states the tension or insight, with a strike or a callout.
   B: headline, accent, strike and callout are all empty strings. This thumbnail is visual-only, so choose the single most arresting image the video has; the picture alone must stop the scroll.
   C: a headline phrased as a short question or verdict ("Where did $0/0$ go?", "Probably not sick").
 - Inline math goes between $...$ (e.g. "$e^{i\\pi}$", "$a^2+b^2=c^2$"). Use "~" only inside a multi-word term that must never be split across lines, e.g. "bell~curve"; most headlines need none.
 
 VISUAL RULES
-- Pick the image that makes a viewer ask "wait, what?": the strange shape, the impossible number, the moment two things diverge. A plain plot of the topic is the last resort, not the default.
+- Visual first: the picture is the hook and the words serve it. Pick the image that makes a viewer ask "wait, what?": the strange shape, the impossible number, the moment two things diverge. A plain plot of the topic is the last resort, not the default.
+- Use the video's own pictures: the SCENE PLAN's opening hook, its correction beat and its payoff (big numbers, signature visuals, the struck guess) are what the viewer will see in the first seconds, so the click is paid off at once. Prefer a visual type that matches one of them; prefer spiral, chaos, fractal, bars and number whenever the video really shows that picture.
 - visual.type is exactly one of: function_plot, complex_plane, geometry, transformation, vector_field, wave, orbit, probability, network, atom, energy_levels, surface_3d, solid_3d, equation, spiral, chaos, fractal, bars, number
 - Parameters by type (omit any you are unsure of; sensible defaults are used):
   function_plot: expression (single variable x; numbers, + - * / ^, parentheses, sin cos tan exp log sqrt abs, pi), xRange [min, max] within -20..20, highlight "tangent" | "area" | "point", at (x of the tangent or point), from and to (x bounds of a shaded area), notation (short LaTeX label such as "f(x)=e^x")

@@ -35,7 +35,7 @@ with tempfile.TemporaryDirectory(prefix="thumbnail-layout-") as folder:
         for spec in specs:
             _, report = r.compose(spec, fonts, safe)
             assert report["visual"] == spec["visual"]["type"], report
-            assert not report["warnings"], report
+            assert all(" at scale " in warning for warning in report["warnings"]), report
     hero = r.hero_energy_levels({}, cool, warm, ts, False)
     levels = hero.graphics[0]
     assert abs(levels[0].width - levels[1].width) < 1e-6

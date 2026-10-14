@@ -84,6 +84,8 @@ The animator can only draw what you give it. Abstract sentences become text on a
 - FOLLOW ONE THING. For a process, follow one particle, one dollar, one signal, one molecule from start to finish so the viewer has someone to watch.
 - PREDICT, THEN SHOW. Ask the viewer to guess before the reveal ("Which one hits the ground first?"), then let the picture answer.
 - GIVE EVERY QUANTITY A BODY. Say what it looks like: a length, an area, a height, a pile, a speed, a place on a timeline. "The square on the long side is exactly as big as the other two squares put together" beats "a squared plus b squared equals c squared".
+- SAY THE GUESS OUT LOUD. When the topic has a tempting wrong answer, state it as a short phrase or number the animator can put on screen and cross out ("Fifty-fifty, surely. It is not."), then give the right one.
+- LAND ON ONE NUMBER OR IMAGE. The payoff names one concrete figure or picture ("two thirds of the time", "the arms of a spiral") that can fill the screen.
 - RUN THE EXAMPLE ON REAL DATA. Walk through actual numbers step by step ("Seven sorted numbers. Check the middle one: seventeen. Too small, so throw away the left half.") so each line is one visible move.
 - NAME EACH SYMBOL BY WHAT IT IS. Introduce a formula only after its pieces are on screen, one at a time: "this side is a, this one is b", then the relationship.
 - TURN A KNOB. For any "what happens if" question, change one thing smoothly and say what moves with it: "Make the string longer, and the swing slows down. Make the bob heavier, and nothing changes."
@@ -187,9 +189,20 @@ VISUAL DEVICES — name one in "visualDevice" for every scene. The animator has 
 - "predict_reveal": pose the visual question, hold a beat with the setup on screen, then animate the answer.
 - "analogy_morph": the familiar analogy drawn first, then transformed piece by piece into the real system.
 - "build_up": the hero assembles piece by piece in the order the narration names them.
+- "correction": the tempting wrong answer appears on screen, is struck through in ACCENT, and the right answer arrives beside it. Use it at the narration's wrong-intuition beat.
+- "big_number": one giant figure fills the frame as the hero of the beat (67%, 23 people, 1/3), with the intuitive wrong figure small above it and struck out.
+- "point_at": a short phrase ("this part", "why?", "still 1") with a curved ACCENT arrow to the single surprising detail of the picture.
 Use devices purposefully: the opening scene should use the most striking device the topic allows (usually zoom_journey, population, to_scale, timeline or predict_reveal). Avoid using the same device in more than two consecutive scenes. Plain "build_up" should be the minority.
+Signature visuals are available and render exactly, so plan them whenever the topic is truly about them: golden_spiral (Fibonacci squares under the golden spiral), prime_spiral (every prime p at radius p and angle p, falling into spiral arms), lorenz (the butterfly attractor with two starts a hair apart), sierpinski, koch (snowflake: endless edge, finite area), fractal_tree.
 Recognisable props are available, so plan them instead of abstract boxes: atom (Bohr model with any number of protons, neutrons and electrons), molecule (ball-and-stick from element symbols), person (icon for populations), die, cell (animal cell with nucleus and organelles), block (a labelled unit), balance, plus crowds of any of them.
 Honesty: a picture can be schematic, but quoted magnitudes must be real. When a zoom compresses scale, use a scale bar ("1 mm" → "1 nm") and say the real number in narration.
+
+VISUAL FIRST, WITH ENGAGEMENT — the video keeps the promise its thumbnail makes:
+- The thumbnail is built from this plan's most striking picture, its wrong-intuition beat and its payoff number, so plan them deliberately.
+- Scene 1 opens on its hook picture within the first second: the strangest, most beautiful image the topic has (a signature visual, a crowd, a zoom, a big number), never a title card or a plain axis. Its storyboard names that first frame.
+- Plan a "correction" beat wherever the narration states a tempting wrong answer, and a "big_number" or "point_at" beat at the payoff. A full video has at least one correction or big_number and at least two point_at, predict_reveal or correction beats; a short has at least one.
+- Every scene has one moment a viewer would screenshot: the composition its storyboard ends on. At least every third scene contains an engagement beat (correction, big_number, point_at or predict_reveal).
+- Scene titles talk like the thumbnail: 2-6 words stating the tension or the claim ("The slope that shouldn't exist", "Not 50/50", "Primes aren't random"), never topic labels ("Probability", "Definition").
 
 VISUAL HOUSE STYLE — the video shares its thumbnail's look; content first, never template-like:
 - A plain near-black canvas with the mathematical visual occupying the frame. Do not design cards, panels, pills, borders, badges, fake interfaces, decorative gradients, or branding.
@@ -241,9 +254,9 @@ The output is an array of scene objects. Each object has:
 - "chapterTitle": optional string, 2-5 plain words. Set it ONLY on a scene that starts a new section of the story (usually 4-7 per full video, including the first scene). It becomes a YouTube chapter, so make it specific and curiosity-led ("The slope that shouldn't exist", "Shrinking the gap"), never generic ("Introduction", "Conclusion", "Summary").
 - "narration": the voiceover text for this scene
 - "visualType": one of "title", "formula_explanation", "graph_plot", "geometry_diagram", "comparison", "worked_example", "summary", "bullet_points", "3d_visualization"
-- "visualDevice": one of "zoom_journey", "population", "to_scale", "exploded_view", "process_flow", "equation_link", "balance", "number_line", "area_model", "proportion_bar", "chart", "algorithm_steps", "network_walk", "timeline", "parameter_sweep", "labelled_anatomy", "particles", "trajectory", "spotlight", "before_after", "live_tracker", "morph", "predict_reveal", "analogy_morph", "build_up"
+- "visualDevice": one of "zoom_journey", "population", "to_scale", "exploded_view", "process_flow", "equation_link", "balance", "number_line", "area_model", "proportion_bar", "chart", "algorithm_steps", "network_walk", "timeline", "parameter_sweep", "labelled_anatomy", "particles", "trajectory", "spotlight", "before_after", "live_tracker", "morph", "predict_reveal", "analogy_morph", "build_up", "correction", "big_number", "point_at"
 - "storyboard": one or two sentences describing the scene's motion from first frame to last frame, with real magnitudes ("Open on a grain of salt with a 1 mm scale bar; it dissolves into a lattice of ~2000 atoms; zoom 1000x into one atom as the bar reads 0.1 nm; the dot opens into a sodium atom with 11 electrons on three shells.")
-- "elements": array of {id, type, content, color?} where type is "text"|"math"|"label"|"diagram"|"graph"|"axis"|"shape"|"surface"|"vector"|"region"|"population"|"prop". A "population" element is one crowd (count it as a single element, however many members it has); describe its size, member ("dot", "person", "square" or a prop) and highlighted share. A "prop" element is one of: atom, molecule, person, die, cell, block, balance, array, network, timeline, bar chart, proportion bar, area model, slider, gas; give its parameters and real data (e.g. "atom protons=11 neutrons=12 electrons=11", "array [3, 8, 12, 17, 23, 31, 42]", "timeline 4.5 billion years ago to now").
+- "elements": array of {id, type, content, color?} where type is "text"|"math"|"label"|"diagram"|"graph"|"axis"|"shape"|"surface"|"vector"|"region"|"population"|"prop". A "population" element is one crowd (count it as a single element, however many members it has); describe its size, member ("dot", "person", "square" or a prop) and highlighted share. A "prop" element is one of: atom, molecule, person, die, cell, block, balance, array, network, timeline, bar chart, proportion bar, area model, slider, gas, golden spiral, prime spiral, lorenz, sierpinski, koch, fractal tree, big number; give its parameters and real data (e.g. "atom protons=11 neutrons=12 electrons=11", "array [3, 8, 12, 17, 23, 31, 42]", "timeline 4.5 billion years ago to now").
 - "layout": one of "center_single", "top_title_center_content", "top_title_center_content_bottom_labels", "left_right_split", "stacked_vertical"
 - "maxSimultaneousElements": number 1-5
 - "transitionIn": one of "write", "fade_in", "create"
@@ -444,7 +457,7 @@ Name each scene class exactly as its scene-plan sceneId (Scene01Intro, Scene02De
 
 VISUAL HOUSE STYLE
 The house style is applied automatically after your imports: it sets the canvas, sets every Text() and MathTex() in Computer Modern (as in 3Blue1Brown and Welch Labs videos), and defines this video's palette, shared with its thumbnail. Do not set background colors, fonts, or font weights yourself.
-These names are already defined and imported for you. Use them directly, and never redefine them: PRIMARY, ACCENT, SECONDARY, TERTIARY, INK, MUTED, header, caption, layout_scene, lock_layout, fixed_overlay, place_3d_in_content, place_in_content, content_box, balanced_text, pop_in, pulse, shade_surface, crowd, zoom_to, reveal_detail, scale_bar, spotlight, release, explode, assemble, flow, to_scale, ghost, atom, molecule, person, die, cell, link, block, balance, hop, area_model, split_bar, bars, cells, network, timeline, slider, callout, trail, gas.
+These names are already defined and imported for you. Use them directly, and never redefine them: PRIMARY, ACCENT, SECONDARY, TERTIARY, INK, MUTED, header, caption, layout_scene, lock_layout, fixed_overlay, place_3d_in_content, place_in_content, content_box, balanced_text, pop_in, pulse, shade_surface, crowd, zoom_to, reveal_detail, scale_bar, spotlight, release, explode, assemble, flow, to_scale, ghost, atom, molecule, person, die, cell, link, block, balance, hop, area_model, split_bar, bars, cells, network, timeline, slider, callout, trail, gas, strike, correct, point_at, big_number, golden_spiral, prime_spiral, lorenz, sierpinski, koch, fractal_tree.
 - Color by role, using these names (never hex strings):
   PRIMARY — the main object: the curve, the shape, the surface.
   ACCENT — the one detail the narration points at right now: the tangent point, the key term, the answer. One thing at a time; it means "look here".
@@ -599,12 +612,35 @@ labelled_anatomy — name parts with leader lines instead of floating labels:
   c = cell(5); place_in_content(c, above=title)
   self.play(Create(note := callout(c.nucleus, "nucleus", direction=UL)))
 
+correction — the tempting wrong answer, struck out on screen (the thumbnail's strike-through):
+  guess = MathTex(r"\\tfrac{1}{2}", font_size=96); place_in_content(guess, above=title, fill=0.3)
+  answer = MathTex(r"\\tfrac{2}{3}", font_size=96)
+  self.play(pop_in(guess)); self.play(correct(guess, answer))   # guess dims under an ACCENT rule, the answer arrives beside it
+  self.play(strike(word)) crosses out one thing without a replacement. Strike only what the narration calls wrong, never a step that is merely incomplete.
+
+big_number — one figure as the hero:
+  fig = big_number(r"67\\%", was=r"50\\%"); place_in_content(fig, above=title, fill=0.55)
+  self.play(fig.reveal())                                 # the guess appears, is struck, then the answer lands; fig.figure, fig.was
+  Use it for the payoff number and for surprising magnitudes. The figure must be real.
+
+point_at — the thumbnail's callout: a few words and a curved ACCENT arrow to the one surprising detail:
+  note = point_at(overlap, "this part")                   # direction defaults away from the frame centre; pass direction=UR to choose
+  self.play(note.reveal())
+  Keep it to 1-3 words or one MathTex token. One pointer at a time; fade it out before the next.
+
+signature visuals — exact, striking heroes (each is one VGroup with named parts):
+  spiral = prime_spiral(); place_in_content(spiral, above=title, fill=0.9); self.play(FadeIn(spiral.dots)); self.play(FadeIn(spiral.arm))
+  g = golden_spiral(); self.play(FadeIn(g.squares), FadeIn(g.labels)); self.play(Create(g.spiral), run_time=2)
+  storm = lorenz(); self.play(Create(storm.path), run_time=3); self.play(Create(storm.twin), pop_in(storm.fork))   # .fork is where the two starts part
+  sierpinski(depth=5) has .corner (a smaller copy, in ACCENT) and .rest; koch(depth) for depth 0-5 morphs with Transform and has .edge; fractal_tree(depth) has .levels to reveal one by one and .path in ACCENT.
+
 particles — temperature as speed: box = gas(60, 4, 3, speed=1.0); self.add(box); box.particles.set_speed(2.5) heats it; box.particles.stop() before a still hold.
 trajectory — self.add(trail(planet)) leaves a fading path behind a moving object.
 
 Device rules:
 - Never leave a formula unexplained by its picture: every symbol you name in narration gets a link() to the part it means, as the first action of the beat that names it, so the link lands just before the word.
 - Never fill a scene with sentences. A title, summary or list scene still shows its picture; captions stay one short line.
+- Scene 1 opens on its hook picture in the first second, before any title animation finishes. Realise every "correction", "big_number" and "point_at" beat with strike/correct, big_number and point_at so the video looks like its thumbnail.
 - A population or crowd is ONE element, however many members it has. Never build crowds from loops of Dot() or Circle(), never LaggedStart over hundreds of items, and never always_redraw a crowd; use crowd(), .item(), .subset().
 - Narrate scale honestly: a scale_bar label and the narration must agree on the real magnitude.
 - Give zooms room: run_time 2-3s (or about 70 percent of the beat). A zoom is the motion of its beat; don't stack other moves on top of it.

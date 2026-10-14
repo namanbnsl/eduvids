@@ -38,6 +38,13 @@ the renderer and packaging rules on `main`; right is this branch.
 
 ![New visuals across a Monty Hall package](package-before-after.jpg)
 
+**Visual first, devices by default.** The hero column is wider than the
+copy column (about 584 px against 480), and the visual-only slot uses
+more of the frame. Every headline thumbnail now uses a strike or a
+callout, and the prompt points the model at the video's own hook,
+correction and payoff pictures, which the videos now draw with the same
+devices (see [`docs/video-engagement`](../video-engagement/README.md)).
+
 **Titles.** The packaging prompt now aims explicitly at click-through.
 The model mines the narration for its puzzle, wrong answer and most
 surprising number, brainstorms ten or more ideas from different angles,

@@ -64,8 +64,10 @@ def y_at(px: float) -> float:
 
 
 MARGIN_X, MARGIN_Y = 84, 72
-TEXT_COL_W = 528
-GUTTER = 56
+# Visual first: the hero column is wider than the copy column, and short
+# copy at the larger tiers still fits the narrower column.
+TEXT_COL_W = 480
+GUTTER = 48
 HERO_LEFT = MARGIN_X + TEXT_COL_W + GUTTER
 # YouTube draws the duration badge over the bottom-right corner.
 BADGE_ZONE = (WIDTH - 168, HEIGHT - 64, WIDTH, HEIGHT)
@@ -1733,7 +1735,7 @@ def compose(spec: dict, font_dir: str, safe: bool):
         hero_region = np.array([x_at(HERO_LEFT), -FRAME_H / 2 + u(MARGIN_Y), x_at(WIDTH - MARGIN_X), FRAME_H / 2 - u(MARGIN_Y)])
     else:
         text = None
-        hero_region = np.array([x_at(MARGIN_X + 120), -FRAME_H / 2 + u(MARGIN_Y), x_at(WIDTH - MARGIN_X - 120), FRAME_H / 2 - u(MARGIN_Y)])
+        hero_region = np.array([x_at(MARGIN_X + 60), -FRAME_H / 2 + u(MARGIN_Y), x_at(WIDTH - MARGIN_X - 60), FRAME_H / 2 - u(MARGIN_Y)])
     ts.region_w = hero_region[2] - hero_region[0]
 
     visual = spec.get("visual") if isinstance(spec.get("visual"), dict) else {}

@@ -3054,3 +3054,332 @@ __all__ += [
     "Bars", "bars", "Cells", "cells", "Network", "network", "Timeline", "timeline", "Slider", "slider",
     "callout", "trail", "Gas", "gas",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Engagement devices shared with the thumbnail: the wrong intuition struck
+# out, a short pointer with a warm arrow, the giant number, and the striking
+# pictures (spirals, chaos, fractals). The thumbnail is built from the same
+# vocabulary, so the frame a viewer clicked on reappears in the video.
+# ---------------------------------------------------------------------------
+
+
+class _Strike(manim.AnimationGroup):
+    """Once drawn, the rule becomes part of the struck mobject, so it moves
+    and fades with it instead of lingering on screen."""
+
+    def clean_up_from_scene(self, scene):
+        super().clean_up_from_scene(scene)
+        scene.remove(self.line)
+        self.struck.add(self.line)
+
+
+def strike(mob, color=None, run_time=0.7):
+    """Cross out the wrong intuition: it dims to MUTED while an ACCENT rule
+    draws through it. ``self.play(strike(guess))``; the rule is ``.line``."""
+    tone = ManimColor(color) if color is not None else ACCENT
+    overhang = 0.08 * max(mob.height, 0.3)
+    start = mob.get_left() + manim.LEFT * overhang
+    end = mob.get_right() + manim.RIGHT * overhang
+    line = manim.Line(start, end, color=tone, stroke_width=max(4.0, mob.height * 9))
+    line.set_z_index(mob.z_index + 1)
+    line._eduvids_layout_locked = True
+    animation = _Strike(
+        mob.animate(run_time=run_time).set_color(MUTED),
+        manim.Create(line, run_time=run_time * 0.8, rate_func=manim.rate_functions.ease_out_cubic),
+    )
+    animation.line, animation.struck = line, mob
+    return animation
+
+
+def correct(wrong, right, direction=manim.RIGHT, buff=0.45, place=True, run_time=1.4):
+    """The misconception beat: strike ``wrong`` out, then ``right`` arrives
+    in ACCENT, beside it unless ``place=False`` (already laid out)."""
+    if place:
+        right.next_to(wrong, direction, buff=buff)
+    right.set_color(ACCENT)
+    return manim.Succession(strike(wrong, run_time=run_time * 0.5), pop_in(right, run_time=run_time * 0.5))
+
+
+def point_at(target, text, direction=None, distance=1.4, bend=None, font_size=40, color=None):
+    """A thumbnail-style pointer: a few words in clean space and a curved
+    ACCENT arrow to the exact detail ("this part", "why?", "still 1").
+
+    ``target`` is a mobject or a point. ``direction`` defaults to pointing
+    away from the frame centre, where empty space usually is. Reveal it with
+    ``self.play(note.reveal())``; ``note.label`` and ``note.arrow`` are parts.
+    """
+    tone = ManimColor(color) if color is not None else ACCENT
+    point = np.asarray(target.get_center() if hasattr(target, "get_center") else target, dtype=float)
+    if direction is None:
+        away = point - manim.ORIGIN
+        away[2] = 0
+        direction = away if np.linalg.norm(away) > 0.4 else manim.UR
+    direction = np.array(direction, dtype=float)
+    direction[2] = 0
+    direction = direction / (np.linalg.norm(direction) or 1)
+    edge = point
+    if hasattr(target, "get_boundary_point") and hasattr(target, "points") and len(target.points):
+        edge = target.get_boundary_point(direction)
+    label = _label(text, font_size=font_size, color=INK)
+    reach = abs(direction[0]) * label.width / 2 + abs(direction[1]) * label.height / 2
+    label.move_to(edge + direction * (distance + reach))
+    # Keep the words inside the frame's safe margin; the arrow bends to suit.
+    half_w, half_h = config.frame_width / 2 - EDGE, config.frame_height / 2 - EDGE
+    shift = np.array([
+        min(0.0, half_w - label.get_right()[0]) + max(0.0, -half_w - label.get_left()[0]),
+        min(0.0, half_h - label.get_top()[1]) + max(0.0, -half_h - label.get_bottom()[1]),
+        0.0,
+    ])
+    label.shift(shift)
+    toward = edge - label.get_center()
+    unit = toward / (np.linalg.norm(toward) or 1)
+    exit_t = min(label.width / 2 / max(abs(unit[0]), 1e-9), label.height / 2 / max(abs(unit[1]), 1e-9))
+    start = label.get_center() + unit * (exit_t + 0.12)
+    end = edge - unit * 0.12
+    if bend is None:
+        # Bow the arrow away from the frame centre so it reads as an annotation.
+        mid = (start + end) / 2
+        normal = np.array([-unit[1], unit[0], 0.0])
+        bend = 0.5 if np.dot(normal, mid) < 0 else -0.5
+    arrow = manim.CurvedArrow(start, end, angle=bend, color=tone, stroke_width=5, tip_length=0.22)
+    group = manim.VGroup(label, arrow)
+    group.label, group.arrow = label, arrow
+    group.reveal = lambda run_time=0.9: manim.AnimationGroup(
+        manim.FadeIn(label, shift=-direction * 0.15), manim.Create(arrow), run_time=run_time, lag_ratio=0.25)
+    return lock_layout(group)
+
+
+def big_number(value, was=None, font_size=180, color=None):
+    """One giant figure as the hero of a beat ("67%", "23", "1/3"), with the
+    intuitive wrong figure ``was`` small above it, to be struck out.
+    ``self.play(fig.reveal())`` shows the guess, strikes it, then lands the
+    answer; ``fig.figure`` and ``fig.was`` are the parts."""
+    tone = ManimColor(color) if color is not None else ACCENT
+    figure = _label(value, font_size=font_size, color=tone)
+    group = manim.VGroup(figure)
+    group.figure, group.was = figure, None
+    if was is not None:
+        guess = _label(was, font_size=font_size * 0.42, color=INK)
+        guess.next_to(figure, manim.UP, buff=0.25).align_to(figure, manim.LEFT)
+        group.add(guess)
+        group.was = guess
+
+    def reveal(run_time=2.2):
+        steps = []
+        if group.was is not None:
+            steps += [manim.FadeIn(group.was, run_time=run_time * 0.2), strike(group.was, run_time=run_time * 0.3)]
+        steps.append(pop_in(figure, scale=0.4, run_time=run_time * 0.5))
+        return manim.Succession(*steps)
+
+    group.reveal = reveal
+    return lock_layout(group)
+
+
+def _dot_path(points, radius, color, opacity=1.0):
+    """Many dots as one Crowd path: one draw call, however many there are."""
+    template = _item_template("dot", radius * 2)
+    return Crowd(points, template, color=color, opacity=opacity)
+
+
+def golden_spiral(squares=8, labels=True, color=None, spiral_color=None):
+    """Fibonacci squares with the golden spiral through them. Parts:
+    ``.squares`` (one Polygon each, smallest first), ``.spiral`` (one arc per
+    square, Create it to draw the spiral) and ``.labels`` (side lengths)."""
+    tone = ManimColor(color) if color is not None else PRIMARY
+    warm = ManimColor(spiral_color) if spiral_color is not None else ACCENT
+    x0, y0, x1, y1 = 0.0, 0.0, 1.0, 1.0
+    placed = [((0.0, 0.0, 1.0, 1.0), "down")]
+    for index in range(max(1, squares) - 1):
+        side = ("right", "up", "left", "down")[index % 4]
+        if side == "right":
+            size = y1 - y0
+            box = (x1, y0, x1 + size, y1)
+        elif side == "up":
+            size = x1 - x0
+            box = (x0, y1, x1, y1 + size)
+        elif side == "left":
+            size = y1 - y0
+            box = (x0 - size, y0, x0, y1)
+        else:
+            size = x1 - x0
+            box = (x0, y0 - size, x1, y0)
+        placed.append((box, side))
+        x0, y0, x1, y1 = min(x0, box[0]), min(y0, box[1]), max(x1, box[2]), max(y1, box[3])
+    corner = {"down": ((2, 3), np.pi), "right": ((0, 3), -np.pi / 2), "up": ((0, 1), 0.0), "left": ((2, 1), np.pi / 2)}
+    rects, arcs, names = manim.VGroup(), manim.VGroup(), manim.VGroup()
+    for box, side in placed:
+        size = box[2] - box[0]
+        rect = manim.Polygon([box[0], box[1], 0], [box[2], box[1], 0], [box[2], box[3], 0], [box[0], box[3], 0])
+        rect.set_stroke(tone, 2.5, 0.8).set_fill(tone, 0.08)
+        rects.add(rect)
+        (cx, cy), start = corner[side]
+        arcs.add(manim.Arc(radius=size, start_angle=start, angle=np.pi / 2, arc_center=[box[cx], box[cy], 0]))
+        if labels:
+            names.add(MathTex(str(int(size)), color=tone).move_to(rect.get_center()))
+    arcs.set_stroke(warm, 6)
+    group = manim.VGroup(rects, arcs, names)
+    # Scale to a readable size, then size each label to its own square.
+    group.scale(5.0 / max(group.height, 1e-6)).move_to(manim.ORIGIN)
+    for name, rect in zip(names, rects):
+        name.scale_to_fit_height(min(rect.height * 0.32, 0.6))
+        if rect.height < 0.55:
+            name.set_opacity(0)
+    group.squares, group.spiral, group.labels = rects, arcs, names
+    return lock_layout(group)
+
+
+def prime_spiral(limit=12000, arm=(44, 13), radius=3.0, color=None, arm_color=None):
+    """Every prime p at polar (p, p radians). They fall into spiral arms;
+    ``.arm`` is the arm of primes congruent to ``arm[1]`` mod ``arm[0]``,
+    drawn on top in ACCENT. ``.dots`` is the rest (one path each)."""
+    limit = int(max(100, min(limit, 40000)))
+    sieve = np.ones(limit + 1, dtype=bool)
+    sieve[:2] = False
+    for k in range(2, int(limit ** 0.5) + 1):
+        if sieve[k]:
+            sieve[k * k::k] = False
+    primes = np.nonzero(sieve)[0]
+    points = np.column_stack([primes * np.cos(primes), primes * np.sin(primes), np.zeros(len(primes))]) / limit * radius
+    on_arm = (primes % arm[0]) == arm[1] if arm else np.zeros(len(primes), dtype=bool)
+    dot = radius * 0.012
+    dots = _dot_path(points[~on_arm], dot, ManimColor(color) if color is not None else PRIMARY, opacity=0.85)
+    lit = _dot_path(points[on_arm], dot * 1.4, ManimColor(arm_color) if arm_color is not None else ACCENT)
+    lit.set_z_index(dots.z_index + 1)
+    group = manim.VGroup(dots, lit)
+    group.dots, group.arm, group.primes = dots, lit, primes
+    return lock_layout(group)
+
+
+def _rk4(step, state, dt, count):
+    states = [np.array(state, dtype=float)]
+    for _ in range(count):
+        y = states[-1]
+        k1 = step(y)
+        k2 = step(y + dt / 2 * k1)
+        k3 = step(y + dt / 2 * k2)
+        k4 = step(y + dt * k3)
+        states.append(y + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4))
+    return np.array(states)
+
+
+def lorenz(steps=6000, nudge=1e-5, size=5.0, color=None, twin_color=None):
+    """The Lorenz butterfly from two starts ``nudge`` apart. ``.path`` is the
+    first trajectory, ``.twin`` the second from the moment they part, and
+    ``.fork`` the point where that happens. Create(.path) then Create(.twin)
+    shows "the same, the same, then nothing alike"."""
+    def field(v):
+        x, y, z = v
+        return np.array([10 * (y - x), x * (28 - z) - y, x * y - 8 / 3 * z])
+
+    a = _rk4(field, [1.0, 1.0, 1.0], 0.005, steps)
+    b = _rk4(field, [1.0 + nudge, 1.0, 1.0], 0.005, steps)
+    apart = int(np.argmax(np.linalg.norm(a - b, axis=1) > 0.5)) or steps // 2
+    project = lambda v: np.array([v[0], v[2] - 25, 0.0])
+    path = manim.VMobject().set_points_as_corners([project(v) for v in a[300::2]])
+    path.set_stroke(ManimColor(color) if color is not None else PRIMARY, 2.2, 0.8)
+    twin = manim.VMobject().set_points_as_corners([project(v) for v in b[apart:apart + 900:2]])
+    twin.set_stroke(ManimColor(twin_color) if twin_color is not None else ACCENT, 4.5)
+    fork = manim.Dot(project(b[apart]), radius=0.4, color=ACCENT)
+    group = manim.VGroup(path, twin, fork)
+    group.scale(size / max(group.height, 1e-6)).move_to(manim.ORIGIN)
+    group.path, group.twin, group.fork = path, twin, fork
+    fork.scale_to_fit_height(0.16)
+    return lock_layout(group)
+
+
+def sierpinski(depth=5, size=5.0, color=None, highlight=True):
+    """The Sierpinski triangle. With ``highlight`` its lower-left copy (the
+    whole pattern one level down) is ``.corner`` in ACCENT; ``.rest`` is the
+    remainder. Every piece is one path, so depth 6 still renders fast."""
+    tone = ManimColor(color) if color is not None else PRIMARY
+    triangles = []
+
+    def split(a, b, c, level):
+        if level == 0:
+            triangles.append((a, b, c))
+            return
+        ab, bc, ca = (a + b) / 2, (b + c) / 2, (c + a) / 2
+        split(a, ab, ca, level - 1)
+        split(ab, b, bc, level - 1)
+        split(ca, bc, c, level - 1)
+
+    h = size * np.sqrt(3) / 2
+    left, right, top = np.array([-size / 2, -h / 2, 0]), np.array([size / 2, -h / 2, 0]), np.array([0, h / 2, 0])
+    split(left, right, top, int(max(1, min(depth, 7))))
+    third = len(triangles) // 3
+    def path(tris, colour, opacity):
+        mob = manim.VMobject()
+        for tri in tris:
+            mob.start_new_path(tri[0])
+            mob.add_points_as_corners([tri[1], tri[2], tri[0]])
+        return mob.set_fill(colour, opacity).set_stroke(width=0)
+    corner = path(triangles[:third], ACCENT if highlight else tone, 0.95 if highlight else 0.85)
+    rest = path(triangles[third:], tone, 0.85)
+    group = manim.VGroup(rest, corner)
+    # Never name a part "copy" or "split": those are Mobject methods.
+    group.corner, group.rest = corner, rest
+    return lock_layout(group)
+
+
+def koch(depth=4, size=5.0, color=None):
+    """The Koch snowflake: finite area, endless edge. ``.edge`` is one
+    first-generation spike in ACCENT; ``koch(d)`` for d = 0..5 morph cleanly
+    into each other with Transform."""
+    tone = ManimColor(color) if color is not None else PRIMARY
+    radius = size / 2
+
+    def refine(points):
+        out = []
+        for p, q in zip(points, points[1:]):
+            d = (q - p) / 3
+            peak = p + d * 1.5 + np.array([-d[1], d[0], 0.0]) * np.sqrt(3) / 2
+            out += [p, p + d, peak, p + 2 * d]
+        return out + [points[-1]]
+
+    corners = [radius * np.array([np.cos(a), np.sin(a), 0.0]) for a in (np.pi / 2, np.pi / 2 - 2 * np.pi / 3, np.pi / 2 + 2 * np.pi / 3)]
+    sides = []
+    for k in range(3):
+        side = [corners[k], corners[(k + 1) % 3]]
+        for _ in range(int(max(0, min(depth, 6)))):
+            side = refine(side)
+        sides.append(side)
+    outline = [p for side in sides for p in side[:-1]]
+    flake = manim.Polygon(*outline).set_stroke(tone, 3).set_fill(tone, 0.15)
+    first = sides[0]
+    edge = manim.VMobject().set_points_as_corners(first[len(first) // 4:len(first) // 2 + 1]).set_stroke(ACCENT, 6)
+    group = manim.VGroup(flake, edge)
+    group.flake, group.edge = flake, edge
+    return lock_layout(group)
+
+
+def fractal_tree(depth=9, size=5.0, angle=0.42, shrink=0.72, color=None):
+    """A recursive binary tree; ``.path`` is one root-to-leaf route in ACCENT,
+    ``.levels[k]`` the branches at depth k (reveal level by level)."""
+    tone = ManimColor(color) if color is not None else PRIMARY
+    depth = int(max(1, min(depth, 11)))
+    levels = [manim.VMobject() for _ in range(depth + 1)]
+    route = manim.VMobject()
+
+    def grow(start, heading, length, level, on_route):
+        end = start + length * np.array([np.cos(heading), np.sin(heading), 0.0])
+        target = route if on_route else levels[depth - level]
+        target.start_new_path(start)
+        target.add_line_to(end)
+        if level:
+            grow(end, heading + angle, length * shrink, level - 1, on_route)
+            grow(end, heading - angle, length * shrink, level - 1, False)
+
+    grow(np.array([0.0, -size / 2, 0.0]), np.pi / 2, size * 0.3, depth, True)
+    for k, level in enumerate(levels):
+        level.set_stroke(tone, max(1.0, 6 - 0.5 * k), 0.5 + 0.5 * (1 - k / depth))
+    route.set_stroke(ACCENT, 4)
+    group = manim.VGroup(*[level for level in levels if len(level.points)], route)
+    group.levels, group.path = [level for level in levels if len(level.points)], route
+    return lock_layout(group)
+
+
+__all__ += [
+    "strike", "correct", "point_at", "big_number", "golden_spiral", "prime_spiral",
+    "lorenz", "sierpinski", "koch", "fractal_tree",
+]
