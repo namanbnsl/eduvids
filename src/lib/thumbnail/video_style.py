@@ -1170,6 +1170,14 @@ def _obstacles(scene, skip, region):
             lo, hi = displayed.min(axis=0), displayed.max(axis=0)
             if not near(lo, hi):
                 continue
+            if isinstance(mob, Crowd) and mob._stride and mob.get_fill_opacity() > 0.05:
+                # One filled path of many small members, unstroked: each
+                # member is in the way, the gaps between them are not.
+                items = mob._items(displayed)
+                item_lo, item_hi = items.min(axis=1)[:, :2], items.max(axis=1)[:, :2]
+                close = ~((item_hi[:, 0] < x0) | (item_lo[:, 0] > x1) | (item_hi[:, 1] < y0) | (item_lo[:, 1] > y1))
+                boxes.extend(np.hstack([item_lo, item_hi])[close])
+                continue
             if mob.get_stroke_width() > 0 and mob.get_stroke_opacity() > 0.05:
                 samples = _stroke_samples(mob, scene.camera)
                 if samples is not None:
@@ -1290,11 +1298,13 @@ def _label_units(mob, scene):
         yield from _label_units(sub, scene)
 
 
-def _arrange_units(scene, incoming, leaving=()):
+def _arrange_units(scene, incoming, leaving=(), moving=()):
     # Make all incoming geometry and labels visible to the collision search
     # before positioning the first label, even within the same play()/add().
+    # Where moving objects end up is in the way too: dots stretched across a
+    # box in the same play() would otherwise slide under a new caption.
     original = list(scene.mobjects)
-    scene.mobjects = original + [mob for mob in incoming if mob not in original]
+    scene.mobjects = original + [mob for mob in [*incoming, *moving] if mob not in original]
     try:
         skip = _family_ids(leaving)
         if isinstance(scene.camera, ThreeDCamera):
@@ -1309,10 +1319,31 @@ def _arrange_units(scene, incoming, leaving=()):
         scene.mobjects = original
 
 
+_BUILDER = getattr(manim.mobject.mobject, "_AnimationBuilder", ())
+
+
+def _moving_target(anim, on_screen):
+    """The end state of an on-screen object that this animation moves
+    (``mob.animate``, MoveToTarget), or None."""
+    if isinstance(anim, _BUILDER):
+        mob, target = anim.mobject, getattr(anim.mobject, "target", None)
+    elif isinstance(anim, manim.Transform) and type(anim).__name__ not in _REPLACING:
+        mob, target = anim.mobject, getattr(anim, "target_mobject", None)
+    else:
+        return None
+    if target is None or id(mob) not in on_screen or target is mob or _is_label(mob):
+        return None
+    return target
+
+
 def _arrange_incoming(scene, animations):
     on_screen = _family_ids(scene.mobjects)
     leaving, incoming = [], []
+    moving = [target for target in (_moving_target(anim, on_screen) for anim in animations) if target is not None]
     for anim in _walk(animations):
+        target = _moving_target(anim, on_screen)
+        if target is not None and target not in moving:
+            moving.append(target)
         name = type(anim).__name__
         mob = getattr(anim, "mobject", None)
         if isinstance(anim, manim.AnimationGroup) and name not in _REPLACING:
@@ -1327,7 +1358,7 @@ def _arrange_incoming(scene, animations):
                 incoming.append(target)
         elif mob is not None and id(mob) not in on_screen and not name.startswith(_LEAVING):
             incoming.append(mob)
-    _arrange_units(scene, incoming, leaving)
+    _arrange_units(scene, incoming, leaving, moving)
 
 
 _play = manim.Scene.play
@@ -3395,11 +3426,16 @@ def _rk4(step, state, dt, count):
     return np.array(states)
 
 
-def lorenz(steps=6000, nudge=1e-5, size=5.0, color=None, twin_color=None):
+def lorenz(steps=6000, nudge=1e-5, size=5.0, color=None, twin_color=None, three_d=False):
     """The Lorenz butterfly from two starts ``nudge`` apart. ``.path`` is the
     first trajectory, ``.twin`` the second from the moment they part, and
     ``.fork`` the point where that happens. Create(.path) then Create(.twin)
-    shows "the same, the same, then nothing alike"."""
+    shows "the same, the same, then nothing alike".
+
+    By default it is the classic flat (x, z) butterfly for a 2D scene. With
+    ``three_d=True`` the same trajectories keep their depth for a ThreeDScene:
+    the attractor is centred on the origin with its longest side ``size``,
+    so fit it with place_3d_in_content instead of drawing ThreeDAxes."""
     def field(v):
         x, y, z = v
         return np.array([10 * (y - x), x * (28 - z) - y, x * y - 8 / 3 * z])
@@ -3407,14 +3443,20 @@ def lorenz(steps=6000, nudge=1e-5, size=5.0, color=None, twin_color=None):
     a = _rk4(field, [1.0, 1.0, 1.0], 0.005, steps)
     b = _rk4(field, [1.0 + nudge, 1.0, 1.0], 0.005, steps)
     apart = int(np.argmax(np.linalg.norm(a - b, axis=1) > 0.5)) or steps // 2
-    project = lambda v: np.array([v[0], v[2] - 25, 0.0])
+    if three_d:
+        project = lambda v: np.array([v[0], v[1], v[2] - 25])
+    else:
+        project = lambda v: np.array([v[0], v[2] - 25, 0.0])
     path = manim.VMobject().set_points_as_corners([project(v) for v in a[300::2]])
     path.set_stroke(ManimColor(color) if color is not None else PRIMARY, 2.2, 0.8)
     twin = manim.VMobject().set_points_as_corners([project(v) for v in b[apart:apart + 900:2]])
     twin.set_stroke(ManimColor(twin_color) if twin_color is not None else ACCENT, 4.5)
-    fork = manim.Dot(project(b[apart]), radius=0.4, color=ACCENT)
+    # A flat disc turns edge-on as the camera moves; a sphere stays round.
+    dot = manim.Dot3D if three_d else manim.Dot
+    fork = dot(project(b[apart]), radius=0.4, color=ACCENT)
     group = manim.VGroup(path, twin, fork)
-    group.scale(size / max(group.height, 1e-6)).move_to(manim.ORIGIN)
+    extent = max(group.width, group.height, group.depth) if three_d else group.height
+    group.scale(size / max(extent, 1e-6)).move_to(manim.ORIGIN)
     group.path, group.twin, group.fork = path, twin, fork
     fork.scale_to_fit_height(0.16)
     return lock_layout(group)

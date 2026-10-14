@@ -193,7 +193,7 @@ VISUAL DEVICES — name one in "visualDevice" for every scene. The animator has 
 - "big_number": one giant figure fills the frame as the hero of the beat (67%, 23 people, 1/3), with the intuitive wrong figure small above it and struck out.
 - "point_at": a short phrase ("this part", "why?", "still 1") with a curved ACCENT arrow to the single surprising detail of the picture.
 Use devices purposefully: the opening scene should use the most striking device the topic allows (usually zoom_journey, population, to_scale, timeline or predict_reveal). Avoid using the same device in more than two consecutive scenes. Plain "build_up" should be the minority.
-Signature visuals are available and render exactly, so plan them whenever the topic is truly about them: golden_spiral (Fibonacci squares under the golden spiral), prime_spiral (every prime p at radius p and angle p, falling into spiral arms), lorenz (the butterfly attractor with two starts a hair apart), sierpinski, koch (snowflake: endless edge, finite area), fractal_tree.
+Signature visuals are available and render exactly, so plan them whenever the topic is truly about them: golden_spiral (Fibonacci squares under the golden spiral), prime_spiral (every prime p at radius p and angle p, falling into spiral arms), lorenz (the butterfly attractor with two starts a hair apart), sierpinski, koch (snowflake: endless edge, finite area), fractal_tree. Plan each as a "prop" element named after it ("lorenz", in 2D or 3D); never plan a hand-built stand-in such as an attractor drawn as a surface, a few ellipses or a curve on bare 3D axes.
 Recognisable props are available, so plan them instead of abstract boxes: atom (Bohr model with any number of protons, neutrons and electrons), molecule (ball-and-stick from element symbols), person (icon for populations), die, cell (animal cell with nucleus and organelles), block (a labelled unit), balance, plus crowds of any of them.
 Honesty: a picture can be schematic, but quoted magnitudes must be real. When a zoom compresses scale, use a scale bar ("1 mm" → "1 nm") and say the real number in narration.
 
@@ -502,7 +502,7 @@ MOTION THAT HOLDS ATTENTION
 VISUAL DEVICES (each scene-plan entry names one in "visualDevice"; follow its "storyboard")
 ═══════════════════════════════════════════════════════════════════════════════
 
-These helpers make the device-driven scenes cheap to write and fast to render. All are 2D-scene helpers (not for ThreeDScene).
+These helpers make the device-driven scenes cheap to write and fast to render. All are 2D-scene helpers (not for ThreeDScene), except lorenz(three_d=True).
 
 zoom_journey — a population first, then one member, then inside it:
   lattice = crowd(2000)                                  # ONE path of 2000 dots filling the content area (landscape or portrait); item="person"|"square"|"dot"
@@ -632,6 +632,8 @@ signature visuals — exact, striking heroes (each is one VGroup with named part
   spiral = prime_spiral(); place_in_content(spiral, above=title, fill=0.9); self.play(FadeIn(spiral.dots)); self.play(FadeIn(spiral.arm))
   g = golden_spiral(); self.play(FadeIn(g.squares), FadeIn(g.labels)); self.play(Create(g.spiral), run_time=2)
   storm = lorenz(); self.play(Create(storm.path), run_time=3); self.play(Create(storm.twin), pop_in(storm.fork))   # .fork is where the two starts part
+  In a ThreeDScene: storm = lorenz(three_d=True); place_3d_in_content(self, storm, above=title, orbit=20 * DEGREES); then the same Create calls. It is centred and sized for you: do not add ThreeDAxes or scale it by hand.
+  Never rebuild a signature visual yourself: no stepping the Lorenz equations in a loop, no ellipses, spirals or surfaces standing in for an attractor. The helpers are exact; a hand-made one looks wrong and can run off the frame.
   sierpinski(depth=5) has .corner (a smaller copy, in ACCENT) and .rest; koch(depth) for depth 0-5 morphs with Transform and has .edge; fractal_tree(depth) has .levels to reveal one by one and .path in ACCENT.
 
 particles — temperature as speed: box = gas(60, 4, 3, speed=1.0); self.add(box); box.particles.set_speed(2.5) heats it; box.particles.stop() before a still hold.

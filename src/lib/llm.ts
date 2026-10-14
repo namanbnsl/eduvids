@@ -16,6 +16,7 @@ import {
 import { queryManimDocs } from "./deepwiki";
 
 import { jsonrepair } from "jsonrepair";
+import { protectLatexBackslashes } from "./latex-json";
 import { franc } from "franc";
 import { VIDEO_BACKGROUND } from "./video-style";
 import {
@@ -900,6 +901,13 @@ export function scenePlanVisualGaps(scenePlan: ScenePlanEntry[]): string[] {
         `${scene.sceneId}: no visual device was planned. Pick the clearest one for this idea from the system prompt's devices.`,
       );
     }
+    const pictured = [
+      scene.storyboard ?? "",
+      ...elements.map((element) => `${element.content ?? ""}`),
+    ].join(" ");
+    for (const [pattern, helper] of SIGNATURE_VISUALS) {
+      if (pattern.test(pictured)) notes.push(`${scene.sceneId}: ${helper}`);
+    }
     const previous = scenePlan[index - 1]?.visualDevice?.trim();
     run = device && device === previous ? run + 1 : 1;
     if (run === 3) {
@@ -928,6 +936,30 @@ export function scenePlanVisualGaps(scenePlan: ScenePlanEntry[]): string[] {
   }
   return notes;
 }
+
+// Pictures the house style draws exactly. A hand-built version (the Lorenz
+// equations stepped in a loop, a few ellipses, a ribbon surface, a curve in
+// raw units on tiny ThreeDAxes) looks wrong and can run off the frame.
+const SIGNATURE_VISUALS: Array<[RegExp, string]> = [
+  [
+    /\battractor\b|\bbutterfly\b|\blorenz\b(?!['’]?s?\s+(?:equations?|system|model))/i,
+    "draw the Lorenz attractor with lorenz() (in a ThreeDScene: lorenz(three_d=True), fitted with place_3d_in_content, no ThreeDAxes). Never integrate the equations yourself or stand in ellipses, spirals or a surface for it.",
+  ],
+  [
+    /golden (?:spiral|rectangle)|fibonacci spiral/i,
+    "draw it with golden_spiral() instead of building the squares and arcs by hand.",
+  ],
+  [
+    /prime spiral|ulam spiral|primes? in polar/i,
+    "draw it with prime_spiral() instead of placing primes by hand.",
+  ],
+  [/sierpi[nń]ski/i, "draw it with sierpinski() instead of recursing by hand."],
+  [/\bkoch\b|snowflake/i, "draw it with koch() instead of recursing by hand."],
+  [
+    /fractal tree/i,
+    "draw it with fractal_tree() instead of recursing by hand.",
+  ],
+];
 
 const ENGAGEMENT_DEVICES = new Set([
   "correction",
@@ -978,10 +1010,13 @@ export async function generateScenePlan({
         googleModel,
       );
 
-      const cleaned = text
-        .replace(/```json?\n?/g, "")
-        .replace(/```\n?/g, "")
-        .trim();
+      // Keep "\theta" and "\infty" in formulas: JSON would read a tab or drop the backslash.
+      const cleaned = protectLatexBackslashes(
+        text
+          .replace(/```json?\n?/g, "")
+          .replace(/```\n?/g, "")
+          .trim(),
+      );
 
       // Try strict parse first, then repair truncated/malformed JSON
       let parsed: ScenePlanEntry[];

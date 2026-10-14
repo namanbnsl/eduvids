@@ -1,4 +1,5 @@
 import { jsonrepair } from "jsonrepair";
+import { LATEX_COMMANDS, protectLatexBackslashes } from "./latex-json";
 
 const TITLE_LIMIT = 80;
 const TITLE_MINIMUM = 20;
@@ -160,23 +161,12 @@ export function sanitizeThumbnailPlotExpression(value: unknown): string {
   return parseExpression() && cursor === tokenList.length ? expression : "";
 }
 
-const LATEX_COMMANDS = new Set(
-  (
-    "frac dfrac tfrac sqrt int iint oint sum prod lim infty partial nabla cdot cdots ldots " +
-    "times div pm mp mid le leq ge geq ne neq approx equiv sim simeq propto to rightarrow leftarrow " +
-    "Rightarrow iff mapsto in notin subset subseteq cup cap forall exists emptyset vec hat bar dot " +
-    "ddot tilde overline mathbf mathbb mathrm mathcal operatorname text left right big Big langle " +
-    "rangle lfloor rfloor lceil rceil sin cos tan log ln exp det max min hl quad qquad imath jmath " +
-    "ell hbar prime circ degree angle triangle perp parallel binom alpha beta gamma Gamma delta " +
-    "Delta epsilon varepsilon zeta eta theta Theta vartheta iota kappa lambda Lambda mu nu xi Xi " +
-    "pi Pi rho sigma Sigma tau upsilon phi Phi varphi chi psi Psi omega Omega"
-  ).split(" "),
-);
-
 /** Conservative LaTeX subset for thumbnails: math only, no file or macro access. */
 export function sanitizeThumbnailLatex(value: unknown): string {
-  if (typeof value !== "string") return "";
-  const latex = value.trim();
+  // A tab or form feed here is a "\theta" or "\frac" that lost its backslash.
+  if (typeof value !== "string" || /[\u0000-\u001f]/.test(value)) return "";
+  // "\\infty" is a line break before the letters "infty", never meant.
+  const latex = value.trim().replace(/\\{2,}(?=[A-Za-z])/g, "\\");
   if (!latex || latex.length > 90 || /[#%~`"@$]|\^\^/.test(latex)) return "";
   for (const [, command] of latex.matchAll(/\\([A-Za-z]+)/g)) {
     if (!LATEX_COMMANDS.has(command!)) return "";
@@ -530,7 +520,9 @@ function parseCandidateArray(raw: string): unknown[] {
   // The packaging prompt brainstorms first: {"ideas": [...], "packages": [...]}.
   if (withoutFences.startsWith("{")) {
     try {
-      const parsed = JSON.parse(jsonrepair(withoutFences)) as unknown;
+      const parsed = JSON.parse(
+        jsonrepair(protectLatexBackslashes(withoutFences)),
+      ) as unknown;
       const packages =
         parsed && typeof parsed === "object"
           ? (parsed as Record<string, unknown>).packages
@@ -544,7 +536,9 @@ function parseCandidateArray(raw: string): unknown[] {
 
   if (arrayMatch) {
     try {
-      const parsed = JSON.parse(jsonrepair(arrayMatch[0]));
+      const parsed = JSON.parse(
+        jsonrepair(protectLatexBackslashes(arrayMatch[0])),
+      );
       if (Array.isArray(parsed)) {
         return parsed;
       }
@@ -738,10 +732,9 @@ export function parseVideoDescriptionPackage(
   const objectMatch = text.match(/\{[\s\S]*\}/);
   if (objectMatch) {
     try {
-      const parsed = JSON.parse(jsonrepair(objectMatch[0])) as Record<
-        string,
-        unknown
-      >;
+      const parsed = JSON.parse(
+        jsonrepair(protectLatexBackslashes(objectMatch[0])),
+      ) as Record<string, unknown>;
       const hookLines = (
         Array.isArray(parsed.hook) ? parsed.hook : [parsed.hook]
       )
