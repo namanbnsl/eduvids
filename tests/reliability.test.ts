@@ -28,6 +28,7 @@ import {
 } from "../src/lib/llm";
 import {
   injectEduvidsCallout,
+  injectSceneFadeOut,
   renderThumbnailCandidates,
 } from "../src/lib/e2b";
 import {
@@ -771,6 +772,54 @@ class Last(Scene):
     // The end card uses the house typography, not a hard-coded font.
     assert.doesNotMatch(enhanced, /font=/);
     assert.match(enhanced, /balanced_text\(/);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("scene fade-out and outro land after construct's last statement, not inside it", async () => {
+  // Valid Python that continues a call, a string or a line at a shallower
+  // indent than construct's body; the injectors once read those lines as the
+  // end of construct and spliced their code into the open call.
+  const tails = [
+    ['        eq = MathTex(', 'r"x^2"', "        )"],
+    ['        note = Text("""first line', 'second line""")'],
+    ["        total = 1 + \\", "2"],
+    ["        steps = [", "    1,", "# a comment at column 0", "        ]"],
+    ["        self.play(Wait(1))", "# a comment at column 0", "        self.wait(1)"],
+  ];
+  const folder = await mkdtemp(join(tmpdir(), "eduvids-inject-"));
+  try {
+    for (const [index, tail] of tails.entries()) {
+      const source = [
+        "from manim import *",
+        "class First(Scene):",
+        "    def construct(self):",
+        ...tail,
+        "",
+        "class Last(Scene):",
+        "    def construct(self):",
+        ...tail,
+        "",
+      ].join("\n");
+      const enhanced = injectEduvidsCallout(injectSceneFadeOut(source));
+      const script = join(folder, `case${index}.py`);
+      await writeFile(script, enhanced);
+      // Each construct still holds its own statements, then the fade-out
+      // (ending in self.wait(0.25)); the last one then plays the outro.
+      const { stdout } = await exec("python3", [
+        "-c",
+        `import ast, sys
+tree = ast.parse(open(sys.argv[1]).read())
+for cls in tree.body[1:]:
+    body = cls.body[0].body
+    print(cls.name, [type(node).__name__ for node in body], ast.unparse(body[-1])[:30])`,
+        script,
+      ]);
+      const [first, last] = stdout.trim().split("\n");
+      assert.match(first!, /^First .*'If', 'Expr'\] self\.wait\(0\.25\)$/, `case ${index}\n${enhanced}`);
+      assert.match(last!, /^Last .*'If', 'Expr', .*'With'\] with self\.voiceover/, `case ${index}\n${enhanced}`);
+    }
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
