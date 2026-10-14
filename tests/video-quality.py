@@ -126,6 +126,18 @@ class VideoQualityTests(unittest.TestCase):
         self.assertEqual(len(lit), 2)  # Cairo interpolates light across the patch.
         self.assertTrue(np.isfinite(lit).all())
 
+    def test_zero_length_holds_render_nothing_instead_of_failing(self):
+        # A beat's closing wait(max(0, tracker.get_remaining_duration())) is 0
+        # when the animations outlast the narration; Manim 0.22 raises on it.
+        scene = Scene()
+        for hold in (scene.wait, scene.pause):
+            self.assertIsNone(hold(0))
+            self.assertIsNone(hold(-0.2))
+        if hasattr(Scene, "validate_run_time"):  # Manim >= 0.22; older ones play 0 frames
+            self.assertEqual(scene.renderer.num_plays, 0)
+            self.assertAlmostEqual(Scene.validate_run_time(0, scene.play), 1 / config.frame_rate)
+            self.assertEqual(Scene.validate_run_time(2, scene.play), 2)
+
     def test_intermediate_movie_keeps_the_quality_profile(self):
         from manim.scene.scene_file_writer import SceneFileWriter
 

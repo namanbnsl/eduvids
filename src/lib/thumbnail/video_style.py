@@ -1356,6 +1356,39 @@ if not getattr(_play, "__eduvids_guard__", False):
     manim.Scene.add = _guarded_add
 
 # ---------------------------------------------------------------------------
+# Zero-length holds: a beat ends with self.wait(max(0, tracker.get_remaining_
+# duration())), which is 0 when the animations outlasted the narration. Manim
+# < 0.22 rendered no frames for it; 0.22 raises ValueError for any duration
+# <= 0 (Scene.validate_run_time). Keep the old behaviour: such a wait or pause
+# is skipped, and any other zero-length run (play(..., run_time=0)) lasts one
+# frame, as Manim already does for runs shorter than a frame.
+# ---------------------------------------------------------------------------
+
+_validate_run_time = getattr(manim.Scene, "validate_run_time", None)
+if _validate_run_time is not None and not getattr(manim.Scene.wait, "__eduvids_zero__", False):
+    _wait, _pause = manim.Scene.wait, manim.Scene.pause
+
+    def _wait_unless_zero(self, duration=manim.DEFAULT_WAIT_TIME, *args, **kwargs):
+        if duration <= 0 and not args and kwargs.get("stop_condition") is None:
+            return None
+        return _wait(self, duration, *args, **kwargs)
+
+    def _pause_unless_zero(self, duration=manim.DEFAULT_WAIT_TIME):
+        if duration <= 0:
+            return None
+        return _pause(self, duration)
+
+    def _one_frame_at_least(cls, run_time, *args, **kwargs):
+        if run_time <= 0:
+            run_time = 1 / config.frame_rate
+        return _validate_run_time.__func__(cls, run_time, *args, **kwargs)
+
+    _wait_unless_zero.__eduvids_zero__ = True
+    manim.Scene.wait = _wait_unless_zero
+    manim.Scene.pause = _pause_unless_zero
+    manim.Scene.validate_run_time = classmethod(_one_frame_at_least)
+
+# ---------------------------------------------------------------------------
 # Encoding: retain thin typography and gradients in Manim's intermediate
 # movies. PyAV opens the codec lazily on its first frame, so set its quality
 # after the stream is created and before any frame is written.
@@ -1659,7 +1692,9 @@ _VOICEOVER_TEXT_METHOD = (
     "_add_voiceover_text" if hasattr(_VoiceoverScene, "_add_voiceover_text") else "add_voiceover_text"
 )
 
-if _VoiceoverScene is not None and not getattr(
+# (A stand-in VoiceoverScene with neither, as in offline review renders, is
+# left alone.)
+if hasattr(_VoiceoverScene, _VOICEOVER_TEXT_METHOD) and not getattr(
     getattr(_VoiceoverScene, _VOICEOVER_TEXT_METHOD), "__eduvids_lead__", False
 ):
     _add_voiceover_text = getattr(_VoiceoverScene, _VOICEOVER_TEXT_METHOD)
