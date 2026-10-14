@@ -243,6 +243,7 @@ GENERAL PRINCIPLES:
 - Break complex ideas into multiple scenes with progressive reveals rather than one cluttered scene.
 - Narration should be clear, conversational, and perfectly synced with what appears on screen.
 - Keep thumbnail-worthy key frames in mind: each major section should culminate in one crisp composition that communicates the insight at a glance.
+- When several graphs share a scene, give each its own colour role (PRIMARY, SECONDARY, TERTIARY) and give its equation the same role.
 - Every plotted graph must identify its exact function and useful domain in element.content. Curves, intercepts, extrema, asymptotes, shaded regions, and labels must be mathematically consistent; never invent decorative data or a generic curve.
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -750,8 +751,9 @@ CRITICAL REQUIREMENTS
 11. Each scene is self-contained — no shared state between scene classes.
 12. 3D objects must NOT use checkerboard patterns. Surfaces are shaded by height in PRIMARY automatically; to use another role, call shade_surface(surface, SECONDARY). Never pass two different checkerboard_colors.
 13. Use bounded camera motion in 3D scenes when it reveals structure: pass the total planned orbit to place_3d_in_content, then use move_camera for a 10-20 degree move timed to narration. Prefer FadeIn(surface) over Create(surface), which reveals thousands of patches piecemeal. Use solid fill_opacity=1 for opaque surfaces; reserve transparency for a specific teaching reason.
-14. In 3D scenes use fixed_overlay(self, title, formula, notes) for screen text before its reveal. This registers overlays without showing them early. For labels attached to axes/vectors, use self.camera.add_fixed_orientation_mobjects(label) before revealing them; these face the viewer while tracking world coordinates. Do NOT use .fix_in_frame(). Keep world labels outside the silhouette throughout the planned camera move.
+14. In 3D scenes use fixed_overlay(self, title, formula, notes) for screen text before its reveal. This registers overlays without showing them early. For labels attached to axes/vectors, use self.camera.add_fixed_orientation_mobjects(label) before revealing them; these face the viewer while tracking world coordinates. Do NOT use .fix_in_frame(). Keep world labels outside the silhouette throughout the planned camera move. Every Text and MathTex in a 3D scene is one or the other: never leave text in world space, where it lies flat and turns edge-on as the camera moves. (Any text you miss is fixed for you: screen text in the frame, text beside the 3D picture facing the viewer.)
 15. Graphs are computed mathematics, not illustrations. The lambda passed to axes.plot must exactly match the displayed formula and scene-plan expression. Choose axes ranges that show the relevant behavior, and place intercepts, tangent points, extrema, asymptotes, and shaded regions from the same function rather than by eye.
+16. When a scene shows more than one curve or surface at once, give each its own role colour (PRIMARY, then SECONDARY, then TERTIARY) and colour its equation and label to match, so the viewer can tell which formula is which curve. Never draw two graphs in the same colour. (A second graph in a colour already on screen is recoloured to the next free role automatically, with the label sitting on it, but a formula elsewhere is not.)
 
 ═══════════════════════════════════════════════════════════════════════════════
 ERROR PREVENTION

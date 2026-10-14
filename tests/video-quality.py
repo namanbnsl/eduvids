@@ -154,6 +154,48 @@ class VideoQualityTests(unittest.TestCase):
             self.assertGreater(points[:, 1].min(), -config.frame_height / 2 + 0.4)
             self.assertLess(np.abs(points[:, 0]).max(), config.frame_width / 2 - 0.4)
 
+    def test_forgotten_3d_text_faces_the_viewer(self):
+        scene = ThreeDScene()
+        scene.set_camera_orientation(phi=70 * DEGREES, theta=-45 * DEGREES)
+        camera = scene.camera
+        title = Text("A saddle surface", font_size=48).to_corner(UL)
+        axes = ThreeDAxes(x_range=[-2, 2, 1], y_range=[-2, 2, 1], z_range=[-2, 2, 1],
+                          x_length=4, y_length=4, z_length=3, axis_config={"include_numbers": True})
+        tag = MathTex(r"(1.5, 0)", font_size=32).move_to(axes.c2p(1.5, 0, 1.6))
+        beside = MathTex("P", font_size=32).next_to(axes.c2p(2, 0, 0), RIGHT, buff=0.1)
+        scene.add(axes, title, tag, beside)
+        def parts(mob):
+            return mob.family_members_with_points()
+        self.assertTrue(all(part in camera.fixed_in_frame_mobjects for part in parts(title)))
+        for attached in (tag, beside, axes.x_axis.numbers):
+            self.assertTrue(all(part in camera.fixed_orientation_mobjects for part in parts(attached)))
+            self.assertFalse(any(part in camera.fixed_in_frame_mobjects for part in parts(attached)))
+        # The script's own choice wins, even after the guard guessed.
+        scene.add_fixed_orientation_mobjects(title)
+        self.assertFalse(any(part in camera.fixed_in_frame_mobjects for part in parts(title)))
+        scene.add_fixed_in_frame_mobjects(tag)
+        self.assertFalse(any(part in camera.fixed_orientation_mobjects for part in parts(tag)))
+
+    def test_a_second_graph_takes_its_own_colour(self):
+        scene = Scene()
+        axes = Axes(x_range=[-3, 3, 1], y_range=[-1, 9, 2], x_length=7, y_length=5)
+        f = axes.plot(lambda x: x ** 2, color=PRIMARY)
+        g = axes.plot(lambda x: 2 * x + 3, color=PRIMARY)
+        g_label = axes.get_graph_label(g, "2x+3", x_val=-2)
+        scene.add(axes, f)
+        style._arrange_incoming(scene, [Create(g), Write(g_label)])
+        self.assertEqual(f.get_color().to_hex(), PRIMARY.to_hex())
+        self.assertNotEqual(g.get_color().to_hex(), PRIMARY.to_hex())
+        self.assertEqual(g_label.get_color().to_hex(), g.get_color().to_hex())
+        # Morphing one curve into another is not a second curve.
+        h = axes.plot(lambda x: x ** 2 / 2, color=PRIMARY)
+        style._arrange_incoming(scene, [Transform(f, h)])
+        self.assertEqual(h.get_color().to_hex(), PRIMARY.to_hex())
+        # Nor is a faint ghost of an earlier state.
+        old = ghost(f)
+        style._arrange_incoming(scene, [FadeIn(old)])
+        self.assertEqual(old.get_stroke_color().to_hex(), f.get_stroke_color().to_hex())
+
     def test_surface_has_no_contrasting_patch_grid_and_lighting_rotates(self):
         scene = ThreeDScene()
         surface = Surface(lambda u, v: [u, v, u*v], resolution=(12, 12))
