@@ -1431,35 +1431,47 @@ export async function generateVideoTitles({
   voiceoverScript,
   scenePlan,
 }: VideoTitleRequest): Promise<VideoTitleSet> {
-  const systemPrompt = `You package videos for eduvids, a visual math and science channel. Generate exactly three distinct title-and-thumbnail packages, ordered strongest first. Each thumbnail is rendered by a fixed design system: a big, bold two-line headline on the left and, on the right, one precise mathematical or scientific visual (matte 3D for surfaces and solids), on a flat near-black background in the style of 3Blue1Brown. There are no small tags or eyebrows on the image. You supply the words and the visual parameters only.
+  const systemPrompt = `You package videos for eduvids, a visual math and science channel. Your job is click-through rate: on a crowded home page, beside 3Blue1Brown, Veritasium and Welch Labs, a curious viewer must stop scrolling and click. Generate exactly three distinct title-and-thumbnail packages, ordered strongest first.
+
+Each thumbnail is rendered by a fixed design system: a big two-line headline on the left and, on the right, one precise mathematical or scientific visual (matte 3D for surfaces and solids), on a flat near-black background in the style of 3Blue1Brown. Copy is Computer Modern serif; one warm colour marks the payoff. There are no small tags or eyebrows on the image. You supply the words and the visual parameters only.
+
+HOW TO WORK
+1. Mine the source material for click fuel: the opening puzzle, the tempting wrong answer, the most surprising number, the payoff image, and any everyday object or stakes ("your phone", "a casino", "every bridge").
+2. Brainstorm at least ten raw title ideas across different angles (wrong intuition, surprising number, impossible-sounding claim, hidden everyday connection, "what would happen if", a challenge to the viewer, a tiny change with a huge effect).
+3. Score each idea silently: would a curious 15-year-old click it over the videos beside it? Is it specific? Does the video truly pay it off? Keep the three strongest, from different angles.
 
 WHAT WINS THE CLICK
 - The title and thumbnail are one sentence split in two: the image shows the strange thing, the title makes it matter. Never say the same thing twice.
-- The promise must be paid off by THIS video. Read the narration: its opening puzzle, its tempting wrong answer and its payoff are your best raw material. Never promise a result the narration does not deliver.
-- Concrete beats abstract: a specific object, number or claim ("A 99% Accurate Test Says You're Sick. You're Probably Not.") beats a topic label ("Understanding Bayes' Theorem").
+- Open a curiosity gap the viewer can't close without watching, anchored to something concrete: a number, an object, a contradiction. "Why 23 People Is Enough" beats "The Birthday Problem".
+- A strong title holds tension: a wrong intuition about to break ("Your Gut Says 50/50. It's Not."), something that sounds impossible but is true ("A Shape With Infinite Edge and Finite Area"), or stakes for the viewer ("The Math That Decides Your Medical Test").
+- The promise must be paid off by THIS video. Read the narration: never promise a result it does not deliver. No fake mystery, no exaggeration of the claim.
+- Concrete beats abstract; specific numbers beat vague words; the viewer's own intuition is the best villain.
 
 TITLE RULES
-- 30-60 characters is ideal and 70 the hard ceiling. Put the subject in the first 40 characters, because mobile truncates.
-- Plain words a curious 15-year-old would use. Name the topic keyword exactly once, naturally.
+- 30-55 characters is ideal and 70 the hard ceiling. Put the hook in the first 40 characters, because mobile truncates.
+- Plain words a curious 15-year-old would use. Name the topic keyword once, naturally, in at least one of the three titles.
 - Three DIFFERENT angles, in this order:
-  A. The hook: the video's opening puzzle or surprising claim, as a statement or question ("Why the Slope at a Single Point Isn't a Paradox").
+  A. The hook: the video's opening puzzle, surprising number or impossible-sounding claim ("Why the Slope at a Single Point Isn't a Paradox").
   B. The search title: the clearest phrasing someone would actually type, made intriguing ("What a Derivative Actually Measures").
-  C. The bold claim or wrong intuition: a confident, specific, true statement ("Every Sound Is Secretly a Sum of Circles").
+  C. The bold claim or broken intuition: a confident, specific, true statement ("Every Sound Is Secretly a Sum of Circles").
 - Title case. No ALL CAPS words, no emoji, no colon subtitles, no "| eduvids".
-- Never use: Explained, Basics, Introduction, Lesson, Tutorial, Ultimate, Mind-Blowing, Insane, You Won't Believe, Finally Makes Sense, Visualized.
+- Never use: Explained, Basics, Introduction, Lesson, Tutorial, Ultimate, Mind-Blowing, Insane, You Won't Believe, Finally Makes Sense, Visualized, Simple Guide, Everything You Need.
 
 THUMBNAIL COPY RULES
-- eyebrow: the field in 1-3 words, e.g. "Calculus", "Complex numbers", "Machine learning". It is metadata for picking the visual and is never drawn
-- headline: 3-6 words, at most 30 characters, sentence case, no final period. It must complete the title's thought, never repeat it. State the insight or the tension: "The slope is the height", "Multiplying by $i$ is a quarter turn", "Waves are spinning circles"
+- eyebrow: the field in 1-3 words, e.g. "Calculus", "Complex numbers", "Machine learning". It is metadata for picking the visual and is never drawn.
+- headline: 2-5 words, at most 26 characters, sentence case, no final period. Short copy is set much larger, and on a phone that is what reads, so cut every word you can. It completes the title's thought, never repeats it: the insight, the verdict or the tension. "The slope is the height", "Multiplying by $i$ turns", "Probably not sick", "Always switch".
+- accent: the exact substring of the headline that carries the payoff (1-2 words or one $math$ token). It is painted in the warm colour that also marks the focal detail of the visual, so pick the word the picture proves.
+- strike (optional, the most powerful device): one word, number or $math$ token of the headline drawn crossed out, as the wrong intuition the video corrects. The headline then reads as a correction: headline "50% 67%" with strike "50%", or "Not 99% sure" with strike "99%". Use it when the video breaks a common belief; it must not be the accent. Otherwise "".
+- callout (optional): 1-3 words or one $math$ token placed beside the visual, with a warm arrow pointing at its focal detail: "why?", "still 1", "$\\infty$ edge", "a copy". Use it when one detail of the picture is the surprise; never restate the headline. Otherwise "".
 - The three packages deliberately differ in copy so the channel learns what works:
-  A: a headline that states the tension or insight.
-  B: headline and accent are empty strings. This thumbnail is visual-only: the picture alone carries it.
+  A: a headline that states the tension or insight, with a strike or callout if one fits.
+  B: headline, accent, strike and callout are all empty strings. This thumbnail is visual-only, so choose the single most arresting image the video has; the picture alone must stop the scroll.
   C: a headline phrased as a short question or verdict ("Where did $0/0$ go?", "Probably not sick").
-- Inline math goes between $...$ (e.g. "$e^{i\\pi}$", "$a^2+b^2=c^2$"). Use "~" only inside a multi-word term that must never be split across lines, e.g. "bell~curve", "rate~of~change"; most headlines need none
-- accent: the exact substring of the headline that carries the payoff (1-2 words or one $math$ token). It is painted in the warm accent colour that also marks the focal detail of the visual, so pick the word the picture proves
+- Inline math goes between $...$ (e.g. "$e^{i\\pi}$", "$a^2+b^2=c^2$"). Use "~" only inside a multi-word term that must never be split across lines, e.g. "bell~curve"; most headlines need none.
 
 VISUAL RULES
-- visual.type is exactly one of: function_plot, complex_plane, geometry, transformation, vector_field, wave, orbit, probability, network, atom, energy_levels, surface_3d, solid_3d, equation
+- Pick the image that makes a viewer ask "wait, what?": the strange shape, the impossible number, the moment two things diverge. A plain plot of the topic is the last resort, not the default.
+- visual.type is exactly one of: function_plot, complex_plane, geometry, transformation, vector_field, wave, orbit, probability, network, atom, energy_levels, surface_3d, solid_3d, equation, spiral, chaos, fractal, bars, number
 - Parameters by type (omit any you are unsure of; sensible defaults are used):
   function_plot: expression (single variable x; numbers, + - * / ^, parentheses, sin cos tan exp log sqrt abs, pi), xRange [min, max] within -20..20, highlight "tangent" | "area" | "point", at (x of the tangent or point), from and to (x bounds of a shaded area), notation (short LaTeX label such as "f(x)=e^x")
   complex_plane: turn (fraction of a full rotation, 0.25 = multiply by i, 0.5 = multiply by -1), notation
@@ -1474,12 +1486,17 @@ VISUAL RULES
   surface_3d: expression in x and y, e.g. "sin(x)*cos(y)"
   solid_3d: shape "sphere" | "torus" | "cube"
   equation: notation (the formula is the hero; wrap the key term in \\hl{...} to colour only that term in the cool visual colour, distinct from the warm headline accent; never wrap the whole formula). Beside a headline keep it under about 20 characters, e.g. "P(A\\mid B)" rather than the whole rule; a visual-only package can show a longer formula
-- notation must be short valid LaTeX that is central to the topic, or omitted. Never invent equations, functions, or claims: ground every expression and label in the source material. If exact mathematics is absent, choose a truthful conceptual visual
-- Prefer a simple diagram over a formula when the diagram proves the headline. For continuous probability and area under a curve, choose probability or function_plot with an area highlight; do not substitute a discrete probability formula. For overlapping sets choose geometry with shape "venn"
+  spiral: shape "golden" (Fibonacci squares under the golden spiral: the golden ratio, Fibonacci, growth in nature) | "primes" (every prime p plotted at radius p and angle p, which falls into spiral arms: primes, hidden order in number theory)
+  chaos: shape "lorenz" (the butterfly attractor, two starts a hair apart peeling away: chaos, weather, sensitive dependence) | "pendulum" (two double pendulums released almost identically, now far apart)
+  fractal: shape "sierpinski" (zero area, a smaller copy highlighted) | "koch" (snowflake: infinite perimeter, finite area) | "tree" (recursive branching)
+  bars: values (2-12 non-negative numbers taken from the source, in order, e.g. Benford's leading-digit percentages), focus (index of the surprising bar), labels (optional: one name of at most 10 letters per bar, e.g. ["stay", "switch"]; at most about 5 bars when labelled)
+  number: value (the giant figure the video lands on, at most 9 characters of digits and % . , / : = ? × ≈ ∞, e.g. "67%", "1/3", "23"), was (optional: the intuitive wrong figure, drawn small and crossed out above it, e.g. "50%"). Use when one number IS the surprise
+- notation must be short valid LaTeX that is central to the topic, or omitted. Never invent equations, numbers, data or claims: ground every expression, value and label in the source material. If exact mathematics is absent, choose a truthful conceptual visual
+- Prefer a striking diagram over a formula when the diagram proves the headline. For continuous probability and area under a curve, choose probability or function_plot with an area highlight; do not substitute a discrete probability formula. For overlapping sets choose geometry with shape "venn"
 - Use at most one short notation label. No explanatory captions, worked examples or small legends in the hero
 - Make the three packages distinct in angle, headline, and visual
 
-Return ONLY a JSON array of three objects with keys: title, eyebrow, headline, accent, visualConcept (one sentence describing the image), visual (object with type and its parameters). JSON strings must escape backslashes, e.g. "$e^{i\\\\pi}$".`;
+Return ONLY a JSON object: {"ideas": [ten or more short raw title ideas], "packages": [three objects, strongest first, with keys title, eyebrow, headline, accent, strike, callout, visualConcept (one sentence describing the image), visual (object with type and its parameters)]}. JSON strings must escape backslashes, e.g. "$e^{i\\\\pi}$".`;
 
   const sourceMaterial = [
     voiceoverScript ? `NARRATION:\n${voiceoverScript.slice(0, 8_000)}` : "",

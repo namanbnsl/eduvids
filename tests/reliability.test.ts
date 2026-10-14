@@ -857,6 +857,9 @@ test("thumbnail specs share one palette per video and keep each title's copy", (
     inferVisualType("chemical luminescence and quantum emission"),
     "energy_levels",
   );
+  assert.equal(inferVisualType("why prime numbers form spirals"), "spiral");
+  assert.equal(inferVisualType("the butterfly effect and weather"), "chaos");
+  assert.equal(inferVisualType("koch snowflake perimeter"), "fractal");
 
   // Every slot keeps its vetted diagram; video availability must not
   // replace the concept with a frame carrying tiny captions or other math.

@@ -1,0 +1,48 @@
+[
+  {
+    "title": "Glow Sticks Make Light With Zero Heat",
+    "palette": "teal-amber",
+    "headline": "No fire, just a fall",
+    "accent": "fall",
+    "callout": "one photon",
+    "visual": {"type": "energy_levels"}
+  },
+  {
+    "title": "A Probability Curve Can Be Taller Than 1",
+    "palette": "teal-amber",
+    "headline": "Height Area is chance",
+    "strike": "Height",
+    "accent": "Area",
+    "visual": {"type": "probability", "from": -1, "to": 1}
+  },
+  {
+    "title": "The Addition Mistake That Breaks Probability",
+    "palette": "teal-amber",
+    "headline": "Counted twice",
+    "accent": "twice",
+    "callout": "this part",
+    "visual": {"type": "geometry", "shape": "venn"}
+  },
+  {
+    "title": "Why Your Gut Gets the Monty Hall Problem Wrong",
+    "palette": "azure-coral",
+    "headline": "Always switch",
+    "accent": "switch",
+    "visual": {"type": "number", "value": "67%", "was": "50%"}
+  },
+  {
+    "title": "Why Do Prime Numbers Make These Spirals?",
+    "palette": "teal-amber",
+    "headline": "Primes aren't random",
+    "accent": "aren't random",
+    "callout": "why?",
+    "visual": {"type": "spiral", "shape": "primes"}
+  },
+  {
+    "title": "Two Identical Starts, Two Different Futures",
+    "palette": "azure-coral",
+    "headline": "Off by $10^{-5}$",
+    "accent": "$10^{-5}$",
+    "visual": {"type": "chaos", "shape": "lorenz"}
+  }
+]
