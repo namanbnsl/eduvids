@@ -10,7 +10,7 @@ adapter looks them up, so no provider is called.
 # Toolchain (Debian/Ubuntu); a venv keeps Manim off the system Python.
 apt-get install -y ffmpeg sox libsox-fmt-mp3 libcairo2-dev libpango1.0-dev pkg-config \
   texlive-xetex texlive-latex-extra texlive-science dvisvgm
-python3 -m venv ~/manim-venv && ~/manim-venv/bin/pip install "manim==0.20.*" manim-voiceover gtts
+python3 -m venv ~/manim-venv && ~/manim-venv/bin/pip install manim==0.22.0 manim-voiceover==0.4.0 gTTS==2.5.4  # as in the sandbox
 
 # `python` must be the venv's interpreter (a wrapper script, not a symlink,
 # so the venv is detected), and the house style must be importable.

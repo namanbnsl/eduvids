@@ -9,7 +9,7 @@ const cpuCount = Number(process.env.E2B_TEMPLATE_CPU_COUNT ?? 2)
 const memoryMB = Number(process.env.E2B_TEMPLATE_MEMORY_MB ?? 1024)
 
 async function main() {
-  await Template.build(template, 'manim20-ffmpeg-bookmarks-latest', {
+  await Template.build(template, 'eduvids-manim22', {
     cpuCount,
     memoryMB,
     onBuildLogs: defaultBuildLogger(),

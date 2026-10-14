@@ -30,6 +30,71 @@ let latexEnvironmentVerified = false;
 const CTA_MARKER = "# __EDUVIDS_CTA_INJECTED__";
 const SCENE_FADE_MARKER = "# __EDUVIDS_SCENE_FADE_OUT__";
 
+/**
+ * For each line, whether a new Python statement starts there: not inside
+ * brackets, a string or a backslash continuation. Generated scripts often
+ * continue a call or a triple-quoted string at a shallower indent, which is
+ * valid Python but must not be read as the end of an indented block.
+ */
+function statementStarts(lines: string[]): boolean[] {
+  const starts: boolean[] = [];
+  let depth = 0;
+  let quote: string | null = null; // delimiter of the open string, 1 or 3 quotes
+  let continued = false;
+  for (const line of lines) {
+    starts.push(depth === 0 && quote === null && !continued);
+    continued = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i]!;
+      if (quote !== null) {
+        if (char === "\\") {
+          i += 1;
+        } else if (line.startsWith(quote, i)) {
+          i += quote.length - 1;
+          quote = null;
+        }
+        continue;
+      }
+      if (char === "#") break;
+      if (char === "'" || char === '"') {
+        const triple = char.repeat(3);
+        quote = line.startsWith(triple, i) ? triple : char;
+        i += quote.length - 1;
+      } else if ("([{".includes(char)) {
+        depth += 1;
+      } else if (")]}".includes(char)) {
+        depth = Math.max(0, depth - 1);
+      } else if (char === "\\" && i === line.length - 1) {
+        continued = true;
+      }
+    }
+    // A single-quoted string cannot span lines (Python reports that itself);
+    // don't let one swallow the rest of the script.
+    if (quote?.length === 1) quote = null;
+  }
+  return starts;
+}
+
+/**
+ * Where the block opened by line headerIndex, with its body indented by
+ * bodyIndent, ends: the first statement indented less than the body, or the
+ * end of the script. Blank and comment-only lines never end a block.
+ */
+function blockEnd(
+  lines: string[],
+  starts: boolean[],
+  headerIndex: number,
+  bodyIndent: string,
+): number {
+  for (let k = headerIndex + 1; k < lines.length; k++) {
+    const trimmed = lines[k]?.trim() ?? "";
+    if (!trimmed.length || trimmed.startsWith("#") || !starts[k]) continue;
+    const indent = lines[k]?.match(/^\s*/)?.[0] ?? "";
+    if (indent.length < bodyIndent.length) return k;
+  }
+  return lines.length;
+}
+
 export function injectEduvidsCallout(
   script: string,
   previousVideo?: RelatedYouTubeVideo,
@@ -68,18 +133,12 @@ export function injectEduvidsCallout(
     break;
   }
 
-  let insertionIndex = lines.length;
-  for (let k = constructIndex + 1; k < lines.length; k++) {
-    const trimmed = lines[k]?.trim() ?? "";
-    if (!trimmed.length) {
-      continue;
-    }
-    const indent = lines[k]?.match(/^\s*/)?.[0] ?? "";
-    if (indent.length < bodyIndent.length) {
-      insertionIndex = k;
-      break;
-    }
-  }
+  const insertionIndex = blockEnd(
+    lines,
+    statementStarts(lines),
+    constructIndex,
+    bodyIndent,
+  );
 
   const previousTitle = previousVideo?.title.trim().slice(0, 100);
   const narration = previousTitle
@@ -150,7 +209,7 @@ export function injectEduvidsCallout(
   return lines.join("\n");
 }
 
-function injectSceneFadeOut(script: string): string {
+export function injectSceneFadeOut(script: string): string {
   const lines = script.split("\n");
   const constructPattern = /^\s*def\s+construct\s*\(\s*self\s*\)\s*:/;
 
@@ -161,9 +220,10 @@ function injectSceneFadeOut(script: string): string {
   };
 
   const constructs: ConstructBlock[] = [];
+  const starts = statementStarts(lines);
 
   for (let i = 0; i < lines.length; i++) {
-    if (!constructPattern.test(lines[i])) continue;
+    if (!starts[i] || !constructPattern.test(lines[i])) continue;
 
     let bodyIndent = "        ";
     for (let j = i + 1; j < lines.length; j++) {
@@ -179,17 +239,7 @@ function injectSceneFadeOut(script: string): string {
       break;
     }
 
-    let endIndex = lines.length;
-    for (let k = i + 1; k < lines.length; k++) {
-      const trimmed = lines[k]?.trim() ?? "";
-      if (!trimmed.length) continue;
-      const indent = lines[k]?.match(/^\s*/)?.[0] ?? "";
-      if (indent.length < bodyIndent.length) {
-        endIndex = k;
-        break;
-      }
-    }
-
+    const endIndex = blockEnd(lines, starts, i, bodyIndent);
     constructs.push({ constructIndex: i, bodyIndent, endIndex });
   }
 
@@ -532,7 +582,9 @@ export interface PreparedSandboxState {
   previousVideo?: RelatedYouTubeVideo;
 }
 
-const SANDBOX_TEMPLATE = "manim20-ffmpeg-bookmarks-latest";
+// The E2B template renders run in (sandbox-templates/eduvids-render). Set
+// E2B_SANDBOX_TEMPLATE to roll back to an older build without a deploy.
+const SANDBOX_TEMPLATE = process.env.E2B_SANDBOX_TEMPLATE || "eduvids-manim22";
 const THUMBNAIL_ROOT = "/home/user/eduvids-thumbnail";
 
 export interface ThumbnailRenderResult {

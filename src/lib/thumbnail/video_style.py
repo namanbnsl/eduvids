@@ -1356,6 +1356,39 @@ if not getattr(_play, "__eduvids_guard__", False):
     manim.Scene.add = _guarded_add
 
 # ---------------------------------------------------------------------------
+# Zero-length holds: a beat ends with self.wait(max(0, tracker.get_remaining_
+# duration())), which is 0 when the animations outlasted the narration. Manim
+# < 0.22 rendered no frames for it; 0.22 raises ValueError for any duration
+# <= 0 (Scene.validate_run_time). Keep the old behaviour: such a wait or pause
+# is skipped, and any other zero-length run (play(..., run_time=0)) lasts one
+# frame, as Manim already does for runs shorter than a frame.
+# ---------------------------------------------------------------------------
+
+_validate_run_time = getattr(manim.Scene, "validate_run_time", None)
+if _validate_run_time is not None and not getattr(manim.Scene.wait, "__eduvids_zero__", False):
+    _wait, _pause = manim.Scene.wait, manim.Scene.pause
+
+    def _wait_unless_zero(self, duration=manim.DEFAULT_WAIT_TIME, *args, **kwargs):
+        if duration <= 0 and not args and kwargs.get("stop_condition") is None:
+            return None
+        return _wait(self, duration, *args, **kwargs)
+
+    def _pause_unless_zero(self, duration=manim.DEFAULT_WAIT_TIME):
+        if duration <= 0:
+            return None
+        return _pause(self, duration)
+
+    def _one_frame_at_least(cls, run_time, *args, **kwargs):
+        if run_time <= 0:
+            run_time = 1 / config.frame_rate
+        return _validate_run_time.__func__(cls, run_time, *args, **kwargs)
+
+    _wait_unless_zero.__eduvids_zero__ = True
+    manim.Scene.wait = _wait_unless_zero
+    manim.Scene.pause = _pause_unless_zero
+    manim.Scene.validate_run_time = classmethod(_one_frame_at_least)
+
+# ---------------------------------------------------------------------------
 # Encoding: retain thin typography and gradients in Manim's intermediate
 # movies. PyAV opens the codec lazily on its first frame, so set its quality
 # after the stream is created and before any frame is written.
@@ -1392,6 +1425,33 @@ if _open_stream is not None and not getattr(_open_stream, "__eduvids_quality__",
 
 FRAME_QUEUE = 4
 
+# Manim < 0.19 pipes raw frames into an ffmpeg process instead. Its x264 runs
+# at preset medium with B-frames and a 40-frame lookahead: ~520 MB at 1080p,
+# so two renders in a 1 GB sandbox got their encoders OOM-killed (a
+# BrokenPipeError in write_frame). Give it the same settings as above: ~180 MB.
+X264_PIPE_OPTIONS = ["-preset", "superfast", "-crf", "16", "-bf", "0"]
+
+_open_pipe = getattr(SceneFileWriter, "open_movie_pipe", None)
+if _open_stream is None and _open_pipe is not None and not getattr(_open_pipe, "__eduvids_quality__", False):
+    import subprocess as _subprocess
+
+    def _open_quality_pipe(self, *args, **kwargs):
+        popen = _subprocess.Popen
+
+        def quality_popen(command, *popen_args, **popen_kwargs):
+            if isinstance(command, list) and "libx264" in command:
+                command = command[:-1] + X264_PIPE_OPTIONS + command[-1:]  # options go before the output path
+            return popen(command, *popen_args, **popen_kwargs)
+
+        _subprocess.Popen = quality_popen
+        try:
+            return _open_pipe(self, *args, **kwargs)
+        finally:
+            _subprocess.Popen = popen
+
+    _open_quality_pipe.__eduvids_quality__ = True
+    SceneFileWriter.open_movie_pipe = _open_quality_pipe
+
 # A held frame (every wait and narration hold) arrives once with a repeat
 # count; Manim converted the same RGBA frame to YUV again for every repeat.
 # Convert it once and resend it, with a fresh timestamp each time so the
@@ -1424,6 +1484,67 @@ if _encode_frames is not None and not getattr(_encode_frames, "__eduvids_held__"
 
     _encode_held.__eduvids_held__ = True
     SceneFileWriter.encode_and_write_frame = _encode_held
+
+# Manim >= 0.22 encodes each animation in a VideoSegmentEncoder built from a
+# resolved encoder spec (config.video_encoder_options), fed through a queue of
+# config.encoder_queue_size frames. Same x264 settings and queue as above,
+# and the same held-frame shortcut on the encoder's own write_frame.
+X264_OPTIONS = {"crf": "16", "preset": "superfast", "bf": "0"}
+
+try:
+    import manim._config.render_session as _render_session
+    from manim import config as _config
+    from manim.scene.video_segment_encoder import VideoSegmentEncoder as _SegmentEncoder
+except ImportError:  # Manim < 0.22
+    _render_session = _SegmentEncoder = None
+
+if _render_session is not None and not getattr(_render_session.resolve_video_encoder, "__eduvids_quality__", False):
+    import dataclasses as _dataclasses
+
+    _resolve_encoder = _render_session.resolve_video_encoder
+
+    def _resolve_house_encoder(*args, **kwargs):
+        spec = _resolve_encoder(*args, **kwargs)
+        if spec is not None and spec.codec == "libx264":
+            options = {**dict(spec.options), **X264_OPTIONS}  # over Manim's own crf=23
+            spec = _dataclasses.replace(spec, options=tuple(sorted(options.items())))
+        return spec
+
+    _resolve_house_encoder.__eduvids_quality__ = True
+    _render_session.resolve_video_encoder = _resolve_house_encoder
+    if getattr(_config, "encoder_queue_size", 0) > FRAME_QUEUE:
+        _config.encoder_queue_size = FRAME_QUEUE
+
+if _SegmentEncoder is not None and not getattr(_SegmentEncoder.write_frame, "__eduvids_held__", False):
+    from fractions import Fraction as _Fraction
+
+    _segment_write = _SegmentEncoder.write_frame
+
+    def _segment_write_held(self, pixels, *, repeat=1):
+        import av
+
+        if not hasattr(av.VideoFrame, "from_numpy_buffer"):
+            return _segment_write(self, pixels, repeat=repeat)
+        self._validate_frame(pixels, repeat)
+        rate = self.spec.frame_rate
+        time_base = _Fraction(rate.denominator, rate.numerator)
+        try:
+            # The writer owns the array (SceneFileWriter.write_frame), so it can
+            # be wrapped rather than copied.
+            frame = av.VideoFrame.from_numpy_buffer(pixels, format="rgba")
+            if repeat > 1:
+                frame = frame.reformat(format=self.spec.pixel_format)
+            for _ in range(repeat):
+                frame.pts = self._next_pts
+                frame.time_base = time_base
+                self._next_pts += 1
+                for packet in self._stream.encode(frame):
+                    self._container.mux(packet)
+        except BaseException as error:
+            raise self._operation_error("encode", error) from error
+
+    _segment_write_held.__eduvids_held__ = True
+    _SegmentEncoder.write_frame = _segment_write_held
 
 
 # ---------------------------------------------------------------------------
@@ -1571,7 +1692,9 @@ _VOICEOVER_TEXT_METHOD = (
     "_add_voiceover_text" if hasattr(_VoiceoverScene, "_add_voiceover_text") else "add_voiceover_text"
 )
 
-if _VoiceoverScene is not None and not getattr(
+# (A stand-in VoiceoverScene with neither, as in offline review renders, is
+# left alone.)
+if hasattr(_VoiceoverScene, _VOICEOVER_TEXT_METHOD) and not getattr(
     getattr(_VoiceoverScene, _VOICEOVER_TEXT_METHOD), "__eduvids_lead__", False
 ):
     _add_voiceover_text = getattr(_VoiceoverScene, _VOICEOVER_TEXT_METHOD)

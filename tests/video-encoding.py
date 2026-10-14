@@ -25,16 +25,40 @@ hook = compile(ast.Module(body=tree.body[start:end], type_ignores=[]), "video_st
 
 
 class EncodingCompatibilityTests(unittest.TestCase):
-    def test_legacy_ffmpeg_writer_needs_no_pyav_hook(self):
+    def test_legacy_ffmpeg_pipe_gets_the_low_memory_x264_settings(self):
+        import subprocess
+
+        commands = []
+
+        def record(command, *args, **kwargs):
+            commands.append(command)
+            return "process"
+
         class Writer:
             def open_movie_pipe(self, file_path=None):
+                self.writing_process = subprocess.Popen(
+                    ["ffmpeg", "-i", "-", "-vcodec", codec, "-pix_fmt", "yuv420p", file_path],
+                    stdin=subprocess.PIPE,
+                )
                 return file_path
 
-        original = Writer.open_movie_pipe
         exec(hook, {"SceneFileWriter": Writer})
-        self.assertIs(Writer.open_movie_pipe, original)
+        wrapped = Writer.open_movie_pipe
+        exec(hook, {"SceneFileWriter": Writer})  # a second import wraps nothing
+        self.assertIs(Writer.open_movie_pipe, wrapped)
         self.assertFalse(hasattr(Writer, "open_partial_movie_stream"))
-        self.assertEqual(Writer().open_movie_pipe("probe.mp4"), "probe.mp4")
+        popen = subprocess.Popen
+        subprocess.Popen = record
+        try:
+            for codec in ("libx264", "qtrle"):
+                self.assertEqual(Writer().open_movie_pipe("probe.mp4"), "probe.mp4")
+        finally:
+            subprocess.Popen = popen
+        self.assertIs(subprocess.Popen, popen)  # restored after each pipe opens
+        # Medium preset with B-frames peaked at ~520 MB at 1080p; options go
+        # before the output path, and only to x264.
+        self.assertEqual(commands[0][-7:], ["-preset", "superfast", "-crf", "16", "-bf", "0", "probe.mp4"])
+        self.assertEqual(commands[1], ["ffmpeg", "-i", "-", "-vcodec", "qtrle", "-pix_fmt", "yuv420p", "probe.mp4"])
 
     def test_pyav_quality_preserves_other_codecs_and_stream_options(self):
         for codec in ("libx264", "qtrle", None):

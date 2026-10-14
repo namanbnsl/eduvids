@@ -23,7 +23,7 @@ less it renders one at a time.
 The production template builds at 2 vCPU / 1 GB unless you ask for more. For
 faster renders, set `E2B_TEMPLATE_CPU_COUNT` and `E2B_TEMPLATE_MEMORY_MB` and
 rebuild: `npm run e2b:build:prod` in
-`sandbox-templates/manim20-ffmpeg-bookmarks-latest`. 4 vCPU needs at least
+`sandbox-templates/eduvids-render`. 4 vCPU needs at least
 2 GB to run four renders at once. The driver uses whatever the sandbox has.
 
 ## Same picture
