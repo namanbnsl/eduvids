@@ -18,6 +18,9 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // Convex owns and regenerates this directory, so lint handwritten code
+      // while leaving generated eslint directives untouched.
+      "convex/_generated/**",
     ],
   },
 ];
