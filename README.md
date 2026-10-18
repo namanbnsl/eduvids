@@ -61,7 +61,7 @@ Copy `.env.example` to `.env` and fill it in:
 | `UPLOADTHING_*` | [UploadThing](https://uploadthing.com) — stores finished videos |
 | `NEXT_PUBLIC_CLERK_*`, `CLERK_*` | [Clerk](https://clerk.com) — accounts |
 
-Optional: `DEEPGRAM_API_KEY` or `OPENROUTER_API_KEY` for a better English voice (falls back to gTTS), PostHog for analytics, and the YouTube and X keys for auto-posting.
+Optional: `GROQ_API_KEY` for Groq-backed chat and topic generation, `DEEPGRAM_API_KEY` or `OPENROUTER_API_KEY` for a better English voice (falls back to gTTS), PostHog for analytics, and the YouTube and X keys for auto-posting.
 
 ```bash
 bun run dev
