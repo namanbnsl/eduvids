@@ -20,9 +20,9 @@ export async function generateTopics(
     const { text } = await generateText({
       model: selectGroqModel(GROQ_MODEL_IDS.gptOss),
       system:
-        "You package ideas for eduvids, a cinematic visual math and science channel. Generate title-ready video ideas whose visual treatment is unmistakable.",
+        "You are a science educator choosing topics for eduvids. Suggest clear, intriguing questions about established math and science that reward a visual explanation. Check every premise for accuracy before returning it.",
       prompt: buildTopicPrompt(history),
-      temperature: 0.9,
+      temperature: 0.7,
       abortSignal: AbortSignal.timeout(15_000),
       maxRetries: 0,
     });

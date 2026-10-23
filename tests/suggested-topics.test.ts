@@ -88,13 +88,13 @@ test("reworded subjects and old title-only history are excluded", () => {
     },
   ]);
   const duplicates = [
-    { title: "Relativity and GPS — Visualized", subject: "special relativity" },
+    { title: "Why Does GPS Need Relativity?", subject: "special relativity" },
     {
-      title: "Soap Films and Minimal Surfaces — Visualized in 3D",
+      title: "Why Do Soap Films Form Minimal Surfaces?",
       subject: "minimal surfaces",
     },
     {
-      title: "See Hidden Frequencies — Animated",
+      title: "How Can We Separate the Frequencies in a Sound?",
       subject: "fourier transform",
     },
   ];
@@ -118,13 +118,16 @@ test("reworded subjects and old title-only history are excluded", () => {
 
 test("a valid single model topic survives invalid or duplicate companions", () => {
   const valid = {
-    title: "How Octopuses Change Color — Visualized",
+    title: "How Do Octopuses Change Color?",
     subject: "octopus camouflage",
   };
   for (const companion of [
-    { title: "A topic with no visual hook", subject: "other subject" },
-    { title: "Visualized " + "x".repeat(81), subject: "other subject" },
-    { title: "Octopus Camouflage — Animated", subject: "octopus camouflage" },
+    { title: "Biology", subject: "other subject" },
+    { title: "x".repeat(81), subject: "other subject" },
+    {
+      title: "How Does Octopus Camouflage Work?",
+      subject: "octopus camouflage",
+    },
     null,
   ]) {
     const parsed = parseSuggestedTopics(
@@ -148,13 +151,49 @@ test("a valid single model topic survives invalid or duplicate companions", () =
   assert.deepEqual(parseSuggestedTopics("[broken]"), []);
 });
 
+test("clear questions are accepted without production labels", () => {
+  const topics = [
+    {
+      title: "Why Does Metal Feel Colder Than Wood?",
+      subject: "heat conduction",
+    },
+    { title: "How Do 3D Glasses Work?", subject: "stereoscopic vision" },
+  ];
+  assert.deepEqual(selectSuggestedTopics(topics, []), topics);
+});
+
+test("production labels and missing subjects fall back to curated questions", () => {
+  const rejected = [
+    {
+      title: "Visually Why the Sahara Is Growing Faster Than Expected",
+      subject: "desertification",
+    },
+    {
+      title: "Animated How a Whisper Becomes a Sonic Boom in a Tunnel",
+      subject: "acoustics",
+    },
+    {
+      title: "Why Is the Sky Blue? — Visualized",
+      subject: "rayleigh scattering",
+    },
+    {
+      title: "Why Is the Sky Blue? — Visualized in 3D",
+      subject: "rayleigh scattering",
+    },
+    { title: "Why Is the Sky Blue?", subject: "" },
+  ];
+  const selected = selectSuggestedTopics(rejected, []);
+  assert.equal(selected.length, 2);
+  assert.ok(selected.every((topic) => FALLBACK_TOPICS.includes(topic)));
+});
+
 test("short canonical subjects exclude reworded titles and duplicates in a pair", () => {
   const previous = {
-    title: "Why Acids Change Color — Visualized",
+    title: "Why Do Acids Change an Indicator's Color?",
     subject: "pH",
   };
   const repeated = {
-    title: "How Buffers Resist Added Acid — Animated",
+    title: "How Do Buffers Resist Added Acid?",
     subject: " PH ",
   };
   assert.ok(isSameTopic(previous, repeated));

@@ -6,114 +6,72 @@ export const TOPIC_HISTORY_LIMIT = 100;
 // Each entry covers a different subject, so provider outages can still supply
 // more than twenty refreshes without recycling the same ideas.
 export const FALLBACK_TOPICS: SuggestedTopic[] = [
-  ["minimal surfaces", "Why Soap Films Find the Smallest Surface — Visualized"],
+  ["minimal surfaces", "Why Are Soap Bubbles Spherical?"],
+  ["saturn rings", "Why Are Saturn's Rings So Flat?"],
+  ["honeycomb geometry", "Why Do Bees Build Hexagons?"],
+  ["neutrinos", "How Can a Particle Pass Straight Through Earth?"],
+  ["turbulence", "Why Is Turbulence So Hard to Predict?"],
+  ["ant colony optimization", "How Do Ants Find Food Without a Map?"],
+  ["spinning coins", "Why Does a Spinning Coin Rattle Faster as It Stops?"],
+  ["complex numbers", "What Does Multiplying by i Actually Do?"],
+  ["infinity cardinality", "How Can One Infinity Be Bigger Than Another?"],
+  ["relativity", "Why Does GPS Need Einstein?"],
+  ["quantum tunneling", "How Do Particles Cross Barriers They Can't Climb?"],
   [
-    "saturn rings",
-    "Why Saturn's Rings Form Such Thin Disks — Visualized in 3D",
+    "plate tectonics",
+    "How Can Two Continents Fit Together Like Puzzle Pieces?",
   ],
-  ["honeycomb geometry", "Why Honeycombs Use Hexagons — Visualized"],
-  ["neutrinos", "Neutrinos Passing Straight Through Earth — Visualized in 3D"],
-  ["turbulence", "Why Turbulence Defeats Prediction — Visualized in 3D"],
-  [
-    "ant colony optimization",
-    "How Ant Colonies Find the Shortest Path — Visualized",
-  ],
-  [
-    "spinning coins",
-    "Why a Spinning Coin Suddenly Speeds Up — Visualized in 3D",
-  ],
-  ["complex numbers", "How Imaginary Numbers Rotate Real Waves — Visualized"],
-  ["infinity cardinality", "Why Some Infinities Are Larger — Visualized"],
-  ["relativity", "How GPS Bends Time: Relativity Visualized"],
-  ["quantum tunneling", "How Quantum Tunneling Powers the Sun — Visualized"],
-  ["plate tectonics", "How Continents Drift Across Earth — Visualized in 3D"],
-  ["dna replication", "How DNA Copies Itself — Animated One Base at a Time"],
-  ["photosynthesis", "How Leaves Turn Sunlight Into Sugar — Visualized"],
-  [
-    "protein folding",
-    "How Proteins Fold Into Tiny Machines — Visualized in 3D",
-  ],
-  [
-    "natural selection",
-    "How Natural Selection Changes a Population — Animated",
-  ],
-  ["neuron signaling", "How Neurons Send Electrical Messages — Visualized"],
-  [
-    "immune response",
-    "How Your Immune System Recognizes an Invader — Animated",
-  ],
-  ["coral bleaching", "Why Corals Lose Their Color — Visualized"],
-  [
-    "fungal networks",
-    "How Fungal Networks Spread Underground — Visualized in 3D",
-  ],
-  ["capillary action", "How Water Climbs Against Gravity — Visualized in 3D"],
-  ["rainbows", "How Raindrops Split Sunlight Into Rainbows — Visualized"],
-  ["magnetic fields", "How Magnets Shape Invisible Fields — Visualized in 3D"],
-  ["doppler effect", "Why a Passing Siren Changes Pitch — Visualized"],
-  ["gyroscopes", "Why a Gyroscope Resists Falling — Visualized in 3D"],
-  ["heat conduction", "How Heat Moves Through a Metal Rod — Animated"],
-  ["crystal growth", "How Crystals Build Themselves — Visualized in 3D"],
-  [
-    "chemical equilibrium",
-    "Why Chemical Reactions Reach a Balance — Visualized",
-  ],
-  ["electrolysis", "How Electricity Splits Water Apart — Visualized in 3D"],
-  ["chirality", "Why Mirror-Image Molecules Behave Differently — Visualized"],
-  ["radioactive decay", "Why Radioactive Atoms Have a Half-Life — Animated"],
-  ["carbon dating", "How Carbon Dating Reveals an Object's Age — Visualized"],
-  ["volcanoes", "How Magma Finds Its Way to the Surface — Visualized in 3D"],
-  ["glacier flow", "How Glaciers Flow Like Slow Rivers — Visualized"],
-  ["ocean tides", "Why the Ocean Has Two Tidal Bulges — Visualized in 3D"],
-  ["weather fronts", "How Colliding Air Masses Create Storms — Animated in 3D"],
-  ["stellar nucleosynthesis", "How Stars Build the Elements — Visualized"],
-  [
-    "exoplanet transits",
-    "How a Tiny Dip in Starlight Reveals a Planet — Visualized",
-  ],
-  ["lunar phases", "Why the Moon Changes Shape Each Month — Visualized in 3D"],
-  ["galaxy rotation", "Why Galaxies Rotate Faster Than Expected — Visualized"],
-  ["prime numbers", "Why Prime Numbers Never Run Out — Visualized"],
-  ["mobius strips", "How a Mobius Strip Has Just One Side — Visualized in 3D"],
-  ["voronoi diagrams", "How Voronoi Diagrams Divide Space — Visualized"],
-  ["fractals", "How Fractals Hide Infinite Detail — Visualized"],
-  [
-    "pythagorean theorem",
-    "Why Pythagoras Works: A Moving-Squares Visual Proof",
-  ],
-  ["bayes theorem", "How New Evidence Changes Probability — Bayes Visualized"],
-  ["birthday paradox", "Why 23 People Can Share a Birthday — Visualized"],
+  ["dna replication", "How Does a Cell Copy Two Metres of DNA?"],
+  ["photosynthesis", "Where Does a Tree's Mass Come From?"],
+  ["protein folding", "How Does a Protein's Shape Decide What It Does?"],
+  ["natural selection", "How Does Antibiotic Resistance Evolve?"],
+  ["neuron signaling", "How Does a Nerve Signal Travel to Your Fingertip?"],
+  ["immune response", "How Does a Vaccine Train Your Immune System?"],
+  ["coral bleaching", "Why Do Corals Turn White When the Ocean Warms?"],
+  ["fungal networks", "Why Is a Mushroom Only Part of the Fungus?"],
+  ["capillary action", "How Does a Paper Towel Pull Water Uphill?"],
+  ["rainbows", "Why Is a Rainbow a Circle?"],
+  ["magnetic fields", "Why Can't You Separate a Magnet's Two Poles?"],
+  ["doppler effect", "Why Does an Ambulance Sound Different as It Passes?"],
+  ["gyroscopes", "Why Doesn't a Spinning Top Fall Over Right Away?"],
+  ["heat conduction", "Why Does Metal Feel Colder Than Wood?"],
+  ["crystal growth", "Why Does Salt Grow Into Cubes?"],
+  ["chemical equilibrium", "How Can a Reaction Keep Going Without Changing?"],
+  ["electrolysis", "How Can Electricity Split Water Into Two Gases?"],
+  ["chirality", "Why Can Mirror-Image Molecules Smell Different?"],
+  ["radioactive decay", "Why Can't We Predict When One Atom Will Decay?"],
+  ["carbon dating", "How Can Carbon Tell Us the Age of a Bone?"],
+  ["volcanoes", "Why Do Some Volcanoes Explode While Others Ooze?"],
+  ["glacier flow", "How Can Solid Ice Flow Like a River?"],
+  ["ocean tides", "Why Are There Tides on Both Sides of Earth?"],
+  ["cloud formation", "Why Does Rising Air Turn Into Clouds?"],
+  ["stellar nucleosynthesis", "How Do Stars Make the Elements in Your Body?"],
+  ["exoplanet transits", "How Can We Find a Planet We Can't See?"],
+  ["tidal locking", "Why Do We Always See the Same Side of the Moon?"],
+  ["galaxy rotation", "What Keeps the Outer Stars of a Galaxy Moving So Fast?"],
+  ["prime numbers", "Why Will We Never Run Out of Prime Numbers?"],
+  ["mobius strips", "What Happens When You Cut a Mobius Strip in Half?"],
+  ["voronoi diagrams", "How Do You Draw a Map of the Nearest Pizza Shop?"],
+  ["fractals", "How Can a Finite Shape Have an Infinite Perimeter?"],
+  ["pythagorean theorem", "Why Does a² + b² = c² Describe a Right Triangle?"],
+  ["bayes theorem", "When Can a Positive Test Result Be Misleading?"],
+  ["birthday paradox", "Why Do Birthday Matches Get Likely at Just 23 People?"],
   [
     "central limit theorem",
-    "Why Random Averages Form a Bell Curve — Visualized",
+    "Why Do Dice Totals Start to Look Like a Bell Curve?",
   ],
-  ["graph coloring", "How Many Colors Does a Map Really Need? Visualized"],
-  [
-    "fourier transforms",
-    "How Fourier Transforms Separate a Sound — Visualized",
-  ],
-  ["binary search", "How Binary Search Halves the Work — Animated"],
-  [
-    "sorting algorithms",
-    "Why Some Sorting Algorithms Win — Animated Side by Side",
-  ],
-  ["error correction", "How Extra Bits Repair a Broken Message — Visualized"],
-  [
-    "public key encryption",
-    "How Public Keys Keep Messages Secret — Visualized",
-  ],
-  ["compression", "How Repeated Patterns Shrink a File — Visualized"],
-  ["cellular automata", "How Simple Grid Rules Create Complex Life — Animated"],
-  [
-    "gradient descent",
-    "How Gradient Descent Finds a Valley — Visualized in 3D",
-  ],
-  ["bezier curves", "How Control Points Bend a Bezier Curve — Visualized"],
-  [
-    "projective geometry",
-    "Why Parallel Lines Meet in Perspective — Visualized in 3D",
-  ],
-  ["resonance", "How Tiny Pushes Build Huge Vibrations — Visualized"],
+  ["graph coloring", "Why Are Four Colors Enough for Any Flat Map?"],
+  ["fourier transforms", "How Can Circles Add Up to a Square Wave?"],
+  ["binary search", "How Can 20 Questions Find One Item in a Million?"],
+  ["sorting algorithms", "Why Can Sorting the Same List Take So Much Longer?"],
+  ["error correction", "How Can a Scratched QR Code Still Work?"],
+  ["public key encryption", "How Can You Share a Secret in Public?"],
+  ["compression", "How Can a ZIP File Shrink Without Losing Anything?"],
+  ["cellular automata", "How Can Four Simple Rules Make a Pattern That Moves?"],
+  ["gradient descent", "How Does a Neural Network Learn From a Wrong Answer?"],
+  ["bezier curves", "How Do Four Points Draw a Smooth Curve?"],
+  ["projective geometry", "Why Do Parallel Train Tracks Seem to Meet?"],
+  ["resonance", "How Can Small Pushes Make a Swing Go Higher?"],
 ].map(([subject, title]) => ({ subject, title }));
 
 export function sanitizeTopicHistory(value: unknown): SuggestedTopic[] {
@@ -214,10 +172,7 @@ export function selectSuggestedTopics(
   const selected: SuggestedTopic[] = [];
   for (const topic of generated) {
     if (
-      topic.title.length <= 80 &&
-      /\b(?:visual|visually|visualized|visualised|3d|animated)\b/i.test(
-        topic.title,
-      ) &&
+      isUsableTopic(topic) &&
       ![...history, ...selected].some((previous) =>
         isSameTopic(topic, previous),
       )
@@ -248,6 +203,19 @@ export function selectSuggestedTopics(
   return selected;
 }
 
+function isUsableTopic(topic: SuggestedTopic): boolean {
+  // These are already animated videos. Production labels waste the small card
+  // and previously let any premise pass as long as it contained "Visualized".
+  const productionLabel =
+    /^(?:visually|animated|visuali[sz]ed|in 3d)\b|(?:[—–:|\-]\s*|\s+)(?:visually|animated|visuali[sz]ed|(?:visuali[sz]ed )?in 3d)\s*[.!?]?$/i;
+  return (
+    topic.title.trim().length >= 12 &&
+    topic.title.length <= 80 &&
+    topic.subject.trim().length > 0 &&
+    !productionLabel.test(topic.title)
+  );
+}
+
 const TOPIC_FIELDS = [
   "geometry and topology",
   "probability and statistics",
@@ -266,11 +234,17 @@ const TOPIC_FIELDS = [
 export function buildTopicPrompt(history: SuggestedTopic[]): string {
   const fields = shuffled(TOPIC_FIELDS).slice(0, 2);
   return [
-    `Generate exactly two title-ready ideas for 5-minute animated educational videos: one from each of these fields: ${fields.join("; ")}.`,
-    "Every title MUST include a visual hook: Visualized, Visually, In 3D, or Animated.",
-    "Make the subject and visual insight specific. Vary curiosity structures such as Why, How, What, or a surprising contrast.",
-    "Aim for 45-65 characters and never exceed 80. Use natural title case. Avoid Introduction, Basics, Lesson, and vague clickbait.",
-    "For each title return a short canonical subject keyword or phrase identifying its core scientific concept, independent of the title wording or application.",
+    `Suggest exactly two questions a curious person would want answered in a short educational video, one from each of these fields: ${fields.join("; ")}.`,
+    "Start with an established concept and find a concrete puzzle, surprising result, or everyday experience it explains. The question should make sense without specialist knowledge.",
+    "Write for a curious teenager browsing suggestions, not someone already studying the field. Name something they can picture. Avoid unexplained jargon, named algorithms, and complexity notation such as O(1); show a familiar situation instead.",
+    "Prefer subjects where moving shapes, plotted data, particles, or a simple simulation can reveal the answer. Each idea must have a clear explanation that fits in five minutes.",
+    "Use a short, natural question, usually 6-12 words. Never exceed 80 characters. No production labels such as Visually, Visualized, Animated, or In 3D; no generic textbook chapter names or empty hype.",
+    'Examples of the desired specificity and tone: "Why Does Metal Feel Colder Than Wood?", "How Can One Infinity Be Bigger Than Another?", "Where Does a Tree\'s Mass Come From?", "How Can a Scratched QR Code Still Work?". These show the style; find different subjects.',
+    "Accuracy is essential: check the premise before writing the question. Do not invent a phenomenon to make a title surprising, confuse different mechanisms, or imply an unsolved problem has a settled answer.",
+    "Keep necessary conditions in the question: do not generalize a feature of humans to all animals, an average-case result to every case, or a result of one experimental setup to all setups.",
+    'Reject premises like "a whisper becomes a sonic boom in a tunnel" (echoes and sonic booms are different phenomena). Avoid unsourced trends like "the Sahara is growing faster than expected", recent discoveries, or arbitrary numerical claims.',
+    "Privately consider several candidates, discard any with a doubtful premise or a dull payoff, and return the strongest two. The curiosity must come from the concept itself.",
+    "For each title return a short canonical subject keyword or phrase (1-4 words) identifying its core scientific concept, independent of the title wording or application.",
     "Choose substantially different subjects. Do not repeat ANY excluded subject, even with a new title or application. If a field is exhausted, choose another field.",
     `Excluded recent titles and subjects (oldest first): ${JSON.stringify(history)}`,
     `Variation seed: ${crypto.randomUUID()}`,
