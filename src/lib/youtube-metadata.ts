@@ -28,16 +28,21 @@ export function fallbackVideoTitle(prompt: string): string {
   return short.charAt(0).toUpperCase() + short.slice(1);
 }
 
-/** One repair attempt for invalid output or a transient generation failure. */
+/** Both attempts share a deadline below the workflow route's 300-second limit. */
 export async function generateValidatedMetadata<T>(
-  generate: (feedback: string) => Promise<string>,
+  generate: (feedback: string, abortSignal: AbortSignal) => Promise<string>,
   validate: (raw: string) => T,
 ): Promise<T> {
+  const abortSignal = AbortSignal.timeout(240_000);
   let feedback = "";
   for (let attempt = 0; attempt < 2; attempt++) {
+    abortSignal.throwIfAborted();
     try {
-      return validate(await generate(feedback));
+      const raw = await generate(feedback, abortSignal);
+      abortSignal.throwIfAborted();
+      return validate(raw);
     } catch (error) {
+      abortSignal.throwIfAborted();
       if (attempt === 1) throw error;
       feedback = `\n\nThe previous attempt failed validation: ${error instanceof Error ? error.message : "unusable response"}. Return a complete, corrected package using the source material.`;
     }

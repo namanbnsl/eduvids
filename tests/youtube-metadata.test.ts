@@ -84,6 +84,84 @@ test("invalid metadata gets one repair attempt with validation feedback", async 
   assert.equal(attempts, 2);
 });
 
+test("metadata attempts share one deadline and stop when it expires", async (t) => {
+  for (const expireOnAttempt of [1, 2]) {
+    const controller = new AbortController();
+    const deadline = new Error("metadata deadline exceeded");
+    const timeout = t.mock.method(
+      AbortSignal,
+      "timeout",
+      (milliseconds: number) => {
+        assert.equal(milliseconds, 240_000);
+        return controller.signal;
+      },
+    );
+    let attempts = 0;
+    try {
+      await assert.rejects(
+        generateValidatedMetadata(async (_feedback, abortSignal) => {
+          attempts++;
+          assert.equal(abortSignal, controller.signal);
+          if (attempts === expireOnAttempt) {
+            // Model requests listen to this shared signal. Simulate the
+            // deadline cancelling the active request, including a repair.
+            return new Promise<string>((_resolve, reject) => {
+              abortSignal.addEventListener(
+                "abort",
+                () => reject(abortSignal.reason),
+                { once: true },
+              );
+              controller.abort(deadline);
+            });
+          }
+          return '{"hook": []}';
+        }, parseVideoDescriptionPackage),
+        (error) => error === deadline,
+      );
+      assert.equal(attempts, expireOnAttempt);
+      assert.equal(timeout.mock.callCount(), 1);
+    } finally {
+      timeout.mock.restore();
+    }
+  }
+});
+
+test("metadata returned after the deadline is not validated or retried", async (t) => {
+  const controller = new AbortController();
+  t.mock.method(AbortSignal, "timeout", () => controller.signal);
+  let validations = 0;
+  let attempts = 0;
+  await assert.rejects(
+    generateValidatedMetadata(
+      async () => {
+        attempts++;
+        controller.abort(new Error("metadata deadline exceeded"));
+        return "late response";
+      },
+      () => {
+        validations++;
+      },
+    ),
+    /metadata deadline exceeded/,
+  );
+  assert.equal(validations, 0);
+  assert.equal(attempts, 1);
+});
+
+test("fallback titles preserve topic words that start with a production prefix", () => {
+  for (const topic of [
+    "One neutron can start a chain reaction",
+    "Only one neutron is needed",
+    "Often the simplest answer is wrong",
+    "Animation changes how we see numbers",
+    "Shortcuts through spacetime",
+  ]) {
+    assert.equal(fallbackVideoTitle(topic), topic);
+    assert.ok(buildYouTubeDescription({ topic }).startsWith(`${topic}\n`));
+    assert.equal(fallbackVideoTitle(`A video on ${topic}`), topic);
+  }
+});
+
 test("empty, malformed and overlong descriptions trigger repair instead of leaking JSON", () => {
   for (const raw of [
     '{"hook": []}',

@@ -1622,10 +1622,11 @@ Return ONLY a JSON object: {"ideas": [ten or more short raw title ideas], "packa
   });
 
   return generateValidatedMetadata(
-    (feedback) =>
+    (feedback, abortSignal) =>
       streamTextWithTracking(
         {
           model,
+          abortSignal,
           system: systemPrompt,
           prompt: userPrompt + feedback,
           temperature: 0.8,
@@ -1704,10 +1705,11 @@ ${voiceoverScript}`;
   });
 
   return generateValidatedMetadata(
-    (feedback) =>
+    (feedback, abortSignal) =>
       streamTextWithTracking(
         {
           model,
+          abortSignal,
           system: systemPrompt,
           prompt: userPrompt + feedback,
           temperature: 0.5,
