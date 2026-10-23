@@ -1,0 +1,65 @@
+[
+  {
+    "title": "Why the Northern Lights Don't Burn",
+    "headline": "Light without heat",
+    "accent": "Light",
+    "palette": "teal-amber",
+    "layout": "split_right",
+    "visual": {
+      "type": "energy_levels"
+    }
+  },
+  {
+    "title": "One Neutron Can Start a Chain Reaction",
+    "headline": "Split one atom",
+    "accent": "Split",
+    "palette": "azure-coral",
+    "layout": "poster",
+    "visual": {
+      "type": "fission"
+    }
+  },
+  {
+    "title": "Two Signals, One Formula. What Is Missing?",
+    "headline": "Same formula?",
+    "accent": "Same",
+    "palette": "violet-amber",
+    "layout": "split_left",
+    "visual": {
+      "type": "equation",
+      "notation": "X(z)=\\frac{z}{z-\\frac{1}{2}}"
+    }
+  },
+  {
+    "title": "Why Water Molecules Aren't Straight",
+    "headline": "Why bent?",
+    "accent": "bent",
+    "palette": "azure-amber",
+    "layout": "poster",
+    "visual": {
+      "type": "molecule",
+      "shape": "water"
+    }
+  },
+  {
+    "title": "What Squaring Does to a Complex Number",
+    "headline": "Twice the angle",
+    "accent": "Twice",
+    "palette": "teal-rose",
+    "layout": "split_right",
+    "visual": {
+      "type": "complex_plane",
+      "turn": 0.25
+    }
+  },
+  {
+    "title": "Why the Internet Breaks Movies Into Packets",
+    "headline": "Too much at once",
+    "accent": "Too much",
+    "palette": "azure-coral",
+    "layout": "split_left",
+    "visual": {
+      "type": "packet_flow"
+    }
+  }
+]
