@@ -7,6 +7,43 @@ const TITLE_MINIMUM = 20;
 // text-free variant to A/B test against the two headline variants.
 export const VISUAL_ONLY_THUMBNAIL_INDEX = 1;
 const BLOCKED_TITLE_WORDS = /\b(explained|basics|introduction|lesson)\b/i;
+const PRODUCTION_COPY =
+  /\b(?:scene\s*\d+|voiceover|storyboard|aspect ratio|horizontal (?:educational )?video|vertical (?:educational )?video|educational (?:horizontal |vertical )?video|generate (?:a|an|the) video)\b/i;
+
+/** Never publish a production brief when metadata generation is unavailable. */
+export function fallbackVideoTitle(prompt: string): string {
+  const topic = prompt
+    .split(/\bscene\s*\d+\b|\n|[.!?](?:\s|$)/i)[0]!
+    .replace(
+      /^\s*(?:please\s+)?(?:(?:make|create|generate|write)\s+)?(?:(?:a|an)\s+)?(?:(?:horizontal|vertical|educational|animated|short|landscape|portrait)\s+)*(?:video\s+)?(?:(?:explaining|about|on|of|covering)\s+)?/i,
+      "",
+    )
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!topic || PRODUCTION_COPY.test(topic))
+    return "A Visual Math and Science Exploration";
+  const short =
+    topic.length <= 80 ? topic : topic.slice(0, 80).replace(/\s+\S*$/, "");
+  return short.charAt(0).toUpperCase() + short.slice(1);
+}
+
+/** One repair attempt for invalid output or a transient generation failure. */
+export async function generateValidatedMetadata<T>(
+  generate: (feedback: string) => Promise<string>,
+  validate: (raw: string) => T,
+): Promise<T> {
+  let feedback = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return validate(await generate(feedback));
+    } catch (error) {
+      if (attempt === 1) throw error;
+      feedback = `\n\nThe previous attempt failed validation: ${error instanceof Error ? error.message : "unusable response"}. Return a complete, corrected package using the source material.`;
+    }
+  }
+  throw new Error("Metadata generation failed");
+}
 
 export interface VideoTitleSet {
   selected: string;
@@ -34,6 +71,9 @@ export const THUMBNAIL_VISUAL_TYPES = [
   "fractal",
   "bars",
   "number",
+  "fission",
+  "molecule",
+  "packet_flow",
 ] as const;
 
 export type ThumbnailVisualType = (typeof THUMBNAIL_VISUAL_TYPES)[number];
@@ -276,6 +316,11 @@ export function sanitizeThumbnailVisual(
         type,
         notation,
         turn: finiteNumber(raw.turn, 0.05, 0.95),
+      });
+    case "molecule":
+      return withoutUndefined({
+        type,
+        shape: pick(raw.shape, ["water", "carbon_dioxide"] as const),
       });
     case "wave":
       return withoutUndefined({
@@ -611,13 +656,16 @@ export function parseVideoTitleSet(raw: string): VideoTitleSet {
       return (
         title.length >= TITLE_MINIMUM &&
         title.length <= TITLE_LIMIT &&
-        !BLOCKED_TITLE_WORDS.test(title)
+        !BLOCKED_TITLE_WORDS.test(title) &&
+        !PRODUCTION_COPY.test(title) &&
+        !/[<>\n]/.test(title)
       );
     })
     .filter(
       (candidate, index, candidates) =>
-        candidates.findIndex(({ title }) => title === candidate.title) ===
-        index,
+        candidates.findIndex(
+          ({ title }) => title.toLowerCase() === candidate.title.toLowerCase(),
+        ) === index,
     )
     .slice(0, 3);
 
@@ -763,15 +811,41 @@ export function parseVideoDescriptionPackage(
             .filter((tag) => tag.length >= 2 && tag.length <= 40),
         ),
       ].slice(0, 12);
-      if (hookLines.length) {
-        return { hook: hookLines.join("\n").slice(0, 500), hashtags, tags };
+      if (
+        hookLines.length === 2 &&
+        hookLines.every(
+          (line, index) =>
+            line.length <= (index === 0 ? 110 : 160) &&
+            !PRODUCTION_COPY.test(line),
+        )
+      ) {
+        return { hook: hookLines.join("\n"), hashtags, tags };
       }
     } catch {
-      // Fall through to treating the response as plain description copy.
+      // Structured output must never leak into the public description.
     }
+    throw new Error(
+      "Description generation must return two concise, viewer-facing hook lines",
+    );
+  }
+  if (/^[\[{]/.test(text))
+    throw new Error("Description generation returned malformed JSON");
+  const lines = descriptionLines(text);
+  if (
+    lines.length !== 2 ||
+    lines.some(
+      (line, index) =>
+        !line ||
+        line.length > (index === 0 ? 110 : 160) ||
+        PRODUCTION_COPY.test(line),
+    )
+  ) {
+    throw new Error(
+      "Description generation must return two concise, viewer-facing hook lines",
+    );
   }
   return {
-    hook: text.replace(/^["']|["']$/g, "").slice(0, 500),
+    hook: lines.join("\n"),
     hashtags: [],
     tags: [],
   };
@@ -883,16 +957,10 @@ export function buildYouTubeDescription({
   chapters?: YouTubeChapter[];
   hashtags?: string[];
 }): string {
-  const topicExcerpt = (topic?.trim() || "this idea")
-    .replace(/\s+/g, " ")
-    .slice(0, 140)
-    .replace(/[.!?]+$/, "");
+  const topicExcerpt = fallbackVideoTitle(topic ?? "Math and science");
   const opening = salesCopy?.trim()
     ? descriptionLines(salesCopy).join("\n")
-    : [
-        `What is really happening inside ${topicExcerpt}?`,
-        "Precise animation builds the intuition step by step until the hidden pattern becomes clear.",
-      ].join("\n");
+    : `${topicExcerpt}\nExplore the topic through narrated diagrams and animation.`;
   const blocks = [opening];
 
   if (chapters.length) {

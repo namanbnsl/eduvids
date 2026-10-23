@@ -10,7 +10,7 @@ slots that this module validates, lays out and checks.
 
 Design system
 - Canvas 1280x720 on the video's flat near-black canvas, fixed margins and a
-  two-column grid: a big headline on the left, one hero on the right. The
+  choice of text-left, text-right, top-headline poster, or visual-only. The
   hero is a crisp drawn visual with no glow or shine; 3D heroes are matte,
   in perspective. Legacy explicit ``frame`` specs remain readable, but new
   thumbnails use diagrams whose geometry and labels can be verified.
@@ -1222,6 +1222,72 @@ def hero_atom(spec, cool, warm, ts, safe):
     return Hero(VGroup(shells, nucleus, electrons), focus=electrons[0].get_center())
 
 
+def hero_fission(spec, cool, warm, ts, safe):
+    """Schematic splitting; deliberately no invented isotope or particle count."""
+    from manim import Arrow, Circle, Dot, VGroup
+
+    def nucleus(center, radius, color):
+        group = VGroup(Circle(radius=radius).set_stroke(color, 3).set_fill(color, 0.2))
+        for x, y in ((-0.3, 0.15), (0.15, 0.32), (0.3, -0.15), (-0.15, -0.32), (0, 0)):
+            group.add(Dot([x * radius, y * radius, 0], radius=radius * 0.24, color=color))
+        return group.move_to(center)
+
+    parent = nucleus([-2.2, 0, 0], 0.9, cool)
+    fragments = VGroup(nucleus([1.8, 1.15, 0], 0.6, warm), nucleus([1.8, -1.15, 0], 0.7, cool))
+    arrows = VGroup(*[Arrow([-1.1, 0, 0], [1.0, y, 0], buff=0.12, color=INK, stroke_width=5) for y in (1.0, -1.0)])
+    neutrons = VGroup(*[Dot([x, y, 0], radius=0.12, color=warm) for x, y in ((3, 0), (3.3, 1.8), (3.3, -1.8))])
+    trails = VGroup(*[Arrow([2.5, y * 0.5, 0], [x - 0.18, y, 0], buff=0.1, color=warm, stroke_width=3) for x, y in ((3, 0), (3.3, 1.8), (3.3, -1.8))])
+    return Hero(VGroup(parent, fragments, arrows, trails, neutrons), focus=np.array([1.8, 1.15, 0]))
+
+
+def hero_molecule(spec, cool, warm, ts, safe):
+    from manim import Arc, Circle, Line, VGroup, DOWN
+
+    water = spec.get("shape") != "carbon_dioxide"
+    angle = math.radians(104.5)
+    center = np.zeros(3)
+    ends = [np.array([sign * 2.4 * math.sin(angle / 2), -2.4 * math.cos(angle / 2), 0]) for sign in (-1, 1)] if water else [np.array([-2.6, 0, 0]), np.array([2.6, 0, 0])]
+    graphics = VGroup()
+    for end in ends:
+        direction = end / np.linalg.norm(end)
+        if water:
+            graphics.add(stroke(Line(center + direction * 0.58, end - direction * 0.38), INK, 7))
+        else:
+            for shift in (-0.1, 0.1):
+                graphics.add(stroke(Line(center + direction * 0.58 + [0, shift, 0], end - direction * 0.55 + [0, shift, 0]), INK, 4))
+    central_atom = Circle(radius=0.58).set_stroke(cool, 4).set_fill(cool, 0.35)
+    graphics.add(central_atom)
+    outer_atoms = []
+    for end in ends:
+        atom = Circle(radius=0.38 if water else 0.55).move_to(end).set_stroke(warm, 4).set_fill(warm, 0.3)
+        outer_atoms.append(atom)
+        graphics.add(atom)
+    if water:
+        graphics.add(stroke(Arc(radius=1.05, start_angle=-math.pi / 2 - angle / 2, angle=angle), warm, 4))
+    hero = Hero(graphics, focus=np.array([0, -1.05, 0]) if water else center)
+    hero.labels.append(Label(ts.math("O" if water else "C", 54), center, [], inside=central_atom))
+    for end, atom in zip(ends, outer_atoms):
+        hero.labels.append(Label(ts.math("H" if water else "O", 54), end, [], inside=atom))
+    if water:
+        hero.labels.append(Label(ts.math(r"104.5^{\circ}", 48, "accent"), np.array([0, -1.45, 0]), [DOWN]))
+    return hero
+
+
+def hero_packet_flow(spec, cool, warm, ts, safe):
+    """A shared link and queued packets, rather than a neural-network icon."""
+    from manim import Arrow, RoundedRectangle, VGroup
+
+    graphics = VGroup()
+    for x in (-2.6, 2.6):
+        graphics.add(RoundedRectangle(width=1.1, height=2.2, corner_radius=0.16).move_to([x, 0, 0]).set_stroke(cool, 5).set_fill(cool, 0.15))
+    graphics.add(Arrow([-1.9, 0, 0], [1.9, 0, 0], buff=0, color=INK, stroke_width=5))
+    for index in range(5):
+        graphics.add(RoundedRectangle(width=0.6, height=0.42, corner_radius=0.06).move_to([-1.4 + index * 0.7, 0.7, 0]).set_stroke(warm, 3).set_fill(warm, 0.55))
+    for index in range(3):
+        graphics.add(RoundedRectangle(width=0.6, height=0.42, corner_radius=0.06).move_to([-1.4, 1.3 + index * 0.55, 0]).set_stroke(cool, 3).set_fill(cool, 0.25))
+    return Hero(graphics, focus=np.array([-1.4, 1.3, 0]))
+
+
 def hero_energy_levels(spec, cool, warm, ts, safe):
     """A drop between two states emits light; no miniature prose legend."""
     from manim import Arrow, Dot, Line, VGroup, LEFT
@@ -1676,6 +1742,9 @@ HEROES = {
     "orbit": hero_orbit,
     "network": hero_network,
     "atom": hero_atom,
+    "fission": hero_fission,
+    "molecule": hero_molecule,
+    "packet_flow": hero_packet_flow,
     "energy_levels": hero_energy_levels,
     "surface_3d": hero_surface_3d,
     "solid_3d": hero_solid_3d,
@@ -1698,20 +1767,23 @@ def compose(spec: dict, font_dir: str, safe: bool):
     palette = PALETTES.get(spec.get("palette"), PALETTES["teal-amber"])
     cool, warm = palette
     ts = Typesetter(font_dir, cool, warm)
-    report = {"mode": "safe" if safe else "full", "warnings": []}
+    layout = spec.get("layout", "split_left")
+    if layout not in ("split_left", "split_right", "poster", "visual_only"):
+        layout = "split_left"
+    report = {"mode": "safe" if safe else "full", "layout": layout, "warnings": []}
 
     # spec["eyebrow"] is metadata only: small block-capital tags read as
     # template chrome, so the headline and the picture carry the thumbnail.
     headline = (spec.get("headline") or "").strip()
-    has_copy = bool(headline)
+    has_copy = bool(headline) and layout != "visual_only"
 
     copy_block = None
     if has_copy:
         words = split_words(headline)
         accent_span = accent_range(headline, spec.get("accent") or "")
         strike_span = strike_range(headline, spec.get("strike") or "", accent_span) if isinstance(spec.get("strike"), str) else None
-        options = line_options(words, accent_span)
-        column = u(TEXT_COL_W)
+        options = line_options(words, accent_span, max_lines=2 if layout == "poster" else 3)
+        column = u(WIDTH - 2 * MARGIN_X if layout == "poster" else TEXT_COL_W)
         candidates = sorted(
             (score + 5 * tier, size, lines)
             for tier, size in enumerate(HEADLINE_TIERS)
@@ -1731,10 +1803,17 @@ def compose(spec: dict, font_dir: str, safe: bool):
         if copy_block is None:
             raise LayoutError("headline does not fit the copy column at any type size")
         text = VGroup(copy_block)
-        text.move_to([x_at(MARGIN_X) + text.width / 2, u(6), 0])
-        if text.height > u(HEIGHT - 2 * MARGIN_Y):
-            raise LayoutError("copy block is taller than the canvas")
-        hero_region = np.array([x_at(HERO_LEFT), -FRAME_H / 2 + u(MARGIN_Y), x_at(WIDTH - MARGIN_X), FRAME_H / 2 - u(MARGIN_Y)])
+        if layout == "poster":
+            text.move_to([0, y_at(MARGIN_Y) - text.height / 2, 0])
+            hero_region = np.array([x_at(MARGIN_X), y_at(HEIGHT - MARGIN_Y), x_at(WIDTH - MARGIN_X), text.get_bottom()[1] - u(GUTTER)])
+        elif layout == "split_right":
+            text.move_to([x_at(WIDTH - MARGIN_X - TEXT_COL_W) + text.width / 2, u(6), 0])
+            hero_region = np.array([x_at(MARGIN_X), y_at(HEIGHT - MARGIN_Y), x_at(WIDTH - HERO_LEFT), y_at(MARGIN_Y)])
+        else:
+            text.move_to([x_at(MARGIN_X) + text.width / 2, u(6), 0])
+            hero_region = np.array([x_at(HERO_LEFT), y_at(HEIGHT - MARGIN_Y), x_at(WIDTH - MARGIN_X), y_at(MARGIN_Y)])
+        if text.height > u(HEIGHT - 2 * MARGIN_Y) or hero_region[3] - hero_region[1] < u(180):
+            raise LayoutError("copy leaves too little room for the hero")
     else:
         text = None
         hero_region = np.array([x_at(MARGIN_X + 60), -FRAME_H / 2 + u(MARGIN_Y), x_at(WIDTH - MARGIN_X - 60), FRAME_H / 2 - u(MARGIN_Y)])
@@ -1806,8 +1885,8 @@ def compose(spec: dict, font_dir: str, safe: bool):
             if not with_callout:
                 return attempt, None
             focus = graphics.get_center() + focus_offset * scale["current"]
-            # The text block sits left of the hero; keep a gutter from it.
-            room = np.array([bbox(text, u(GUTTER / 2))[2], -FRAME_H / 2 + u(SAFE_PAD), FRAME_W / 2 - u(SAFE_PAD), FRAME_H / 2 - u(SAFE_PAD)])
+            # The hero region already reserves the gutter in every layout.
+            room = hero_region.copy()
             pointer = place_callout(callout, focus, graphics, attempt, room, warm)
             if pointer is not None:
                 return attempt, pointer

@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   parseVideoDescriptionPackage,
+  fallbackVideoTitle,
+  generateValidatedMetadata,
   formatChapterTimestamp,
   buildChapters,
   buildPreviousVideoComment,
@@ -21,6 +23,128 @@ import {
   type RelatedYouTubeVideo,
 } from "../src/lib/youtube-metadata";
 import { protectLatexBackslashes } from "../src/lib/latex-json";
+import {
+  buildThumbnailSpecs,
+  inferVisual,
+  THUMBNAIL_LAYOUTS,
+} from "../src/lib/youtube-thumbnail";
+
+test("production briefs never become fallback titles or description copy", () => {
+  const prompt =
+    "An educational horizontal video explaining nuclear fission for beginners. Scene 1: visual of an atom";
+  assert.equal(fallbackVideoTitle(prompt), "Nuclear fission for beginners");
+  assert.equal(
+    fallbackVideoTitle(
+      "A horizontal educational video explaining why water (H2O) is a bent molecule using VSEPR theory. Scene 1: show bonds",
+    ),
+    "Why water (H2O) is a bent molecule using VSEPR theory",
+  );
+  assert.equal(fallbackVideoTitle(""), "A Visual Math and Science Exploration");
+  assert.ok(fallbackVideoTitle("a ".repeat(100)).length <= 80);
+  assert.doesNotMatch(
+    buildYouTubeDescription({ topic: prompt }),
+    /educational horizontal|Scene 1|hidden pattern/,
+  );
+  assert.throws(
+    () =>
+      parseVideoTitleSet(
+        JSON.stringify([
+          prompt.slice(0, 70),
+          "Why a Single Neutron Can Start a Chain Reaction",
+          "The Energy Hidden Inside an Atomic Nucleus",
+        ]),
+      ),
+    /three usable candidates/,
+  );
+});
+
+test("invalid metadata gets one repair attempt with validation feedback", async () => {
+  const feedback: string[] = [];
+  const valid = JSON.stringify({
+    hook: [
+      "One neutron can split a nucleus.",
+      "See how nuclear fission releases energy and starts a chain reaction.",
+    ],
+  });
+  const result = await generateValidatedMetadata(async (message) => {
+    feedback.push(message);
+    return feedback.length === 1 ? '{"hook": []}' : valid;
+  }, parseVideoDescriptionPackage);
+  assert.match(result.hook, /nuclear fission/);
+  assert.equal(feedback.length, 2);
+  assert.match(feedback[1]!, /two concise/);
+  let attempts = 0;
+  await assert.rejects(
+    generateValidatedMetadata(async () => {
+      attempts++;
+      throw new Error("provider unavailable");
+    }, parseVideoDescriptionPackage),
+    /provider unavailable/,
+  );
+  assert.equal(attempts, 2);
+});
+
+test("empty, malformed and overlong descriptions trigger repair instead of leaking JSON", () => {
+  for (const raw of [
+    '{"hook": []}',
+    '{"tags": ["physics"]}',
+    '{"hook":',
+    "",
+    JSON.stringify({ hook: ["x".repeat(111), "Second line."] }),
+    JSON.stringify({ hook: ["Scene 1: draw an atom", "Narrate the split."] }),
+  ]) {
+    assert.throws(
+      () => parseVideoDescriptionPackage(raw),
+      /Description generation/,
+    );
+  }
+});
+
+test("thumbnail compositions vary across videos and preserve a text-free B", () => {
+  const titles = parseVideoTitleSet(
+    JSON.stringify(
+      [0, 1, 2].map((i) => ({
+        title: `The Energy Hidden in a Nucleus, Angle ${i + 1}`,
+        headline: "Split one atom",
+        accent: "Split",
+        visual: { type: "fission" },
+      })),
+    ),
+  );
+  const layouts = new Set<string>();
+  for (let job = 0; job < 30; job++) {
+    const request = {
+      titles,
+      topic: "Nuclear fission",
+      designSeed: `job-${job}`,
+    };
+    const specs = buildThumbnailSpecs(request);
+    assert.deepEqual(specs, buildThumbnailSpecs(request));
+    assert.notEqual(specs[0].layout, specs[2].layout);
+    assert.equal(specs[1].layout, "visual_only");
+    assert.equal(specs[1].headline, "");
+    layouts.add(specs[0].layout);
+  }
+  assert.deepEqual([...layouts].sort(), [...THUMBNAIL_LAYOUTS].sort());
+});
+
+test("topic-specific visuals distinguish fission, molecular bonds and internet traffic", () => {
+  assert.deepEqual(inferVisual("nuclear fission"), { type: "fission" });
+  assert.deepEqual(inferVisual("Why water is a bent molecule"), {
+    type: "molecule",
+    shape: "water",
+  });
+  assert.deepEqual(inferVisual("carbon dioxide bonds"), {
+    type: "molecule",
+    shape: "carbon_dioxide",
+  });
+  assert.deepEqual(inferVisual("Why movies choke a network"), {
+    type: "packet_flow",
+  });
+  assert.deepEqual(sanitizeThumbnailVisual("molecule", { shape: "ammonia" }), {
+    type: "molecule",
+  });
+});
 
 const previousVideo: RelatedYouTubeVideo = {
   videoId: "previous123",

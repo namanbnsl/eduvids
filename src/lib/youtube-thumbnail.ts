@@ -24,10 +24,17 @@ export const THUMBNAIL_PALETTES = [
 ] as const;
 
 export type ThumbnailPalette = (typeof THUMBNAIL_PALETTES)[number];
+export const THUMBNAIL_LAYOUTS = [
+  "split_left",
+  "split_right",
+  "poster",
+] as const;
+export type ThumbnailLayout = (typeof THUMBNAIL_LAYOUTS)[number];
 
 export interface ThumbnailSpec {
   title: string;
   palette: ThumbnailPalette;
+  layout: ThumbnailLayout | "visual_only";
   /** Metadata only; the renderer draws no eyebrow. */
   eyebrow: string;
   headline: string;
@@ -70,6 +77,21 @@ export function inferVisualType(text: string): ThumbnailVisualType {
 /** A truthful default visual for text with no vetted concept. */
 export function inferVisual(text: string): ThumbnailVisual {
   const normalized = text.toLowerCase();
+  if (/\bfission\b|splitting (?:an? )?(?:atom|nucleus)/.test(normalized))
+    return { type: "fission" };
+  if (
+    /\bwater\b|h2o|h₂o/.test(normalized) &&
+    /molecul|bond|bent|vsepr/.test(normalized)
+  )
+    return { type: "molecule", shape: "water" };
+  if (/carbon dioxide|co2|co₂/.test(normalized))
+    return { type: "molecule", shape: "carbon_dioxide" };
+  if (
+    /packet|bandwidth|congestion|internet|streaming|movies?.*network/.test(
+      normalized,
+    )
+  )
+    return { type: "packet_flow" };
   if (/\bprimes?\b|prime number/.test(normalized)) {
     return { type: "spiral", shape: "primes" };
   }
@@ -162,6 +184,7 @@ export function buildThumbnailSpecs({
   designSeed: string;
 }): [ThumbnailSpec, ThumbnailSpec, ThumbnailSpec] {
   const palette = choosePalette(designSeed);
+  const offset = stableHash(`layout:${designSeed}`) % THUMBNAIL_LAYOUTS.length;
   return titles.candidates.map((title, index) => {
     const concept = titles.thumbnailConcepts?.[index];
     // Without a concept there is no vetted copy: show the visual on its own.
@@ -176,11 +199,19 @@ export function buildThumbnailSpecs({
     return {
       title,
       palette,
+      // Vary the published first candidate across jobs, and give C a distinct
+      // composition. B stays a full-canvas, text-free alternative.
+      layout:
+        !concept?.headline || index === 1
+          ? "visual_only"
+          : THUMBNAIL_LAYOUTS[
+              (offset + (index === 2 ? 1 : 0)) % THUMBNAIL_LAYOUTS.length
+            ]!,
       eyebrow: concept?.eyebrow ?? "",
-      headline: concept?.headline ?? "",
-      accent: concept?.accent ?? "",
-      strike: concept?.strike ?? "",
-      callout: concept?.callout ?? "",
+      headline: index === 1 ? "" : (concept?.headline ?? ""),
+      accent: index === 1 ? "" : (concept?.accent ?? ""),
+      strike: index === 1 ? "" : (concept?.strike ?? ""),
+      callout: index === 1 ? "" : (concept?.callout ?? ""),
       // Video frames carry their own spacing, captions and formula colours.
       // Use the vetted concept in every slot so the renderer can lay it out.
       visual: drawn,

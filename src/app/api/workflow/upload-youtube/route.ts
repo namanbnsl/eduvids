@@ -12,6 +12,7 @@ import {
 import {
   buildPreviousVideoComment,
   buildYouTubeDescription,
+  fallbackVideoTitle,
   type RelatedYouTubeVideo,
   type YouTubeChapter,
 } from "@/lib/youtube-metadata";
@@ -117,7 +118,7 @@ export const { POST } = serve<YouTubeUploadPayload>(
       try {
         const result = await uploadToYouTube({
           videoUrl,
-          title: title ?? prompt.slice(0, 100),
+          title: title?.trim() || fallbackVideoTitle(prompt),
           description: finalDescription,
           tags,
           variant,

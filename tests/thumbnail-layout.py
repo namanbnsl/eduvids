@@ -71,4 +71,22 @@ with tempfile.TemporaryDirectory(prefix="thumbnail-layout-") as folder:
     assert r.callout_copy(r"\input{x}", ts, False) is None
     assert r.clean_number("67%") == "67%" and r.clean_number("os.system") == ""
 
+    # Every new composition keeps the same collision, safe-area and duration
+    # badge checks, including fallback mode and molecule labels inside atoms.
+    review = json.loads((REPO / "docs/packaging-quality/specs.json").read_text())
+    review += [{"headline": "Linear bonds", "visual": {"type": "molecule", "shape": "carbon_dioxide"}}]
+    for safe in (False, True):
+        for spec in review:
+            for layout in ("split_left", "split_right", "poster", "visual_only"):
+                _, report = r.compose({**spec, "layout": layout}, fonts, safe)
+                assert report["visual"] == spec["visual"]["type"], (spec, layout, report)
+                assert report["layout"] == layout
+                if layout == "visual_only":
+                    assert "size" not in report and "callout" not in report
+    water = r.hero_molecule({"shape": "water"}, cool, warm, ts, False)
+    center = water.graphics[2].get_center()
+    bonds = [water.graphics[index].get_center() - center for index in (3, 4)]
+    angle = np.degrees(np.arccos(np.dot(*bonds) / (np.linalg.norm(bonds[0]) * np.linalg.norm(bonds[1]))))
+    assert np.isclose(angle, 104.5), angle
+
 print("Thumbnail geometry, label sizes, safe fallback, click-through devices and equation colours passed")

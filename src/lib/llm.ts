@@ -20,6 +20,7 @@ import { protectLatexBackslashes } from "./latex-json";
 import { franc } from "franc";
 import { VIDEO_BACKGROUND } from "./video-style";
 import {
+  generateValidatedMetadata,
   parseVideoDescriptionPackage,
   parseVideoTitleSet,
   type VideoDescriptionPackage,
@@ -1110,25 +1111,40 @@ export function normalizeVoiceoverHeaders(script: string): string {
   const output: string[] = [];
   for (let index = 0; index < lines.length; index++) {
     let line = lines[index]!;
-    if (/^\s*with\s+self\.voiceover\(/.test(line) && !/:\s*(#.*)?$/.test(line)) {
+    if (
+      /^\s*with\s+self\.voiceover\(/.test(line) &&
+      !/:\s*(#.*)?$/.test(line)
+    ) {
       let end = index;
-      while (end + 1 < lines.length && end - index < 8 && !/:\s*(#.*)?$/.test(lines[end]!)) {
+      while (
+        end + 1 < lines.length &&
+        end - index < 8 &&
+        !/:\s*(#.*)?$/.test(lines[end]!)
+      ) {
         end++;
       }
       if (/:\s*(#.*)?$/.test(lines[end]!)) {
         const indent = line.match(/^\s*/)![0];
-        line = indent + lines
-          .slice(index, end + 1)
-          .map((part) => part.trim())
-          .join(" ")
-          .replace(/\(\s+/g, "(")
-          .replace(/\s+\)/g, ")");
+        line =
+          indent +
+          lines
+            .slice(index, end + 1)
+            .map((part) => part.trim())
+            .join(" ")
+            .replace(/\(\s+/g, "(")
+            .replace(/\s+\)/g, ")");
         index = end;
       }
     }
     line = line
-      .replace(/^(\s*with\s+self\.voiceover\()\s*(?=[rfbu]{0,2}["'])/i, "$1text=")
-      .replace(/^(\s*with\s+self\.voiceover\(.*\)\s+as\s+\w+\s*:)\s*#.*$/, "$1");
+      .replace(
+        /^(\s*with\s+self\.voiceover\()\s*(?=[rfbu]{0,2}["'])/i,
+        "$1text=",
+      )
+      .replace(
+        /^(\s*with\s+self\.voiceover\(.*\)\s+as\s+\w+\s*:)\s*#.*$/,
+        "$1",
+      );
     output.push(line);
   }
   return output.join("\n");
@@ -1404,7 +1420,10 @@ export async function generateManimScript({
     );
     const visualGaps = scenePlanVisualGaps(timedScenePlan);
     if (visualGaps.length > 0) {
-      console.warn("[generateManimScript] Visual gaps in the scene plan", visualGaps);
+      console.warn(
+        "[generateManimScript] Visual gaps in the scene plan",
+        visualGaps,
+      );
       generationPromptParts.push(
         `VISUAL GAPS IN THE PLAN (fix these while keeping its beats and narration):\n- ${visualGaps.join("\n- ")}`,
       );
@@ -1507,7 +1526,7 @@ export async function generateVideoTitles({
 }: VideoTitleRequest): Promise<VideoTitleSet> {
   const systemPrompt = `You package videos for eduvids, a visual math and science channel. Your job is click-through rate: on a crowded home page, beside 3Blue1Brown, Veritasium and Welch Labs, a curious viewer must stop scrolling and click. Generate exactly three distinct title-and-thumbnail packages, ordered strongest first.
 
-Each thumbnail is rendered by a fixed design system: a big two-line headline on the left and, on the right, one precise mathematical or scientific visual (matte 3D for surfaces and solids), on a flat near-black background in the style of 3Blue1Brown. Copy is Computer Modern serif; one warm colour marks the payoff. There are no small tags or eyebrows on the image. You supply the words and the visual parameters only.
+Each thumbnail pairs a short headline with one precise mathematical or scientific visual (matte 3D for surfaces and solids), on a flat near-black background. The renderer varies the composition across videos: text left, text right, or a poster with large art below a top headline. Design one clear focal image that works in these compositions. Copy is Computer Modern serif; one warm colour marks the payoff. There are no small tags or eyebrows on the image. You supply the words and the visual parameters only.
 
 HOW TO WORK
 1. Mine the source material for click fuel: the opening puzzle, the tempting wrong answer, the most surprising number, the payoff image, and any everyday object or stakes ("your phone", "a casino", "every bridge").
@@ -1535,11 +1554,11 @@ THUMBNAIL COPY RULES
 - eyebrow: the field in 1-3 words, e.g. "Calculus", "Complex numbers", "Machine learning". It is metadata for picking the visual and is never drawn.
 - headline: 2-5 words, at most 26 characters, sentence case, no final period. Short copy is set much larger, and on a phone that is what reads, so cut every word you can. It completes the title's thought, never repeats it: the insight, the verdict or the tension. "The slope is the height", "Multiplying by $i$ turns", "Probably not sick", "Always switch".
 - accent: the exact substring of the headline that carries the payoff (1-2 words or one $math$ token). It is painted in the warm colour that also marks the focal detail of the visual, so pick the word the picture proves.
-- Every headline thumbnail (A and C) uses at least one engagement device, strike or callout; use both only when they don't crowd it. A plain headline beside a plain picture is the exception, kept for when neither would be truthful.
-- strike (the most powerful device): one word, number or $math$ token of the headline drawn crossed out, as the wrong intuition the video corrects. The headline then reads as a correction: headline "50% 67%" with strike "50%", or "Not 99% sure" with strike "99%". Use it whenever the video breaks a common belief (most do: read the narration's tempting wrong answer); it must not be the accent. Otherwise "".
-- callout: 1-3 words or one $math$ token placed beside the visual, with a warm arrow pointing at its focal detail: "why?", "still 1", "$\\infty$ edge", "a copy". Use it on every headline thumbnail without a strike, pointing at the one detail of the picture that is the surprise; never restate the headline. Otherwise "".
+- Strike and callout are OPTIONAL. Default to empty strings. Use a strike only for an explicit misconception in the narration; a callout only when it identifies a detail the viewer would otherwise miss. Do not manufacture a correction or repeat the same device across all videos.
+- strike (optional): one word, number or $math$ token of the headline drawn crossed out, as the wrong intuition the video corrects. The headline then reads as a correction: headline "50% 67%" with strike "50%", or "Not 99% sure" with strike "99%". Use it only for a specific wrong belief corrected in the narration; it must not be the accent. Otherwise "".
+- callout: 1-3 words or one $math$ token placed beside the visual, with a warm arrow pointing at its focal detail: "why?", "still 1", "$\\infty$ edge", "a copy". Use it sparingly, pointing at a specific surprise; never restate the headline. Otherwise "".
 - The three packages deliberately differ in copy so the channel learns what works:
-  A: a headline that states the tension or insight, with a strike or a callout.
+  A: a headline that states the tension or insight; let the picture carry it without extra devices when possible.
   B: headline, accent, strike and callout are all empty strings. This thumbnail is visual-only, so choose the single most arresting image the video has; the picture alone must stop the scroll.
   C: a headline phrased as a short question or verdict ("Where did $0/0$ go?", "Probably not sick").
 - Inline math goes between $...$ (e.g. "$e^{i\\pi}$", "$a^2+b^2=c^2$"). Use "~" only inside a multi-word term that must never be split across lines, e.g. "bell~curve"; most headlines need none.
@@ -1547,7 +1566,7 @@ THUMBNAIL COPY RULES
 VISUAL RULES
 - Visual first: the picture is the hook and the words serve it. Pick the image that makes a viewer ask "wait, what?": the strange shape, the impossible number, the moment two things diverge. A plain plot of the topic is the last resort, not the default.
 - Use the video's own pictures: the SCENE PLAN's opening hook, its correction beat and its payoff (big numbers, signature visuals, the struck guess) are what the viewer will see in the first seconds, so the click is paid off at once. Prefer a visual type that matches one of them; prefer spiral, chaos, fractal, bars and number whenever the video really shows that picture.
-- visual.type is exactly one of: function_plot, complex_plane, geometry, transformation, vector_field, wave, orbit, probability, network, atom, energy_levels, surface_3d, solid_3d, equation, spiral, chaos, fractal, bars, number
+- visual.type is exactly one of: function_plot, complex_plane, geometry, transformation, vector_field, wave, orbit, probability, network, atom, energy_levels, surface_3d, solid_3d, equation, spiral, chaos, fractal, bars, number, fission, molecule, packet_flow
 - Parameters by type (omit any you are unsure of; sensible defaults are used):
   function_plot: expression (single variable x; numbers, + - * / ^, parentheses, sin cos tan exp log sqrt abs, pi), xRange [min, max] within -20..20, highlight "tangent" | "area" | "point", at (x of the tangent or point), from and to (x bounds of a shaded area), notation (short LaTeX label such as "f(x)=e^x")
   complex_plane: turn (fraction of a full rotation, 0.25 = multiply by i, 0.5 = multiply by -1), notation
@@ -1558,6 +1577,10 @@ VISUAL RULES
   orbit: eccentricity 0.1-0.85
   probability: from and to (shaded interval of a normal curve in standard deviations), notation
   network: layers, e.g. [3, 5, 5, 2]
+  fission: a schematic heavy nucleus splitting into two fragments and releasing neutrons, without isotope counts (use for nuclear fission, never an orbital atom icon)
+  molecule: shape "water" (bent H2O with a 104.5 degree bond angle) | "carbon_dioxide" (linear CO2); use only for these molecules, never a generic atom for a molecular geometry video
+  packet_flow: packets traversing a shared link with a visible queue; use for internet routing, bandwidth and congestion, never a neural-network diagram
+  atom: schematic electron orbits; only for atomic structure, never molecular bonds or nuclear reactions
   energy_levels: two energy levels, a downward transition and an emitted photon; use for quantum emission or luminescence (no extra parameters)
   surface_3d: expression in x and y, e.g. "sin(x)*cos(y)"
   solid_3d: shape "sphere" | "torus" | "cube"
@@ -1570,7 +1593,7 @@ VISUAL RULES
 - notation must be short valid LaTeX that is central to the topic, or omitted. Never invent equations, numbers, data or claims: ground every expression, value and label in the source material. If exact mathematics is absent, choose a truthful conceptual visual
 - Prefer a striking diagram over a formula when the diagram proves the headline. For continuous probability and area under a curve, choose probability or function_plot with an area highlight; do not substitute a discrete probability formula. For overlapping sets choose geometry with shape "venn"
 - Use at most one short notation label. No explanatory captions, worked examples or small legends in the hero
-- Make the three packages distinct in angle, headline, and visual
+- Make the three packages distinct in angle, headline, and visual. Vary title openings, avoid defaulting every title to "Why", and never copy a production instruction, scene description or the raw request as a title. Treat the request as a brief; the narration is the source of truth.
 
 Return ONLY a JSON object: {"ideas": [ten or more short raw title ideas], "packages": [three objects, strongest first, with keys title, eyebrow, headline, accent, strike, callout, visualConcept (one sentence describing the image), visual (object with type and its parameters)]}. JSON strings must escape backslashes, e.g. "$e^{i\\\\pi}$".`;
 
@@ -1598,17 +1621,42 @@ Return ONLY a JSON object: {"ideas": [ten or more short raw title ideas], "packa
     posthogProperties: { $ai_session_id: sessionId },
   });
 
-  const text = await streamTextWithTracking(
-    {
-      model,
-      system: systemPrompt,
-      prompt: userPrompt,
-      temperature: 0.8,
+  return generateValidatedMetadata(
+    (feedback) =>
+      streamTextWithTracking(
+        {
+          model,
+          system: systemPrompt,
+          prompt: userPrompt + feedback,
+          temperature: 0.8,
+        },
+        googleModel,
+      ),
+    (text) => {
+      const titles = parseVideoTitleSet(text);
+      if (
+        !titles.thumbnailConcepts ||
+        !titles.thumbnailConcepts[0].headline ||
+        !titles.thumbnailConcepts[2].headline
+      ) {
+        throw new Error(
+          "All three packages need supported visual concepts; A and C need short, valid headlines",
+        );
+      }
+      for (const { visual } of titles.thumbnailConcepts) {
+        if (
+          (visual.type === "equation" && !visual.notation) ||
+          (visual.type === "number" && !visual.value) ||
+          (visual.type === "molecule" && !visual.shape)
+        ) {
+          throw new Error(
+            "Equation, number and molecule visuals need valid source-grounded notation, a value or a supported molecule shape",
+          );
+        }
+      }
+      return titles;
     },
-    googleModel,
   );
-
-  return parseVideoTitleSet(text);
 }
 
 // ---------------------------------------------------------------------------
@@ -1634,7 +1682,7 @@ HOOK (two lines; this is all most viewers see before "...more", and line 1 appea
 - Line 1, under 110 characters: the video's opening puzzle or surprising claim, phrased differently from the title and grounded in the narration.
 - Line 2, under 160 characters: the concrete thing the viewer will see and understand, naming the running example and 1-2 precise topic keywords.
 - Plain, confident words. Never start with "In this video". Never use "dive into", "join us", "embark", "unlock", "journey", "fascinating", or "mind-blowing".
-- No links, calls to action, timestamps, emoji, or labels.
+- No links, calls to action, timestamps, emoji, labels, production instructions or scene directions. Summarize what the narration actually teaches; do not repeat the request. Do not invent claims or promise examples absent from the narration.
 
 HASHTAGS: 2-3 specific topic hashtags in CamelCase, from broad to specific (e.g. "#Math", "#Calculus", "#Derivatives"). No generic tags like #Education or #Learning.
 TAGS: 6-10 search phrases people would actually type to find this video (e.g. "what is a derivative", "derivative intuition").
@@ -1655,17 +1703,19 @@ ${voiceoverScript}`;
     posthogProperties: { $ai_session_id: sessionId },
   });
 
-  const text = await streamTextWithTracking(
-    {
-      model,
-      system: systemPrompt,
-      prompt: userPrompt,
-      temperature: 0.5,
-    },
-    googleModel,
+  return generateValidatedMetadata(
+    (feedback) =>
+      streamTextWithTracking(
+        {
+          model,
+          system: systemPrompt,
+          prompt: userPrompt + feedback,
+          temperature: 0.5,
+        },
+        googleModel,
+      ),
+    parseVideoDescriptionPackage,
   );
-
-  return parseVideoDescriptionPackage(text);
 }
 
 // ---------------------------------------------------------------------------
