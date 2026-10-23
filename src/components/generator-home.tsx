@@ -26,6 +26,10 @@ import { Monitor, Smartphone } from "lucide-react";
 import { QuickActionCards } from "@/components/quick-action-cards";
 import { RemixGallery } from "@/components/remix-gallery";
 import { generateTopics } from "@/lib/actions/generate-topics";
+import {
+  readTopicHistory,
+  rememberSuggestedTopics,
+} from "@/lib/suggested-topic-history";
 
 // Types
 import type {
@@ -50,8 +54,6 @@ const isGenerateVideoToolPart = (
   part: ChatMessagePart,
 ): part is Extract<GenerateVideoToolUIPart, { type: "tool-generate_video" }> =>
   part.type === "tool-generate_video";
-
-const TOPIC_HISTORY_KEY = "eduvids-recent-topics";
 
 export function GeneratorHome() {
   const [input, setInput] = useState("");
@@ -99,30 +101,12 @@ export function GeneratorHome() {
     let isActive = true;
 
     async function loadTopics() {
-      let recentTopics: string[] = [];
-
       try {
-        const storedTopics = JSON.parse(
-          window.sessionStorage.getItem(TOPIC_HISTORY_KEY) ?? "[]",
-        );
-        if (Array.isArray(storedTopics)) {
-          recentTopics = storedTopics.filter(
-            (topic): topic is string => typeof topic === "string",
-          );
-        }
-      } catch {
-        // A malformed or unavailable session store should not block suggestions.
-      }
-
-      try {
-        const topics = await generateTopics(recentTopics);
+        const topics = await generateTopics(readTopicHistory(window));
         if (!isActive) return;
 
-        setSuggestedTopics(topics);
-        window.sessionStorage.setItem(
-          TOPIC_HISTORY_KEY,
-          JSON.stringify([...recentTopics, ...topics].slice(-12)),
-        );
+        setSuggestedTopics(topics.map((topic) => topic.title));
+        rememberSuggestedTopics(window, topics);
       } catch (error) {
         console.error("Failed to load suggested topics", error);
       } finally {
