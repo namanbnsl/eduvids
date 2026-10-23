@@ -178,8 +178,10 @@ function similarWords(left: string, right: string): boolean {
 }
 
 export function isSameTopic(a: SuggestedTopic, b: SuggestedTopic): boolean {
+  const subject = normalize(a.subject);
   return (
     normalize(a.title) === normalize(b.title) ||
+    (subject !== "" && subject === normalize(b.subject)) ||
     [a.subject, a.title].some((left) =>
       [b.subject, b.title].some((right) => similarWords(left, right)),
     )

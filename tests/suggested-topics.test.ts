@@ -148,6 +148,32 @@ test("a valid single model topic survives invalid or duplicate companions", () =
   assert.deepEqual(parseSuggestedTopics("[broken]"), []);
 });
 
+test("short canonical subjects exclude reworded titles and duplicates in a pair", () => {
+  const previous = {
+    title: "Why Acids Change Color — Visualized",
+    subject: "pH",
+  };
+  const repeated = {
+    title: "How Buffers Resist Added Acid — Animated",
+    subject: " PH ",
+  };
+  assert.ok(isSameTopic(previous, repeated));
+  assert.ok(
+    selectSuggestedTopics([repeated], [previous]).every(
+      (topic) => topic.title !== repeated.title,
+    ),
+  );
+  assert.ok(
+    selectSuggestedTopics([previous, repeated], []).every(
+      (topic) => topic.title !== repeated.title,
+    ),
+  );
+  // Empty or punctuation-only legacy subjects must not match every title.
+  assert.ok(
+    !isSameTopic({ ...previous, subject: "" }, { ...repeated, subject: "---" }),
+  );
+});
+
 test("session titles migrate to persistent history and keep the latest 100 entries", () => {
   const stores = {
     localStorage: memoryStorage(),
@@ -186,6 +212,36 @@ test("saving keeps changes from another tab made during generation", () => {
   rememberSuggestedTopics(stores, [FALLBACK_TOPICS[0]]);
   rememberSuggestedTopics(stores, [FALLBACK_TOPICS[1]]);
   assert.deepEqual(readTopicHistory(stores), FALLBACK_TOPICS.slice(0, 2));
+});
+
+test("session fallback supersedes readable local history when local writes fail", (t) => {
+  t.mock.method(Date, "now", () => 1234);
+  const localStorage = memoryStorage();
+  localStorage.setItem(TOPIC_HISTORY_KEY, JSON.stringify([FALLBACK_TOPICS[0]]));
+  let isLocalFull = true;
+  const stores = {
+    localStorage: {
+      getItem: localStorage.getItem,
+      setItem(key: string, value: string) {
+        if (isLocalFull) throw new Error("Quota exceeded");
+        localStorage.setItem(key, value);
+      },
+    },
+    sessionStorage: memoryStorage(),
+  };
+  rememberSuggestedTopics(stores, [FALLBACK_TOPICS[1]]);
+  assert.deepEqual(readTopicHistory(stores), FALLBACK_TOPICS.slice(0, 2));
+  rememberSuggestedTopics(stores, [FALLBACK_TOPICS[2]]);
+  assert.deepEqual(readTopicHistory(stores), FALLBACK_TOPICS.slice(0, 3));
+
+  // Once local writes recover, its newer history supersedes the old fallback.
+  isLocalFull = false;
+  rememberSuggestedTopics(stores, [FALLBACK_TOPICS[3]]);
+  assert.deepEqual(readTopicHistory(stores), FALLBACK_TOPICS.slice(0, 4));
+  assert.deepEqual(
+    readTopicHistory({ ...stores, sessionStorage: memoryStorage() }),
+    FALLBACK_TOPICS.slice(0, 4),
+  );
 });
 
 test("malformed or blocked stores cannot break topic loading", () => {
