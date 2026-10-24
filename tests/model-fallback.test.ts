@@ -34,12 +34,42 @@ test("empty or truncated model output switches to the fallback model", async () 
   assert.equal(calls, 1);
 });
 
+test("SDK no-output failures switch models once, including serialized workflow errors", async () => {
+  for (const message of [
+    "No output generated. Check the stream for errors.",
+    "No output generated. The model stream ended without a finish chunk.",
+    "Manim script generation failed: No output generated. Check the stream for errors.",
+  ]) {
+    let calls = 0;
+    const result = await withOverloadFallback(
+      async () => { throw new Error(message); },
+      async () => { calls++; return "complete Manim script"; },
+      new AbortController().signal,
+    );
+    assert.equal(result, "complete Manim script");
+    assert.equal(calls, 1);
+  }
+});
+
+test("no-output failures are not described as rendering failures", () => {
+  const message = generationFailureMessage(
+    "Manim script generation failed: No output generated. Check the stream for errors.",
+  );
+  assert.match(message, /AI provider.*complete response/);
+  assert.doesNotMatch(message, /rendered|repair/);
+});
+
 test("success, credential failures and malformed output never trigger fallback", async () => {
   let calls = 0;
   const fallback = async () => { calls++; return "unexpected"; };
   const signal = new AbortController().signal;
   assert.equal(await withOverloadFallback(async () => "ok", fallback, signal), "ok");
-  for (const message of ["Permission denied: consumer suspended", "Invalid JSON", "429 quota exceeded"]) {
+  for (const message of [
+    "Permission denied: consumer suspended",
+    "No output generated. Permission denied: consumer suspended",
+    "Invalid JSON",
+    "429 quota exceeded",
+  ]) {
     const error = new Error(message);
     await assert.rejects(withOverloadFallback(async () => { throw error; }, fallback, signal), error);
   }

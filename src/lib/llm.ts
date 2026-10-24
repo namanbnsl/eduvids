@@ -149,6 +149,10 @@ async function streamTextOnceWithTracking<
     return text;
   } catch (error) {
     const failure = streamError ?? error;
+    console.error("[AI generation] Stream failed", {
+      modelId: googleConfig?.modelId,
+      error: safeError(failure),
+    });
     if (googleConfig && !(failure instanceof RetryableModelOutputError)) {
       await reportError(googleConfig.provider, failure);
     }

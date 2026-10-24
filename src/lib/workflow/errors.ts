@@ -21,7 +21,11 @@ export function isModelOverloaded(error: unknown): boolean {
 }
 
 export function isRetryableModelOutputError(error: unknown): boolean {
-  return /AI response was (?:empty|truncated)/i.test(safeError(error));
+  const message = safeError(error);
+  // The SDK can reject result.text before our empty-text check runs. Match the
+  // message too, because workflow boundaries serialize away the SDK error type.
+  return !isCredentialError(message) &&
+    /AI response was (?:empty|truncated)|\bNo output generated(?:\.|$)/i.test(message);
 }
 
 export function generationFailureMessage(message: string): string {
@@ -33,6 +37,9 @@ export function generationFailureMessage(message: string): string {
   }
   if (isModelOverloaded(message)) {
     return "The AI provider is temporarily overloaded. Video generation could not complete after recovery attempts. Please try again later.";
+  }
+  if (isRetryableModelOutputError(message)) {
+    return "The AI provider did not return a complete response after recovery attempts. Please try again.";
   }
   if (/Manim|scene|syntax|script validation/i.test(message)) {
     return "The animation script could not be rendered after automatic repair. Please try simplifying the request.";

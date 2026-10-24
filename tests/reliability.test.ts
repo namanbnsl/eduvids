@@ -54,6 +54,7 @@ import {
   safeError,
   generationFailureMessage,
 } from "../src/lib/workflow/errors";
+import { withOverloadFallback } from "../src/lib/workflow/model-fallback";
 import type { PreparedSandboxState } from "../src/lib/e2b";
 import type { ScenePlanEntry } from "../src/lib/llm";
 import { uploadThingFetch } from "../src/lib/uploadthing";
@@ -254,6 +255,26 @@ test("partial output followed by a stream error is rejected", async () => {
     streamTextWithTracking({ model, prompt: "test" }),
     /provider disconnected/,
   );
+});
+
+test("an empty SDK stream recovers through the model fallback", async () => {
+  const model = new MockLanguageModelV3({
+    doStream: async () => ({
+      stream: simulateReadableStream({ chunks: [] }),
+    }),
+  });
+  let fallbackCalls = 0;
+  const text = await withOverloadFallback(
+    () => streamTextWithTracking({ model, prompt: "test" }),
+    async () => {
+      fallbackCalls++;
+      return "class Complete(Scene): pass";
+    },
+    new AbortController().signal,
+  );
+  assert.equal(text, "class Complete(Scene): pass");
+  assert.equal(model.doStreamCalls.length, 1);
+  assert.equal(fallbackCalls, 1);
 });
 
 test("nonempty output with an uncategorized finish reason remains usable", async () => {
