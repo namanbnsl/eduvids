@@ -9,7 +9,8 @@ import {
 } from "@/prompt";
 import { streamText, LanguageModel } from "ai";
 import {
-  createGoogleProvider,
+  createGoogleModel,
+  type GoogleModelConfig,
   reportSuccess,
   reportError,
 } from "./google-provider";
@@ -32,11 +33,6 @@ import langs from "langs";
 
 import { withTracing } from "@posthog/ai";
 import { PostHog } from "posthog-node";
-
-interface GoogleModelConfig {
-  modelId: string;
-  provider: Awaited<ReturnType<typeof createGoogleProvider>>;
-}
 
 class RetryableModelOutputError extends Error {
   constructor(message: string) {
@@ -63,13 +59,6 @@ function maybeWithTracing<T>(
   if (!phClient) return model;
   return withTracing(model as never, phClient, options) as T;
 }
-
-const createGoogleModel = async (
-  modelId: string,
-): Promise<GoogleModelConfig> => {
-  const provider = await createGoogleProvider(modelId);
-  return { modelId, provider };
-};
 
 export async function streamTextWithTracking<
   T extends Parameters<typeof streamText>[0],
