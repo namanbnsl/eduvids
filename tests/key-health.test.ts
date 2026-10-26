@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { ConvexError } from "convex/values";
 import { selectKey, reportError } from "../convex/apiKeys";
 import type { MutationCtx } from "../convex/_generated/server";
 
@@ -157,5 +158,21 @@ test("quota cooldown is not bypassed by a generic auto-heal timer", async () => 
     (await select(ctx, { provider: "google", model: "flash", numKeys: 2 }))
       .keyIndex,
     1,
+  );
+});
+
+test("an exhausted pool exposes its reason as a ConvexError in production", async () => {
+  const model = "gemini-3.8-flash";
+  const { ctx } = database([
+    key(0, model, { requestCount24h: 20 }),
+    key(1, model, { requestCount24h: 20 }),
+  ]);
+  await assert.rejects(
+    select(ctx, { provider: "google", model, numKeys: 2 }),
+    (error: unknown) => {
+      assert.ok(error instanceof ConvexError);
+      assert.match(String(error.data), /No available API keys.*retry after/);
+      return true;
+    },
   );
 });

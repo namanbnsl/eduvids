@@ -3,7 +3,7 @@ import {
   type GoogleGenerativeAIProvider,
 } from "@ai-sdk/google";
 import { ConvexError } from "convex/values";
-import { safeError } from "./workflow/errors";
+import { isApiKeyPoolUnavailable, safeError } from "./workflow/errors";
 import { getConvexClient, api } from "./convex-server";
 
 const GOOGLE_KEY_PREFIX = "GOOGLE_GENERATIVE_AI_API_KEY_";
@@ -61,6 +61,32 @@ export const createGoogleProvider = async (
   providerKeyMetadataMap.set(provider, { keyIndex, model });
 
   return provider;
+};
+
+export interface GoogleModelConfig {
+  modelId: string;
+  provider: GoogleGenerativeAIProvider;
+}
+
+/** Key selection can fail before a model stream (and its fallback) exists. */
+export const createGoogleModel = async (
+  modelId: string,
+): Promise<GoogleModelConfig> => {
+  try {
+    return { modelId, provider: await createGoogleProvider(modelId) };
+  } catch (error) {
+    if (modelId !== "gemini-3.8-flash" || !isApiKeyPoolUnavailable(error)) {
+      throw error;
+    }
+    console.warn(
+      "[Google Provider] Primary key pool unavailable; switching to gemini-3.5-flash-lite",
+    );
+    const fallbackId = "gemini-3.5-flash-lite";
+    return {
+      modelId: fallbackId,
+      provider: await createGoogleProvider(fallbackId),
+    };
+  }
 };
 
 /**
