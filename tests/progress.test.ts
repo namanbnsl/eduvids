@@ -98,3 +98,45 @@ test("KV requester preserves SDK serialization, uses a deadline, and supports up
     else process.env.KV_REST_API_TOKEN = oldToken;
   }
 });
+
+test("title reservations hold a name for one job across retries", async () => {
+  const oldUrl = process.env.KV_REST_API_URL;
+  const oldToken = process.env.KV_REST_API_TOKEN;
+  process.env.KV_REST_API_URL = "https://kv.example.test";
+  process.env.KV_REST_API_TOKEN = "fixture";
+  const held = new Map<string, string>();
+  const fetch = mock.method(
+    globalThis,
+    "fetch",
+    async (_input: string | URL | Request, init?: RequestInit) => {
+      const [command, key, value] = JSON.parse(String(init?.body)) as string[];
+      if (command === "set") {
+        if (held.has(key!)) return Response.json({ result: null });
+        held.set(key!, value!);
+        return Response.json({ result: "OK" });
+      }
+      return Response.json({ result: held.get(key!) ?? null });
+    },
+  );
+  try {
+    assert.equal(
+      await artifactStore.reserve("youtube-title", "t", "job-a"),
+      true,
+    );
+    // A retry by the same job keeps the title; another job is refused.
+    assert.equal(
+      await artifactStore.reserve("youtube-title", "t", "job-a"),
+      true,
+    );
+    assert.equal(
+      await artifactStore.reserve("youtube-title", "t", "job-b"),
+      false,
+    );
+  } finally {
+    fetch.mock.restore();
+    if (oldUrl === undefined) delete process.env.KV_REST_API_URL;
+    else process.env.KV_REST_API_URL = oldUrl;
+    if (oldToken === undefined) delete process.env.KV_REST_API_TOKEN;
+    else process.env.KV_REST_API_TOKEN = oldToken;
+  }
+});

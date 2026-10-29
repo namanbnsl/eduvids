@@ -58,6 +58,17 @@ class KVArtifactStore {
     );
   }
 
+  /**
+   * Atomically hold a name for one owner. True when this owner holds it,
+   * including on a retry; false when another owner got there first.
+   */
+  async reserve(scope: string, name: string, owner: string): Promise<boolean> {
+    const key = this.key(scope, name);
+    if ((await kv.set(key, owner, { nx: true, ex: this.ttlSeconds })) === "OK")
+      return true;
+    return (await kv.get(key)) === owner;
+  }
+
   async find(jobId: string, name: string): Promise<string | undefined> {
     const value = await kv.get(this.key(jobId, name));
     return value == null

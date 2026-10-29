@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { WorkflowNonRetryableError } from "@upstash/workflow";
 import { safeError } from "@/lib/workflow/errors";
 import { serve } from "@upstash/workflow/nextjs";
@@ -24,6 +25,7 @@ import { qstashClientWithBypass } from "@/lib/workflow/client";
 import type { VideoVariant } from "@/lib/types";
 import {
   assertValidUploadTitle,
+  normalizeYouTubeTitle,
   chapterLanguageErrors,
   repairYouTubeMetadata,
 } from "@/lib/youtube-validation";
@@ -142,8 +144,23 @@ export const { POST } = serve<YouTubeUploadPayload>(
         const material = await source();
         return repairYouTubeMetadata(
           title ?? "",
-          (candidate) =>
-            assertValidUploadTitle(candidate, inventory.value.titles),
+          async (candidate) => {
+            const valid = assertValidUploadTitle(
+              candidate,
+              inventory.value.titles,
+            );
+            // The inventory may predate another job's upload: reserve the
+            // title across jobs so two uploads never share it.
+            const titleKey = createHash("sha256")
+              .update(normalizeYouTubeTitle(valid))
+              .digest("hex");
+            if (
+              !(await artifactStore.reserve("youtube-title", titleKey, key))
+            ) {
+              throw new Error("title is already being uploaded by another job");
+            }
+            return valid;
+          },
           (feedback, signal) => generateUploadTitle(material, feedback, signal),
         );
       },
