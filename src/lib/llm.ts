@@ -983,7 +983,7 @@ export async function generateScenePlan({
   voiceoverScript,
   sessionId,
 }: ManimScriptRequest): Promise<ScenePlanEntry[]> {
-  const composedPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}`;
+  const composedPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite every chapterTitle in the same language as this narration. Scene IDs are code identifiers, not chapter names.`;
 
   let lastError: unknown;
 
@@ -1534,6 +1534,7 @@ WHAT WINS THE CLICK
 - Concrete beats abstract; specific numbers beat vague words; the viewer's own intuition is the best villain.
 
 TITLE RULES
+- Write titles in the same language as the narration. Generate viewer-facing titles, never copy prompt instructions, title-slide labels or scene directions. Use complete phrases without wrapping quotes or parentheses.
 - 30-55 characters is ideal and 70 the hard ceiling. Put the hook in the first 40 characters, because mobile truncates.
 - Plain words a curious 15-year-old would use. Name the topic keyword once, naturally, in at least one of the three titles.
 - Three DIFFERENT angles, in this order:
@@ -1676,6 +1677,7 @@ HOOK (two lines; this is all most viewers see before "...more", and line 1 appea
 - Line 1, under 110 characters: the video's opening puzzle or surprising claim, phrased differently from the title and grounded in the narration.
 - Line 2, under 160 characters: the concrete thing the viewer will see and understand, naming the running example and 1-2 precise topic keywords.
 - Plain, confident words. Never start with "In this video". Never use "dive into", "join us", "embark", "unlock", "journey", "fascinating", or "mind-blowing".
+- Write in the narration's language. Start each line with a capital letter and finish a complete sentence with punctuation. Rewrite a sentence to fit its limit; never clip it.
 - No links, calls to action, timestamps, emoji, labels, production instructions or scene directions. Summarize what the narration actually teaches; do not repeat the request. Do not invent claims or promise examples absent from the narration.
 
 HASHTAGS: 2-3 specific topic hashtags in CamelCase, from broad to specific (e.g. "#Math", "#Calculus", "#Derivatives"). No generic tags like #Education or #Learning.

@@ -308,7 +308,10 @@ export const { POST } = serve<VideoGenerationPayload>(
           console.log("✅ Title candidates generated:", titles.candidates);
           return titles;
         } catch (err) {
-          console.warn("Title generation failed (non-fatal):", err);
+          console.warn(
+            "Title/thumbnail packaging failed; upload gate will generate an independent title:",
+            safeError(err),
+          );
           return undefined;
         }
       });
@@ -578,7 +581,7 @@ export const { POST } = serve<VideoGenerationPayload>(
     // Chapters come from the final cut's scene lengths, read while the
     // sandbox is still alive. Shorts don't get chapters.
     const chapters = await context.run("build-chapters", async () => {
-      if (variant === "short" || !descriptionCopy) return [];
+      if (variant === "short") return [];
       try {
         return buildChapters(
           await readSceneDurations(prepared!.sandboxId),
@@ -591,7 +594,6 @@ export const { POST } = serve<VideoGenerationPayload>(
         return [] as YouTubeChapter[];
       }
     });
-    const packaging = descriptionCopy && { ...descriptionCopy, chapters };
 
     await context.run("trigger-youtube-upload", async () => {
       if (
@@ -611,10 +613,10 @@ export const { POST } = serve<VideoGenerationPayload>(
         body: {
           videoUrl: uploadUrl,
           title: selectedThumbnailPair?.title ?? videoTitleSet?.selected,
-          description: packaging?.hook,
-          hashtags: packaging?.hashtags,
-          tags: packaging?.tags,
-          chapters: packaging?.chapters,
+          description: descriptionCopy?.hook,
+          hashtags: descriptionCopy?.hashtags,
+          tags: descriptionCopy?.tags,
+          chapters,
           prompt,
           jobId,
           userId,

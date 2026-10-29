@@ -3,6 +3,10 @@ import { OAuth2Client } from "google-auth-library";
 import { Readable } from "node:stream";
 import type { VideoVariant } from "./types";
 import type { RelatedYouTubeVideo } from "./youtube-metadata";
+import {
+  assertValidUploadTitle,
+  titleValidationErrors,
+} from "./youtube-validation";
 
 export type YouTubePrivacyStatus = "public" | "unlisted" | "private";
 
@@ -37,46 +41,83 @@ function getYouTubeClient() {
   return google.youtube({ version: "v3", auth: getOAuth2Client() });
 }
 
+export interface UploadedYouTubeVideo extends RelatedYouTubeVideo {
+  description: string;
+  privacyStatus?: string;
+}
+
+/** Read every uploads page: checking only the latest ten misses duplicates. */
+export async function listUploadedYouTubeVideos(): Promise<
+  UploadedYouTubeVideo[]
+> {
+  const youtube = getYouTubeClient();
+  const signal = AbortSignal.timeout(90_000);
+  const channels = await youtube.channels.list(
+    { part: ["contentDetails"], mine: true, maxResults: 1 },
+    { signal, timeout: 30_000, retry: false },
+  );
+  const uploadsPlaylistId =
+    channels.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+  if (!uploadsPlaylistId)
+    throw new Error(
+      "No channel uploads playlist; cannot check title uniqueness",
+    );
+  const videos: UploadedYouTubeVideo[] = [];
+  let pageToken: string | undefined;
+  do {
+    const uploads = await youtube.playlistItems.list(
+      {
+        part: ["snippet", "status"],
+        playlistId: uploadsPlaylistId,
+        maxResults: 50,
+        pageToken,
+      },
+      { signal, timeout: 30_000, retry: false },
+    );
+    for (const item of uploads.data.items ?? []) {
+      const videoId = item.snippet?.resourceId?.videoId;
+      const title = item.snippet?.title?.trim();
+      if (
+        !videoId ||
+        !title ||
+        title === "Private video" ||
+        title === "Deleted video"
+      ) {
+        continue;
+      }
+
+      videos.push({
+        videoId,
+        title,
+        watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        description: item.snippet?.description ?? "",
+        privacyStatus: item.status?.privacyStatus ?? undefined,
+      });
+    }
+    pageToken = uploads.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return videos;
+}
+
+export function selectPreviousYouTubeVideo(
+  videos: UploadedYouTubeVideo[],
+): RelatedYouTubeVideo | undefined {
+  return videos.find(
+    (video) =>
+      video.privacyStatus !== "private" &&
+      !titleValidationErrors(
+        video.title,
+        videos
+          .filter((other) => other.videoId !== video.videoId)
+          .map((other) => other.title),
+      ).length,
+  );
+}
+
 export async function findPreviousYouTubeVideo(): Promise<
   RelatedYouTubeVideo | undefined
 > {
-  const youtube = getYouTubeClient();
-  const channels = await youtube.channels.list({
-    part: ["contentDetails"],
-    mine: true,
-    maxResults: 1,
-  });
-  const uploadsPlaylistId =
-    channels.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
-  if (!uploadsPlaylistId) return undefined;
-
-  const uploads = await youtube.playlistItems.list({
-    part: ["snippet", "status"],
-    playlistId: uploadsPlaylistId,
-    maxResults: 10,
-  });
-
-  for (const item of uploads.data.items ?? []) {
-    const videoId = item.snippet?.resourceId?.videoId;
-    const title = item.snippet?.title?.trim();
-    if (
-      !videoId ||
-      !title ||
-      item.status?.privacyStatus === "private" ||
-      title === "Private video" ||
-      title === "Deleted video"
-    ) {
-      continue;
-    }
-
-    return {
-      videoId,
-      title,
-      watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
-    };
-  }
-
-  return undefined;
+  return selectPreviousYouTubeVideo(await listUploadedYouTubeVideos());
 }
 
 export async function postYouTubeComment({
@@ -179,6 +220,7 @@ export async function uploadToYouTube({
   watchUrl: string;
   title: string;
 }> {
+  assertValidUploadTitle(title);
   const youtube = getYouTubeClient();
 
   const privacy =

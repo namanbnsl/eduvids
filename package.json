@@ -15,6 +15,7 @@
     "preview": "next build && next start",
     "check": "eslint && tsc --noEmit",
     "youtube:descriptions": "node --import tsx scripts/youtube/update-descriptions.ts",
+    "youtube:audit-titles": "node --import tsx scripts/youtube/audit-titles.ts",
     "youtube:transcripts": "node --import tsx scripts/youtube/export-transcripts.ts"
   },
   "dependencies": {
@@ -50,6 +51,7 @@
     "convex": "^1.31.6",
     "dotenv": "^17.2.1",
     "e2b": "^2.14.1",
+    "eld": "2.1.0",
     "franc": "^6.2.0",
     "global": "^4.4.0",
     "google-auth-library": "^9.15.1",

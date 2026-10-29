@@ -252,7 +252,7 @@ OUTPUT SCHEMA
 
 The output is an array of scene objects. Each object has:
 - "sceneId": string, e.g. "Scene01Intro". The Manim class for this scene uses exactly this name.
-- "chapterTitle": optional string, 2-5 plain words. Set it ONLY on a scene that starts a new section of the story (usually 4-7 per full video, including the first scene). It becomes a YouTube chapter, so make it specific and curiosity-led ("The slope that shouldn't exist", "Shrinking the gap"), never generic ("Introduction", "Conclusion", "Summary").
+- "chapterTitle": optional string, 2-5 plain words, ALWAYS in the SAME LANGUAGE as the voiceover narration. Never translate chapter names into another language or copy the language of a code identifier. Set it ONLY on a scene that starts a new section of the story (usually 4-7 per full video, including the first scene). It becomes a YouTube chapter, so make it specific and curiosity-led ("The slope that shouldn't exist", "Shrinking the gap"), never generic ("Introduction", "Conclusion", "Summary").
 - "narration": the voiceover text for this scene
 - "visualType": one of "title", "formula_explanation", "graph_plot", "geometry_diagram", "comparison", "worked_example", "summary", "bullet_points", "3d_visualization"
 - "visualDevice": one of "zoom_journey", "population", "to_scale", "exploded_view", "process_flow", "equation_link", "balance", "number_line", "area_model", "proportion_bar", "chart", "algorithm_steps", "network_walk", "timeline", "parameter_sweep", "labelled_anatomy", "particles", "trajectory", "spotlight", "before_after", "live_tracker", "morph", "predict_reveal", "analogy_morph", "build_up", "correction", "big_number", "point_at"
