@@ -52,7 +52,7 @@ const phClient =
       });
 
 // Wrapper that skips tracing in development
-function maybeWithTracing<T>(
+export function maybeWithTracing<T>(
   model: T,
   options: Parameters<typeof withTracing>[2],
 ): T {

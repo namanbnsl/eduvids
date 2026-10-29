@@ -8,9 +8,12 @@ import type {
 } from "./youtube-metadata";
 
 /**
- * Thumbnails are rendered by `thumbnail/renderer.py` from data, never from
- * model-written code. This module turns a title package into those specs and
- * loads the renderer and its fonts for upload into the render sandbox.
+ * Thumbnails are rendered by `thumbnail/renderer.py`. Each spec carries a
+ * validated catalogue concept and, optionally, a `design`: Manim code in
+ * which the model composes the whole frame itself. The renderer checks a
+ * design against the house rules and falls back to the concept if it fails.
+ * This module builds those specs and loads the renderer and its fonts for
+ * upload into the render sandbox.
  */
 
 // Cool hue carries the visual; warm hue marks the focal detail and accent copy.
@@ -24,6 +27,18 @@ export const THUMBNAIL_PALETTES = [
 ] as const;
 
 export type ThumbnailPalette = (typeof THUMBNAIL_PALETTES)[number];
+
+/** [cool, warm] hex colours; must match PALETTES in renderer.py. */
+export const THUMBNAIL_PALETTE_COLORS: Record<
+  ThumbnailPalette,
+  readonly [string, string]
+> = {
+  "teal-amber": ["#5CD0B3", "#FFD35A"],
+  "azure-coral": ["#58C4DD", "#FC6255"],
+  "violet-amber": ["#B189C6", "#FFD35A"],
+  "teal-rose": ["#5CD0B3", "#E07A9F"],
+  "azure-amber": ["#58C4DD", "#FFD35A"],
+};
 export const THUMBNAIL_LAYOUTS = [
   "split_left",
   "split_right",
@@ -44,7 +59,14 @@ export interface ThumbnailSpec {
   /** Short copy beside the hero with a warm arrow to its focal detail. */
   callout: string;
   visual: ThumbnailVisual;
+  /** Model-written Manim code that composes the whole frame (`thumbnail()`). */
+  design?: string;
+  /** False: if the design fails, render nothing rather than the concept. */
+  fallback?: boolean;
 }
+
+/** Longest design the renderer accepts; longer code is ignored. */
+export const THUMBNAIL_DESIGN_LIMIT = 12_000;
 
 const THUMBNAIL_DIR = join(process.cwd(), "src/lib/thumbnail");
 
@@ -178,10 +200,13 @@ export function buildThumbnailSpecs({
   titles,
   topic,
   designSeed,
+  designs,
 }: {
   titles: VideoTitleSet;
   topic: string;
   designSeed: string;
+  /** Per-slot model designs; a missing or oversized one uses the concept. */
+  designs?: readonly (string | null | undefined)[];
 }): [ThumbnailSpec, ThumbnailSpec, ThumbnailSpec] {
   const palette = choosePalette(designSeed);
   const offset = stableHash(`layout:${designSeed}`) % THUMBNAIL_LAYOUTS.length;
@@ -196,7 +221,9 @@ export function buildThumbnailSpecs({
       !(concept.visual.type === "number" && !concept.visual.value)
         ? concept.visual
         : inferVisual(`${concept?.visualConcept ?? ""} ${title} ${topic}`);
+    const design = designs?.[index]?.trim();
     return {
+      ...(design && design.length <= THUMBNAIL_DESIGN_LIMIT ? { design } : {}),
       title,
       palette,
       // Vary the published first candidate across jobs, and give C a distinct

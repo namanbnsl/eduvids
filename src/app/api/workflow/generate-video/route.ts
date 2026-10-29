@@ -39,6 +39,8 @@ import { jobStore, artifactStore } from "@/lib/job-store";
 import { toStoryboard } from "@/lib/storyboard";
 import { findPreviousYouTubeVideo } from "@/lib/youtube";
 import { videoPalette } from "@/lib/video-style";
+import { choosePalette } from "@/lib/youtube-thumbnail";
+import { designThumbnails, reviewThumbnails } from "@/lib/thumbnail-design";
 import {
   buildChapters,
   selectThumbnailPair,
@@ -333,49 +335,69 @@ export const { POST } = serve<VideoGenerationPayload>(
           return undefined;
         }
       });
-    // In a sandbox of its own, so it never competes with the render for CPU.
-    const generateThumbnails = (titles: VideoTitleSet | undefined) =>
-      context.run("generate-thumbnail-candidates-v2", async () => {
-        // YouTube does not show custom thumbnails in the Shorts feed.
-        if (!titles || variant === "short") return undefined;
-        const saved = await artifactStore.find(jobId, "thumbnailPairs");
-        if (saved) {
-          return JSON.parse(saved) as ThumbnailPair[];
-        }
+    // The model designs each frame, sees the renders and revises them once.
+    // Every stage falls back to what already exists, and rendering runs in a
+    // sandbox of its own, so it never competes with the video for CPU.
+    const generateThumbnails = async (titles: VideoTitleSet | undefined) => {
+      // YouTube does not show custom thumbnails in the Shorts feed.
+      if (!titles || variant === "short") return undefined;
+      const saved = await context.run("find-thumbnail-pairs", () =>
+        artifactStore.find(jobId, "thumbnailPairs"),
+      );
+      if (saved) return JSON.parse(saved) as ThumbnailPair[];
+      const palette = choosePalette(jobId);
 
-        try {
-          const { images, report } = await renderThumbnailCandidates({
-            titles,
-            topic: prompt,
-            designSeed: jobId,
-          });
+      const designs = await context.run("design-thumbnails", async () =>
+        designThumbnails({
+          titles,
+          palette,
+          voiceoverScript: await artifactStore
+            .get(jobId, "voiceoverScript")
+            .catch(() => undefined),
+          sessionId: chatId,
+        }),
+      );
+
+      const render = (
+        stage: "draft" | "revision",
+        stageDesigns: readonly (string | null)[],
+      ) =>
+        renderThumbnailCandidates({
+          titles,
+          topic: prompt,
+          designSeed: jobId,
+          designs: stageDesigns,
+          revision: stage === "revision",
+        }).then(async ({ images, outcomes, report }) => {
           await artifactStore.set(
             jobId,
-            "thumbnailReport",
+            stage === "draft" ? "thumbnailReport" : "thumbnailRevisionReport",
             JSON.stringify(report),
           );
-          const pairs = (
-            await Promise.all(
-              images.map(async (image, index) =>
-                image
-                  ? {
-                      title: titles.candidates[index]!,
-                      thumbnailUrl: await uploadImage({
-                        imagePath: image,
-                        userId,
-                        customId: `${jobId}-thumbnail-v3-${index}`,
-                      }),
-                    }
-                  : null,
-              ),
-            )
-          ).filter((pair): pair is ThumbnailPair => pair !== null);
-          await artifactStore.set(
-            jobId,
-            "thumbnailPairs",
-            JSON.stringify(pairs),
+          const urls = await Promise.all(
+            images.map((image, index) =>
+              image
+                ? uploadImage({
+                    imagePath: image,
+                    userId,
+                    customId: `${jobId}-thumbnail-v4-${stage}-${index}`,
+                  })
+                : null,
+            ),
           );
-          return pairs;
+          return { urls, outcomes };
+        });
+
+      const drafts = await context.run("render-thumbnail-drafts", async () => {
+        try {
+          const { urls, outcomes } = await render("draft", designs);
+          return urls.map((imageUrl, index) => ({
+            imageUrl,
+            design: designs[index] ?? null,
+            ...(outcomes[index]?.designError
+              ? { error: outcomes[index].designError }
+              : {}),
+          }));
         } catch (error) {
           console.warn(
             "Thumbnail generation failed; continuing with YouTube defaults:",
@@ -385,6 +407,51 @@ export const { POST } = serve<VideoGenerationPayload>(
           return undefined;
         }
       });
+      if (!drafts) return undefined;
+
+      const revisions = await context.run("review-thumbnails", async () =>
+        reviewThumbnails({
+          titles,
+          palette,
+          drafts,
+          voiceoverScript: await artifactStore
+            .get(jobId, "voiceoverScript")
+            .catch(() => undefined),
+          sessionId: chatId,
+        }),
+      );
+
+      const finalUrls = await context.run(
+        "render-thumbnail-revisions",
+        async () => {
+          const urls = drafts.map((draft) => draft.imageUrl);
+          if (!revisions.some(Boolean)) return urls;
+          try {
+            const revised = await render("revision", revisions);
+            // A rejected revision leaves its draft in place.
+            return urls.map((url, index) => revised.urls[index] ?? url);
+          } catch (error) {
+            console.warn(
+              "Thumbnail revision failed; keeping the drafts:",
+              safeError(error),
+            );
+            return urls;
+          }
+        },
+      );
+
+      return context.run("save-thumbnail-pairs", async () => {
+        const pairs = finalUrls
+          .map((thumbnailUrl, index) =>
+            thumbnailUrl
+              ? { title: titles.candidates[index]!, thumbnailUrl }
+              : null,
+          )
+          .filter((pair): pair is ThumbnailPair => pair !== null);
+        await artifactStore.set(jobId, "thumbnailPairs", JSON.stringify(pairs));
+        return pairs;
+      });
+    };
 
     let videoTitleSet: VideoTitleSet | undefined;
     let descriptionCopy:

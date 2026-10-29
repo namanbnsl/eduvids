@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """eduvids thumbnail renderer.
 
-Data in, PNG out: every thumbnail is described by a JSON spec (copy, palette,
-hero visual and its parameters). The model never writes code; it only fills
-slots that this module validates, lays out and checks.
+Spec in, PNG out. A spec carries copy, a palette and a catalogue hero with
+its parameters, which this module lays out and verifies. It may also carry a
+``design``: Manim code in which the model composes the whole frame itself,
+using the house helpers (text, tex, diagram) and checked by hard rules
+(safe margin, duration badge, type size, collisions, flat style). A design
+that fails falls back to the catalogue spec, then to safe mode.
 
     renderer.py batch  --spec specs.json --out-dir DIR --font-dir FONTS
-    renderer.py render --spec specs.json --index N --out FILE.png --font-dir FONTS [--safe]
+    renderer.py render --spec specs.json --index N --out FILE.png --font-dir FONTS [--mode design|full|safe]
 
 Design system
 - Canvas 1280x720 on the video's flat near-black canvas, fixed margins and a
@@ -1939,6 +1942,206 @@ def verify(text, hero_group, labels, graphics):
 
 
 # ---------------------------------------------------------------------------
+# Designed thumbnails: the model composes the whole frame in Manim code.
+# The house style is enforced by the helpers it must use and by the checks
+# below, not by a fixed grid. Any failure falls back to the catalogue spec.
+# ---------------------------------------------------------------------------
+
+DESIGN_MIN_TEXT_PX = 34  # em size of the smallest copy that reads on a phone
+DESIGN_MAX_WORDS = 8
+
+# Model code often writes LaTeX in plain strings, where "\b", "\t", "\f",
+# "\r", "\a" and "\v" become control characters (\binom, \times, \frac).
+CONTROL_ESCAPES = {"\b": r"\b", "\t": r"\t", "\f": r"\f", "\r": r"\r", "\a": r"\a", "\v": r"\v"}
+
+
+class DesignError(LayoutError):
+    pass
+
+
+def restore_escapes(value: str, newline: bool) -> str:
+    for char, latex in {**CONTROL_ESCAPES, **({"\n": r"\n"} if newline else {})}.items():
+        value = value.replace(char, latex)
+    return value
+
+
+def copy_words(copy: str) -> int:
+    """Visible words in text() copy: commands and $math$ count as one each."""
+    plain = re.sub(r"\$[^$]*\$", " x ", copy)
+    plain = re.sub(r"\\[a-zA-Z]+", " ", plain)
+    return len(re.findall(r"[^\s{}\\]+", plain))
+
+
+class DesignKit:
+    """Helpers available to design code. Lengths are in pixels."""
+
+    def __init__(self, ts: Typesetter, cool: str, warm: str, words: bool):
+        self.ts, self.cool, self.warm, self.words = ts, cool, warm, words
+        self.texts = []  # (mobject, size_px, height at creation)
+        self.word_count = 0
+
+    def P(self, x: float, y: float):
+        """Pixel coordinates (origin top-left, y down) to a scene point."""
+        return np.array([x_at(x), y_at(y), 0.0])
+
+    def px(self, n: float) -> float:
+        return u(n)
+
+    def color(self, value) -> str:
+        if not isinstance(value, str):
+            return "ink"
+        named = {"warm": "accent", "accent": "accent", "cool": "cool", "ink": "ink", "muted": "muted", "white": "ink"}
+        by_hex = {self.cool.upper(): "cool", self.warm.upper(): "accent", INK.upper(): "ink", MUTED.upper(): "muted"}
+        return named.get(value.lower()) or by_hex.get(value.upper()) or "ink"
+
+    def text(self, copy, size: float, color: str = "ink", leading: float = HEADLINE_LEADING, tracking: float = -1.5):
+        """CMU Serif copy; "\\n" breaks lines; $math$, \\hl{}, \\strike{} inline."""
+        if not self.words:
+            raise DesignError("this thumbnail is visual-only: no words (tex() is allowed for a number or symbol)")
+        if isinstance(copy, (list, tuple)):
+            copy = "\n".join(map(str, copy))
+        copy = restore_escapes(str(copy), newline=False).replace(r"\textcolor{warm}", r"\textcolor{accent}")
+        # Raw strings keep "\n" literal: a break, unless it starts a command.
+        copy = re.sub(r"\\n(?![a-z])", "\n", copy)
+        self.word_count += copy_words(copy)
+        lines = [smart_punctuation(line).replace("&", r"\&").replace("%", r"\%").replace("#", r"\#") for line in copy.split("\n")]
+        mob = self.ts.block(lines, size, "SemiBold", color=self.color(color), leading=leading, tracking=tracking)
+        self.texts.append((mob, size, mob.height))
+        return mob
+
+    def math(self, latex: str, size: float, color: str = "ink"):
+        latex = restore_escapes(str(latex), newline=True).replace(r"\textcolor{warm}", r"\textcolor{accent}")
+        mob = self.ts.math(clean_latex(latex) or latex, size, color=self.color(color), highlight_color="accent")
+        self.texts.append((mob, size, mob.height))
+        return mob
+
+    def diagram(self, visual: dict, width: float = 560):
+        """A catalogue hero (e.g. {"type": "chaos", "shape": "lorenz"}) with
+        its labels, scaled to ``width`` px. Returns (group, focus point)."""
+        from manim import VGroup
+
+        if not isinstance(visual, dict) or visual.get("type") not in HEROES:
+            raise DesignError(f"diagram() type must be one of: {', '.join(HEROES)}")
+        self.ts.region_w = u(width)
+        hero = HEROES[visual["type"]](visual, self.cool, self.warm, self.ts, False)
+        graphics = hero.graphics
+        origin = graphics.get_center().copy()
+        scale = u(width) / max(graphics.width, 1e-6)
+        graphics.scale(scale)
+        for label in hero.labels:
+            label.anchor = graphics.get_center() + (label.anchor - origin) * scale
+        frame = np.array([-FRAME_W / 2, -FRAME_H / 2, FRAME_W / 2, FRAME_H / 2])
+        placed = place_labels(graphics, hero.labels, frame, strict=False)
+        for label in hero.labels:
+            self.texts.append((label.mob, LABEL_SIZE, label.mob.height))
+        focus = None if hero.focus is None else graphics.get_center() + (np.asarray(hero.focus, dtype=float) - origin) * scale
+        group = VGroup(graphics, *placed)
+        return group, focus
+
+
+def design_namespace(kit: DesignKit) -> dict:
+    import manim
+
+    env = {name: getattr(manim, name) for name in dir(manim) if not name.startswith("_")}
+    env.update(
+        np=np, math=math, P=kit.P, px=kit.px, text=kit.text, tex=kit.math, diagram=kit.diagram,
+        COOL=kit.cool, WARM=kit.warm, INK=INK, MUTED=MUTED, BG=BG, WIDTH=WIDTH, HEIGHT=HEIGHT,
+    )
+    return env
+
+
+def check_design(group, kit: DesignKit) -> list:
+    """Hard rules for a designed frame. Returns the problems found."""
+    from manim import VGroup
+
+    family = group.get_family()
+    if not family or not group.family_members_with_points():
+        return ["the frame is empty"]
+    problems = []
+    if kit.word_count > DESIGN_MAX_WORDS:
+        problems.append(f"{kit.word_count} words of copy; use at most {DESIGN_MAX_WORDS}")
+    drawn = [(mob, size * mob.height / max(h0, 1e-9)) for mob, size, h0 in kit.texts if any(mob is f for f in family)]
+    safe = np.array([-FRAME_W / 2 + u(SAFE_PAD), -FRAME_H / 2 + u(SAFE_PAD), FRAME_W / 2 - u(SAFE_PAD), FRAME_H / 2 - u(SAFE_PAD)])
+    badge = np.array([x_at(BADGE_ZONE[0]), y_at(BADGE_ZONE[3]), x_at(BADGE_ZONE[2]), y_at(BADGE_ZONE[1])])
+    text_ids = {id(member) for mob, _ in drawn for member in mob.get_family()}
+    # Everything that is not copy: its strokes and edges must not cross copy.
+    shapes = VGroup(*[m for m in group.family_members_with_points() if id(m) not in text_ids])
+    shape_points = bezier_samples(shapes, steps=np.linspace(0, 1, 33)) if shapes.submobjects else np.zeros((0, 2))
+
+    def describe(mob):
+        source = getattr(mob, "tex_string", "") or ""
+        source = source.split("@{}}")[-1].replace(r"\end{tabular}", "").replace(r"\\", " / ")
+        source = re.sub(r"^.*\\displaystyle", "", source).rstrip("$")
+        return re.sub(r"\s+", " ", source).strip()[:40]
+
+    for mob, size in drawn:
+        box = bbox(mob)
+        label = describe(mob)
+        if box[0] < safe[0] or box[1] < safe[1] or box[2] > safe[2] or box[3] > safe[3]:
+            problems.append(f"text '{label}' leaves the {SAFE_PAD}px safe margin")
+        if size < DESIGN_MIN_TEXT_PX - 0.5:
+            problems.append(f"text '{label}' is drawn at {size:.0f}px; nothing may be smaller than {DESIGN_MIN_TEXT_PX}px")
+        if boxes_overlap(box, badge):
+            problems.append(f"text '{label}' sits under YouTube's duration badge (bottom-right 168x64px)")
+        inner = bbox(mob, -u(4))
+        crossing = (shape_points[:, 0] > inner[0]) & (shape_points[:, 0] < inner[2]) & (shape_points[:, 1] > inner[1]) & (shape_points[:, 1] < inner[3])
+        if crossing.sum() >= 2:
+            problems.append(f"a line or shape edge runs through text '{label}'")
+    for i, (a, _) in enumerate(drawn):
+        for b, _ in drawn[i + 1:]:
+            if boxes_overlap(bbox(a, -u(2)), bbox(b, -u(2))):
+                problems.append(f"text '{describe(a)}' overlaps text '{describe(b)}'")
+    if any(getattr(member, "sheen_factor", 0) for member in family):
+        problems.append("sheen shading is not allowed: the style is flat")
+    return list(dict.fromkeys(problems))
+
+
+def compose_design(spec: dict, font_dir: str):
+    from manim import Mobject, VGroup
+
+    palette = PALETTES.get(spec.get("palette"), PALETTES["teal-amber"])
+    cool, warm = palette
+    kit = DesignKit(Typesetter(font_dir, cool, warm), cool, warm, words=spec.get("layout") != "visual_only")
+    env = design_namespace(kit)
+    try:
+        exec(compile(spec["design"], "<design>", "exec"), env)  # noqa: S102 - runs in the render sandbox
+        if not callable(env.get("thumbnail")):
+            raise DesignError("the code must define thumbnail()")
+        built = env["thumbnail"]()
+    except LayoutError:
+        raise
+    except Exception as error:
+        import traceback
+
+        lines = [frame.lineno for frame in traceback.extract_tb(error.__traceback__) if frame.filename == "<design>"]
+        where = f" at line {lines[-1]}" if lines else ""
+        raise DesignError(f"{type(error).__name__}{where}: {error}") from None
+    group = VGroup(*built) if isinstance(built, (list, tuple)) else built
+    if not isinstance(group, Mobject):
+        raise DesignError("thumbnail() must return a list of mobjects")
+    problems = check_design(group, kit)
+    if problems:
+        raise DesignError("; ".join(problems))
+    return [group], {"mode": "design", "layout": spec.get("layout"), "words": kit.word_count, "warnings": []}
+
+
+def tex_errors(work_dir: str) -> str:
+    """The "! ..." lines of the newest TeX log, for feedback to the model."""
+    import glob
+
+    logs = sorted(glob.glob(os.path.join(work_dir, "Tex", "*.log")), key=os.path.getmtime)
+    if not logs:
+        return ""
+    with open(logs[-1], encoding="utf-8", errors="replace") as handle:
+        lines = handle.read().splitlines()
+    picked = []
+    for index, line in enumerate(lines):
+        if line.startswith("!"):
+            picked += [entry.strip() for entry in lines[index:index + 3] if entry.strip()]
+    return " | ".join(picked)[:500]
+
+
+# ---------------------------------------------------------------------------
 # Canvas: the video's flat background; video frames are feathered into it.
 # ---------------------------------------------------------------------------
 
@@ -1974,7 +2177,9 @@ def feathered_frame(path: str, left_px: int):
     return np.asarray(image, dtype=np.float32), alpha, x, y
 
 
-def render(spec: dict, out_path: str, font_dir: str, work_dir: str, safe: bool) -> dict:
+def render(spec: dict, out_path: str, font_dir: str, work_dir: str, safe: bool, mode: str = "") -> dict:
+    """Render one candidate. ``mode`` is "design" (the model's own frame),
+    "full" (the catalogue spec) or "safe" (its conservative fallback)."""
     from manim import config
 
     # XeLaTeX resolves font paths from its own working directory, and Manim
@@ -1991,7 +2196,11 @@ def render(spec: dict, out_path: str, font_dir: str, work_dir: str, safe: bool) 
     from manim.camera.camera import Camera
 
     started = time.time()
-    mobjects, report = compose(spec, font_dir, safe)
+    mode = mode or ("safe" if safe else "full")
+    if mode == "design":
+        mobjects, report = compose_design(spec, font_dir)
+    else:
+        mobjects, report = compose(spec, font_dir, mode == "safe")
     frame = report.get("frame")
     if frame:
         rgb, alpha, x, y = feathered_frame(frame["path"], frame["left"])
@@ -2040,6 +2249,7 @@ def main() -> int:
     one.add_argument("--font-dir", required=True)
     one.add_argument("--work-dir", required=True)
     one.add_argument("--safe", action="store_true")
+    one.add_argument("--mode", choices=["design", "full", "safe"], default="")
     many = sub.add_parser("batch")
     many.add_argument("--spec", required=True)
     many.add_argument("--out-dir", required=True)
@@ -2056,7 +2266,17 @@ def main() -> int:
         specs = json.load(handle)
 
     if args.command == "render":
-        report = render(specs[args.index], args.out, args.font_dir, args.work_dir, args.safe)
+        try:
+            report = render(specs[args.index], args.out, args.font_dir, args.work_dir, args.safe, args.mode)
+        except Exception as error:
+            if args.mode != "design":
+                raise
+            # Clean feedback for the model: what broke, never a traceback.
+            message = str(error)
+            if "xelatex" in message or "LaTeX" in message:
+                message = "LaTeX error: " + (tex_errors(args.work_dir) or message.splitlines()[0])
+            print(f"design rejected: {message}"[:1200], file=sys.stderr)
+            return 1
         print(json.dumps(report))
         return 0
 
@@ -2064,32 +2284,37 @@ def main() -> int:
     deadline = time.time() + args.timeout
     jobs = args.jobs or parallel_jobs()
     results, errors = {}, {}
-    queue = [(index, False) for index in range(len(specs))]
+    # A designed candidate falls back to its catalogue spec unless the spec
+    # says otherwise; every catalogue render falls back to safe mode.
+    def next_mode(index, mode):
+        if mode == "design":
+            return "full" if specs[index].get("fallback", True) else None
+        return "safe" if mode == "full" else None
+
+    queue = [(index, "design" if specs[index].get("design") else "full") for index in range(len(specs))]
     running = {}
 
-    def launch(index, safe):
+    def launch(index, mode):
         out = os.path.join(args.out_dir, f"thumbnail-{index}.png")
-        work = os.path.join(args.out_dir, f"work-{index}-{'safe' if safe else 'full'}")
-        command = [sys.executable, os.path.abspath(__file__), "render", "--spec", args.spec, "--index", str(index), "--out", out, "--font-dir", args.font_dir, "--work-dir", work]
-        if safe:
-            command.append("--safe")
+        work = os.path.join(args.out_dir, f"work-{index}-{mode}")
+        command = [sys.executable, os.path.abspath(__file__), "render", "--spec", args.spec, "--index", str(index), "--out", out, "--font-dir", args.font_dir, "--work-dir", work, "--mode", mode]
         # Log to files, not pipes: a long traceback must never block the child.
         os.makedirs(work, exist_ok=True)
         stdout = open(os.path.join(work, "stdout.log"), "w+", encoding="utf-8")
         stderr = open(os.path.join(work, "stderr.log"), "w+", encoding="utf-8")
         return subprocess.Popen(command, stdout=stdout, stderr=stderr, text=True), stdout, stderr
 
-    # Each candidate renders in its own process; a failed full render is
-    # retried once in safe mode. Concurrency is sized to the machine because
+    # Each candidate renders in its own process; a failed design falls back
+    # to the catalogue spec, and a failed full render is retried in safe mode. Concurrency is sized to the machine because
     # XeLaTeX with unicode-math is memory hungry (render sandboxes have ~1 GB).
     while queue or running:
         while queue and len(running) < jobs and time.time() < deadline:
-            index, safe = queue.pop(0)
-            running[index] = (*launch(index, safe), safe)
+            index, mode = queue.pop(0)
+            running[index] = (*launch(index, mode), mode)
         if not running:
             break
         time.sleep(0.2)
-        for index, (process, stdout_file, stderr_file, safe) in list(running.items()):
+        for index, (process, stdout_file, stderr_file, mode) in list(running.items()):
             if process.poll() is None and time.time() < deadline:
                 continue
             if process.poll() is None:
@@ -2106,9 +2331,13 @@ def main() -> int:
                 if errors.get(index):
                     results[index]["recovered_from"] = errors[index]
                 continue
-            errors.setdefault(index, []).append(("safe: " if safe else "full: ") + (stderr.strip() or "timed out")[-1500:])
-            if not safe:
-                queue.append((index, True))
+            message = (stderr.strip() or "timed out")
+            if mode == "design" and "design rejected: " in message:
+                message = message[message.rindex("design rejected: ") + len("design rejected: "):]
+            errors.setdefault(index, []).append(f"{mode}: " + message[-1500:])
+            following = next_mode(index, mode)
+            if following:
+                queue.append((index, following))
             else:
                 results[index] = {"ok": False, "errors": errors[index]}
     for index in range(len(specs)):
