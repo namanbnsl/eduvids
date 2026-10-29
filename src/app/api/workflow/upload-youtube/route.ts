@@ -1,10 +1,12 @@
+import { createHash } from "node:crypto";
 import { WorkflowNonRetryableError } from "@upstash/workflow";
 import { safeError } from "@/lib/workflow/errors";
 import { serve } from "@upstash/workflow/nextjs";
 
 import {
   addVideoToPlaylist,
-  findPreviousYouTubeVideo,
+  listUploadedYouTubeVideos,
+  selectPreviousYouTubeVideo,
   postYouTubeComment,
   setYouTubeThumbnail,
   uploadToYouTube,
@@ -12,7 +14,7 @@ import {
 import {
   buildPreviousVideoComment,
   buildYouTubeDescription,
-  fallbackVideoTitle,
+  parseVideoDescriptionPackage,
   type RelatedYouTubeVideo,
   type YouTubeChapter,
 } from "@/lib/youtube-metadata";
@@ -21,6 +23,17 @@ import { getConvexClient, api } from "@/lib/convex-server";
 import { qstashClientWithBypass } from "@/lib/workflow/client";
 
 import type { VideoVariant } from "@/lib/types";
+import {
+  assertValidUploadTitle,
+  normalizeYouTubeTitle,
+  chapterLanguageErrors,
+  repairYouTubeMetadata,
+} from "@/lib/youtube-validation";
+import {
+  generateUploadTitle,
+  generateUploadChapters,
+  generateUploadDescription,
+} from "@/lib/youtube-repair";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -71,37 +84,146 @@ export const { POST } = serve<YouTubeUploadPayload>(
     }
     const key = jobId ?? context.workflowRunId;
 
-    const previousVideo = await context.run(
-      "find-previous-youtube-video",
-      async () => {
-        const saved = await artifactStore.find(key, "previousYoutubeVideo");
-        if (saved) {
-          return JSON.parse(saved) as RelatedYouTubeVideo | null;
-        }
-
+    // Each repair has its own durable step and deadline. Do not combine these
+    // model calls with the upload's separate 240-second request budget.
+    const metadataStep = async <T>(name: string, work: () => Promise<T>) =>
+      context.run(name, async (): Promise<{ value: T } | { error: string }> => {
         try {
-          const result = await findPreviousYouTubeVideo();
-          await artifactStore.set(
-            key,
-            "previousYoutubeVideo",
-            JSON.stringify(result ?? null),
-          );
-          return result ?? null;
+          return { value: await work() };
         } catch (error) {
-          console.warn(
-            "Previous-video lookup failed; continuing without a link:",
-            safeError(error),
-          );
-          return null;
+          return { error: safeError(error) };
         }
+      });
+    const needsReview = async (reason: string) => {
+      await context.run("mark-youtube-needs-review", async () => {
+        console.error("YouTube upload held for review:", reason);
+        await artifactStore.set(
+          key,
+          "youtubeMetadataReview",
+          JSON.stringify({ reason, at: new Date().toISOString() }),
+        );
+        if (jobId) {
+          const update = {
+            youtubeStatus: "needs_review" as const,
+            youtubeError: reason,
+          };
+          await jobStore.setYoutubeStatus(jobId, update);
+          await getConvexClient().mutation(api.videos.setYoutubeStatus, {
+            jobId,
+            ...update,
+          });
+        }
+      });
+      return { success: false, needsReview: true, error: reason };
+    };
+    const inventory = await metadataStep(
+      "read-channel-title-inventory",
+      async () => {
+        const videos = await listUploadedYouTubeVideos();
+        return {
+          titles: videos.map((video) => video.title),
+          previousVideo: selectPreviousYouTubeVideo(videos) ?? null,
+        };
       },
     );
+    if ("error" in inventory)
+      return needsReview(
+        `Cannot validate channel title uniqueness: ${inventory.error}`,
+      );
+    const previousVideo: RelatedYouTubeVideo | null =
+      inventory.value.previousVideo;
+    const source = async () => ({
+      topic: prompt,
+      script: jobId
+        ? await artifactStore.find(jobId, "voiceoverScript")
+        : undefined,
+    });
+    const validatedTitle = await metadataStep(
+      "validate-upload-title",
+      async () => {
+        const material = await source();
+        return repairYouTubeMetadata(
+          title ?? "",
+          async (candidate) => {
+            const valid = assertValidUploadTitle(
+              candidate,
+              inventory.value.titles,
+            );
+            // The inventory may predate another job's upload: reserve the
+            // title across jobs so two uploads never share it.
+            const titleKey = createHash("sha256")
+              .update(normalizeYouTubeTitle(valid))
+              .digest("hex");
+            if (
+              !(await artifactStore.reserve("youtube-title", titleKey, key))
+            ) {
+              throw new Error("title is already being uploaded by another job");
+            }
+            return valid;
+          },
+          (feedback, signal) => generateUploadTitle(material, feedback, signal),
+        );
+      },
+    );
+    if ("error" in validatedTitle) return needsReview(validatedTitle.error);
+    const finalTitle = validatedTitle.value;
+    const validatedChapters = await metadataStep(
+      "validate-upload-chapter-language",
+      async () => {
+        const material = await source();
+        return repairYouTubeMetadata(
+          chapters ?? [],
+          async (candidate) => {
+            const errors = await chapterLanguageErrors(finalTitle, candidate);
+            if (errors.length) throw new Error(errors.join("; "));
+            return candidate;
+          },
+          (feedback, signal) =>
+            generateUploadChapters(
+              material,
+              finalTitle,
+              chapters ?? [],
+              feedback,
+              signal,
+            ),
+        );
+      },
+    );
+    if ("error" in validatedChapters)
+      return needsReview(validatedChapters.error);
+    const validatedDescription = await metadataStep(
+      "validate-upload-description",
+      async () => {
+        const material = await source();
+        return repairYouTubeMetadata(
+          description ?? "",
+          (candidate) =>
+            parseVideoDescriptionPackage(
+              JSON.stringify({ hook: candidate.split(/\r?\n/) }),
+            ).hook,
+          (feedback, signal) =>
+            generateUploadDescription(material, finalTitle, feedback, signal),
+        );
+      },
+    );
+    if ("error" in validatedDescription)
+      return needsReview(validatedDescription.error);
+    await context.run("save-validated-youtube-metadata", async () => {
+      await artifactStore.set(
+        key,
+        "validatedYoutubeMetadata",
+        JSON.stringify({
+          title: finalTitle,
+          description: validatedDescription.value,
+          chapters: validatedChapters.value,
+        }),
+      );
+    });
 
     const finalDescription = buildYouTubeDescription({
-      salesCopy: description,
-      topic: prompt,
+      salesCopy: validatedDescription.value,
       previousVideo: previousVideo ?? undefined,
-      chapters,
+      chapters: validatedChapters.value,
       hashtags,
     });
 
@@ -118,7 +240,7 @@ export const { POST } = serve<YouTubeUploadPayload>(
       try {
         const result = await uploadToYouTube({
           videoUrl,
-          title: title?.trim() || fallbackVideoTitle(prompt),
+          title: finalTitle,
           description: finalDescription,
           tags,
           variant,
@@ -132,7 +254,8 @@ export const { POST } = serve<YouTubeUploadPayload>(
       }
     });
 
-    if (thumbnailUrl) {
+    // A regenerated title no longer has a matching title/thumbnail package.
+    if (thumbnailUrl && finalTitle === title) {
       await context.run("set-youtube-thumbnail", async () => {
         const saved = await artifactStore.find(key, "youtubeThumbnailResult");
         if (saved) return JSON.parse(saved);
@@ -261,7 +384,10 @@ export const { POST } = serve<YouTubeUploadPayload>(
       const { jobId } = context.requestPayload;
       console.error("YouTube upload workflow failed:", safeError(failResponse));
 
-      if (jobId && (await jobStore.get(jobId))?.youtubeStatus !== "uploaded") {
+      const status = jobId
+        ? (await jobStore.get(jobId))?.youtubeStatus
+        : undefined;
+      if (jobId && status !== "uploaded" && status !== "needs_review") {
         await jobStore.setYoutubeStatus(jobId, {
           youtubeStatus: "failed",
           youtubeError:

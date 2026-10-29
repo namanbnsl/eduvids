@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type {
+  ThumbnailComposition,
+  ThumbnailLayout,
   ThumbnailVisual,
   ThumbnailVisualType,
   VideoTitleSet,
@@ -24,17 +26,23 @@ export const THUMBNAIL_PALETTES = [
 ] as const;
 
 export type ThumbnailPalette = (typeof THUMBNAIL_PALETTES)[number];
-export const THUMBNAIL_LAYOUTS = [
+/** Defaults when the model picks no template, rotated across videos. */
+const DEFAULT_COPY_LAYOUTS: readonly ThumbnailLayout[] = [
   "split_left",
-  "split_right",
   "poster",
-] as const;
-export type ThumbnailLayout = (typeof THUMBNAIL_LAYOUTS)[number];
+  "split_right",
+  "bleed_right",
+  "stage",
+  "statement",
+  "bleed_left",
+];
 
 export interface ThumbnailSpec {
   title: string;
   palette: ThumbnailPalette;
-  layout: ThumbnailLayout | "visual_only";
+  layout: ThumbnailLayout;
+  /** The model's choices within the template (alignment, scale, marks). */
+  composition?: Omit<ThumbnailComposition, "layout">;
   /** Metadata only; the renderer draws no eyebrow. */
   eyebrow: string;
   headline: string;
@@ -184,7 +192,25 @@ export function buildThumbnailSpecs({
   designSeed: string;
 }): [ThumbnailSpec, ThumbnailSpec, ThumbnailSpec] {
   const palette = choosePalette(designSeed);
-  const offset = stableHash(`layout:${designSeed}`) % THUMBNAIL_LAYOUTS.length;
+  const offset =
+    stableHash(`layout:${designSeed}`) % DEFAULT_COPY_LAYOUTS.length;
+  const layoutFor = (index: number): ThumbnailLayout => {
+    const concept = titles.thumbnailConcepts?.[index];
+    if (!concept?.headline || index === 1) {
+      return concept?.composition?.layout ?? "visual_only";
+    }
+    const chosen =
+      concept.composition?.layout ??
+      DEFAULT_COPY_LAYOUTS[(offset + index) % DEFAULT_COPY_LAYOUTS.length]!;
+    // A and C test different compositions, so C moves on if they match.
+    if (index === 2 && chosen === layoutFor(0)) {
+      const next =
+        (DEFAULT_COPY_LAYOUTS.indexOf(chosen) + 1) %
+        DEFAULT_COPY_LAYOUTS.length;
+      return DEFAULT_COPY_LAYOUTS[next]!;
+    }
+    return chosen;
+  };
   return titles.candidates.map((title, index) => {
     const concept = titles.thumbnailConcepts?.[index];
     // Without a concept there is no vetted copy: show the visual on its own.
@@ -199,14 +225,17 @@ export function buildThumbnailSpecs({
     return {
       title,
       palette,
-      // Vary the published first candidate across jobs, and give C a distinct
-      // composition. B stays a full-canvas, text-free alternative.
-      layout:
-        !concept?.headline || index === 1
-          ? "visual_only"
-          : THUMBNAIL_LAYOUTS[
-              (offset + (index === 2 ? 1 : 0)) % THUMBNAIL_LAYOUTS.length
-            ]!,
+      // The model picks the template; B stays a text-free alternative.
+      layout: layoutFor(index),
+      ...(concept?.composition
+        ? {
+            composition: Object.fromEntries(
+              Object.entries(concept.composition).filter(
+                ([key]) => key !== "layout",
+              ),
+            ),
+          }
+        : {}),
       eyebrow: concept?.eyebrow ?? "",
       headline: index === 1 ? "" : (concept?.headline ?? ""),
       accent: index === 1 ? "" : (concept?.accent ?? ""),

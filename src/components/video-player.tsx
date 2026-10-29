@@ -126,7 +126,6 @@ export function VideoPlayer({
     undefined,
   );
   const [youtubeUrl, setYoutubeUrl] = useState<string | undefined>(undefined);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [youtubeError, setYoutubeError] = useState<string | undefined>(
     undefined,
   );
@@ -202,7 +201,8 @@ export function VideoPlayer({
         typeof rawYoutubeStatus === "string" &&
         (rawYoutubeStatus === "pending" ||
           rawYoutubeStatus === "uploaded" ||
-          rawYoutubeStatus === "failed")
+          rawYoutubeStatus === "failed" ||
+          rawYoutubeStatus === "needs_review")
           ? (rawYoutubeStatus as YoutubeStatus)
           : undefined;
 
@@ -400,7 +400,12 @@ export function VideoPlayer({
   useEffect(() => {
     if (!jobId) return;
     if (jobStatus !== "ready") return;
-    if (youtubeStatus === "uploaded" || youtubeStatus === "failed") return;
+    if (
+      youtubeStatus === "uploaded" ||
+      youtubeStatus === "failed" ||
+      youtubeStatus === "needs_review"
+    )
+      return;
 
     let cancelled = false;
     let attempts = 0;
@@ -423,7 +428,8 @@ export function VideoPlayer({
         setYoutubeError(parsed.youtubeError);
         if (
           parsed.youtubeStatus === "uploaded" ||
-          parsed.youtubeStatus === "failed"
+          parsed.youtubeStatus === "failed" ||
+          parsed.youtubeStatus === "needs_review"
         ) {
           if (intervalId) {
             clearInterval(intervalId);
@@ -666,6 +672,11 @@ export function VideoPlayer({
           <Youtube className="size-5" />
           Watch on YouTube
         </a>
+      )}
+      {youtubeStatus === "needs_review" && (
+        <p className="mt-2 text-sm text-muted-foreground">
+          YouTube upload needs review. {youtubeError}
+        </p>
       )}
       <ShareActions url={youtubeUrl ?? videoUrl} topic={description} />
     </div>

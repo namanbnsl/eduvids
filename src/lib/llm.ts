@@ -983,7 +983,7 @@ export async function generateScenePlan({
   voiceoverScript,
   sessionId,
 }: ManimScriptRequest): Promise<ScenePlanEntry[]> {
-  const composedPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}`;
+  const composedPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite every chapterTitle in the same language as this narration. Scene IDs are code identifiers, not chapter names.`;
 
   let lastError: unknown;
 
@@ -1519,7 +1519,7 @@ export async function generateVideoTitles({
 }: VideoTitleRequest): Promise<VideoTitleSet> {
   const systemPrompt = `You package videos for eduvids, a visual math and science channel. Your job is click-through rate: on a crowded home page, beside 3Blue1Brown, Veritasium and Welch Labs, a curious viewer must stop scrolling and click. Generate exactly three distinct title-and-thumbnail packages, ordered strongest first.
 
-Each thumbnail pairs a short headline with one precise mathematical or scientific visual (matte 3D for surfaces and solids), on a flat near-black background. The renderer varies the composition across videos: text left, text right, or a poster with large art below a top headline. Design one clear focal image that works in these compositions. Copy is Computer Modern serif; one warm colour marks the payoff. There are no small tags or eyebrows on the image. You supply the words and the visual parameters only.
+Each thumbnail pairs a short headline with one precise mathematical or scientific visual (matte 3D for surfaces and solids), on a flat near-black background. You art-direct each thumbnail: pick the template that suits its idea and tune it (see COMPOSITION). The renderer draws and verifies it. Copy is Computer Modern serif; one warm colour marks the payoff. There are no small tags or eyebrows on the image.
 
 HOW TO WORK
 1. Mine the source material for click fuel: the opening puzzle, the tempting wrong answer, the most surprising number, the payoff image, and any everyday object or stakes ("your phone", "a casino", "every bridge").
@@ -1534,6 +1534,7 @@ WHAT WINS THE CLICK
 - Concrete beats abstract; specific numbers beat vague words; the viewer's own intuition is the best villain.
 
 TITLE RULES
+- Write titles in the same language as the narration. Generate viewer-facing titles, never copy prompt instructions, title-slide labels or scene directions. Use complete phrases without wrapping quotes or parentheses.
 - 30-55 characters is ideal and 70 the hard ceiling. Put the hook in the first 40 characters, because mobile truncates.
 - Plain words a curious 15-year-old would use. Name the topic keyword once, naturally, in at least one of the three titles.
 - Three DIFFERENT angles, in this order:
@@ -1588,7 +1589,24 @@ VISUAL RULES
 - Use at most one short notation label. No explanatory captions, worked examples or small legends in the hero
 - Make the three packages distinct in angle, headline, and visual. Vary title openings, avoid defaulting every title to "Why", and never copy a production instruction, scene description or the raw request as a title. Treat the request as a brief; the narration is the source of truth.
 
-Return ONLY a JSON object: {"ideas": [ten or more short raw title ideas], "packages": [three objects, strongest first, with keys title, eyebrow, headline, accent, strike, callout, visualConcept (one sentence describing the image), visual (object with type and its parameters)]}. JSON strings must escape backslashes, e.g. "$e^{i\\\\pi}$".`;
+COMPOSITION
+Each package has a composition object. Think like a designer: what should dominate, the words or the picture? Where does the eye land first? Three packages that look alike waste the test, so A and C must use different layouts, and vary the other options too. Avoid falling back on split_left every time.
+- layout, for A and C (with a headline):
+  split_left: headline column left, picture right. A safe, balanced default.
+  split_right: picture left, headline right. The eye meets the picture first.
+  poster: headline across the top, a wide picture below. Good for wide pictures: plots, waves, formulas, bar charts.
+  stage: a big picture on top, the headline set along the bottom like a caption. Good when the picture is the hook and the words land the punchline.
+  bleed_right: headline left, picture oversized and cropped off the top and right edges. Drama and scale: attractors, fractals, orbits, surfaces, spirals.
+  bleed_left: picture oversized, cropped off the left and bottom edges, headline right.
+  statement: the headline IS the hero, set huge (2-4 words, ideally a number or verdict), with a small picture as support. Good for a shocking claim or a correction like "50% 67%".
+- layout, for B (visual-only): visual_only (centred, whole) or visual_bleed (oversized, cropped off the top and right edges for drama). Never bleed equations, numbers or bar charts; they are drawn whole.
+- align: "left" | "center" (headline alignment for poster and stage).
+- copyAt: "top" | "middle" | "bottom" (where the headline sits in split and bleed layouts; top or bottom gives the picture more presence).
+- size: "giant" | "large" | "normal" (headline size; giant only for 1-3 short words).
+- heroScale: "fill" | "large" | "medium" (how much of its space the picture takes; medium leaves breathing room for a delicate drawing).
+- mark: "color" | "underline" | "circle" | "box" (how the accent is marked beyond its warm colour: underline for a verdict, circle for the surprising number, box for a key term; color alone is calm).
+
+Return ONLY a JSON object: {"ideas": [ten or more short raw title ideas], "packages": [three objects, strongest first, with keys title, eyebrow, headline, accent, strike, callout, visualConcept (one sentence describing the image), visual (object with type and its parameters), composition (object with layout, align, copyAt, size, heroScale, mark)]}. JSON strings must escape backslashes, e.g. "$e^{i\\\\pi}$".`;
 
   const sourceMaterial = [
     voiceoverScript ? `NARRATION:\n${voiceoverScript.slice(0, 8_000)}` : "",
@@ -1676,6 +1694,7 @@ HOOK (two lines; this is all most viewers see before "...more", and line 1 appea
 - Line 1, under 110 characters: the video's opening puzzle or surprising claim, phrased differently from the title and grounded in the narration.
 - Line 2, under 160 characters: the concrete thing the viewer will see and understand, naming the running example and 1-2 precise topic keywords.
 - Plain, confident words. Never start with "In this video". Never use "dive into", "join us", "embark", "unlock", "journey", "fascinating", or "mind-blowing".
+- Write in the narration's language. Start each line with a capital letter and finish a complete sentence with punctuation. Rewrite a sentence to fit its limit; never clip it.
 - No links, calls to action, timestamps, emoji, labels, production instructions or scene directions. Summarize what the narration actually teaches; do not repeat the request. Do not invent claims or promise examples absent from the narration.
 
 HASHTAGS: 2-3 specific topic hashtags in CamelCase, from broad to specific (e.g. "#Math", "#Calculus", "#Derivatives"). No generic tags like #Education or #Learning.

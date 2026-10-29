@@ -25,7 +25,7 @@ type ChatMessagePart = ChatMessage["parts"][number];
 type GenerateVideoToolUIPart = ToolUIPart<AppTools>;
 
 type JobStatus = "generating" | "ready" | "error";
-type YoutubeStatus = "pending" | "uploaded" | "failed";
+type YoutubeStatus = "pending" | "uploaded" | "failed" | "needs_review";
 type VideoVariant = "video" | "short";
 
 type JobProgressEntry = {

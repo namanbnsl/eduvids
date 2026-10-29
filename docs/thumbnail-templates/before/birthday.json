@@ -1,0 +1,126 @@
+{
+  "specs": [
+    {
+      "title": "Why 23 People Is Enough for a Shared Birthday",
+      "palette": "teal-amber",
+      "layout": "split_right",
+      "composition": {},
+      "headline": "Count pairs not people",
+      "accent": "pairs",
+      "strike": "",
+      "callout": "253 pairs",
+      "visual": {
+        "type": "bars",
+        "values": [
+          0.12,
+          0.5,
+          0.97,
+          0.999
+        ],
+        "focus": 1,
+        "labels": [
+          "10",
+          "23",
+          "50",
+          "70"
+        ]
+      }
+    },
+    {
+      "title": "How the Birthday Paradox Actually Works",
+      "palette": "teal-amber",
+      "layout": "visual_only",
+      "composition": {},
+      "headline": "",
+      "accent": "",
+      "strike": "",
+      "callout": "",
+      "visual": {
+        "type": "number",
+        "value": "23",
+        "was": "183"
+      }
+    },
+    {
+      "title": "Your Brain Expects 183 People Not 23",
+      "palette": "teal-amber",
+      "layout": "poster",
+      "composition": {},
+      "headline": "50% chance at 23",
+      "accent": "23",
+      "strike": "",
+      "callout": "",
+      "visual": {
+        "type": "function_plot",
+        "expression": "1 - exp(-x^2 / 730)",
+        "xRange": [
+          0,
+          70
+        ],
+        "highlight": "point",
+        "at": 23,
+        "notation": "P(23) \\approx 50.7\\%"
+      }
+    }
+  ],
+  "results": {
+    "2": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "poster",
+        "warnings": [],
+        "size": 124,
+        "lines": [
+          "50% chance at 23"
+        ],
+        "visual": "function_plot",
+        "hero_box_px": [
+          378,
+          233,
+          902,
+          635
+        ],
+        "seconds": 10.45
+      }
+    },
+    "1": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "visual_only",
+        "warnings": [],
+        "visual": "number",
+        "hero_box_px": [
+          394,
+          89,
+          886,
+          631
+        ],
+        "seconds": 13.82
+      }
+    },
+    "0": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "split_right",
+        "warnings": [],
+        "size": 92,
+        "lines": [
+          "Count pairs",
+          "not people"
+        ],
+        "visual": "bars",
+        "callout": "253 pairs",
+        "hero_box_px": [
+          102,
+          154,
+          650,
+          566
+        ],
+        "seconds": 22.32
+      }
+    }
+  }
+}

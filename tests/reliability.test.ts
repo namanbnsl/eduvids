@@ -1060,7 +1060,7 @@ test("thumbnail renderer produces verified 1280x720 PNGs and recovers in safe mo
         },
       },
       {
-        // Too wide beside a headline: safe mode draws a neutral visual.
+        // Too wide beside a headline: a wider template keeps the formula.
         palette: "azure-coral",
         eyebrow: "Probability",
         headline: "Base rates decide",
@@ -1115,14 +1115,20 @@ test("thumbnail renderer produces verified 1280x720 PNGs and recovers in safe mo
     assert.equal(results["0"]!.report.mode, "full");
     assert.equal(results["1"]!.report.mode, "full");
     assert.equal(results["2"]!.report.mode, "safe");
-    for (const index of ["3", "4"]) {
-      const report = results[index]!.report as {
-        mode: string;
-        visual?: string;
-      };
-      assert.equal(report.mode, "safe");
-      assert.equal(report.visual, "geometry");
-    }
+    const wide = results["3"]!.report as {
+      mode: string;
+      layout?: string;
+      visual?: string;
+    };
+    assert.equal(wide.mode, "full");
+    assert.equal(wide.visual, "equation");
+    assert.notEqual(wide.layout, "split_left");
+    const disallowed = results["4"]!.report as {
+      mode: string;
+      visual?: string;
+    };
+    assert.equal(disallowed.mode, "safe");
+    assert.equal(disallowed.visual, "geometry");
   } finally {
     await rm(folder, { recursive: true, force: true });
   }

@@ -71,7 +71,12 @@ export default defineSchema({
     videoUrl: v.optional(v.string()),
     error: v.optional(v.string()),
     youtubeStatus: v.optional(
-      v.union(v.literal("pending"), v.literal("uploaded"), v.literal("failed")),
+      v.union(
+        v.literal("pending"),
+        v.literal("uploaded"),
+        v.literal("failed"),
+        v.literal("needs_review"),
+      ),
     ),
     youtubeUrl: v.optional(v.string()),
     youtubeVideoId: v.optional(v.string()),
