@@ -590,11 +590,6 @@ const THUMBNAIL_ROOT = "/home/user/eduvids-thumbnail";
 export interface ThumbnailRenderResult {
   /** PNG data URLs in candidate order; null where that candidate failed. */
   images: [string | null, string | null, string | null];
-  /** How each slot rendered, and why its design was rejected, if it was. */
-  outcomes: {
-    mode: "design" | "full" | "safe" | null;
-    designError?: string;
-  }[];
   report: unknown;
 }
 
@@ -631,31 +626,22 @@ async function installVideoStyle(
 }
 
 /**
- * Render the three title-paired thumbnails with the bundled renderer. A slot
- * with a model design tries it first and falls back to its catalogue concept,
- * then to safe mode. Each candidate renders in its own process, so one bad
- * spec never takes the others down. If the video's sandbox has already been
- * reclaimed, a fresh one is used.
+ * Render the three title-paired thumbnails from data specs with the bundled
+ * renderer. Each candidate renders in its own process and retries once in
+ * safe mode, so one bad spec never takes the others down. If the video's
+ * sandbox has already been reclaimed, a fresh one is used.
  */
 export async function renderThumbnailCandidates({
   prepared,
   titles,
   topic,
   designSeed,
-  designs,
-  revision = false,
 }: {
   /** The video's sandbox, if it is idle; otherwise a fresh one is used. */
   prepared?: PreparedSandboxState;
   titles: VideoTitleSet;
   topic: string;
   designSeed: string;
-  designs?: readonly (string | null | undefined)[];
-  /**
-   * Revisions render only the slots with a design, without fallback: a
-   * rejected revision leaves the draft in place instead.
-   */
-  revision?: boolean;
 }): Promise<ThumbnailRenderResult> {
   let sandbox: Sandbox | undefined;
   let ownsSandbox = false;
@@ -682,24 +668,12 @@ export async function renderThumbnailCandidates({
     await sandbox.commands.run(
       `rm -rf ${THUMBNAIL_ROOT}/out && mkdir -p ${THUMBNAIL_ROOT}/fonts`,
     );
-    const specs = buildThumbnailSpecs({
-      titles,
-      topic,
-      designSeed,
-      designs,
-    }).map((spec) => (revision ? { ...spec, fallback: false } : spec));
-    // A revision skips slots without new code; the renderer sees only the rest.
-    const slots = specs
-      .map((spec, index) => (!revision || spec.design ? index : -1))
-      .filter((index) => index >= 0);
-    if (!slots.length) {
-      return { images: [null, null, null], outcomes: [], report: {} };
-    }
+    const specs = buildThumbnailSpecs({ titles, topic, designSeed });
     await Promise.all([
       sandbox.files.write(`${THUMBNAIL_ROOT}/renderer.py`, assets.renderer),
       sandbox.files.write(
         `${THUMBNAIL_ROOT}/specs.json`,
-        JSON.stringify(slots.map((index) => specs[index])),
+        JSON.stringify(specs),
       ),
       ...assets.fonts.map(({ name, data }) =>
         sandbox.files.write(
@@ -722,46 +696,14 @@ export async function renderThumbnailCandidates({
       if (!(error instanceof CommandExitError)) throw error;
     }
 
-    const rendered = JSON.parse(
+    const report = JSON.parse(
       await sandbox.files.read(`${THUMBNAIL_ROOT}/out/results.json`),
-    ) as Record<
-      string,
-      {
-        ok: boolean;
-        path?: string;
-        errors?: string[];
-        recovered_from?: string[];
-        report?: { mode?: string };
-      }
-    >;
-    // Back to slot order, so the caller can pair results with titles.
-    const report: typeof rendered = {};
-    slots.forEach((slot, position) => {
-      const result = rendered[String(position)];
-      if (result) report[String(slot)] = result;
-    });
-    const outcomes = specs.map((spec, index) => {
-      const result = report[String(index)];
-      const designError = [
-        ...(result?.recovered_from ?? []),
-        ...(result?.errors ?? []),
-      ]
-        .find((entry) => entry.startsWith("design: "))
-        ?.slice("design: ".length);
-      const mode = result?.ok ? (result.report?.mode ?? "full") : null;
-      return {
-        mode: (["design", "full", "safe"].includes(mode ?? "")
-          ? mode
-          : null) as ThumbnailRenderResult["outcomes"][number]["mode"],
-        ...(spec.design && designError ? { designError } : {}),
-      };
-    });
+    ) as Record<string, { ok: boolean; path?: string; errors?: string[] }>;
 
     const images = (await Promise.all(
       specs.map(async (_, index) => {
         const result = report[String(index)];
-        if (!result) return null;
-        if (!result.ok || !result.path) {
+        if (!result?.ok || !result.path) {
           console.warn(
             `Thumbnail ${index} failed:`,
             result?.errors?.map((entry) => entry.slice(-400)),
@@ -777,10 +719,10 @@ export async function renderThumbnailCandidates({
       }),
     )) as ThumbnailRenderResult["images"];
 
-    if (!revision && images.every((image) => image === null)) {
+    if (images.every((image) => image === null)) {
       throw new Error("No thumbnail candidate rendered");
     }
-    return { images, outcomes, report };
+    return { images, report };
   } finally {
     if (ownsSandbox) await sandbox.kill().catch(() => undefined);
   }

@@ -1,0 +1,158 @@
+{
+  "specs": [
+    {
+      "title": "The Infinite Horn You Can Fill, But Never Paint",
+      "palette": "azure-coral",
+      "layout": "split_left",
+      "composition": {
+        "align": "left",
+        "copyAt": "middle",
+        "size": "large",
+        "heroScale": "fill",
+        "mark": "color"
+      },
+      "headline": "Holds $\\pi$, needs $\\infty$",
+      "accent": "$\\infty$",
+      "strike": "",
+      "callout": "volume $\\pi$",
+      "visual": {
+        "type": "function_plot",
+        "expression": "1/x",
+        "xRange": [
+          0.5,
+          8
+        ],
+        "highlight": "area",
+        "from": 1,
+        "to": 8,
+        "notation": "y = 1/x"
+      }
+    },
+    {
+      "title": "How Gabriel's Horn Breaks Geometry",
+      "palette": "azure-coral",
+      "layout": "visual_only",
+      "composition": {
+        "align": "center",
+        "copyAt": "middle",
+        "size": "normal",
+        "heroScale": "fill",
+        "mark": "color"
+      },
+      "headline": "",
+      "accent": "",
+      "strike": "",
+      "callout": "",
+      "visual": {
+        "type": "surface_3d",
+        "expression": "1/sqrt(x^2+y^2)"
+      }
+    },
+    {
+      "title": "Finite Inside, Infinite Surface",
+      "palette": "azure-coral",
+      "layout": "poster",
+      "composition": {
+        "align": "center",
+        "copyAt": "top",
+        "size": "large",
+        "heroScale": "medium",
+        "mark": "underline"
+      },
+      "headline": "Paint has thickness",
+      "accent": "thickness",
+      "strike": "",
+      "callout": "",
+      "visual": {
+        "type": "equation",
+        "notation": "\\int_1^\\infty \\frac{1}{x} dx = \\hl{\\infty}"
+      }
+    }
+  ],
+  "results": {
+    "1": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "visual_only",
+        "composition": {
+          "align": "center",
+          "copy_at": "middle",
+          "size": "normal",
+          "hero_scale": "fill",
+          "mark": "color"
+        },
+        "warnings": [],
+        "visual": "surface_3d",
+        "hero_box_px": [
+          206,
+          72,
+          1074,
+          648
+        ],
+        "seconds": 2.07
+      }
+    },
+    "2": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "poster",
+        "composition": {
+          "align": "center",
+          "copy_at": "top",
+          "size": "large",
+          "hero_scale": "medium",
+          "mark": "underline"
+        },
+        "warnings": [],
+        "size": 124,
+        "lines": [
+          "Paint has thickness"
+        ],
+        "mark": "underline",
+        "visual": "equation",
+        "hero_box_px": [
+          213,
+          259,
+          1067,
+          605
+        ],
+        "seconds": 7.5
+      }
+    },
+    "0": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "split_left",
+        "composition": {
+          "align": "left",
+          "copy_at": "middle",
+          "size": "large",
+          "hero_scale": "fill",
+          "mark": "color"
+        },
+        "warnings": [
+          "label cannot be placed without overlap (15 collisions) at scale 1.0",
+          "label cannot be placed without overlap (16 collisions) at scale 0.92",
+          "label cannot be placed without overlap (17 collisions) at scale 0.84"
+        ],
+        "size": 124,
+        "lines": [
+          "Holds $\\pi$,",
+          "needs $\\infty$"
+        ],
+        "visual": "function_plot",
+        "callout": "volume $\\pi$",
+        "hero_box_px": [
+          654,
+          194,
+          1154,
+          597
+        ],
+        "seconds": 11.21
+      }
+    }
+  }
+}

@@ -2,18 +2,17 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type {
+  ThumbnailComposition,
+  ThumbnailLayout,
   ThumbnailVisual,
   ThumbnailVisualType,
   VideoTitleSet,
 } from "./youtube-metadata";
 
 /**
- * Thumbnails are rendered by `thumbnail/renderer.py`. Each spec carries a
- * validated catalogue concept and, optionally, a `design`: Manim code in
- * which the model composes the whole frame itself. The renderer checks a
- * design against the house rules and falls back to the concept if it fails.
- * This module builds those specs and loads the renderer and its fonts for
- * upload into the render sandbox.
+ * Thumbnails are rendered by `thumbnail/renderer.py` from data, never from
+ * model-written code. This module turns a title package into those specs and
+ * loads the renderer and its fonts for upload into the render sandbox.
  */
 
 // Cool hue carries the visual; warm hue marks the focal detail and accent copy.
@@ -27,29 +26,23 @@ export const THUMBNAIL_PALETTES = [
 ] as const;
 
 export type ThumbnailPalette = (typeof THUMBNAIL_PALETTES)[number];
-
-/** [cool, warm] hex colours; must match PALETTES in renderer.py. */
-export const THUMBNAIL_PALETTE_COLORS: Record<
-  ThumbnailPalette,
-  readonly [string, string]
-> = {
-  "teal-amber": ["#5CD0B3", "#FFD35A"],
-  "azure-coral": ["#58C4DD", "#FC6255"],
-  "violet-amber": ["#B189C6", "#FFD35A"],
-  "teal-rose": ["#5CD0B3", "#E07A9F"],
-  "azure-amber": ["#58C4DD", "#FFD35A"],
-};
-export const THUMBNAIL_LAYOUTS = [
+/** Defaults when the model picks no template, rotated across videos. */
+const DEFAULT_COPY_LAYOUTS: readonly ThumbnailLayout[] = [
   "split_left",
-  "split_right",
   "poster",
-] as const;
-export type ThumbnailLayout = (typeof THUMBNAIL_LAYOUTS)[number];
+  "split_right",
+  "bleed_right",
+  "stage",
+  "statement",
+  "bleed_left",
+];
 
 export interface ThumbnailSpec {
   title: string;
   palette: ThumbnailPalette;
-  layout: ThumbnailLayout | "visual_only";
+  layout: ThumbnailLayout;
+  /** The model's choices within the template (alignment, scale, marks). */
+  composition?: Omit<ThumbnailComposition, "layout">;
   /** Metadata only; the renderer draws no eyebrow. */
   eyebrow: string;
   headline: string;
@@ -59,14 +52,7 @@ export interface ThumbnailSpec {
   /** Short copy beside the hero with a warm arrow to its focal detail. */
   callout: string;
   visual: ThumbnailVisual;
-  /** Model-written Manim code that composes the whole frame (`thumbnail()`). */
-  design?: string;
-  /** False: if the design fails, render nothing rather than the concept. */
-  fallback?: boolean;
 }
-
-/** Longest design the renderer accepts; longer code is ignored. */
-export const THUMBNAIL_DESIGN_LIMIT = 12_000;
 
 const THUMBNAIL_DIR = join(process.cwd(), "src/lib/thumbnail");
 
@@ -200,16 +186,31 @@ export function buildThumbnailSpecs({
   titles,
   topic,
   designSeed,
-  designs,
 }: {
   titles: VideoTitleSet;
   topic: string;
   designSeed: string;
-  /** Per-slot model designs; a missing or oversized one uses the concept. */
-  designs?: readonly (string | null | undefined)[];
 }): [ThumbnailSpec, ThumbnailSpec, ThumbnailSpec] {
   const palette = choosePalette(designSeed);
-  const offset = stableHash(`layout:${designSeed}`) % THUMBNAIL_LAYOUTS.length;
+  const offset =
+    stableHash(`layout:${designSeed}`) % DEFAULT_COPY_LAYOUTS.length;
+  const layoutFor = (index: number): ThumbnailLayout => {
+    const concept = titles.thumbnailConcepts?.[index];
+    if (!concept?.headline || index === 1) {
+      return concept?.composition?.layout ?? "visual_only";
+    }
+    const chosen =
+      concept.composition?.layout ??
+      DEFAULT_COPY_LAYOUTS[(offset + index) % DEFAULT_COPY_LAYOUTS.length]!;
+    // A and C test different compositions, so C moves on if they match.
+    if (index === 2 && chosen === layoutFor(0)) {
+      const next =
+        (DEFAULT_COPY_LAYOUTS.indexOf(chosen) + 1) %
+        DEFAULT_COPY_LAYOUTS.length;
+      return DEFAULT_COPY_LAYOUTS[next]!;
+    }
+    return chosen;
+  };
   return titles.candidates.map((title, index) => {
     const concept = titles.thumbnailConcepts?.[index];
     // Without a concept there is no vetted copy: show the visual on its own.
@@ -221,19 +222,20 @@ export function buildThumbnailSpecs({
       !(concept.visual.type === "number" && !concept.visual.value)
         ? concept.visual
         : inferVisual(`${concept?.visualConcept ?? ""} ${title} ${topic}`);
-    const design = designs?.[index]?.trim();
     return {
-      ...(design && design.length <= THUMBNAIL_DESIGN_LIMIT ? { design } : {}),
       title,
       palette,
-      // Vary the published first candidate across jobs, and give C a distinct
-      // composition. B stays a full-canvas, text-free alternative.
-      layout:
-        !concept?.headline || index === 1
-          ? "visual_only"
-          : THUMBNAIL_LAYOUTS[
-              (offset + (index === 2 ? 1 : 0)) % THUMBNAIL_LAYOUTS.length
-            ]!,
+      // The model picks the template; B stays a text-free alternative.
+      layout: layoutFor(index),
+      ...(concept?.composition
+        ? {
+            composition: Object.fromEntries(
+              Object.entries(concept.composition).filter(
+                ([key]) => key !== "layout",
+              ),
+            ),
+          }
+        : {}),
       eyebrow: concept?.eyebrow ?? "",
       headline: index === 1 ? "" : (concept?.headline ?? ""),
       accent: index === 1 ? "" : (concept?.accent ?? ""),

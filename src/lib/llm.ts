@@ -52,7 +52,7 @@ const phClient =
       });
 
 // Wrapper that skips tracing in development
-export function maybeWithTracing<T>(
+function maybeWithTracing<T>(
   model: T,
   options: Parameters<typeof withTracing>[2],
 ): T {
@@ -1519,7 +1519,7 @@ export async function generateVideoTitles({
 }: VideoTitleRequest): Promise<VideoTitleSet> {
   const systemPrompt = `You package videos for eduvids, a visual math and science channel. Your job is click-through rate: on a crowded home page, beside 3Blue1Brown, Veritasium and Welch Labs, a curious viewer must stop scrolling and click. Generate exactly three distinct title-and-thumbnail packages, ordered strongest first.
 
-Each thumbnail pairs a short headline with one precise mathematical or scientific visual (matte 3D for surfaces and solids), on a flat near-black background. The renderer varies the composition across videos: text left, text right, or a poster with large art below a top headline. Design one clear focal image that works in these compositions. Copy is Computer Modern serif; one warm colour marks the payoff. There are no small tags or eyebrows on the image. You supply the words and the visual parameters only.
+Each thumbnail pairs a short headline with one precise mathematical or scientific visual (matte 3D for surfaces and solids), on a flat near-black background. You art-direct each thumbnail: pick the template that suits its idea and tune it (see COMPOSITION). The renderer draws and verifies it. Copy is Computer Modern serif; one warm colour marks the payoff. There are no small tags or eyebrows on the image.
 
 HOW TO WORK
 1. Mine the source material for click fuel: the opening puzzle, the tempting wrong answer, the most surprising number, the payoff image, and any everyday object or stakes ("your phone", "a casino", "every bridge").
@@ -1589,7 +1589,24 @@ VISUAL RULES
 - Use at most one short notation label. No explanatory captions, worked examples or small legends in the hero
 - Make the three packages distinct in angle, headline, and visual. Vary title openings, avoid defaulting every title to "Why", and never copy a production instruction, scene description or the raw request as a title. Treat the request as a brief; the narration is the source of truth.
 
-Return ONLY a JSON object: {"ideas": [ten or more short raw title ideas], "packages": [three objects, strongest first, with keys title, eyebrow, headline, accent, strike, callout, visualConcept (one sentence describing the image), visual (object with type and its parameters)]}. JSON strings must escape backslashes, e.g. "$e^{i\\\\pi}$".`;
+COMPOSITION
+Each package has a composition object. Think like a designer: what should dominate, the words or the picture? Where does the eye land first? Three packages that look alike waste the test, so A and C must use different layouts, and vary the other options too. Avoid falling back on split_left every time.
+- layout, for A and C (with a headline):
+  split_left: headline column left, picture right. A safe, balanced default.
+  split_right: picture left, headline right. The eye meets the picture first.
+  poster: headline across the top, a wide picture below. Good for wide pictures: plots, waves, formulas, bar charts.
+  stage: a big picture on top, the headline set along the bottom like a caption. Good when the picture is the hook and the words land the punchline.
+  bleed_right: headline left, picture oversized and cropped off the top and right edges. Drama and scale: attractors, fractals, orbits, surfaces, spirals.
+  bleed_left: picture oversized, cropped off the left and bottom edges, headline right.
+  statement: the headline IS the hero, set huge (2-4 words, ideally a number or verdict), with a small picture as support. Good for a shocking claim or a correction like "50% 67%".
+- layout, for B (visual-only): visual_only (centred, whole) or visual_bleed (oversized, cropped off the top and right edges for drama). Never bleed equations, numbers or bar charts; they are drawn whole.
+- align: "left" | "center" (headline alignment for poster and stage).
+- copyAt: "top" | "middle" | "bottom" (where the headline sits in split and bleed layouts; top or bottom gives the picture more presence).
+- size: "giant" | "large" | "normal" (headline size; giant only for 1-3 short words).
+- heroScale: "fill" | "large" | "medium" (how much of its space the picture takes; medium leaves breathing room for a delicate drawing).
+- mark: "color" | "underline" | "circle" | "box" (how the accent is marked beyond its warm colour: underline for a verdict, circle for the surprising number, box for a key term; color alone is calm).
+
+Return ONLY a JSON object: {"ideas": [ten or more short raw title ideas], "packages": [three objects, strongest first, with keys title, eyebrow, headline, accent, strike, callout, visualConcept (one sentence describing the image), visual (object with type and its parameters), composition (object with layout, align, copyAt, size, heroScale, mark)]}. JSON strings must escape backslashes, e.g. "$e^{i\\\\pi}$".`;
 
   const sourceMaterial = [
     voiceoverScript ? `NARRATION:\n${voiceoverScript.slice(0, 8_000)}` : "",

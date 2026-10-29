@@ -1,0 +1,150 @@
+{
+  "specs": [
+    {
+      "title": "Without Einstein, Your GPS Drifts",
+      "palette": "teal-amber",
+      "layout": "bleed_right",
+      "composition": {
+        "align": "left",
+        "copyAt": "middle",
+        "size": "large",
+        "heroScale": "large",
+        "mark": "circle"
+      },
+      "headline": "Off by 10 km daily",
+      "accent": "10 km",
+      "strike": "",
+      "callout": "+38 μs",
+      "visual": {
+        "type": "orbit",
+        "eccentricity": 0.25
+      }
+    },
+    {
+      "title": "How General Relativity Keeps GPS Accurate",
+      "palette": "teal-amber",
+      "layout": "visual_bleed",
+      "composition": {
+        "align": "center",
+        "copyAt": "middle",
+        "size": "large",
+        "heroScale": "fill",
+        "mark": "color"
+      },
+      "headline": "",
+      "accent": "",
+      "strike": "",
+      "callout": "",
+      "visual": {
+        "type": "surface_3d",
+        "expression": "-1/sqrt(x^2+y^2+0.3)"
+      }
+    },
+    {
+      "title": "Time Moves Faster in Orbit",
+      "palette": "teal-amber",
+      "layout": "statement",
+      "composition": {
+        "align": "left",
+        "copyAt": "top",
+        "size": "giant",
+        "heroScale": "medium",
+        "mark": "underline"
+      },
+      "headline": "Clocks gain 38 μs",
+      "accent": "38 μs",
+      "strike": "",
+      "callout": "10 km drift",
+      "visual": {
+        "type": "number",
+        "value": "+38 μs",
+        "was": "-7 μs"
+      }
+    }
+  ],
+  "results": {
+    "1": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "visual_bleed",
+        "composition": {
+          "align": "center",
+          "copy_at": "middle",
+          "size": "large",
+          "hero_scale": "fill",
+          "mark": "color"
+        },
+        "warnings": [],
+        "visual": "surface_3d",
+        "hero_box_px": [
+          150,
+          -17,
+          1470,
+          539
+        ],
+        "seconds": 1.27
+      }
+    },
+    "0": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "bleed_right",
+        "composition": {
+          "align": "left",
+          "copy_at": "middle",
+          "size": "large",
+          "hero_scale": "large",
+          "mark": "circle"
+        },
+        "warnings": [],
+        "size": 108,
+        "lines": [
+          "Off by 10",
+          "km daily"
+        ],
+        "visual": "orbit",
+        "callout": "+38 μs",
+        "hero_box_px": [
+          638,
+          -90,
+          1384,
+          632
+        ],
+        "seconds": 5.53
+      }
+    },
+    "2": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "poster",
+        "composition": {
+          "align": "left",
+          "copy_at": "top",
+          "size": "giant",
+          "hero_scale": "medium",
+          "mark": "underline"
+        },
+        "warnings": [],
+        "size": 148,
+        "lines": [
+          "Clocks gain 38 μs"
+        ],
+        "mark": "underline",
+        "visual": "number",
+        "hero_box_px": [
+          293,
+          312,
+          987,
+          611
+        ],
+        "layout_fallbacks": [
+          "statement: copy leaves too little room for the hero"
+        ],
+        "seconds": 10.64
+      }
+    }
+  }
+}

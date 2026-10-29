@@ -1,0 +1,113 @@
+{
+  "specs": [
+    {
+      "title": "A Shape You Can Fill But Never Paint",
+      "palette": "azure-coral",
+      "layout": "poster",
+      "composition": {},
+      "headline": "Infinite area, $V = \\pi$",
+      "accent": "$V = \\pi$",
+      "strike": "",
+      "callout": "",
+      "visual": {
+        "type": "surface_3d",
+        "expression": "1/sqrt(x^2+y^2)"
+      }
+    },
+    {
+      "title": "How Gabriel's Horn Breaks Infinity",
+      "palette": "azure-coral",
+      "layout": "visual_only",
+      "composition": {},
+      "headline": "",
+      "accent": "",
+      "strike": "",
+      "callout": "",
+      "visual": {
+        "type": "function_plot",
+        "expression": "1/x",
+        "xRange": [
+          0.5,
+          8
+        ],
+        "highlight": "area",
+        "from": 1,
+        "to": 8,
+        "notation": "y = 1/x"
+      }
+    },
+    {
+      "title": "An Infinite Surface Can Hold Finite Volume",
+      "palette": "azure-coral",
+      "layout": "split_left",
+      "composition": {},
+      "headline": "Paint has thickness",
+      "accent": "thickness",
+      "strike": "",
+      "callout": "atoms stop it",
+      "visual": {
+        "type": "equation",
+        "notation": "\\int_1^{\\infty} \\frac{1}{x} dx = \\infty"
+      }
+    }
+  ],
+  "results": {
+    "1": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "visual_only",
+        "warnings": [],
+        "visual": "function_plot",
+        "hero_box_px": [
+          217,
+          88,
+          1063,
+          632
+        ],
+        "seconds": 4.28
+      }
+    },
+    "0": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "poster",
+        "warnings": [],
+        "size": 124,
+        "lines": [
+          "Infinite area, $V = \\pi$"
+        ],
+        "visual": "surface_3d",
+        "hero_box_px": [
+          345,
+          244,
+          935,
+          636
+        ],
+        "seconds": 5.36
+      }
+    },
+    "2": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "split_left",
+        "warnings": [],
+        "size": 108,
+        "lines": [
+          "Paint has",
+          "thickness"
+        ],
+        "visual": "equation",
+        "hero_box_px": [
+          630,
+          249,
+          1178,
+          471
+        ],
+        "seconds": 5.65
+      }
+    }
+  }
+}

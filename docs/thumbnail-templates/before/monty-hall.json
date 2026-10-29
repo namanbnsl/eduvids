@@ -1,0 +1,125 @@
+{
+  "specs": [
+    {
+      "title": "Why You Should Always Switch Doors",
+      "palette": "azure-amber",
+      "layout": "split_left",
+      "composition": {},
+      "headline": "Always switch",
+      "accent": "switch",
+      "strike": "",
+      "callout": "",
+      "visual": {
+        "type": "bars",
+        "values": [
+          33,
+          67
+        ],
+        "focus": 1,
+        "labels": [
+          "stay",
+          "switch"
+        ]
+      }
+    },
+    {
+      "title": "The Math Behind the Monty Hall Problem",
+      "palette": "azure-amber",
+      "layout": "visual_only",
+      "composition": {},
+      "headline": "",
+      "accent": "",
+      "strike": "",
+      "callout": "",
+      "visual": {
+        "type": "number",
+        "value": "2/3",
+        "was": "1/2"
+      }
+    },
+    {
+      "title": "Your Gut Says 50/50. It's Not.",
+      "palette": "azure-amber",
+      "layout": "split_right",
+      "composition": {},
+      "headline": "Not 50% chance",
+      "accent": "Not",
+      "strike": "50%",
+      "callout": "2/3 win",
+      "visual": {
+        "type": "bars",
+        "values": [
+          33.3,
+          66.7
+        ],
+        "focus": 1,
+        "labels": [
+          "door 1",
+          "door 2"
+        ]
+      }
+    }
+  ],
+  "results": {
+    "1": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "visual_only",
+        "warnings": [],
+        "visual": "number",
+        "hero_box_px": [
+          376,
+          89,
+          904,
+          631
+        ],
+        "seconds": 9.29
+      }
+    },
+    "0": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "split_left",
+        "warnings": [],
+        "size": 124,
+        "lines": [
+          "Always",
+          "switch"
+        ],
+        "visual": "bars",
+        "hero_box_px": [
+          630,
+          152,
+          1178,
+          568
+        ],
+        "seconds": 10.64
+      }
+    },
+    "2": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "split_right",
+        "warnings": [],
+        "size": 124,
+        "lines": [
+          "Not 50%",
+          "chance"
+        ],
+        "strike": "50%",
+        "visual": "bars",
+        "callout": "2/3 win",
+        "hero_box_px": [
+          102,
+          137,
+          650,
+          566
+        ],
+        "seconds": 13.22
+      }
+    }
+  }
+}

@@ -1,0 +1,166 @@
+{
+  "specs": [
+    {
+      "title": "Why 23 People Is Enough for a Shared Birthday",
+      "palette": "teal-amber",
+      "layout": "split_left",
+      "composition": {
+        "align": "left",
+        "copyAt": "middle",
+        "size": "large",
+        "heroScale": "fill",
+        "mark": "circle"
+      },
+      "headline": "Only 23 people",
+      "accent": "23",
+      "strike": "",
+      "callout": "not 183",
+      "visual": {
+        "type": "number",
+        "value": "23",
+        "was": "183"
+      }
+    },
+    {
+      "title": "How the Birthday Paradox Actually Works",
+      "palette": "teal-amber",
+      "layout": "visual_only",
+      "composition": {
+        "align": "center",
+        "copyAt": "middle",
+        "size": "normal",
+        "heroScale": "fill",
+        "mark": "color"
+      },
+      "headline": "",
+      "accent": "",
+      "strike": "",
+      "callout": "",
+      "visual": {
+        "type": "bars",
+        "values": [
+          0.12,
+          0.41,
+          0.51,
+          0.71,
+          0.999
+        ],
+        "labels": [
+          "10",
+          "20",
+          "23",
+          "30",
+          "70"
+        ],
+        "focus": 2
+      }
+    },
+    {
+      "title": "Your Intuition Fails at 23 People",
+      "palette": "teal-amber",
+      "layout": "statement",
+      "composition": {
+        "align": "left",
+        "copyAt": "middle",
+        "size": "giant",
+        "heroScale": "medium",
+        "mark": "underline"
+      },
+      "headline": "Count pairs not people",
+      "accent": "pairs",
+      "strike": "",
+      "callout": "253 pairs",
+      "visual": {
+        "type": "equation",
+        "notation": "\\binom{23}{2} = \\hl{253}"
+      }
+    }
+  ],
+  "results": {
+    "2": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "statement",
+        "composition": {
+          "align": "left",
+          "copy_at": "middle",
+          "size": "giant",
+          "hero_scale": "medium",
+          "mark": "underline"
+        },
+        "warnings": [],
+        "size": 184,
+        "lines": [
+          "Count pairs",
+          "not people"
+        ],
+        "mark": "underline",
+        "visual": "equation",
+        "hero_box_px": [
+          485,
+          74,
+          795,
+          221
+        ],
+        "seconds": 8.48
+      }
+    },
+    "0": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "split_left",
+        "composition": {
+          "align": "left",
+          "copy_at": "middle",
+          "size": "large",
+          "hero_scale": "fill",
+          "mark": "circle"
+        },
+        "warnings": [],
+        "size": 124,
+        "lines": [
+          "Only 23",
+          "people"
+        ],
+        "mark": "circle",
+        "visual": "number",
+        "hero_box_px": [
+          643,
+          72,
+          1165,
+          648
+        ],
+        "seconds": 9.77
+      }
+    },
+    "1": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "visual_only",
+        "composition": {
+          "align": "center",
+          "copy_at": "middle",
+          "size": "normal",
+          "hero_scale": "fill",
+          "mark": "color"
+        },
+        "warnings": [
+          "label cannot be placed without overlap (25 collisions) at scale 1.0",
+          "label cannot be placed without overlap (14 collisions) at scale 0.92",
+          "label cannot be placed without overlap (14 collisions) at scale 0.84"
+        ],
+        "visual": "bars",
+        "hero_box_px": [
+          312,
+          118,
+          968,
+          602
+        ],
+        "seconds": 16.51
+      }
+    }
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "specs": [
+    {
+      "title": "Why the Sky Isn't Violet",
+      "palette": "violet-amber",
+      "layout": "split_left",
+      "composition": {},
+      "headline": "Blue scatters $5.5\\times$ more",
+      "accent": "$5.5\\times$",
+      "strike": "",
+      "callout": "not violet?",
+      "visual": {
+        "type": "function_plot",
+        "expression": "1/(x^4)",
+        "xRange": [
+          0.8,
+          1.8
+        ],
+        "highlight": "point",
+        "at": 1.1,
+        "notation": "1/\\lambda^4"
+      }
+    },
+    {
+      "title": "How Rayleigh Scattering Colors the Sky",
+      "palette": "violet-amber",
+      "layout": "visual_only",
+      "composition": {},
+      "headline": "",
+      "accent": "",
+      "strike": "",
+      "callout": "",
+      "visual": {
+        "type": "equation",
+        "notation": "I \\propto \\frac{1}{\\hl{\\lambda^4}}"
+      }
+    },
+    {
+      "title": "Sunsets Are Red Because Air Gets 40 Times Thicker",
+      "palette": "violet-amber",
+      "layout": "split_right",
+      "composition": {},
+      "headline": "40 times more air",
+      "accent": "40 times",
+      "strike": "",
+      "callout": "",
+      "visual": {
+        "type": "number",
+        "value": "40×"
+      }
+    }
+  ],
+  "results": {
+    "1": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "visual_only",
+        "warnings": [],
+        "visual": "equation",
+        "hero_box_px": [
+          245,
+          89,
+          1035,
+          631
+        ],
+        "seconds": 7.27
+      }
+    },
+    "2": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "split_right",
+        "warnings": [],
+        "size": 124,
+        "lines": [
+          "40 times",
+          "more air"
+        ],
+        "visual": "number",
+        "hero_box_px": [
+          103,
+          239,
+          649,
+          481
+        ],
+        "seconds": 13.9
+      }
+    },
+    "0": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "split_left",
+        "warnings": [],
+        "size": 84,
+        "lines": [
+          "Blue scatters",
+          "$5.5\\times$ more"
+        ],
+        "visual": "function_plot",
+        "callout": "not violet?",
+        "hero_box_px": [
+          630,
+          145,
+          1178,
+          618
+        ],
+        "seconds": 18.46
+      }
+    }
+  }
+}

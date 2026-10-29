@@ -20,14 +20,11 @@ import {
   sanitizeThumbnailSurfaceExpression,
   sanitizeThumbnailVisual,
   selectThumbnailPair,
+  THUMBNAIL_COPY_LAYOUTS,
   type RelatedYouTubeVideo,
 } from "../src/lib/youtube-metadata";
 import { protectLatexBackslashes } from "../src/lib/latex-json";
-import {
-  buildThumbnailSpecs,
-  inferVisual,
-  THUMBNAIL_LAYOUTS,
-} from "../src/lib/youtube-thumbnail";
+import { buildThumbnailSpecs, inferVisual } from "../src/lib/youtube-thumbnail";
 
 test("production briefs never become fallback titles or description copy", () => {
   const prompt =
@@ -203,7 +200,39 @@ test("thumbnail compositions vary across videos and preserve a text-free B", () 
     assert.equal(specs[1].headline, "");
     layouts.add(specs[0].layout);
   }
-  assert.deepEqual([...layouts].sort(), [...THUMBNAIL_LAYOUTS].sort());
+  assert.deepEqual([...layouts].sort(), [...THUMBNAIL_COPY_LAYOUTS].sort());
+});
+
+test("the model picks each thumbnail's template and its options", () => {
+  const titles = parseVideoTitleSet(
+    JSON.stringify({
+      packages: [0, 1, 2].map((i) => ({
+        title: `The Energy Hidden in a Nucleus, Angle ${i + 1}`,
+        headline: "Split one atom",
+        accent: "Split",
+        visual: { type: "fission" },
+        composition: [
+          { layout: "statement", mark: "underline", size: "giant" },
+          { layout: "visual_bleed", align: "center", heroScale: "fill" },
+          { layout: "statement", align: "sideways", copyAt: "bottom" },
+        ][i],
+      })),
+    }),
+  );
+  const specs = buildThumbnailSpecs({
+    titles,
+    topic: "Nuclear fission",
+    designSeed: "job",
+  });
+  assert.equal(specs[0].layout, "statement");
+  assert.deepEqual(specs[0].composition, { size: "giant", mark: "underline" });
+  // B is text-free: only visual options survive.
+  assert.equal(specs[1].layout, "visual_bleed");
+  assert.deepEqual(specs[1].composition, { heroScale: "fill" });
+  // C may not repeat A's template; invalid options are dropped.
+  assert.notEqual(specs[2].layout, "statement");
+  assert.deepEqual(specs[2].composition, { copyAt: "bottom" });
+  assert.equal(sanitizeThumbnailNumber("+38 µs"), "+38 µs");
 });
 
 test("topic-specific visuals distinguish fission, molecular bonds and internet traffic", () => {

@@ -1,0 +1,171 @@
+{
+  "specs": [
+    {
+      "title": "Why Isn't the Sky Violet?",
+      "palette": "violet-amber",
+      "layout": "split_left",
+      "composition": {
+        "align": "left",
+        "copyAt": "middle",
+        "size": "large",
+        "heroScale": "large",
+        "mark": "underline"
+      },
+      "headline": "Violet scatters more",
+      "accent": "Violet",
+      "strike": "",
+      "callout": "5.5×",
+      "visual": {
+        "type": "bars",
+        "values": [
+          1.0,
+          1.8,
+          5.5,
+          9.8
+        ],
+        "focus": 3,
+        "labels": [
+          "red",
+          "green",
+          "blue",
+          "violet"
+        ]
+      }
+    },
+    {
+      "title": "How Sunlight Changes Color at Sunset",
+      "palette": "violet-amber",
+      "layout": "visual_bleed",
+      "composition": {
+        "align": "center",
+        "copyAt": "middle",
+        "size": "normal",
+        "heroScale": "fill",
+        "mark": "color"
+      },
+      "headline": "",
+      "accent": "",
+      "strike": "",
+      "callout": "",
+      "visual": {
+        "type": "function_plot",
+        "expression": "1/x^4",
+        "xRange": [
+          0.9,
+          2.2
+        ],
+        "highlight": "point",
+        "at": 1.2,
+        "notation": "I \\propto 1/\\lambda^4"
+      }
+    },
+    {
+      "title": "Sunlight Filters Through 40 Times More Air at Sunset",
+      "palette": "violet-amber",
+      "layout": "stage",
+      "composition": {
+        "align": "center",
+        "copyAt": "bottom",
+        "size": "giant",
+        "heroScale": "large",
+        "mark": "box"
+      },
+      "headline": "40 times more air",
+      "accent": "40 times",
+      "strike": "",
+      "callout": "red wins",
+      "visual": {
+        "type": "number",
+        "value": "40×",
+        "was": "1×"
+      }
+    }
+  ],
+  "results": {
+    "1": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "visual_bleed",
+        "composition": {
+          "align": "center",
+          "copy_at": "middle",
+          "size": "normal",
+          "hero_scale": "fill",
+          "mark": "color"
+        },
+        "warnings": [
+          "label cannot be placed without overlap (25 collisions) at scale 1.0",
+          "label cannot be placed without overlap (25 collisions) at scale 0.92",
+          "label cannot be placed without overlap (25 collisions) at scale 0.84"
+        ],
+        "visual": "function_plot",
+        "hero_box_px": [
+          420,
+          -21,
+          1200,
+          574
+        ],
+        "seconds": 6.19
+      }
+    },
+    "2": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "stage",
+        "composition": {
+          "align": "center",
+          "copy_at": "bottom",
+          "size": "giant",
+          "hero_scale": "large",
+          "mark": "box"
+        },
+        "warnings": [],
+        "size": 148,
+        "lines": [
+          "40 times more air"
+        ],
+        "mark": "box",
+        "visual": "number",
+        "hero_box_px": [
+          329,
+          68,
+          951,
+          455
+        ],
+        "seconds": 10.74
+      }
+    },
+    "0": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "split_left",
+        "composition": {
+          "align": "left",
+          "copy_at": "middle",
+          "size": "large",
+          "hero_scale": "large",
+          "mark": "underline"
+        },
+        "warnings": [],
+        "size": 84,
+        "lines": [
+          "Violet",
+          "scatters more"
+        ],
+        "mark": "underline",
+        "visual": "bars",
+        "callout": "5.5×",
+        "hero_box_px": [
+          630,
+          146,
+          1178,
+          566
+        ],
+        "seconds": 18.65
+      }
+    }
+  }
+}

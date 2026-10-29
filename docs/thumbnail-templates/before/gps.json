@@ -1,0 +1,124 @@
+{
+  "specs": [
+    {
+      "title": "Why GPS Drifts 10 Kilometers Every Day",
+      "palette": "teal-amber",
+      "layout": "split_right",
+      "composition": {},
+      "headline": "38 microseconds off",
+      "accent": "38 microseconds",
+      "strike": "",
+      "callout": "10 km drift",
+      "visual": {
+        "type": "orbit",
+        "eccentricity": 0.25,
+        "notation": "+38\\ \\mu\\text{s}/\\text{day}"
+      }
+    },
+    {
+      "title": "How Einstein's Relativity Keeps GPS Working",
+      "palette": "teal-amber",
+      "layout": "visual_only",
+      "composition": {},
+      "headline": "",
+      "accent": "",
+      "strike": "",
+      "callout": "",
+      "visual": {
+        "type": "orbit",
+        "eccentricity": 0.15,
+        "notation": "\\Delta t = +38\\ \\mu\\text{s}"
+      }
+    },
+    {
+      "title": "Satellite Clocks Run Faster Than Clocks on Earth",
+      "palette": "teal-amber",
+      "layout": "poster",
+      "composition": {},
+      "headline": "Gravity beats speed",
+      "accent": "Gravity",
+      "strike": "",
+      "callout": "+38 $\\mu$s",
+      "visual": {
+        "type": "bars",
+        "values": [
+          7,
+          45,
+          38
+        ],
+        "labels": [
+          "speed",
+          "gravity",
+          "net"
+        ],
+        "focus": 2
+      }
+    }
+  ],
+  "results": {
+    "1": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "visual_only",
+        "warnings": [],
+        "visual": "orbit",
+        "hero_box_px": [
+          366,
+          89,
+          914,
+          631
+        ],
+        "seconds": 0.23
+      }
+    },
+    "0": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "split_right",
+        "warnings": [],
+        "size": 76,
+        "lines": [
+          "38",
+          "microseconds",
+          "off"
+        ],
+        "visual": "orbit",
+        "callout": "10 km drift",
+        "hero_box_px": [
+          102,
+          94,
+          650,
+          626
+        ],
+        "seconds": 8.4
+      }
+    },
+    "2": {
+      "ok": true,
+      "report": {
+        "mode": "full",
+        "layout": "poster",
+        "warnings": [
+          "label cannot be placed without overlap (18 collisions) at scale 0.94",
+          "label cannot be placed without overlap (10 collisions) at scale 0.86",
+          "label cannot be placed without overlap (11 collisions) at scale 0.78"
+        ],
+        "size": 124,
+        "lines": [
+          "Gravity beats speed"
+        ],
+        "visual": "bars",
+        "callout": "+38 $\\mu$s",
+        "hero_box_px": [
+          422,
+          268,
+          1100,
+          612
+        ],
+        "seconds": 14.04
+      }
+    }
+  }
+}

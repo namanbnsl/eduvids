@@ -115,6 +115,32 @@ export interface ThumbnailVisual {
   was?: string;
 }
 
+/** Templates with a headline; the visual-only slot uses the visual layouts. */
+export const THUMBNAIL_COPY_LAYOUTS = [
+  "split_left",
+  "split_right",
+  "poster",
+  "stage",
+  "bleed_right",
+  "bleed_left",
+  "statement",
+] as const;
+export const THUMBNAIL_VISUAL_LAYOUTS = ["visual_only", "visual_bleed"] as const;
+export type ThumbnailLayout =
+  | (typeof THUMBNAIL_COPY_LAYOUTS)[number]
+  | (typeof THUMBNAIL_VISUAL_LAYOUTS)[number];
+
+/** The model's choices within a template; the renderer verifies the result. */
+export interface ThumbnailComposition {
+  layout?: ThumbnailLayout;
+  align?: "left" | "center";
+  copyAt?: "top" | "middle" | "bottom";
+  size?: "giant" | "large" | "normal";
+  heroScale?: "fill" | "large" | "medium";
+  /** How the accent is marked beyond its colour. */
+  mark?: "color" | "underline" | "circle" | "box";
+}
+
 export interface ThumbnailConcept {
   /** Small uppercase topic label above the headline, e.g. "Complex numbers". */
   eyebrow: string;
@@ -128,6 +154,7 @@ export interface ThumbnailConcept {
   callout?: string;
   visualConcept: string;
   visual: ThumbnailVisual;
+  composition?: ThumbnailComposition;
 }
 export interface ThumbnailPair {
   title: string;
@@ -283,6 +310,30 @@ function pick<T extends string>(value: unknown, options: readonly T[]) {
   return typeof value === "string" && options.includes(value as T)
     ? (value as T)
     : undefined;
+}
+
+export function sanitizeThumbnailComposition(
+  value: unknown,
+  visualOnly: boolean,
+): ThumbnailComposition | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const composition = withoutUndefined({
+    layout: pick(
+      raw.layout,
+      visualOnly ? THUMBNAIL_VISUAL_LAYOUTS : THUMBNAIL_COPY_LAYOUTS,
+    ),
+    align: visualOnly ? undefined : pick(raw.align, ["left", "center"]),
+    copyAt: visualOnly
+      ? undefined
+      : pick(raw.copyAt, ["top", "middle", "bottom"]),
+    size: visualOnly ? undefined : pick(raw.size, ["giant", "large", "normal"]),
+    heroScale: pick(raw.heroScale, ["fill", "large", "medium"]),
+    mark: visualOnly
+      ? undefined
+      : pick(raw.mark, ["color", "underline", "circle", "box"]),
+  });
+  return Object.keys(composition).length ? composition : undefined;
 }
 
 function withoutUndefined<T extends object>(value: T): T {
@@ -477,7 +528,9 @@ export function sanitizeThumbnailVisual(
 export function sanitizeThumbnailNumber(value: unknown): string {
   if (typeof value !== "string") return "";
   const figure = value.trim();
-  return /^[0-9.,%+\-/:=?!×≈∞− ]{1,9}$/.test(figure) && /[0-9∞?]/.test(figure)
+  // A figure with an optional short unit: "67%", "+38 µs", "10 km".
+  return /^[0-9.,%+\-/:=?!×≈∞− ]{1,9}(?: ?[A-Za-zµμ°]{1,4})?$/.test(figure) &&
+    /[0-9∞?]/.test(figure)
     ? figure
     : "";
 }
@@ -631,7 +684,13 @@ export function parseVideoTitleSet(raw: string): VideoTitleSet {
           : "";
       const strike = sanitizeThumbnailStrike(record.strike, headline, accent);
       const callout = headline ? sanitizeThumbnailCallout(record.callout) : "";
+      const composition = sanitizeThumbnailComposition(
+        record.composition,
+        !headline,
+      );
       return {
+        // Slot B's options are checked again once the slot is known.
+        rawComposition: record.composition,
         title: cleanTitle(record.title),
         concept: visualType
           ? {
@@ -654,6 +713,7 @@ export function parseVideoTitleSet(raw: string): VideoTitleSet {
                 xRange: record.plotXRange,
                 ...rawVisual,
               }),
+              ...(composition ? { composition } : {}),
             }
           : undefined,
       };
@@ -687,11 +747,20 @@ export function parseVideoTitleSet(raw: string): VideoTitleSet {
     string,
     string,
   ];
-  const concepts = parsed.map(({ concept }, index) => {
+  const concepts = parsed.map(({ concept, rawComposition }, index) => {
     if (!concept || index !== VISUAL_ONLY_THUMBNAIL_INDEX) return concept;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { strike, callout, ...visualOnly } = concept;
-    return { ...visualOnly, headline: "", accent: "" };
+    const { strike, callout, composition, ...visualOnly } = concept;
+    const visualComposition = sanitizeThumbnailComposition(
+      rawComposition,
+      true,
+    );
+    return {
+      ...visualOnly,
+      headline: "",
+      accent: "",
+      ...(visualComposition ? { composition: visualComposition } : {}),
+    };
   });
   const hasCompleteConcepts = concepts.every(
     (concept): concept is ThumbnailConcept => concept !== undefined,

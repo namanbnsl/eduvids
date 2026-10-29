@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 """eduvids thumbnail renderer.
 
-Spec in, PNG out. A spec carries copy, a palette and a catalogue hero with
-its parameters, which this module lays out and verifies. It may also carry a
-``design``: Manim code in which the model composes the whole frame itself,
-using the house helpers (text, tex, diagram) and checked by hard rules
-(safe margin, duration badge, type size, collisions, flat style). A design
-that fails falls back to the catalogue spec, then to safe mode.
+Data in, PNG out: every thumbnail is described by a JSON spec (copy, palette,
+hero visual and its parameters). The model never writes code; it only fills
+slots that this module validates, lays out and checks.
 
     renderer.py batch  --spec specs.json --out-dir DIR --font-dir FONTS
-    renderer.py render --spec specs.json --index N --out FILE.png --font-dir FONTS [--mode design|full|safe]
+    renderer.py render --spec specs.json --index N --out FILE.png --font-dir FONTS [--safe]
 
 Design system
 - Canvas 1280x720 on the video's flat near-black canvas, fixed margins and a
@@ -1553,7 +1550,8 @@ def hero_bars(spec, cool, warm, ts, safe):
 BAR_LABEL = re.compile(r"^[A-Za-z0-9 .%'\-]{1,10}$")
 
 
-NUMBER_VALUE = re.compile(r"^[0-9.,%+\-/:=?!×≈∞− ]{1,9}$")
+# A figure with an optional short unit: "67%", "+38 µs", "10 km", "1/3".
+NUMBER_VALUE = re.compile(r"^[0-9.,%+\-/:=?!×≈∞− ]{1,9}(?: ?[A-Za-zµμ°]{1,4})?$")
 
 
 def clean_number(value) -> str:
@@ -1565,7 +1563,7 @@ def clean_number(value) -> str:
 
 def number_tex(value: str) -> str:
     """Text figures, with the symbols CMU Serif lacks set from the math font."""
-    symbols = {"\u00d7": r"$\times$", "\u2248": r"$\approx$", "\u221e": r"$\infty$", "\u2212": r"$-$"}
+    symbols = {"\u00d7": r"$\times$", "\u2248": r"$\approx$", "\u221e": r"$\infty$", "\u2212": r"$-$", "\u00b5": r"$\mu$", "\u03bc": r"$\mu$"}
     return "".join(symbols.get(char) or tex_escape(char) for char in value)
 
 
@@ -1764,80 +1762,239 @@ HEROES = {
 # Composition
 # ---------------------------------------------------------------------------
 
+# Templates. Boxes are pixel rectangles (left, top, right, bottom). A hero box
+# may reach past the frame, so the drawing bleeds off that edge; copy, labels
+# and callouts always stay inside the safe area.
+COPY_LAYOUTS = ("split_left", "split_right", "poster", "stage", "bleed_right", "bleed_left", "statement")
+VISUAL_LAYOUTS = ("visual_only", "visual_bleed")
+BLEEDS = {"bleed_right": "split_left", "bleed_left": "split_right", "visual_bleed": "visual_only"}
+# Typographic heroes lose their meaning when cropped, so they never bleed.
+NO_BLEED = {"equation", "number", "bars"}
+# Statement copy is the hero, so it starts larger than the other templates.
+STATEMENT_TIERS = (184, 160, 140, 124, 108)
+SIZE_TIERS = {
+    "giant": (148,) + HEADLINE_TIERS,
+    "large": HEADLINE_TIERS,
+    "normal": HEADLINE_TIERS[2:],
+}
+HERO_SHRINK = {
+    "fill": (1.0, 0.92, 0.84, 0.76, 0.68, 0.6),
+    "large": (0.94, 0.86, 0.78, 0.70, 0.62),
+    "medium": (0.8, 0.72, 0.64, 0.56),
+}
+MARKS = ("color", "underline", "circle", "box")
+
+
+def px_box(left, top, right, bottom) -> np.ndarray:
+    """A pixel rectangle as a scene box (x0, y0, x1, y1)."""
+    return np.array([x_at(left), y_at(bottom), x_at(right), y_at(top)])
+
+
+def choice(value, options, default):
+    return value if value in options else default
+
+
+def composition_options(spec: dict, layout: str) -> dict:
+    """The model's free choices within a template, validated."""
+    raw = spec.get("composition") if isinstance(spec.get("composition"), dict) else {}
+    default_at = "bottom" if layout in ("stage", "statement") else "top" if layout == "poster" else "middle"
+    return {
+        "align": choice(raw.get("align"), ("left", "center"), "left"),
+        "copy_at": choice(raw.get("copyAt"), ("top", "middle", "bottom"), default_at),
+        "size": choice(raw.get("size"), tuple(SIZE_TIERS), "large"),
+        "hero_scale": choice(raw.get("heroScale"), tuple(HERO_SHRINK), "large"),
+        "mark": choice(raw.get("mark"), MARKS, "color"),
+    }
+
+
+def accent_glyphs(block, warm: str, size_px: float):
+    """The warm glyphs of a typeset block, without the thin strike rules."""
+    from manim import VMobject
+
+    found = []
+    for mob in block.family_members_with_points():
+        if not isinstance(mob, VMobject) or mob.get_fill_opacity() == 0:
+            continue
+        if normalize_hex(mob.get_fill_color().to_hex()[:7]) != warm.upper():
+            continue
+        if mob.height < u(size_px) * 0.2:
+            continue
+        found.append(mob)
+    return found
+
+
+def accent_mark(block, mark: str, warm: str, size_px: float):
+    """A hand-made emphasis around the accent: an underline, a loose ellipse
+    or a box. Only when the accent sits on one line."""
+    from manim import ArcBetweenPoints, Rectangle, RoundedRectangle
+
+    if mark == "color":
+        return None
+    glyphs = accent_glyphs(block, warm, size_px)
+    if not glyphs:
+        return None
+    box = box_union([bbox(glyph) for glyph in glyphs])
+    em = u(size_px)
+    if box[3] - box[1] > em * 1.15:
+        return None  # the accent wraps onto two lines
+    width, height = box[2] - box[0], box[3] - box[1]
+    center = np.array([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2, 0.0])
+    if mark == "underline":
+        y = box[1] - em * 0.13
+        line = ArcBetweenPoints(np.array([box[0] - em * 0.06, y, 0]), np.array([box[2] + em * 0.08, y + em * 0.03, 0]), angle=-0.06)
+        return stroke(line, warm, max(5, size_px / 16))
+    # Inside the word spaces, so the mark never touches its neighbours.
+    if mark == "circle":
+        ring = RoundedRectangle(width=width + em * 0.2, height=height + em * 0.26, corner_radius=(height + em * 0.26) / 2)
+        return stroke(ring.move_to(center).rotate(0.03), warm, max(4, size_px / 24))
+    ring = Rectangle(width=width + em * 0.16, height=height + em * 0.2).move_to(center)
+    return stroke(ring, warm, max(4, size_px / 26))
+
+
+def set_copy(spec, ts, layout, opts, safe):
+    """Typeset the headline at the largest tier that fits the template's
+    column, with the accent mark joined to it."""
+    from manim import VGroup
+
+    headline = (spec.get("headline") or "").strip()
+    words = split_words(headline)
+    accent_span = accent_range(headline, spec.get("accent") or "")
+    strike_span = strike_range(headline, spec.get("strike") or "", accent_span) if isinstance(spec.get("strike"), str) else None
+    wide = layout in ("poster", "stage", "statement")
+    column_px = WIDTH - 2 * MARGIN_X if wide else 440 if layout.startswith("bleed") else TEXT_COL_W
+    tiers = STATEMENT_TIERS if layout == "statement" else SIZE_TIERS[opts["size"]]
+    options = line_options(words, accent_span, max_lines=2 if wide else 3)
+    column = u(column_px)
+    candidates = sorted(
+        (score + 5 * tier, size, lines)
+        for tier, size in enumerate(tiers)
+        for score, widest, lines in options
+        if widest * u(size) <= column * 1.06
+    )
+    for _, size, lines in candidates[:6]:
+        rendered = [" ".join(word_tex(w, accent_span, safe, strike_span) for w in words[a:b]) for a, b in lines]
+        # Display-size Computer Modern reads loose; tighten letter spacing.
+        block = ts.block(rendered, size, "SemiBold", tracking=-1.5)
+        if opts["align"] == "center" and wide and len(rendered) > 1:
+            block = VGroup(*[ts.block([line], size, "SemiBold", tracking=-1.5) for line in rendered])
+            block.arrange(np.array([0, -1, 0]), buff=u(size) * 0.16)
+        if block.width > column:
+            continue
+        mark = None if safe else accent_mark(block, opts["mark"], ts.warm, size)
+        report = {"size": size, "lines": [" ".join(w.text for w in words[a:b]) for a, b in lines]}
+        if strike_span:
+            report["strike"] = headline[strike_span[0]:strike_span[1]]
+        if mark is not None:
+            report["mark"] = opts["mark"]
+        return VGroup(block, *([mark] if mark is not None else [])), report
+    raise LayoutError("headline does not fit the copy column at any type size")
+
+
+def place_copy(text, layout, opts):
+    """Move the copy into its template slot and return the hero box."""
+    top, bottom = MARGIN_Y, HEIGHT - MARGIN_Y
+
+    def anchored(box_top, box_bottom):
+        if opts["copy_at"] == "top":
+            return y_at(box_top) - text.height / 2
+        if opts["copy_at"] == "bottom":
+            return y_at(box_bottom) + text.height / 2
+        return (y_at(box_top) + y_at(box_bottom)) / 2 + u(6)
+
+    def x_for(left, right):
+        if opts["align"] == "center":
+            return (x_at(left) + x_at(right)) / 2
+        return x_at(left) + text.width / 2
+
+    if layout in ("split_left", "bleed_right"):
+        column = TEXT_COL_W if layout == "split_left" else 440
+        text.move_to([x_at(MARGIN_X) + text.width / 2, anchored(top, bottom), 0])
+        if layout == "split_left":
+            return px_box(HERO_LEFT, top, WIDTH - MARGIN_X, bottom)
+        # Off the top and right edges, clear of the duration badge.
+        return px_box(MARGIN_X + column + GUTTER, -90, WIDTH + 170, BADGE_ZONE[1] - 24)
+    if layout in ("split_right", "bleed_left"):
+        column = TEXT_COL_W if layout == "split_right" else 440
+        # Keep the copy off the duration badge in the bottom-right corner.
+        text.move_to([x_at(WIDTH - MARGIN_X - column) + text.width / 2, anchored(top, BADGE_ZONE[1] - 16), 0])
+        if layout == "split_right":
+            return px_box(MARGIN_X, top, WIDTH - HERO_LEFT, bottom)
+        return px_box(-170, 120, WIDTH - MARGIN_X - column - GUTTER, HEIGHT + 90)
+    if layout == "poster":
+        text.move_to([x_for(MARGIN_X, WIDTH - MARGIN_X), y_at(64) - text.height / 2, 0])
+        return np.array([x_at(MARGIN_X), y_at(bottom), x_at(WIDTH - MARGIN_X), text.get_bottom()[1] - u(GUTTER)])
+    if layout == "stage":
+        text.move_to([x_for(MARGIN_X, WIDTH - MARGIN_X), y_at(bottom) + text.height / 2, 0])
+        return np.array([x_at(MARGIN_X), text.get_top()[1] + u(GUTTER), x_at(WIDTH - MARGIN_X), y_at(56)])
+    if layout == "statement":
+        text.move_to([x_at(MARGIN_X) + text.width / 2, y_at(bottom) + text.height / 2, 0])
+        above = np.array([x_at(MARGIN_X), text.get_top()[1] + u(GUTTER), x_at(WIDTH - MARGIN_X), y_at(56)])
+        beside = np.array([text.get_right()[0] + u(GUTTER), y_at(BADGE_ZONE[1] - 16), x_at(WIDTH - MARGIN_X), y_at(56)])
+        area = lambda box: max(0, box[2] - box[0]) * max(0, box[3] - box[1])
+        return above if area(above) >= area(beside) else beside
+    raise LayoutError(f"unknown layout {layout}")
+
+
 def compose(spec: dict, font_dir: str, safe: bool):
+    """Try the requested template, then plainer ones, before safe mode: a
+    formula too wide for a column fits a poster rather than being dropped."""
+    has_copy = bool((spec.get("headline") or "").strip()) and spec.get("layout") != "visual_only"
+    requested = spec.get("layout")
+    if has_copy:
+        layout = requested if requested in COPY_LAYOUTS else "split_left"
+        chain = [layout] + [fallback for fallback in (BLEEDS.get(layout), "poster", "stage", "split_left") if fallback and fallback != layout]
+    else:
+        layout = requested if requested in VISUAL_LAYOUTS else "visual_only"
+        chain = [layout] + (["visual_only"] if layout != "visual_only" else [])
+    if safe:
+        chain = [BLEEDS.get(chain[0], chain[0])] + [item for item in chain[1:] if item not in BLEEDS]
+    errors = []
+    for index, attempt in enumerate(dict.fromkeys(chain)):
+        try:
+            mobjects, report = compose_layout(spec, font_dir, safe, attempt)
+        except LayoutError as error:
+            errors.append(f"{attempt}: {error}")
+            continue
+        if errors:
+            report["layout_fallbacks"] = errors
+        return mobjects, report
+    raise LayoutError("; ".join(errors))
+
+
+def compose_layout(spec: dict, font_dir: str, safe: bool, layout: str):
     from manim import VGroup
 
     palette = PALETTES.get(spec.get("palette"), PALETTES["teal-amber"])
     cool, warm = palette
     ts = Typesetter(font_dir, cool, warm)
-    layout = spec.get("layout", "split_left")
-    if layout not in ("split_left", "split_right", "poster", "visual_only"):
-        layout = "split_left"
-    report = {"mode": "safe" if safe else "full", "layout": layout, "warnings": []}
-
-    # spec["eyebrow"] is metadata only: small block-capital tags read as
-    # template chrome, so the headline and the picture carry the thumbnail.
-    headline = (spec.get("headline") or "").strip()
-    has_copy = bool(headline) and layout != "visual_only"
-
-    copy_block = None
-    if has_copy:
-        words = split_words(headline)
-        accent_span = accent_range(headline, spec.get("accent") or "")
-        strike_span = strike_range(headline, spec.get("strike") or "", accent_span) if isinstance(spec.get("strike"), str) else None
-        options = line_options(words, accent_span, max_lines=2 if layout == "poster" else 3)
-        column = u(WIDTH - 2 * MARGIN_X if layout == "poster" else TEXT_COL_W)
-        candidates = sorted(
-            (score + 5 * tier, size, lines)
-            for tier, size in enumerate(HEADLINE_TIERS)
-            for score, widest, lines in options
-            if widest * u(size) <= column * 1.06
-        )
-        for _, size, lines in candidates[:6]:
-            rendered = [" ".join(word_tex(w, accent_span, safe, strike_span) for w in words[a:b]) for a, b in lines]
-            # Display-size Computer Modern reads loose; tighten letter spacing.
-            block = ts.block(rendered, size, "SemiBold", tracking=-1.5)
-            if block.width <= column:
-                copy_block = block
-                report.update(size=size, lines=[" ".join(w.text for w in words[a:b]) for a, b in lines])
-                if strike_span:
-                    report["strike"] = headline[strike_span[0]:strike_span[1]]
-                break
-        if copy_block is None:
-            raise LayoutError("headline does not fit the copy column at any type size")
-        text = VGroup(copy_block)
-        if layout == "poster":
-            text.move_to([0, y_at(MARGIN_Y) - text.height / 2, 0])
-            hero_region = np.array([x_at(MARGIN_X), y_at(HEIGHT - MARGIN_Y), x_at(WIDTH - MARGIN_X), text.get_bottom()[1] - u(GUTTER)])
-        elif layout == "split_right":
-            text.move_to([x_at(WIDTH - MARGIN_X - TEXT_COL_W) + text.width / 2, u(6), 0])
-            hero_region = np.array([x_at(MARGIN_X), y_at(HEIGHT - MARGIN_Y), x_at(WIDTH - HERO_LEFT), y_at(MARGIN_Y)])
-        else:
-            text.move_to([x_at(MARGIN_X) + text.width / 2, u(6), 0])
-            hero_region = np.array([x_at(HERO_LEFT), y_at(HEIGHT - MARGIN_Y), x_at(WIDTH - MARGIN_X), y_at(MARGIN_Y)])
-        if text.height > u(HEIGHT - 2 * MARGIN_Y) or hero_region[3] - hero_region[1] < u(180):
-            raise LayoutError("copy leaves too little room for the hero")
-    else:
-        text = None
-        hero_region = np.array([x_at(MARGIN_X + 60), -FRAME_H / 2 + u(MARGIN_Y), x_at(WIDTH - MARGIN_X - 60), FRAME_H / 2 - u(MARGIN_Y)])
-    ts.region_w = hero_region[2] - hero_region[0]
-
+    opts = composition_options(spec, layout)
     visual = spec.get("visual") if isinstance(spec.get("visual"), dict) else {}
-    if visual.get("type") == "frame":
-        path = visual.get("path")
-        if not safe and isinstance(path, str) and os.path.isfile(path):
-            if text is not None:
-                verify(text, None, [], None)
-            report["visual"] = "frame"
-            report["frame"] = {"path": path, "left": HERO_LEFT - 72 if text is not None else 0}
-            return ([text] if text is not None else []), report
-        # Safe mode, or the frame is missing: draw the concept visual instead.
-        visual = visual.get("fallback") if isinstance(visual.get("fallback"), dict) else {}
     kind = visual.get("type") if visual.get("type") in HEROES else "equation"
     if safe and kind == "equation" and not clean_latex(visual.get("notation")):
         kind = "geometry"
     if safe and kind == "number" and not clean_number(visual.get("value")):
         kind = "geometry"
+    if kind in NO_BLEED and layout in BLEEDS:
+        layout = BLEEDS[layout]
+    report = {"mode": "safe" if safe else "full", "layout": layout, "composition": opts, "warnings": []}
+
+    text = None
+    if layout in COPY_LAYOUTS:
+        text, copy_report = set_copy(spec, ts, layout, opts, safe)
+        report.update(copy_report)
+        hero_region = place_copy(text, layout, opts)
+        if text.height > u(HEIGHT - 2 * MARGIN_Y) or hero_region[3] - hero_region[1] < u(170) or hero_region[2] - hero_region[0] < u(260):
+            raise LayoutError("copy leaves too little room for the hero")
+    elif layout == "visual_bleed":
+        hero_region = px_box(150, -110, WIDTH + 190, BADGE_ZONE[1] - 24)
+    else:
+        hero_region = px_box(MARGIN_X + 60, MARGIN_Y, WIDTH - MARGIN_X - 60, HEIGHT - MARGIN_Y)
+    bleed = layout in ("bleed_right", "bleed_left", "visual_bleed")
+    # Labels and callouts must stay inside the frame, even when the drawing bleeds.
+    safe_box = px_box(SAFE_PAD + 20, SAFE_PAD + 20, WIDTH - SAFE_PAD - 20, HEIGHT - SAFE_PAD - 20)
+    visible = np.array([max(hero_region[0], safe_box[0]), max(hero_region[1], safe_box[1]), min(hero_region[2], safe_box[2]), min(hero_region[3], safe_box[3])])
+    ts.region_w = visible[2] - visible[0]
+
     try:
         hero = HEROES[kind](visual, cool, warm, ts, safe)
     except LayoutError:
@@ -1855,9 +2012,10 @@ def compose(spec: dict, font_dir: str, safe: bool):
         callout = callout_copy(spec.get("callout"), ts, safe)
 
     # Fit the graphics, then place labels at their fixed type size. If a label
-    # cannot be placed cleanly or spills out of the region, shrink and retry.
-    # With a callout, each scale must also leave it clean room near the focus;
-    # if none does, the hero is fitted again without it.
+    # cannot be placed cleanly, spills out of the region or lands under the
+    # duration badge, shrink and retry. With a callout, each scale must also
+    # leave it clean room near the focus; if none does, the hero is fitted
+    # again without it.
     region_w = hero_region[2] - hero_region[0]
     region_h = hero_region[3] - hero_region[1]
     center = np.array([(hero_region[0] + hero_region[2]) / 2, (hero_region[1] + hero_region[3]) / 2, 0.0])
@@ -1867,30 +2025,40 @@ def compose(spec: dict, font_dir: str, safe: bool):
     focus_offset = None if hero.focus is None else np.asarray(hero.focus, dtype=float) - origin
     base = min(region_w / max(graphics.width, 1e-6), region_h / max(graphics.height, 1e-6))
     scale = {"current": 1.0}
+    badge = px_box(BADGE_ZONE[0] - 8, BADGE_ZONE[1] - 8, WIDTH + 400, HEIGHT + 400)
+
+    def under_badge(group) -> bool:
+        points = bezier_samples(group)
+        return bool(((points[:, 0] > badge[0]) & (points[:, 1] < badge[3]) & (points[:, 1] > badge[1])).any())
 
     def fit(with_callout):
-        for shrink in (0.94, 0.86, 0.78, 0.70, 0.62):
+        for shrink in HERO_SHRINK["fill" if bleed else opts["hero_scale"]]:
             graphics.scale(base * shrink / scale["current"])
             scale["current"] = base * shrink
             graphics.move_to(center)
             for label, offset in zip(hero.labels, offsets):
                 label.anchor = center + offset * scale["current"]
             try:
-                attempt = place_labels(graphics, hero.labels, hero_region, strict=True)
+                attempt = place_labels(graphics, hero.labels, visible, strict=True)
             except LayoutError as error:
                 report["warnings"].append(f"{error} at scale {shrink}")
                 continue
             group = VGroup(graphics, *attempt)
-            if group.width > region_w + 1e-6 or group.height > region_h + 1e-6:
+            if not bleed and (group.width > region_w + 1e-6 or group.height > region_h + 1e-6):
                 report["warnings"].append(f"labels spill outside the hero region at scale {shrink}")
                 continue
-            group.shift(center - group.get_center())
+            if not bleed:
+                group.shift(center - group.get_center())
+            if any(bbox(label)[0] < visible[0] or bbox(label)[2] > visible[2] or bbox(label)[1] < visible[1] or bbox(label)[3] > visible[3] for label in attempt):
+                report["warnings"].append(f"labels leave the frame at scale {shrink}")
+                continue
+            if under_badge(group):
+                report["warnings"].append(f"hero under the duration badge at scale {shrink}")
+                continue
             if not with_callout:
                 return attempt, None
             focus = graphics.get_center() + focus_offset * scale["current"]
-            # The hero region already reserves the gutter in every layout.
-            room = hero_region.copy()
-            pointer = place_callout(callout, focus, graphics, attempt, room, warm)
+            pointer = place_callout(callout, focus, graphics, attempt, visible, warm)
             if pointer is not None:
                 return attempt, pointer
         return None, None
@@ -1908,24 +2076,29 @@ def compose(spec: dict, font_dir: str, safe: bool):
         graphics = VGroup(graphics, pointer)
 
     hero_group = VGroup(graphics, *placed)
-    verify(text, hero_group, placed, graphics)
+    verify(text, hero_group, placed, graphics, bleed)
     box = bbox(hero_group)
     report["hero_box_px"] = [round((box[0] + FRAME_W / 2) * PX), round((FRAME_H / 2 - box[3]) * PX), round((box[2] + FRAME_W / 2) * PX), round((FRAME_H / 2 - box[1]) * PX)]
     mobjects = [hero_group] + ([text] if text is not None else [])
     return mobjects, report
 
 
-def verify(text, hero_group, labels, graphics):
+def verify(text, hero_group, labels, graphics, bleed=False):
     """Hard layout rules. Any violation fails the render.
 
-    ``hero_group`` is None for a video-frame hero, which is composited as an
-    image and bleeds off the right edge by design: only the copy is checked.
+    A bleeding hero may leave the frame; its labels, callout and the copy may
+    not.
     """
     if text is not None and hero_group is not None:
         if boxes_overlap(bbox(text, u(GUTTER / 2)), bbox(hero_group)):
-            raise LayoutError("copy block and hero overlap")
+            # A bleeding drawing's box is large; check its actual strokes.
+            points = bezier_samples(hero_group)
+            box = bbox(text, u(GUTTER / 2))
+            if not bleed or ((points[:, 0] > box[0]) & (points[:, 0] < box[2]) & (points[:, 1] > box[1]) & (points[:, 1] < box[3])).any():
+                raise LayoutError("copy block and hero overlap")
     safe_box = np.array([-FRAME_W / 2 + u(SAFE_PAD), -FRAME_H / 2 + u(SAFE_PAD), FRAME_W / 2 - u(SAFE_PAD), FRAME_H / 2 - u(SAFE_PAD)])
-    for mob in ([text] if text is not None else []) + ([hero_group] if hero_group is not None else []):
+    contained = ([text] if text is not None else []) + (list(labels) if bleed else [hero_group] if hero_group is not None else [])
+    for mob in contained:
         box = bbox(mob)
         if box[0] < safe_box[0] or box[1] < safe_box[1] or box[2] > safe_box[2] or box[3] > safe_box[3]:
             raise LayoutError("content outside the safe area")
@@ -1939,206 +2112,6 @@ def verify(text, hero_group, labels, graphics):
         for b in labels[i + 1:]:
             if boxes_overlap(bbox(a), bbox(b)):
                 raise LayoutError("labels overlap")
-
-
-# ---------------------------------------------------------------------------
-# Designed thumbnails: the model composes the whole frame in Manim code.
-# The house style is enforced by the helpers it must use and by the checks
-# below, not by a fixed grid. Any failure falls back to the catalogue spec.
-# ---------------------------------------------------------------------------
-
-DESIGN_MIN_TEXT_PX = 34  # em size of the smallest copy that reads on a phone
-DESIGN_MAX_WORDS = 8
-
-# Model code often writes LaTeX in plain strings, where "\b", "\t", "\f",
-# "\r", "\a" and "\v" become control characters (\binom, \times, \frac).
-CONTROL_ESCAPES = {"\b": r"\b", "\t": r"\t", "\f": r"\f", "\r": r"\r", "\a": r"\a", "\v": r"\v"}
-
-
-class DesignError(LayoutError):
-    pass
-
-
-def restore_escapes(value: str, newline: bool) -> str:
-    for char, latex in {**CONTROL_ESCAPES, **({"\n": r"\n"} if newline else {})}.items():
-        value = value.replace(char, latex)
-    return value
-
-
-def copy_words(copy: str) -> int:
-    """Visible words in text() copy: commands and $math$ count as one each."""
-    plain = re.sub(r"\$[^$]*\$", " x ", copy)
-    plain = re.sub(r"\\[a-zA-Z]+", " ", plain)
-    return len(re.findall(r"[^\s{}\\]+", plain))
-
-
-class DesignKit:
-    """Helpers available to design code. Lengths are in pixels."""
-
-    def __init__(self, ts: Typesetter, cool: str, warm: str, words: bool):
-        self.ts, self.cool, self.warm, self.words = ts, cool, warm, words
-        self.texts = []  # (mobject, size_px, height at creation)
-        self.word_count = 0
-
-    def P(self, x: float, y: float):
-        """Pixel coordinates (origin top-left, y down) to a scene point."""
-        return np.array([x_at(x), y_at(y), 0.0])
-
-    def px(self, n: float) -> float:
-        return u(n)
-
-    def color(self, value) -> str:
-        if not isinstance(value, str):
-            return "ink"
-        named = {"warm": "accent", "accent": "accent", "cool": "cool", "ink": "ink", "muted": "muted", "white": "ink"}
-        by_hex = {self.cool.upper(): "cool", self.warm.upper(): "accent", INK.upper(): "ink", MUTED.upper(): "muted"}
-        return named.get(value.lower()) or by_hex.get(value.upper()) or "ink"
-
-    def text(self, copy, size: float, color: str = "ink", leading: float = HEADLINE_LEADING, tracking: float = -1.5):
-        """CMU Serif copy; "\\n" breaks lines; $math$, \\hl{}, \\strike{} inline."""
-        if not self.words:
-            raise DesignError("this thumbnail is visual-only: no words (tex() is allowed for a number or symbol)")
-        if isinstance(copy, (list, tuple)):
-            copy = "\n".join(map(str, copy))
-        copy = restore_escapes(str(copy), newline=False).replace(r"\textcolor{warm}", r"\textcolor{accent}")
-        # Raw strings keep "\n" literal: a break, unless it starts a command.
-        copy = re.sub(r"\\n(?![a-z])", "\n", copy)
-        self.word_count += copy_words(copy)
-        lines = [smart_punctuation(line).replace("&", r"\&").replace("%", r"\%").replace("#", r"\#") for line in copy.split("\n")]
-        mob = self.ts.block(lines, size, "SemiBold", color=self.color(color), leading=leading, tracking=tracking)
-        self.texts.append((mob, size, mob.height))
-        return mob
-
-    def math(self, latex: str, size: float, color: str = "ink"):
-        latex = restore_escapes(str(latex), newline=True).replace(r"\textcolor{warm}", r"\textcolor{accent}")
-        mob = self.ts.math(clean_latex(latex) or latex, size, color=self.color(color), highlight_color="accent")
-        self.texts.append((mob, size, mob.height))
-        return mob
-
-    def diagram(self, visual: dict, width: float = 560):
-        """A catalogue hero (e.g. {"type": "chaos", "shape": "lorenz"}) with
-        its labels, scaled to ``width`` px. Returns (group, focus point)."""
-        from manim import VGroup
-
-        if not isinstance(visual, dict) or visual.get("type") not in HEROES:
-            raise DesignError(f"diagram() type must be one of: {', '.join(HEROES)}")
-        self.ts.region_w = u(width)
-        hero = HEROES[visual["type"]](visual, self.cool, self.warm, self.ts, False)
-        graphics = hero.graphics
-        origin = graphics.get_center().copy()
-        scale = u(width) / max(graphics.width, 1e-6)
-        graphics.scale(scale)
-        for label in hero.labels:
-            label.anchor = graphics.get_center() + (label.anchor - origin) * scale
-        frame = np.array([-FRAME_W / 2, -FRAME_H / 2, FRAME_W / 2, FRAME_H / 2])
-        placed = place_labels(graphics, hero.labels, frame, strict=False)
-        for label in hero.labels:
-            self.texts.append((label.mob, LABEL_SIZE, label.mob.height))
-        focus = None if hero.focus is None else graphics.get_center() + (np.asarray(hero.focus, dtype=float) - origin) * scale
-        group = VGroup(graphics, *placed)
-        return group, focus
-
-
-def design_namespace(kit: DesignKit) -> dict:
-    import manim
-
-    env = {name: getattr(manim, name) for name in dir(manim) if not name.startswith("_")}
-    env.update(
-        np=np, math=math, P=kit.P, px=kit.px, text=kit.text, tex=kit.math, diagram=kit.diagram,
-        COOL=kit.cool, WARM=kit.warm, INK=INK, MUTED=MUTED, BG=BG, WIDTH=WIDTH, HEIGHT=HEIGHT,
-    )
-    return env
-
-
-def check_design(group, kit: DesignKit) -> list:
-    """Hard rules for a designed frame. Returns the problems found."""
-    from manim import VGroup
-
-    family = group.get_family()
-    if not family or not group.family_members_with_points():
-        return ["the frame is empty"]
-    problems = []
-    if kit.word_count > DESIGN_MAX_WORDS:
-        problems.append(f"{kit.word_count} words of copy; use at most {DESIGN_MAX_WORDS}")
-    drawn = [(mob, size * mob.height / max(h0, 1e-9)) for mob, size, h0 in kit.texts if any(mob is f for f in family)]
-    safe = np.array([-FRAME_W / 2 + u(SAFE_PAD), -FRAME_H / 2 + u(SAFE_PAD), FRAME_W / 2 - u(SAFE_PAD), FRAME_H / 2 - u(SAFE_PAD)])
-    badge = np.array([x_at(BADGE_ZONE[0]), y_at(BADGE_ZONE[3]), x_at(BADGE_ZONE[2]), y_at(BADGE_ZONE[1])])
-    text_ids = {id(member) for mob, _ in drawn for member in mob.get_family()}
-    # Everything that is not copy: its strokes and edges must not cross copy.
-    shapes = VGroup(*[m for m in group.family_members_with_points() if id(m) not in text_ids])
-    shape_points = bezier_samples(shapes, steps=np.linspace(0, 1, 33)) if shapes.submobjects else np.zeros((0, 2))
-
-    def describe(mob):
-        source = getattr(mob, "tex_string", "") or ""
-        source = source.split("@{}}")[-1].replace(r"\end{tabular}", "").replace(r"\\", " / ")
-        source = re.sub(r"^.*\\displaystyle", "", source).rstrip("$")
-        return re.sub(r"\s+", " ", source).strip()[:40]
-
-    for mob, size in drawn:
-        box = bbox(mob)
-        label = describe(mob)
-        if box[0] < safe[0] or box[1] < safe[1] or box[2] > safe[2] or box[3] > safe[3]:
-            problems.append(f"text '{label}' leaves the {SAFE_PAD}px safe margin")
-        if size < DESIGN_MIN_TEXT_PX - 0.5:
-            problems.append(f"text '{label}' is drawn at {size:.0f}px; nothing may be smaller than {DESIGN_MIN_TEXT_PX}px")
-        if boxes_overlap(box, badge):
-            problems.append(f"text '{label}' sits under YouTube's duration badge (bottom-right 168x64px)")
-        inner = bbox(mob, -u(4))
-        crossing = (shape_points[:, 0] > inner[0]) & (shape_points[:, 0] < inner[2]) & (shape_points[:, 1] > inner[1]) & (shape_points[:, 1] < inner[3])
-        if crossing.sum() >= 2:
-            problems.append(f"a line or shape edge runs through text '{label}'")
-    for i, (a, _) in enumerate(drawn):
-        for b, _ in drawn[i + 1:]:
-            if boxes_overlap(bbox(a, -u(2)), bbox(b, -u(2))):
-                problems.append(f"text '{describe(a)}' overlaps text '{describe(b)}'")
-    if any(getattr(member, "sheen_factor", 0) for member in family):
-        problems.append("sheen shading is not allowed: the style is flat")
-    return list(dict.fromkeys(problems))
-
-
-def compose_design(spec: dict, font_dir: str):
-    from manim import Mobject, VGroup
-
-    palette = PALETTES.get(spec.get("palette"), PALETTES["teal-amber"])
-    cool, warm = palette
-    kit = DesignKit(Typesetter(font_dir, cool, warm), cool, warm, words=spec.get("layout") != "visual_only")
-    env = design_namespace(kit)
-    try:
-        exec(compile(spec["design"], "<design>", "exec"), env)  # noqa: S102 - runs in the render sandbox
-        if not callable(env.get("thumbnail")):
-            raise DesignError("the code must define thumbnail()")
-        built = env["thumbnail"]()
-    except LayoutError:
-        raise
-    except Exception as error:
-        import traceback
-
-        lines = [frame.lineno for frame in traceback.extract_tb(error.__traceback__) if frame.filename == "<design>"]
-        where = f" at line {lines[-1]}" if lines else ""
-        raise DesignError(f"{type(error).__name__}{where}: {error}") from None
-    group = VGroup(*built) if isinstance(built, (list, tuple)) else built
-    if not isinstance(group, Mobject):
-        raise DesignError("thumbnail() must return a list of mobjects")
-    problems = check_design(group, kit)
-    if problems:
-        raise DesignError("; ".join(problems))
-    return [group], {"mode": "design", "layout": spec.get("layout"), "words": kit.word_count, "warnings": []}
-
-
-def tex_errors(work_dir: str) -> str:
-    """The "! ..." lines of the newest TeX log, for feedback to the model."""
-    import glob
-
-    logs = sorted(glob.glob(os.path.join(work_dir, "Tex", "*.log")), key=os.path.getmtime)
-    if not logs:
-        return ""
-    with open(logs[-1], encoding="utf-8", errors="replace") as handle:
-        lines = handle.read().splitlines()
-    picked = []
-    for index, line in enumerate(lines):
-        if line.startswith("!"):
-            picked += [entry.strip() for entry in lines[index:index + 3] if entry.strip()]
-    return " | ".join(picked)[:500]
 
 
 # ---------------------------------------------------------------------------
@@ -2177,9 +2150,7 @@ def feathered_frame(path: str, left_px: int):
     return np.asarray(image, dtype=np.float32), alpha, x, y
 
 
-def render(spec: dict, out_path: str, font_dir: str, work_dir: str, safe: bool, mode: str = "") -> dict:
-    """Render one candidate. ``mode`` is "design" (the model's own frame),
-    "full" (the catalogue spec) or "safe" (its conservative fallback)."""
+def render(spec: dict, out_path: str, font_dir: str, work_dir: str, safe: bool) -> dict:
     from manim import config
 
     # XeLaTeX resolves font paths from its own working directory, and Manim
@@ -2196,11 +2167,7 @@ def render(spec: dict, out_path: str, font_dir: str, work_dir: str, safe: bool, 
     from manim.camera.camera import Camera
 
     started = time.time()
-    mode = mode or ("safe" if safe else "full")
-    if mode == "design":
-        mobjects, report = compose_design(spec, font_dir)
-    else:
-        mobjects, report = compose(spec, font_dir, mode == "safe")
+    mobjects, report = compose(spec, font_dir, safe)
     frame = report.get("frame")
     if frame:
         rgb, alpha, x, y = feathered_frame(frame["path"], frame["left"])
@@ -2249,7 +2216,6 @@ def main() -> int:
     one.add_argument("--font-dir", required=True)
     one.add_argument("--work-dir", required=True)
     one.add_argument("--safe", action="store_true")
-    one.add_argument("--mode", choices=["design", "full", "safe"], default="")
     many = sub.add_parser("batch")
     many.add_argument("--spec", required=True)
     many.add_argument("--out-dir", required=True)
@@ -2266,17 +2232,7 @@ def main() -> int:
         specs = json.load(handle)
 
     if args.command == "render":
-        try:
-            report = render(specs[args.index], args.out, args.font_dir, args.work_dir, args.safe, args.mode)
-        except Exception as error:
-            if args.mode != "design":
-                raise
-            # Clean feedback for the model: what broke, never a traceback.
-            message = str(error)
-            if "xelatex" in message or "LaTeX" in message:
-                message = "LaTeX error: " + (tex_errors(args.work_dir) or message.splitlines()[0])
-            print(f"design rejected: {message}"[:1200], file=sys.stderr)
-            return 1
+        report = render(specs[args.index], args.out, args.font_dir, args.work_dir, args.safe)
         print(json.dumps(report))
         return 0
 
@@ -2284,37 +2240,32 @@ def main() -> int:
     deadline = time.time() + args.timeout
     jobs = args.jobs or parallel_jobs()
     results, errors = {}, {}
-    # A designed candidate falls back to its catalogue spec unless the spec
-    # says otherwise; every catalogue render falls back to safe mode.
-    def next_mode(index, mode):
-        if mode == "design":
-            return "full" if specs[index].get("fallback", True) else None
-        return "safe" if mode == "full" else None
-
-    queue = [(index, "design" if specs[index].get("design") else "full") for index in range(len(specs))]
+    queue = [(index, False) for index in range(len(specs))]
     running = {}
 
-    def launch(index, mode):
+    def launch(index, safe):
         out = os.path.join(args.out_dir, f"thumbnail-{index}.png")
-        work = os.path.join(args.out_dir, f"work-{index}-{mode}")
-        command = [sys.executable, os.path.abspath(__file__), "render", "--spec", args.spec, "--index", str(index), "--out", out, "--font-dir", args.font_dir, "--work-dir", work, "--mode", mode]
+        work = os.path.join(args.out_dir, f"work-{index}-{'safe' if safe else 'full'}")
+        command = [sys.executable, os.path.abspath(__file__), "render", "--spec", args.spec, "--index", str(index), "--out", out, "--font-dir", args.font_dir, "--work-dir", work]
+        if safe:
+            command.append("--safe")
         # Log to files, not pipes: a long traceback must never block the child.
         os.makedirs(work, exist_ok=True)
         stdout = open(os.path.join(work, "stdout.log"), "w+", encoding="utf-8")
         stderr = open(os.path.join(work, "stderr.log"), "w+", encoding="utf-8")
         return subprocess.Popen(command, stdout=stdout, stderr=stderr, text=True), stdout, stderr
 
-    # Each candidate renders in its own process; a failed design falls back
-    # to the catalogue spec, and a failed full render is retried in safe mode. Concurrency is sized to the machine because
+    # Each candidate renders in its own process; a failed full render is
+    # retried once in safe mode. Concurrency is sized to the machine because
     # XeLaTeX with unicode-math is memory hungry (render sandboxes have ~1 GB).
     while queue or running:
         while queue and len(running) < jobs and time.time() < deadline:
-            index, mode = queue.pop(0)
-            running[index] = (*launch(index, mode), mode)
+            index, safe = queue.pop(0)
+            running[index] = (*launch(index, safe), safe)
         if not running:
             break
         time.sleep(0.2)
-        for index, (process, stdout_file, stderr_file, mode) in list(running.items()):
+        for index, (process, stdout_file, stderr_file, safe) in list(running.items()):
             if process.poll() is None and time.time() < deadline:
                 continue
             if process.poll() is None:
@@ -2331,13 +2282,9 @@ def main() -> int:
                 if errors.get(index):
                     results[index]["recovered_from"] = errors[index]
                 continue
-            message = (stderr.strip() or "timed out")
-            if mode == "design" and "design rejected: " in message:
-                message = message[message.rindex("design rejected: ") + len("design rejected: "):]
-            errors.setdefault(index, []).append(f"{mode}: " + message[-1500:])
-            following = next_mode(index, mode)
-            if following:
-                queue.append((index, following))
+            errors.setdefault(index, []).append(("safe: " if safe else "full: ") + (stderr.strip() or "timed out")[-1500:])
+            if not safe:
+                queue.append((index, True))
             else:
                 results[index] = {"ok": False, "errors": errors[index]}
     for index in range(len(specs)):
