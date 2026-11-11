@@ -98,7 +98,10 @@ function blockEnd(
 export function injectEduvidsCallout(
   script: string,
   previousVideo?: RelatedYouTubeVideo,
+  variant: "video" | "short" = "video",
 ): string {
+  // Shorts end on their explanation, without extra narration or a text card.
+  if (variant === "short") return script;
   if (script.includes(CTA_MARKER)) {
     return script;
   }
@@ -209,7 +212,10 @@ export function injectEduvidsCallout(
   return lines.join("\n");
 }
 
-export function injectSceneFadeOut(script: string): string {
+export function injectSceneFadeOut(
+  script: string,
+  preserveFinalFrame = false,
+): string {
   const lines = script.split("\n");
   const constructPattern = /^\s*def\s+construct\s*\(\s*self\s*\)\s*:/;
 
@@ -258,6 +264,7 @@ export function injectSceneFadeOut(script: string): string {
   const inserts: { index: number; lines: string[] }[] = [];
 
   for (const block of constructs) {
+    if (preserveFinalFrame && block === constructs.at(-1)) continue;
     const alreadyInjected = lines
       .slice(block.constructIndex + 1, block.endIndex)
       .some((line) => line.includes(SCENE_FADE_MARKER));
@@ -1123,8 +1130,12 @@ export async function startManimRender({
 
     let enhancedScript = heuristicFixedScript;
     enhancedScript = applyVideoStyle(enhancedScript);
-    enhancedScript = injectSceneFadeOut(enhancedScript);
-    enhancedScript = injectEduvidsCallout(enhancedScript, previousVideo);
+    enhancedScript = injectSceneFadeOut(enhancedScript, variant === "short");
+    enhancedScript = injectEduvidsCallout(
+      enhancedScript,
+      previousVideo,
+      variant,
+    );
 
     await reportProgress("prepare", "Uploading enhanced script to sandbox");
     await sandbox.files.write(scriptPath, enhancedScript);
@@ -1711,8 +1722,12 @@ export async function prepareManimSandbox({
 
     let enhancedScript = heuristicFixedScript;
     enhancedScript = applyVideoStyle(enhancedScript);
-    enhancedScript = injectSceneFadeOut(enhancedScript);
-    enhancedScript = injectEduvidsCallout(enhancedScript, previousVideo);
+    enhancedScript = injectSceneFadeOut(enhancedScript, variant === "short");
+    enhancedScript = injectEduvidsCallout(
+      enhancedScript,
+      previousVideo,
+      variant,
+    );
 
     const ready = sandbox;
     await Promise.all([

@@ -50,8 +50,9 @@ OUTPUT FORMAT
 - No special characters: no plus, minus, equals, times, divide, caret, superscript, slash, asterisk, percent sign, or backtick. Spell out all math aloud.
 
 LENGTH
-- Full-length video: 450-1000 words, scaled to the topic's real depth. Never pad.
-- Short: 90-140 words, with one idea, one surprise, and one payoff.
+- Follow the format and duration policy in the request; an explicit requested duration takes precedence over defaults.
+- Budget spoken words for natural delivery and time to understand the visuals. Do not use a fixed word minimum or pad the explanation.
+- A Short has one idea, one surprise, and one payoff. Use only the scenes that explanation needs.
 
 THE ARC (follow the spirit, not section headings)
 1. COLD OPEN, first 2-4 lines. Start inside a concrete puzzle, surprising fact, or tempting wrong answer the viewer can picture immediately.
@@ -721,7 +722,7 @@ layout_scene(left_el, title=title, side=right_el)
 CRITICAL REQUIREMENTS
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. Multiple small scene classes (6-14 normal, 4-8 shorts). One concept per scene.
+1. Ordered, self-contained scene classes following the scene plan and requested duration. One concept per scene; no fixed scene-count minimum.
 2. All three imports at top: manim, manim_voiceover, service. Call ${VOICEOVER_SERVICE_SETTER_TOKEN} first in every construct().
 3. Wrap animations in "with self.voiceover(text=...) as tracker:" blocks. Narration order must match script.
 4. DO NOT use bookmarks. Timing is beat-driven, not scene-driven.

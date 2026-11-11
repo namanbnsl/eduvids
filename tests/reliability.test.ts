@@ -158,6 +158,10 @@ test("postprocessing joins real scene fixtures, watermarks, and validates an MP4
   const folder = await mkdtemp(join(tmpdir(), "workflow-video-"));
   try {
     const prepared = state(folder);
+    await writeFile(
+      prepared.scriptPath,
+      prepared.sceneNames.map((scene) => `class ${scene}:\n    pass`).join("\n"),
+    );
     const outputs = `${prepared.baseVideosDir}/script/720p30`;
     await mkdir(outputs, { recursive: true });
     for (const scene of prepared.sceneNames) {
@@ -779,6 +783,7 @@ class Last(Scene):
     title: 'Why "Impossible" Equations Actually Work',
     watchUrl: "https://www.youtube.com/watch?v=previous123",
   });
+  assert.equal(injectEduvidsCallout(enhanced), enhanced);
   const folder = await mkdtemp(join(tmpdir(), "eduvids-outro-"));
   const script = join(folder, "outro.py");
 
@@ -796,6 +801,33 @@ class Last(Scene):
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
+});
+
+test("Shorts preserve the final demonstration without an injected card or final fade", () => {
+  const source = `class First(Scene):
+    def construct(self):
+        self.wait(1)
+class Last(Scene):
+    def construct(self):
+        self.add(result)
+        self.wait(1)`;
+  const withTransitions = injectSceneFadeOut(source, true);
+  assert.match(withTransitions.split("class Last")[0]!, /FadeOut/);
+  assert.doesNotMatch(withTransitions.split("class Last")[1]!, /FadeOut/);
+  for (const previous of [
+    undefined,
+    {
+      videoId: "previous123",
+      title: "Why These Waves Separate",
+      watchUrl: "https://www.youtube.com/watch?v=previous123",
+    },
+  ]) {
+    assert.equal(
+      injectEduvidsCallout(withTransitions, previous, "short"),
+      withTransitions,
+    );
+  }
+  assert.equal(injectSceneFadeOut(withTransitions, true), withTransitions);
 });
 
 test("scene fade-out and outro land after construct's last statement, not inside it", async () => {
@@ -1930,6 +1962,14 @@ test("postprocessing keeps each scene's narration aligned with its picture", asy
       sceneNames: ["First", "Second", "Third"],
       watermarkInVideo: true,
     };
+    await writeFile(
+      prepared.scriptPath,
+      prepared.sceneNames
+        .map(
+          (scene) => `class ${scene}:\n    def construct(self):\n        with self.voiceover(text="Narrated scene"):\n            pass`,
+        )
+        .join("\n"),
+    );
     const outputs = `${folder}/media/p0/videos/script/720p30`;
     await mkdir(outputs, { recursive: true });
     // Each scene: 2s of video, narration only in its first 0.5s (as when a

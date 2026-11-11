@@ -120,6 +120,33 @@ export async function findPreviousYouTubeVideo(): Promise<
   return selectPreviousYouTubeVideo(await listUploadedYouTubeVideos());
 }
 
+/** Keep the rendered recommendation even if another run has since uploaded. */
+export function resolvePersistedYouTubeVideo(
+  selected: RelatedYouTubeVideo | null | undefined,
+  inventory: UploadedYouTubeVideo[],
+  legacySelection?: string,
+): RelatedYouTubeVideo | undefined {
+  const candidate: RelatedYouTubeVideo | null | undefined =
+    selected === undefined && legacySelection
+      ? JSON.parse(legacySelection)
+      : selected;
+  if (!candidate) return undefined;
+  const existing = inventory.find(
+    (video) => video.videoId === candidate.videoId,
+  );
+  if (!existing || existing.privacyStatus === "private") {
+    throw new Error("The rendered follow-up video is no longer available");
+  }
+  if (titleValidationErrors(candidate.title).length) {
+    throw new Error("The rendered follow-up has an invalid title");
+  }
+  return {
+    videoId: existing.videoId,
+    title: candidate.title,
+    watchUrl: existing.watchUrl,
+  };
+}
+
 export async function postYouTubeComment({
   videoId,
   text,

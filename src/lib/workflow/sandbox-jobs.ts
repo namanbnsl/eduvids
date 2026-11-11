@@ -217,12 +217,27 @@ export const SCENE_DURATIONS_PATH = "/home/user/scene_durations.json";
 
 // Runs entirely in E2B; neither ffmpeg nor its retries occupy a Vercel request.
 export function buildPostprocessScript(prepared: PreparedSandboxState): string {
-  return `import concurrent.futures, json, pathlib, subprocess, math
+  return `import ast, concurrent.futures, json, pathlib, subprocess, math
 ${WATERMARK_FONT_PYTHON}
-settings = json.loads(${JSON.stringify(JSON.stringify({ media: prepared.mediaDir, workdir: prepared.scriptPath.slice(0, prepared.scriptPath.lastIndexOf("/")), scenes: prepared.sceneNames, watermark: prepared.applyWatermark && !prepared.watermarkInVideo, variant: prepared.variant }))})
+settings = json.loads(${JSON.stringify(JSON.stringify({ media: prepared.mediaDir, script: prepared.scriptPath, workdir: prepared.scriptPath.slice(0, prepared.scriptPath.lastIndexOf("/")), scenes: prepared.sceneNames, watermark: prepared.applyWatermark && !prepared.watermarkInVideo, variant: prepared.variant }))})
 # Scenes may come from several parallel render processes' media directories.
 media = pathlib.Path(settings['media'])
 workdir = pathlib.Path(settings['workdir'])
+# Inspect the exact rendered script without executing it. Silent visual scenes
+# remain valid; a scene that invokes voiceover must contain decodable speech.
+tree = ast.parse(pathlib.Path(settings['script']).read_text())
+classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
+def expects_narration(name, seen=None):
+    seen = set() if seen is None else seen
+    if name in seen or name not in classes:
+        return False
+    seen.add(name)
+    node = classes[name]
+    if any(isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute) and call.func.attr == 'voiceover' for call in ast.walk(node)):
+        return True
+    return any(expects_narration(base.id, seen) for base in node.bases if isinstance(base, ast.Name))
+if any(scene not in classes for scene in settings['scenes']):
+    raise RuntimeError('Rendered scene is missing from its source script')
 paths = []
 for scene in settings['scenes']:
     candidates = sorted(p for p in media.rglob(scene + '.mp4') if 'partial_movie_files' not in p.parts)
@@ -249,17 +264,30 @@ def video_duration(path):
     if not math.isfinite(value) or value <= 0:
         value = duration(path)
     return value
-def scene_audio(path):
+def scene_audio(item):
+    scene, path = item
     seconds = video_duration(path)
-    pcm = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(path), '-vn', '-ac', str(CHANNELS), '-ar', str(RATE), '-f', 's16le', '-'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=900).stdout
     size = round(seconds * RATE) * CHANNELS * WIDTH
-    return seconds, pcm[:size] + bytes(max(0, size - len(pcm)))
+    streams = json.loads(run(['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=index', '-of', 'json', str(path)]))['streams']
+    speech_expected = expects_narration(scene)
+    if not streams:
+        if speech_expected:
+            raise RuntimeError('Missing narration audio for ' + scene)
+        return seconds, bytes(size)
+    try:
+        pcm = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(path), '-vn', '-ac', str(CHANNELS), '-ar', str(RATE), '-f', 's16le', '-'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=900).stdout
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError('Could not decode scene audio for ' + scene) from error
+    pcm = pcm[:size]
+    if speech_expected and (not pcm or not any(pcm)):
+        raise RuntimeError('Empty narration audio for ' + scene)
+    return seconds, pcm + bytes(max(0, size - len(pcm)))
 # Scenes are probed and decoded in parallel (each is its own ffmpeg process),
 # then written in order.
 soundtrack = workdir / 'soundtrack.pcm'
 timings = []
 with concurrent.futures.ThreadPoolExecutor(min(8, len(paths))) as pool, open(soundtrack, 'wb') as out:
-    for scene, (seconds, pcm) in zip(settings['scenes'], pool.map(scene_audio, paths)):
+    for scene, (seconds, pcm) in zip(settings['scenes'], pool.map(scene_audio, zip(settings['scenes'], paths))):
         timings.append({'scene': scene, 'seconds': seconds})
         out.write(pcm)
 # Scene lengths, matching the final cut, become the YouTube chapters.
