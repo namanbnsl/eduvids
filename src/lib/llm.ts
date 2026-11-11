@@ -1403,7 +1403,7 @@ export async function generateManimScript({
   const generationPromptParts = [
     `User request: ${prompt}`,
     `Voiceover narration:\n${voiceoverScript}`,
-    `Generate a complete Manim script as MULTIPLE ORDERED SCENE CLASSES (6-14 for videos, 4-8 for shorts). One concept per scene. Each scene is self-contained.`,
+    `Generate a complete Manim script as ordered, self-contained scene classes. Follow the supplied scene plan and duration policy; use only the scenes the explanation needs, without a fixed scene-count minimum.`,
     `Use the layout templates from the system prompt.`,
   ];
 

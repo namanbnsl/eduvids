@@ -1,6 +1,7 @@
 import { serve } from "@upstash/workflow/nextjs";
 import { WorkflowNonRetryableError } from "@upstash/workflow";
 import { createHash } from "node:crypto";
+import { videoGenerationPrompt } from "@/lib/video-generation-policy";
 
 import {
   alignVoiceoverDurations,
@@ -99,10 +100,7 @@ export const { POST } = serve<VideoGenerationPayload>(
     }
 
     const variant = rawVariant === "short" ? "short" : "video";
-    const generationPrompt =
-      variant === "short"
-        ? `${prompt}\n\nThe final output must be a YouTube-ready vertical (9:16) short under one minute. Keep narration concise and design visuals for portrait orientation. Use large readable typography and keep visual groups well spaced. The portrait frame is 8 units wide and about 14.2 units tall (x from -4 to 4, y from -7.1 to 7.1): stack content vertically and keep every element within x from -3.4 to 3.4.`
-        : prompt;
+    const generationPrompt = videoGenerationPrompt(prompt, variant);
 
     await context.run("generate-voiceover-script", async () => {
       if (await artifactStore.find(jobId, "voiceoverScript")) return;
@@ -622,6 +620,7 @@ export const { POST } = serve<VideoGenerationPayload>(
           userId,
           variant,
           thumbnailUrl: selectedThumbnailPair?.thumbnailUrl,
+          previousVideo: previousVideo ?? null,
         },
       });
     });

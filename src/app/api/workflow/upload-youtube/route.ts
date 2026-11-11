@@ -6,7 +6,7 @@ import { serve } from "@upstash/workflow/nextjs";
 import {
   addVideoToPlaylist,
   listUploadedYouTubeVideos,
-  selectPreviousYouTubeVideo,
+  resolvePersistedYouTubeVideo,
   postYouTubeComment,
   setYouTubeThumbnail,
   uploadToYouTube,
@@ -50,6 +50,7 @@ type YouTubeUploadPayload = {
   hashtags?: string[];
   tags?: string[];
   chapters?: YouTubeChapter[];
+  previousVideo?: RelatedYouTubeVideo | null;
 };
 
 export const { POST } = serve<YouTubeUploadPayload>(
@@ -65,6 +66,7 @@ export const { POST } = serve<YouTubeUploadPayload>(
       hashtags,
       tags: topicTags,
       chapters,
+      previousVideo: requestedPreviousVideo,
     } = context.requestPayload;
 
     const isShort = variant === "short";
@@ -120,15 +122,26 @@ export const { POST } = serve<YouTubeUploadPayload>(
       "read-channel-title-inventory",
       async () => {
         const videos = await listUploadedYouTubeVideos();
+        // New jobs carry the render's selection; older queued jobs use its
+        // persisted artifact. Never choose a newer upload at this stage.
+        const saved =
+          requestedPreviousVideo === undefined && jobId
+            ? await artifactStore.find(jobId, "previousYoutubeVideo")
+            : undefined;
         return {
           titles: videos.map((video) => video.title),
-          previousVideo: selectPreviousYouTubeVideo(videos) ?? null,
+          previousVideo:
+            resolvePersistedYouTubeVideo(
+              requestedPreviousVideo,
+              videos,
+              saved,
+            ) ?? null,
         };
       },
     );
     if ("error" in inventory)
       return needsReview(
-        `Cannot validate channel title uniqueness: ${inventory.error}`,
+        `Cannot validate channel titles or the rendered follow-up: ${inventory.error}`,
       );
     const previousVideo: RelatedYouTubeVideo | null =
       inventory.value.previousVideo;
