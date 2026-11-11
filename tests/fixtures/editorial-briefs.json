@@ -1,0 +1,46 @@
+{
+  "physical": {
+    "viewerQuestion": "Why does this weighted toy return upright after a small tilt?",
+    "likelyIntuition": "A viewer may expect a tipped object to stay tipped or fall over.",
+    "missingInsight": "For this toy, tilting raises its centre of mass; returning upright lowers gravitational potential energy.",
+    "openingDemonstration": "Show the same toy tilted slightly and released, then reveal the low internal weight while repeating the motion.",
+    "causalSteps": [
+      {
+        "cause": "Tilt this curved-base toy slightly away from its upright position.",
+        "effect": "Its centre of mass rises, and gravity creates a restoring turning effect for the illustrated configuration.",
+        "visual": "Track the centre of mass and its height while the curved base rolls; show the force and contact point."
+      }
+    ],
+    "takeaway": "Predict return or further tipping by how a small tilt changes the centre-of-mass height.",
+    "transferTest": {
+      "question": "Would moving the internal weight upward necessarily preserve the same stability?",
+      "expectedAnswer": "No. The resulting centre-of-mass path can change, so the geometry and weight placement must be checked again."
+    },
+    "scopeBoundary": "Explain the small-tilt response of the illustrated toy, not all shapes or every possible tilt.",
+    "assumptions": [
+      "The illustrated base and weight placement make upright a local minimum of centre-of-mass height."
+    ]
+  },
+  "maths": {
+    "viewerQuestion": "Why can you add the same number to both sides of an equation?",
+    "likelyIntuition": "A learner may know a symbol-moving rule without understanding why equality survives.",
+    "missingInsight": "Adding equal amounts preserves the zero difference between equal quantities.",
+    "openingDemonstration": "Show two equal quantities moving together along paired number lines, then contrast changing only one side.",
+    "causalSteps": [
+      {
+        "cause": "Add three to each side of a true equality between real numbers.",
+        "effect": "Both values increase equally, so the difference between them remains zero.",
+        "visual": "Move equal marked positions three units together and display their unchanged difference."
+      }
+    ],
+    "takeaway": "Explain why adding the same amount preserves equality and identify when an unequal change breaks it.",
+    "transferTest": {
+      "question": "Starting from equal quantities, what happens if you add three to only one side?",
+      "expectedAnswer": "The changed side exceeds the other by three, so that equality no longer holds."
+    },
+    "scopeBoundary": "Explain addition preserving equality; leave multiplication, division and inequalities for later.",
+    "assumptions": [
+      "The quantities are real numbers and the same number is added to both sides."
+    ]
+  }
+}
