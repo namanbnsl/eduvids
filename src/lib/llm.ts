@@ -1,10 +1,4 @@
 import { safeError } from "./workflow/errors";
-import {
-  editorialBriefContext,
-  EDITORIAL_BRIEF_SYSTEM_PROMPT,
-  EDITORIAL_REVIEW_SYSTEM_PROMPT,
-  type EditorialBrief,
-} from "./editorial-brief";
 import { withOverloadFallback } from "./workflow/model-fallback";
 import {
   MANIM_SYSTEM_PROMPT,
@@ -725,7 +719,6 @@ export function manimVoiceoverTimingIssues(
 export interface VoiceoverScriptRequest {
   prompt: string;
   sessionId: string;
-  editorialBrief?: EditorialBrief;
 }
 
 export interface ManimScriptRequest {
@@ -734,7 +727,6 @@ export interface ManimScriptRequest {
   sessionId: string;
   scenePlan?: ScenePlanEntry[];
   voiceoverLanguage?: string;
-  editorialBrief?: EditorialBrief;
 }
 
 export interface ScenePlanElement {
@@ -990,9 +982,8 @@ export async function generateScenePlan({
   prompt,
   voiceoverScript,
   sessionId,
-  editorialBrief,
 }: ManimScriptRequest): Promise<ScenePlanEntry[]> {
-  const composedPrompt = `User request: ${prompt}\n\n${editorialBriefContext(editorialBrief)}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite every chapterTitle in the same language as this narration. Scene IDs are code identifiers, not chapter names.`;
+  const composedPrompt = `User request: ${prompt}\n\nVoiceover narration:\n${voiceoverScript}\n\nWrite every chapterTitle in the same language as this narration. Scene IDs are code identifiers, not chapter names.`;
 
   let lastError: unknown;
 
@@ -1060,13 +1051,11 @@ export async function generateScenePlan({
 export async function generateVoiceoverScript({
   prompt,
   sessionId,
-  editorialBrief,
 }: VoiceoverScriptRequest): Promise<string> {
   const systemPrompt = VOICEOVER_SYSTEM_PROMPT;
 
   const composedPrompt = [
     `User request: ${prompt}`,
-    editorialBriefContext(editorialBrief),
     `Use the language that is asked for and output text in that script`,
     "Directive: When you mention an acronym, initialism, or all-caps mnemonic, write ONLY the phonetic pronunciation in lowercase without showing the uppercase form or parentheses, so TTS reads it naturally once (e.g., write 'soah caah toa' instead of 'SOH CAH TOA', write 'dee en ay' instead of 'DNA'). For well-known acronyms that TTS handles correctly (like 'NASA' or 'FBI'), you may use the standard form.",
     "Draft the narration voiceover:",
@@ -1087,49 +1076,6 @@ export async function generateVoiceoverScript({
   );
 
   return text.trim();
-}
-
-async function editorialModelText(
-  system: string,
-  prompt: string,
-  sessionId: string,
-): Promise<string> {
-  const googleModel = await createGoogleModel("gemini-3.8-flash");
-  return streamTextWithTracking(
-    {
-      model: maybeWithTracing(googleModel.provider(googleModel.modelId), {
-        posthogProperties: { $ai_session_id: sessionId },
-      }),
-      system,
-      prompt,
-      temperature: 0.2,
-    },
-    googleModel,
-  );
-}
-
-export function generateEditorialBrief({
-  prompt,
-  sessionId,
-  feedback,
-}: VoiceoverScriptRequest & { feedback: string }): Promise<string> {
-  return editorialModelText(
-    EDITORIAL_BRIEF_SYSTEM_PROMPT,
-    JSON.stringify({ request: prompt, revisionFeedback: feedback }),
-    sessionId,
-  );
-}
-
-export function reviewEditorialBrief({
-  prompt,
-  sessionId,
-  brief,
-}: VoiceoverScriptRequest & { brief: EditorialBrief }): Promise<string> {
-  return editorialModelText(
-    EDITORIAL_REVIEW_SYSTEM_PROMPT,
-    JSON.stringify({ request: prompt, brief }),
-    sessionId,
-  );
 }
 
 const PROHIBITED_MODULES = [
@@ -1439,7 +1385,6 @@ export async function generateManimScript({
   sessionId,
   scenePlan,
   voiceoverLanguage,
-  editorialBrief,
 }: ManimScriptRequest): Promise<string> {
   // Detect language from voiceover script using LLM
   const detectedLanguage =
@@ -1457,7 +1402,6 @@ export async function generateManimScript({
 
   const generationPromptParts = [
     `User request: ${prompt}`,
-    editorialBriefContext(editorialBrief),
     `Voiceover narration:\n${voiceoverScript}`,
     `Generate a complete Manim script as ordered, self-contained scene classes. Follow the supplied scene plan and duration policy; use only the scenes the explanation needs, without a fixed scene-count minimum.`,
     `Use the layout templates from the system prompt.`,

@@ -2,19 +2,12 @@ import { serve } from "@upstash/workflow/nextjs";
 import { WorkflowNonRetryableError } from "@upstash/workflow";
 import { createHash } from "node:crypto";
 import { videoGenerationPrompt } from "@/lib/video-generation-policy";
-import {
-  EditorialBriefReviewError,
-  type EditorialBrief,
-} from "@/lib/editorial-brief";
-import { prepareEditorialBrief } from "@/lib/workflow/editorial-brief";
 
 import {
   alignVoiceoverDurations,
   detectLanguage,
   enforceVoiceoverService,
   generateVoiceoverScript,
-  generateEditorialBrief,
-  reviewEditorialBrief,
   generateScenePlan,
   generateManimScript,
   fixManimScript,
@@ -109,60 +102,6 @@ export const { POST } = serve<VideoGenerationPayload>(
     const variant = rawVariant === "short" ? "short" : "video";
     const generationPrompt = videoGenerationPrompt(prompt, variant);
 
-    let editorialBrief: EditorialBrief | undefined;
-    try {
-      editorialBrief = await prepareEditorialBrief({
-        prompt,
-        variant,
-        runStep: (name, work) => context.run(name, work),
-        read: (key) => artifactStore.find(jobId, key),
-        write: (key, value) => artifactStore.set(jobId, key, value),
-        draft: async (feedback) => {
-          await updateJobProgress(jobId, {
-            progress: 2,
-            step: "planning explanation",
-            details: "Choosing the question, demonstration and takeaway",
-          });
-          return generateEditorialBrief({
-            prompt: generationPrompt,
-            sessionId: chatId,
-            feedback,
-          });
-        },
-        review: (brief) =>
-          reviewEditorialBrief({
-            prompt: generationPrompt,
-            sessionId: chatId,
-            brief,
-          }),
-      });
-    } catch (error) {
-      if (!(error instanceof EditorialBriefReviewError)) throw error;
-      const message = safeError(error);
-      await context.run("hold-editorial-brief-v1", async () => {
-        await artifactStore.set(
-          jobId,
-          "editorialHoldV1",
-          JSON.stringify({ status: "needs_review", reason: message }),
-        );
-        await jobStore.setError(jobId, message);
-        await jobStore.setYoutubeStatus(jobId, {
-          youtubeStatus: "needs_review",
-          youtubeError: message,
-        });
-        await getConvexClient().mutation(api.videos.setError, {
-          jobId,
-          error: message,
-        });
-        await getConvexClient().mutation(api.videos.setYoutubeStatus, {
-          jobId,
-          youtubeStatus: "needs_review",
-          youtubeError: message,
-        });
-      });
-      return { success: false, needsReview: true, jobId, error: message };
-    }
-
     await context.run("generate-voiceover-script", async () => {
       if (await artifactStore.find(jobId, "voiceoverScript")) return;
       await updateJobProgress(jobId, {
@@ -173,7 +112,6 @@ export const { POST } = serve<VideoGenerationPayload>(
       const voiceoverScript = await generateVoiceoverScript({
         prompt: generationPrompt,
         sessionId: chatId,
-        editorialBrief,
       });
       await artifactStore.set(jobId, "voiceoverScript", voiceoverScript);
       console.log("✅ Voiceover script generated", {
@@ -207,7 +145,6 @@ export const { POST } = serve<VideoGenerationPayload>(
           prompt: generationPrompt,
           voiceoverScript,
           sessionId: chatId,
-          editorialBrief,
         });
         await artifactStore.set(jobId, "scenePlan", JSON.stringify(scenePlan));
         await jobStore
@@ -267,7 +204,6 @@ export const { POST } = serve<VideoGenerationPayload>(
         sessionId: chatId,
         scenePlan,
         voiceoverLanguage,
-        editorialBrief,
       });
       await artifactStore.set(jobId, "manimScript", script);
       console.log("✅ Manim script generated", { length: script.length });
@@ -310,7 +246,6 @@ export const { POST } = serve<VideoGenerationPayload>(
         sessionId: chatId,
         scenePlan,
         voiceoverLanguage,
-        editorialBrief,
       });
       await artifactStore.set(jobId, "manimScript", regenerated);
     });
@@ -604,7 +539,6 @@ export const { POST } = serve<VideoGenerationPayload>(
                   await artifactStore.get(jobId, "scenePlan"),
                 ),
                 voiceoverLanguage,
-                editorialBrief,
               });
         await artifactStore.set(jobId, `repaired-${attempt}`, next);
         await artifactStore.set(jobId, "manimScript", next);

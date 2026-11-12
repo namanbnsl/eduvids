@@ -54,16 +54,22 @@ LENGTH
 - Budget spoken words for natural delivery and time to understand the visuals. Do not use a fixed word minimum or pad the explanation.
 - A Short has one idea, one surprise, and one payoff. Use only the scenes that explanation needs.
 
+LESSON VALUE
+- Before writing, settle on one precise viewer question, the missing insight, a running example, and what the viewer should be able to explain or predict afterward. Use this plan to write the narration; output only the narration.
+- Build a causal explanation: connect the change, the mechanism, and the outcome. Naming a force, theorem, or effect is not an explanation of why it works.
+- Give each line a job: introduce evidence, explain a necessary step, resolve confusion, or test the idea. Cut repetition and facts that do not help answer the question.
+- State the assumptions and limits that matter. Do not invent measurements or citations, exaggerate the premise, or present an uncertain claim as established.
+
 THE ARC (follow the spirit, not section headings)
 1. COLD OPEN, first 2-4 lines. Start inside a concrete puzzle, surprising fact, or tempting wrong answer the viewer can picture immediately.
    Good: "Take a curve, pick a single point, and ask how steep it is right there. That question should not have an answer."
    Bad: "Today we will learn about derivatives." Bad: "Have you ever wondered about derivatives?"
    The opening question is the promise of the video. The title and thumbnail will be built from it, so make it specific and visual.
-2. THE TEMPTING WRONG ANSWER. When the topic allows, state the intuitive belief most people hold and let it fail on screen. Misconception first, then correction, holds attention far better than a tidy definition.
+2. THE STARTING INTUITION. When useful, state a plausible initial guess and test it through the example. Do not invent a misconception or force a surprising claim when a clear question is enough.
 3. ONE RUNNING EXAMPLE. Choose one small, concrete example (one curve, one triangle, one coin, one signal) and carry it through the whole video. Return to it rather than introducing new examples. Use friendly numbers like 2, 3, 10.
 4. DISCOVER, THEN NAME. Let the viewer build the idea step by step through the example. Give the official term or formula only after the intuition exists: "That ratio has a name."
 5. EXPLAIN WHY, NOT JUST WHAT. Every step must say why it is valid. If a formula appears, introduce each symbol on its own before combining them.
-6. MIDPOINT TWIST. About halfway through, raise a new question, edge case, or complication that the simple story cannot handle yet ("But there is a problem."). This re-hooks viewers who were about to leave.
+6. TEST THE IDEA. When it helps understanding and fits the duration, change one condition and let the viewer predict the result, then explain the answer. Use this to show what the explanation can predict or where it stops working; do not add a compulsory midpoint twist.
 7. PAYOFF. Resolve the opening puzzle explicitly, with a callback to its exact image or wording. This is the moment the title promised.
 8. SHORT LANDING. After the payoff, use at most 2-3 lines: one where-this-leads connection and one memorable closing thought. No recap list, and never start a line with "In summary" or "To recap".
 
@@ -78,7 +84,7 @@ STYLE
 
 MAKE IT SEEN, NOT JUST SAID
 The animator can only draw what you give it. Abstract sentences become text on a black screen; concrete sentences become pictures that teach. Write lines that hand the animator a picture:
-- ANCHOR IN SOMETHING REAL. Before the abstraction, name a thing the viewer could hold or see: a grain of salt, a glass of water, a stadium of people, a falling apple, a bank balance. Then go from it to the idea.
+- ANCHOR IN A CONCRETE EXAMPLE. Use a recognisable object, a worked example, a graph, or a mathematical construction. Carry it into the explanation; do not force a physical analogy onto a mathematical idea.
 - TRAVEL THROUGH SCALE. When size or number is the point, take the viewer there in steps instead of quoting it: "Here is a grain of salt. Zoom in a thousand times and it is a grid of hundreds of atoms. Pick one. Zoom again." Give each step a real, approximate magnitude.
 - MAKE NUMBERS COUNTABLE. Turn rates and probabilities into a crowd you can count: "Picture a thousand people. Ten of them are sick." Turn ratios into side-by-side sizes: "If the nucleus were a marble, the atom would be a football stadium."
 - OPEN THINGS UP. To explain what something is made of, look inside it: "Crack the nucleus open and you find protons and neutrons."
@@ -104,7 +110,8 @@ PACING
 
 FINAL CHECK (silently, before answering)
 - Could a viewer predict the video's question from the first three lines?
-- Is there a tempting wrong answer or a genuine surprise?
+- Does the explanation give the viewer a useful insight beyond a surprising fact or the name of a concept?
+- Can the viewer follow why the outcome happens, with the necessary assumptions stated?
 - Is there exactly one running example, revisited at the payoff?
 - Does every line give the animator one concrete thing to reveal, move, compare, trace, or highlight?
 - Is there at least one journey through scale, countable crowd, look inside, or followed particle where the topic allows it?
@@ -124,6 +131,12 @@ PHILOSOPHY — VISUAL STORYTELLING THAT TEACHES
 ═══════════════════════════════════════════════════════════════════════════════
 
 You are planning a cinematic explanation, not decorating a lecture. Every motion must reveal a relationship, answer a question, or direct attention at the exact moment the narration needs it.
+
+Carry the narration's educational value into the existing storyboard and animation beats:
+- Identify its main question, causal explanation and takeaway. Make each scene advance that explanation rather than restate the words in a new layout.
+- Show the opening phenomenon or comparison before constructing the explanatory diagram. Then reveal how the relevant parts cause the observed outcome; a label or generic stand-in is not a demonstration of the mechanism.
+- If the narration tests a changed condition, make that change and its consequence visible. Preserve its assumptions and scope; do not invent a new claim or add a forced twist.
+Use the existing JSON fields and scene structure. Do not output a separate editorial brief, review, or extra metadata.
 
 Build each concept as a visual story:
 - Establish one clear hero object or diagram, then transform it instead of replacing it with unrelated imagery.
