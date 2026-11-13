@@ -8,6 +8,7 @@ import numpy as np
 from manim import config
 
 REPO = Path(__file__).resolve().parents[1]
+FIXTURES = REPO / "tests/fixtures/thumbnails"
 sys.path.insert(0, str(REPO / "src/lib/thumbnail"))
 import renderer as r
 
@@ -30,7 +31,7 @@ with tempfile.TemporaryDirectory(prefix="thumbnail-layout-") as folder:
     assert abs(plain.width - marked.width) < 0.01, (plain.width, marked.width)
     assert cool in {glyph.get_fill_color().to_hex().upper() for glyph in marked.family_members_with_points()}
 
-    specs = json.loads((REPO / "docs/thumbnail-layout/specs.json").read_text())
+    specs = json.loads((FIXTURES / "layout-specs.json").read_text())
     for safe in (False, True):
         for spec in specs:
             _, report = r.compose(spec, fonts, safe)
@@ -46,8 +47,7 @@ with tempfile.TemporaryDirectory(prefix="thumbnail-layout-") as folder:
     # Click-through devices: every new visual composes cleanly in both modes,
     # the struck word and callout survive in full mode, and the visual-only
     # slot never takes a callout.
-    ctr = REPO / "docs/thumbnail-ctr"
-    fixtures = json.loads((ctr / "after.json").read_text()) + json.loads((ctr / "package-after.json").read_text())
+    fixtures = json.loads((FIXTURES / "ctr-after.json").read_text()) + json.loads((FIXTURES / "ctr-package-after.json").read_text())
     fixtures += [{"headline": "", "visual": {"type": "spiral"}}, {"headline": "Same start", "callout": "here", "visual": {"type": "chaos", "shape": "pendulum"}}]
     fixtures += [{"headline": "Zero area", "callout": "a copy", "visual": {"type": "fractal", "shape": shape}} for shape in ("sierpinski", "koch", "tree")]
     for safe in (False, True):
@@ -73,7 +73,7 @@ with tempfile.TemporaryDirectory(prefix="thumbnail-layout-") as folder:
 
     # Every new composition keeps the same collision, safe-area and duration
     # badge checks, including fallback mode and molecule labels inside atoms.
-    review = json.loads((REPO / "docs/packaging-quality/specs.json").read_text())
+    review = json.loads((FIXTURES / "packaging-specs.json").read_text())
     review += [{"headline": "Linear bonds", "visual": {"type": "molecule", "shape": "carbon_dioxide"}}]
     for safe in (False, True):
         for spec in review:

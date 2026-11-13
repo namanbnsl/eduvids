@@ -6,7 +6,7 @@ Thanks for helping out. eduvids turns a topic into a narrated, animated lesson. 
 
 - **Report a bad video.** If a video came out wrong, open an issue with the prompt you used, the language and format (landscape or Short), and a link or screenshot. This is the most useful bug report there is.
 - **Fix rendering problems.** Overlapping labels, text running off-screen, broken LaTeX, narration out of sync and failed renders all count.
-- **Improve the lessons.** Better prompts, visual devices and house-style rules make every video better. See [`docs/`](docs) for the reasoning behind the current look.
+- **Improve the lessons.** Better prompts, visual devices and house-style rules make every video better.
 - **Languages and voices.** You can add or improve narration for languages other than English.
 - **The app itself.** UI, accessibility, performance, docs.
 
@@ -39,8 +39,8 @@ You don't need every service to work on most things. UI changes and many prompt 
 | `src/lib/e2b.ts` | Talking to the render sandbox |
 | `convex` | Database schema and functions for chats and videos |
 | `sandbox-templates/eduvids-render` | The E2B template that renders videos. The other folders are older templates |
-| `tests` | Node tests (`*.test.ts`) and the Python checks they drive (`*.py`) |
-| `docs` | Design notes with before/after renders and scripts to reproduce them |
+| `tests` | Node tests (`*.test.ts`), the Python checks they drive (`*.py`) and their fixtures (`tests/fixtures`) |
+| `assets/readme` | The banner and example GIFs shown in the README |
 
 ## Before you open a pull request
 
