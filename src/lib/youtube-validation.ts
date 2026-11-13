@@ -5,6 +5,60 @@ export const GENERIC_VIDEO_TITLE = "A Visual Math and Science Exploration";
 const DANGLING_WORD =
   /\b(?:a|an|the|and|or|but|nor|so|yet|at|of|with|without|to|from|in|on|for|by|into|onto|through|between|because|although|while|if|than|that|which|whose|as)\s*[.!?]?$/i;
 
+// A request pasted in as a title: "A vertical short video explaining ...".
+const RAW_PROMPT =
+  /\b(?:video|animation|short)\s+(?:explaining|about|showing|covering|that\s+(?:explains|shows))\b|^(?:an?\s+)?(?:vertical|horizontal|short|animated|quick|landscape|portrait)\s+(?:\w+\s+)?(?:video|animation|explainer)\b|^(?:please\s+)?(?:make|create|generate|explain)\b/i;
+
+/** New titles must fit on a phone and lead with the concept people search for. */
+export const NEW_TITLE_LIMIT = 70;
+const GENERIC_TOPIC =
+  /^(?:math(?:s|ematics)?|science|physics|chemistry|biology|engineering|fun\s+facts?|did\s+you\s+know|the\s+answer|this|it)$/i;
+const GENERIC_OPENING =
+  /^(?:understanding|introduction(?:\s+to)?|intro\s+to|exploring|all\s+about|an?\s+(?:overview|look|guide)|the\s+(?:basics|science|math|story)\s+of|learn(?:ing)?)\b/i;
+const GENERIC_PHRASES =
+  /\b(?:explained|basics|lesson|tutorial|ultimate|mind[-\s]?blowing|insane|you\s+won'?t\s+believe|finally\s+makes\s+sense|visuali[sz]ed|simple\s+guide|everything\s+you\s+need)\b/i;
+
+/**
+ * Packaging rules for a title about to be published: "Topic: hook". Titles
+ * that name the topic first earn about twice the channel's average CTR, while
+ * question-first and vague titles trail it. Older channel titles predate this,
+ * so related-video checks use titleValidationErrors alone.
+ */
+export function newTitleErrors(title: string): string[] {
+  const errors: string[] = [];
+  const text = title.trim();
+  if (text.length > NEW_TITLE_LIMIT)
+    errors.push(
+      `title exceeds ${NEW_TITLE_LIMIT} characters; rewrite it shorter, never truncate`,
+    );
+  if (GENERIC_PHRASES.test(text) || GENERIC_OPENING.test(text))
+    errors.push("title is generic; name the specific idea and its surprise");
+  const match = text.match(/^([^:：]+)[:：]\s*(.+)$/u);
+  const topic = match?.[1]?.trim() ?? "";
+  const hook = match?.[2]?.trim() ?? "";
+  const topicWords = topic.split(/\s+/).filter(Boolean).length;
+  if (
+    !match ||
+    topicWords < 1 ||
+    topicWords > 5 ||
+    hook.split(/\s+/).filter(Boolean).length < 2
+  ) {
+    errors.push(
+      'title must lead with the searchable topic in 1-5 words, then a colon and the hook, e.g. "Chaos Theory: Why Tiny Causes Destroy Predictability"',
+    );
+  } else if (
+    /^(?:why|how|what|when|where|which|who|can|does|do|is|are)\b/i.test(
+      topic,
+    ) ||
+    GENERIC_TOPIC.test(topic)
+  ) {
+    errors.push(
+      "title must open with the concept's name, not a question word or a vague subject",
+    );
+  }
+  return errors;
+}
+
 export function normalizeYouTubeTitle(title: string): string {
   return title.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
 }
@@ -40,6 +94,15 @@ export function titleValidationErrors(
     errors.push("title ends in an incomplete phrase");
   if (/[<>\r\n]/.test(text))
     errors.push("title contains markup or line breaks");
+  if (/[$\\]|\*\*|`/.test(text))
+    errors.push("title contains LaTeX or Markdown; write the words instead");
+  if (/&(?:[a-z]+|#\d+|#x[\da-f]+);/i.test(text))
+    errors.push("title contains an HTML entity");
+  if (/#\p{L}/u.test(text)) errors.push("title contains a hashtag");
+  if (RAW_PROMPT.test(text))
+    errors.push("title is the raw request, not a viewer-facing title");
+  if (/\b(?:eduvids|namanbnsl|github)\b/i.test(text))
+    errors.push("title contains the channel or repository name");
   const normalized = normalizeYouTubeTitle(text);
   if (normalized === normalizeYouTubeTitle(GENERIC_VIDEO_TITLE))
     errors.push("generic fallback title");
@@ -56,7 +119,10 @@ export function assertValidUploadTitle(
   title: string,
   existingTitles: Iterable<string> = [],
 ): string {
-  const errors = titleValidationErrors(title, existingTitles);
+  const errors = [
+    ...titleValidationErrors(title, existingTitles),
+    ...newTitleErrors(title),
+  ];
   if (errors.length)
     throw new Error(
       `${errors.join("; ")}. Rejected title: ${JSON.stringify(title)}`,

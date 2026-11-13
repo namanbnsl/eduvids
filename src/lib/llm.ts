@@ -939,6 +939,15 @@ export function scenePlanVisualGaps(scenePlan: ScenePlanEntry[]): string[] {
       `${scenePlan[0]!.sceneId}: open on the topic's most striking picture in the first second (a signature visual, crowd, zoom, big number or predict-reveal), not a "${opening}" build.`,
     );
   }
+  const first = scenePlan[0];
+  if (
+    first &&
+    ["title", "bullet_points", "summary"].includes(first.visualType)
+  ) {
+    notes.push(
+      `${first.sceneId}: planned as a "${first.visualType}" scene, but the first frame must show the payoff the title promises. Draw that phenomenon in motion first; keep any text to the header.`,
+    );
+  }
   if (
     scenePlan.length &&
     !scenePlan.some((scene) =>
@@ -1560,7 +1569,7 @@ Each thumbnail pairs a short headline with one precise mathematical or scientifi
 
 HOW TO WORK
 1. Mine the source material for click fuel: the opening puzzle, the tempting wrong answer, the most surprising number, the payoff image, and any everyday object or stakes ("your phone", "a casino", "every bridge").
-2. Brainstorm at least ten raw title ideas across different angles (wrong intuition, surprising number, impossible-sounding claim, hidden everyday connection, "what would happen if", a challenge to the viewer, a tiny change with a huge effect).
+2. Name the searchable topic, then brainstorm at least ten raw hooks for it across different angles (wrong intuition, surprising number, impossible-sounding claim, hidden everyday connection, "what would happen if", a challenge to the viewer, a tiny change with a huge effect).
 3. Score each idea silently: would a curious 15-year-old click it over the videos beside it? Is it specific? Does the video truly pay it off? Keep the three strongest, from different angles.
 
 WHAT WINS THE CLICK
@@ -1572,14 +1581,17 @@ WHAT WINS THE CLICK
 
 TITLE RULES
 - Write titles in the same language as the narration. Generate viewer-facing titles, never copy prompt instructions, title-slide labels or scene directions. Use complete phrases without wrapping quotes or parentheses.
-- 30-55 characters is ideal and 70 the hard ceiling. Put the hook in the first 40 characters, because mobile truncates.
-- Plain words a curious 15-year-old would use. Name the topic keyword once, naturally, in at least one of the three titles.
-- Three DIFFERENT angles, in this order:
-  A. The hook: the video's opening puzzle, surprising number or impossible-sounding claim ("Why the Slope at a Single Point Isn't a Paradox").
-  B. The search title: the clearest phrasing someone would actually type, made intriguing ("What a Derivative Actually Measures").
-  C. The bold claim or broken intuition: a confident, specific, true statement ("Every Sound Is Secretly a Sum of Circles").
-- Title case. No ALL CAPS words, no emoji, no colon subtitles, no "| eduvids".
-- Never use: Explained, Basics, Introduction, Lesson, Tutorial, Ultimate, Mind-Blowing, Insane, You Won't Believe, Finally Makes Sense, Visualized, Simple Guide, Everything You Need.
+- TOPIC FIRST, ALWAYS. Every title is "Topic: hook". The topic is the concept people actually search for, named plainly in 1-4 words ("Chaos Theory", "Benford's Law", "Tuned Mass Dampers", "The Monty Hall Problem"). After the colon comes the curiosity hook that makes it matter ("Chaos Theory: Why Tiny Causes Destroy Predictability"). On this channel, titles that name the topic earn about 6% click-through; vague or question-first titles ("Why Your Gut Gets It Wrong") earn about 1.5-2%.
+- Never open with Why, How, What or another question word, and never hide the topic behind "this", "the trick" or "the math".
+- 30-60 characters is ideal and 70 the hard ceiling. Mobile truncates, so the topic and the start of the hook must fit in the first 40 characters.
+- Plain words a curious 15-year-old would use. No LaTeX, $, backslashes, Markdown, hashtags, HTML entities or the channel name; spell math in words ("Euler's Identity", not "$e^{i\\pi}$").
+- Three DIFFERENT hooks after the same or a closely related topic, in this order:
+  A. The puzzle: the video's opening puzzle or surprising number ("The Birthday Problem: Why 23 People Is Enough").
+  B. The mechanism: what is actually going on, made intriguing ("Derivatives: What the Slope at One Point Measures").
+  C. The broken intuition: a confident, specific, true claim ("Fourier Series: Every Sound Is a Sum of Circles").
+- Title case. No ALL CAPS words, no emoji, no "| eduvids". The colon after the topic is the only colon.
+- Never use: Explained, Basics, Introduction, Understanding, Exploring, Lesson, Tutorial, Ultimate, Mind-Blowing, Insane, You Won't Believe, Finally Makes Sense, Visualized, Simple Guide, Everything You Need.
+- The first frame of the video shows this payoff picture, so the hook must name something the opening scene actually shows.
 
 THUMBNAIL COPY RULES
 - eyebrow: the field in 1-3 words, e.g. "Calculus", "Complex numbers", "Machine learning". It is metadata for picking the visual and is never drawn.
@@ -1624,7 +1636,7 @@ VISUAL RULES
 - notation must be short valid LaTeX that is central to the topic, or omitted. Never invent equations, numbers, data or claims: ground every expression, value and label in the source material. If exact mathematics is absent, choose a truthful conceptual visual
 - Prefer a striking diagram over a formula when the diagram proves the headline. For continuous probability and area under a curve, choose probability or function_plot with an area highlight; do not substitute a discrete probability formula. For overlapping sets choose geometry with shape "venn"
 - Use at most one short notation label. No explanatory captions, worked examples or small legends in the hero
-- Make the three packages distinct in angle, headline, and visual. Vary title openings, avoid defaulting every title to "Why", and never copy a production instruction, scene description or the raw request as a title. Treat the request as a brief; the narration is the source of truth.
+- Make the three packages distinct in angle, headline, and visual. Vary the hooks after the topic, and never copy a production instruction, scene description or the raw request as a title. Treat the request as a brief; the narration is the source of truth.
 
 COMPOSITION
 Each package has a composition object. Think like a designer: what should dominate, the words or the picture? Where does the eye land first? Three packages that look alike waste the test, so A and C must use different layouts, and vary the other options too. Avoid falling back on split_left every time.
@@ -1649,12 +1661,16 @@ Return ONLY a JSON object: {"ideas": [ten or more short raw title ideas], "packa
     voiceoverScript ? `NARRATION:\n${voiceoverScript.slice(0, 8_000)}` : "",
     scenePlan
       ? `SCENE PLAN:\n${JSON.stringify(
-          scenePlan.map(({ sceneId, narration, visualType, elements }) => ({
-            sceneId,
-            narration,
-            visualType,
-            elements,
-          })),
+          scenePlan.map(
+            ({ sceneId, narration, visualType, elements, storyboard }, i) => ({
+              sceneId,
+              narration,
+              visualType,
+              elements,
+              // Scene 1's storyboard names the first frame the title must match.
+              ...(i === 0 && storyboard ? { storyboard } : {}),
+            }),
+          ),
         ).slice(0, 10_000)}`
       : "",
   ]

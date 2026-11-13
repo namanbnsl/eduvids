@@ -50,7 +50,7 @@ export async function generateUploadTitle(
   const parsed = parseObject(
     await generateRepair(
       source,
-      `Write one specific, compelling title in the narration's language, ideally 30-70 characters, never over 100. Use a complete phrase. No labels (Title, Title slide, Scene), wrapping quotes, parentheses, variant/scene/seconds instructions, or production-brief openings (Animation, Video, Detailed, Educational, A video that). No generic fallback. Never end on a preposition, article or conjunction. Rewrite, never truncate. Output {"title":"..."}.`,
+      `Write one specific, compelling title in the narration's language as "Topic: hook": the concept people search for in 1-4 words, a colon, then the curiosity hook (e.g. "Chaos Theory: Why Tiny Causes Destroy Predictability"). Ideally 30-60 characters, never over 70. Never open with Why, How or What. No LaTeX, $, backslashes, Markdown, hashtags, HTML entities, channel name, or generic words (Explained, Introduction, Understanding, Basics). Use a complete phrase. No labels (Title, Title slide, Scene), wrapping quotes, parentheses, variant/scene/seconds instructions, or production-brief openings (Animation, Video, Detailed, Educational, A video that). No generic fallback. Never end on a preposition, article or conjunction. Rewrite, never truncate. Output {"title":"..."}.`,
       feedback,
       signal,
     ),
