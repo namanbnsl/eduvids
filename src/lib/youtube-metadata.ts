@@ -2,16 +2,15 @@ import { jsonrepair } from "jsonrepair";
 import { LATEX_COMMANDS, protectLatexBackslashes } from "./latex-json";
 import {
   titleValidationErrors,
+  newTitleErrors,
   isCompleteDescriptionLine,
   GENERIC_VIDEO_TITLE,
 } from "./youtube-validation";
 
-const TITLE_LIMIT = 80;
 const TITLE_MINIMUM = 20;
 // Slot B is always the visual-only thumbnail, so every video ships one
 // text-free variant to A/B test against the two headline variants.
 export const VISUAL_ONLY_THUMBNAIL_INDEX = 1;
-const BLOCKED_TITLE_WORDS = /\b(explained|basics|introduction|lesson)\b/i;
 const PRODUCTION_COPY =
   /\b(?:scene\s*\d+|voiceover|storyboard|aspect ratio|horizontal (?:educational )?video|vertical (?:educational )?video|educational (?:horizontal |vertical )?video|generate (?:a|an|the) video)\b/i;
 
@@ -657,6 +656,7 @@ function parseCandidateArray(raw: string): unknown[] {
 }
 
 export function parseVideoTitleSet(raw: string): VideoTitleSet {
+  const rejected: string[] = [];
   const parsed = parseCandidateArray(raw)
     .map((candidate) => {
       if (typeof candidate === "string") {
@@ -721,14 +721,17 @@ export function parseVideoTitleSet(raw: string): VideoTitleSet {
     .filter((candidate): candidate is NonNullable<typeof candidate> => {
       if (!candidate) return false;
       const { title } = candidate;
-      return (
-        title.length >= TITLE_MINIMUM &&
-        title.length <= TITLE_LIMIT &&
-        !BLOCKED_TITLE_WORDS.test(title) &&
-        !PRODUCTION_COPY.test(title) &&
-        titleValidationErrors(title).length === 0 &&
-        !/[<>\n]/.test(title)
-      );
+      const errors = [
+        ...(title.length < TITLE_MINIMUM ? ["title is too short"] : []),
+        ...(PRODUCTION_COPY.test(title)
+          ? ["title copies production text"]
+          : []),
+        ...titleValidationErrors(title),
+        ...newTitleErrors(title),
+      ];
+      if (errors.length)
+        rejected.push(`${JSON.stringify(title)}: ${errors.join("; ")}`);
+      return errors.length === 0;
     })
     .filter(
       (candidate, index, candidates) =>
@@ -739,7 +742,11 @@ export function parseVideoTitleSet(raw: string): VideoTitleSet {
     .slice(0, 3);
 
   if (parsed.length !== 3) {
-    throw new Error("Title generation did not return three usable candidates");
+    throw new Error(
+      `Title generation did not return three usable candidates${
+        rejected.length ? `. Rejected: ${rejected.join(" | ")}` : ""
+      }`,
+    );
   }
 
   const candidates = parsed.map(({ title }) => title) as [

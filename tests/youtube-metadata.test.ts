@@ -179,7 +179,7 @@ test("thumbnail compositions vary across videos and preserve a text-free B", () 
   const titles = parseVideoTitleSet(
     JSON.stringify(
       [0, 1, 2].map((i) => ({
-        title: `The Energy Hidden in a Nucleus, Angle ${i + 1}`,
+        title: `Nuclear Fission: The Energy in a Nucleus, Angle ${i + 1}`,
         headline: "Split one atom",
         accent: "Split",
         visual: { type: "fission" },
@@ -207,7 +207,7 @@ test("the model picks each thumbnail's template and its options", () => {
   const titles = parseVideoTitleSet(
     JSON.stringify({
       packages: [0, 1, 2].map((i) => ({
-        title: `The Energy Hidden in a Nucleus, Angle ${i + 1}`,
+        title: `Nuclear Fission: The Energy in a Nucleus, Angle ${i + 1}`,
         headline: "Split one atom",
         accent: "Split",
         visual: { type: "fission" },
@@ -278,7 +278,7 @@ test("brainstormed packages keep strike and callout copy, except on slot B", () 
       ideas: ["Monty Hall Is Not 50/50", "Always Switch Doors", "Why Switch"],
       packages: [
         {
-          title: "Why Your Gut Gets the Monty Hall Problem Wrong",
+          title: "The Monty Hall Problem: Why Your Gut Is Wrong",
           eyebrow: "Probability",
           headline: "Not 50% but 67%",
           accent: "67%",
@@ -288,7 +288,7 @@ test("brainstormed packages keep strike and callout copy, except on slot B", () 
           visual: { type: "number", value: "67%", was: "50%" },
         },
         {
-          title: "How the Monty Hall Problem Actually Works",
+          title: "The Monty Hall Problem: How Switching Wins",
           headline: "Ignored",
           strike: "Ignored",
           callout: "dropped",
@@ -300,7 +300,7 @@ test("brainstormed packages keep strike and callout copy, except on slot B", () 
           },
         },
         {
-          title: "The Game Show Puzzle That Fooled Mathematicians",
+          title: "Monty Hall: The Puzzle That Fooled Mathematicians",
           headline: "Stay or switch?",
           accent: "switch",
           strike: "switch",
@@ -313,7 +313,7 @@ test("brainstormed packages keep strike and callout copy, except on slot B", () 
   const [first, second, third] = titles.thumbnailConcepts!;
   assert.equal(
     titles.selected,
-    "Why Your Gut Gets the Monty Hall Problem Wrong",
+    "The Monty Hall Problem: Why Your Gut Is Wrong",
   );
   assert.equal(first.strike, "50%");
   assert.equal(first.callout, "switch");
@@ -337,15 +337,15 @@ test("LaTeX written with one backslash survives the JSON parse", () => {
   // The model writes "$\infty$" with a single backslash: invalid JSON that
   // jsonrepair used to turn into "$infty$" (italic letters on the thumbnail).
   const raw = String.raw`{"packages": [{
-    "title": "The Butterfly That Never Repeats",
+    "title": "Chaos Theory: The Butterfly That Never Repeats",
     "headline": "Never $\theta$ twice",
     "callout": "$\infty$ loop",
     "visual": {"type": "chaos", "shape": "lorenz"}
   }, {
-    "title": "Chaos in Three Equations",
+    "title": "The Lorenz System: Chaos in Three Equations",
     "visual": {"type": "chaos", "shape": "lorenz"}
   }, {
-    "title": "Why Weather Forecasts Always Break",
+    "title": "Chaos Theory: Why Weather Forecasts Break",
     "headline": "$\frac{dx}{dt}$ decides",
     "visual": {"type": "chaos", "shape": "lorenz"}
   }]}`;
@@ -400,16 +400,13 @@ test("click-through copy and figures reject TeX and partial words", () => {
 test("title packaging keeps exactly three clean curiosity-led candidates", () => {
   const titles = parseVideoTitleSet(`\`\`\`json
   [
-    "What Even Is a Tensor? Visualized From 0D to 3D",
-    "Why Tensors Actually Change Shape Between Coordinates",
-    "How Tensors Describe the World Without Breaking Physics"
+    "Tensors: What They Are, From 0D to 3D",
+    "Tensors: Why They Change Shape Between Coordinates",
+    "Tensors: How They Describe the World Without Breaking Physics"
   ]
   \`\`\``);
 
-  assert.equal(
-    titles.selected,
-    "What Even Is a Tensor? Visualized From 0D to 3D",
-  );
+  assert.equal(titles.selected, "Tensors: What They Are, From 0D to 3D");
   assert.equal(titles.candidates.length, 3);
 });
 
@@ -417,7 +414,7 @@ test("title packaging keeps validated thumbnail copy and visual parameters", () 
   const titles = parseVideoTitleSet(
     JSON.stringify([
       {
-        title: "What Even Is a Tensor? Visualized From 0D to 3D",
+        title: "Tensors: What They Are, From 0D to 3D",
         eyebrow: "Linear algebra",
         headline: "A tensor moves space",
         accent: "moves space",
@@ -432,7 +429,7 @@ test("title packaging keeps validated thumbnail copy and visual parameters", () 
         },
       },
       {
-        title: "Why Tensors Actually Change Shape Between Coordinates",
+        title: "Tensors: Why They Change Shape Between Coordinates",
         eyebrow: "Physics",
         headline: "Same arrow, two $\\vec v$",
         accent: "$\\vec v$",
@@ -440,7 +437,7 @@ test("title packaging keeps validated thumbnail copy and visual parameters", () 
         visual: { type: "complex_plane", turn: 2 },
       },
       {
-        title: "How Tensors Describe the World Without Breaking Physics",
+        title: "Tensors: How They Describe the World Without Breaking Physics",
         eyebrow: "Geometry",
         headline: "What stays the same",
         accent: "not in headline",
@@ -472,7 +469,7 @@ test("legacy flat thumbnail fields still map onto the visual spec", () => {
   const titles = parseVideoTitleSet(
     JSON.stringify(
       [0, 1, 2].map((index) => ({
-        title: `Why Differentiation Actually Works, Part ${index + 1} of It`,
+        title: `Derivatives: Why Differentiation Works, Part ${index + 1} of It`,
         thumbnailText: "Slope is height",
         visualConcept: "a tangent",
         visualType: "function_plot",
@@ -493,7 +490,7 @@ test("legacy flat thumbnail fields still map onto the visual spec", () => {
 
 test("the strongest rendered title-thumbnail pair is published together", () => {
   const titles = parseVideoTitleSet(
-    '["What Even Is a Tensor? Visualized From 0D to 3D", "Why Tensors Actually Change Shape Between Coordinates", "How Tensors Describe the World Without Breaking Physics"]',
+    '["Tensors: What They Are, From 0D to 3D", "Tensors: Why They Change Shape Between Coordinates", "Tensors: How They Describe the World Without Breaking Physics"]',
   );
   assert.equal(
     selectThumbnailPair(titles, [
@@ -591,9 +588,9 @@ test("a math token can be the accent of a headline variant", () => {
   const titles = parseVideoTitleSet(
     JSON.stringify(
       [
-        "Why Multiplying by i Is a Quarter Turn",
-        "What Imaginary Numbers Actually Do",
-        "Every Rotation Is Secretly Multiplication",
+        "Imaginary Numbers: Multiplying by i Is a Quarter Turn",
+        "Imaginary Numbers: What They Actually Do",
+        "Complex Numbers: Every Rotation Is Multiplication",
       ].map((title) => ({
         title,
         headline: "Same arrow, two $\\vec v$",
@@ -609,9 +606,9 @@ test("a math token can be the accent of a headline variant", () => {
 
 test("short punchy titles are accepted", () => {
   const titles = parseVideoTitleSet(
-    '["The Phone Number Puzzle", "Why Primes Make Spirals", "The Scariest Chart in Math"]',
+    '["Phone Numbers: A Tiny Puzzle", "Prime Spirals: Why They Appear", "Leading Digits: A Scary Chart"]',
   );
-  assert.equal(titles.selected, "The Phone Number Puzzle");
+  assert.equal(titles.selected, "Phone Numbers: A Tiny Puzzle");
 });
 
 test("description package parses hook, hashtags and tags with a plain-text fallback", () => {

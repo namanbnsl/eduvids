@@ -50,8 +50,8 @@ OUTPUT AND TIMING
 
 THE EXPLANATION
 1. Choose one specific question, one running example and one useful takeaway before writing. Keep this planning out of the output.
-2. Open inside the phenomenon or comparison, not an introduction to the topic. For example: "Tilt this toy and let go. Why does it stand back up?" The opening should make the viewer's question clear immediately.
-3. Show the interesting behaviour early; then explain its mechanism. Do not withhold the result merely to create suspense.
+2. Open on the payoff: the first line describes the striking result the video promises, happening on screen now (the flame jumping back to the wick, the bridge starting to sway, the toy standing back up). For example: "Tilt this toy and let go. It stands right back up. Why?" The opening should make the viewer's question clear immediately.
+3. No definitions, background or agenda in the first 20 seconds: never open with "X is defined as", "X is a branch of", "today we'll learn" or a history lesson. Show the interesting behaviour first; then explain its mechanism. Do not withhold the result merely to create suspense.
 4. Connect cause to effect in small steps: what changes, what that change does, and why the outcome follows. Naming a force, theorem or effect is not the explanation. Introduce unfamiliar terms only when the example makes their meaning clear.
 5. Keep returning to the same example as understanding grows. Use concrete quantities and refer to the parts the viewer can see; avoid unexplained jumps or repeated restatements.
 6. When useful, test a plausible starting guess or change one condition. Resolve the prediction with the same explanation. Do not manufacture a misconception, paradox or midpoint twist. Omit the extra case when the duration does not support it.
@@ -163,7 +163,8 @@ Honesty: a picture can be schematic, but quoted magnitudes must be real. When a 
 
 VISUAL FIRST, WITH ENGAGEMENT — the video keeps the promise its thumbnail makes:
 - Plan a truthful, legible payoff picture that could support the title and thumbnail. Do not invent a wrong answer or payoff number to make it dramatic.
-- Scene 1 opens on the topic's actual phenomenon or comparison within the first second, never a title card or plain axis. Name that first frame in the storyboard so the animator does not spend the opening constructing it.
+- The first frame IS the payoff. Scene 1 opens on the very thing the title promises, already happening within the first second: the flame jumping back to the wick, the bridge swaying, the two pendulums peeling apart, the 67% beside the struck 50%. Never open on a definition, a title card, a plain axis, a labelled diagram of parts or an unrelated shape. Name that first frame in Scene 1's storyboard ("First frame: ...") so the animator draws it at once instead of constructing up to it.
+- Scenes covering the first 20 seconds never use visualType "title", "bullet_points" or "summary", and never show a definition or "what we'll learn". The explanation of why starts after the viewer has seen the result.
 - Use "correction" only for a real mistaken guess in the narration and "big_number" only for a meaningful quantity it states. Use "point_at" to focus the causal detail, or "predict_reveal" for an answered prediction. Choose these where they improve understanding, not to meet a quota.
 - Scene titles are 2-6 words naming the specific question, change or relationship. Keep them accurate; do not manufacture an impossible claim for curiosity.
 
@@ -452,7 +453,7 @@ LAYOUT AND SPACING
 - The layout guard is a fallback for unarranged static labels, including labels nested inside mixed groups and fixed 3D overlays. It cannot repair a cluttered composition or a moving label every frame. Plan spacing explicitly; never rely on the guard to design the scene.
 
 MOTION THAT HOLDS ATTENTION
-- Open every scene with motion within the first second: draw the main object, never a static title card.
+- Open every scene with motion within the first second: draw the main object, never a static title card. In Scene 1 that object is the payoff picture, not a definition or setup.
 - Reveal in the order the narration speaks: object first, then its label, then the relationship.
 - Animate the change itself: move a point along the curve with a ValueTracker, grow the area, swing the vector, morph the formula with TransformMatchingTex. Change is what the eye follows.
 - Show, then say: in every beat the thing being narrated appears or lights up first, and the voice follows half a second later. Open each voiceover block with its quick reveal (0.5-1.0s), never with a long animation that finishes after the narrator has named it.
@@ -606,7 +607,7 @@ trajectory — self.add(trail(planet)) leaves a fading path behind a moving obje
 Device rules:
 - Never leave a formula unexplained by its picture: every symbol you name in narration gets a link() to the part it means, as the first action of the beat that names it, so the link lands just before the word.
 - Never fill a scene with sentences. A title, summary or list scene still shows its picture; captions stay one short line.
-- Scene 1 opens on its hook picture in the first second, before any title animation finishes. Realise every "correction", "big_number" and "point_at" beat with strike/correct, big_number and point_at so the video looks like its thumbnail.
+- Scene 1 opens on its hook picture in the first second, before any title animation finishes. That picture is the payoff the title promises (the storyboard's "First frame"), shown in motion: add it fully formed with FadeIn or a sub-second reveal, never a slow build from empty axes, a definition, or an unrelated warm-up shape. Realise every "correction", "big_number" and "point_at" beat with strike/correct, big_number and point_at so the video looks like its thumbnail.
 - A population or crowd is ONE element, however many members it has. Never build crowds from loops of Dot() or Circle(), never LaggedStart over hundreds of items, and never always_redraw a crowd; use crowd(), .item(), .subset().
 - Narrate scale honestly: a scale_bar label and the narration must agree on the real magnitude.
 - Give zooms room: run_time 2-3s (or about 70 percent of the beat). A zoom is the motion of its beat; don't stack other moves on top of it.

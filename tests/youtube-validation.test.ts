@@ -5,6 +5,7 @@ import {
   chapterLanguageErrors,
   detectMetadataLanguage,
   repairYouTubeMetadata,
+  newTitleErrors,
   titleValidationErrors,
   YouTubeMetadataReviewError,
 } from "../src/lib/youtube-validation";
@@ -32,10 +33,10 @@ const badTitles = [
   "A Visual Math and Science Exploration",
 ];
 const goodTitles = [
-  "Why 90% of a Glass Lens Is Useless",
-  "Why Some Gears Refuse to Turn Backward",
-  "Why a Falling Magnet Floats Inside a Copper Tube",
-  "The Energy Hidden in a Nucleus",
+  "Lens Optics: Why 90% of a Glass Lens Is Useless",
+  "Worm Gears: Why Some Gears Refuse to Turn Backward",
+  "Eddy Currents: A Falling Magnet Floats in a Copper Tube",
+  "Nuclear Fission: The Energy Hidden in a Nucleus",
 ];
 
 test("every reported prompt/storyboard/fallback title is rejected", () => {
@@ -43,6 +44,45 @@ test("every reported prompt/storyboard/fallback title is rejected", () => {
     assert.notEqual(titleValidationErrors(title).length, 0, title);
   for (const title of goodTitles)
     assert.deepEqual(titleValidationErrors(title), [], title);
+});
+
+test("new titles lead with the topic and block raw prompts, LaTeX and generic copy", () => {
+  for (const title of [
+    "A vertical short video explaining chaos theory",
+    "A Short Video About Tuned Mass Dampers",
+    "Multiplying by $i$: A Quarter Turn",
+    "Euler's Identity: Why \\pi Shows Up",
+    "Chaos Theory: **Tiny** Causes, Huge Effects",
+    "Chaos Theory: Tiny Causes &amp; Huge Effects",
+    "Chaos Theory: Tiny Causes, Huge Effects #shorts",
+    "Chaos Theory: Tiny Causes, Huge Effects on eduvids",
+    "Why Tiny Causes Destroy Predictability",
+    "Why Chaos Happens: Tiny Causes Grow Huge",
+    "Physics: Why Tiny Causes Destroy Predictability",
+    "Chaos Theory Explained: Tiny Causes, Huge Effects",
+    "Understanding Chaos: Tiny Causes, Huge Effects",
+    "The Surprising Science Behind All Weather: Tiny Causes Grow",
+    "Chaos Theory: " + "Tiny Causes Grow Into Huge Effects ".repeat(2).trim(),
+  ])
+    assert.notEqual(
+      [...titleValidationErrors(title), ...newTitleErrors(title)].length,
+      0,
+      title,
+    );
+  for (const title of [
+    "Chaos Theory: Why Tiny Causes Destroy Predictability",
+    "Tuned Mass Dampers: Why Skyscrapers Hang a Giant Ball",
+    "The Birthday Problem: Why 23 People Is Enough",
+    ...goodTitles,
+  ]) {
+    assert.deepEqual(titleValidationErrors(title), [], title);
+    assert.deepEqual(newTitleErrors(title), [], title);
+  }
+  // Older channel titles stay valid for related-video links.
+  assert.deepEqual(
+    titleValidationErrors("Why Some Gears Refuse to Turn Backward"),
+    [],
+  );
 });
 
 test("title rules apply separately, including unclosed quotes, durations and dangling words", () => {
@@ -307,7 +347,7 @@ test("previous links and comments skip invalid or duplicate channel titles", () 
       salesCopy: "First sentence.\nSecond sentence.",
       previousVideo: previous,
     }),
-    /Previous: Why Some Gears Refuse to Turn Backward/,
+    /Previous: Worm Gears: Why Some Gears Refuse to Turn Backward/,
   );
   assert.throws(
     () => buildPreviousVideoComment(videos[0]!),
