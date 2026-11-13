@@ -1,5 +1,9 @@
-import { safeError } from "./workflow/errors";
-import { withOverloadFallback } from "./workflow/model-fallback";
+import {
+  isModelOverloaded,
+  isModelQuotaExhausted,
+  safeError,
+} from "./workflow/errors";
+import { shouldFallBackToNextModel } from "./workflow/model-fallback";
 import {
   MANIM_SYSTEM_PROMPT,
   VOICEOVER_SYSTEM_PROMPT,
@@ -10,6 +14,8 @@ import {
 import { streamText, LanguageModel } from "ai";
 import {
   createGoogleModel,
+  GEMINI_HYDROGEN,
+  MODEL_CHAINS,
   type GoogleModelConfig,
   reportSuccess,
   reportError,
@@ -60,37 +66,46 @@ function maybeWithTracing<T>(
   return withTracing(model as never, phClient, options) as T;
 }
 
-export async function streamTextWithTracking<
-  T extends Parameters<typeof streamText>[0],
->(
+type StreamTextConfig = Parameters<typeof streamText>[0];
+
+/**
+ * Stream a completion, walking the model chain in `googleConfig.fallbacks`
+ * when a model is overloaded or returns empty/truncated output. Every model in
+ * the chain shares one deadline. `forModel` lets a caller tune settings (output
+ * budget, thinking level) per model.
+ */
+export async function streamTextWithTracking<T extends StreamTextConfig>(
   config: T & { model: LanguageModel },
   googleConfig?: GoogleModelConfig,
+  forModel?: (modelId: string) => Partial<StreamTextConfig>,
 ): Promise<string> {
   const abortSignal = AbortSignal.any([
     ...(config.abortSignal ? [config.abortSignal] : []),
     AbortSignal.timeout(180_000),
   ]);
-  return withOverloadFallback(
-    () => streamTextOnceWithTracking({ ...config, abortSignal }, googleConfig),
-    googleConfig?.modelId === "gemini-3.8-flash"
-      ? async () => {
-          console.warn(
-            "[Google Provider] Primary response failed; switching to gemini-3.5-flash-lite",
-          );
-          const fallback = await createGoogleModel("gemini-3.5-flash-lite");
-          abortSignal.throwIfAborted();
-          return streamTextOnceWithTracking(
-            {
-              ...config,
-              model: fallback.provider(fallback.modelId),
-              abortSignal,
-            },
-            fallback,
-          );
-        }
-      : undefined,
-    abortSignal,
-  );
+  let current = googleConfig;
+  let model = config.model;
+  for (;;) {
+    abortSignal.throwIfAborted();
+    const settings = current ? forModel?.(current.modelId) : undefined;
+    try {
+      return await streamTextOnceWithTracking(
+        { ...config, ...settings, model, abortSignal },
+        current,
+      );
+    } catch (error) {
+      const next = current?.fallbacks;
+      if (!next?.length || abortSignal.aborted) throw error;
+      // A spent quota also moves on: each model has its own daily quota.
+      if (!shouldFallBackToNextModel(error) && !isModelQuotaExhausted(error))
+        throw error;
+      console.warn(
+        `[Google Provider] ${current!.modelId} response failed; switching to ${next[0]}`,
+      );
+      current = await createGoogleModel(next);
+      model = current.provider(current.modelId);
+    }
+  }
 }
 
 async function streamTextOnceWithTracking<
@@ -142,7 +157,13 @@ async function streamTextOnceWithTracking<
       modelId: googleConfig?.modelId,
       error: safeError(failure),
     });
-    if (googleConfig && !(failure instanceof RetryableModelOutputError)) {
+    // Overload is model-wide ("high demand"), not a problem with this key, so
+    // it must not put a healthy key on cooldown.
+    if (
+      googleConfig &&
+      !(failure instanceof RetryableModelOutputError) &&
+      !isModelOverloaded(failure)
+    ) {
       await reportError(googleConfig.provider, failure);
     }
 
@@ -988,7 +1009,7 @@ export async function generateScenePlan({
   let lastError: unknown;
 
   for (let attempt = 0; attempt < SCENE_PLAN_MAX_RETRIES; attempt++) {
-    const googleModel = await createGoogleModel("gemini-3.8-flash");
+    const googleModel = await createGoogleModel(MODEL_CHAINS.writing);
     const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     });
@@ -1061,7 +1082,7 @@ export async function generateVoiceoverScript({
     "Draft the narration voiceover:",
   ].join("\n\n");
 
-  const googleModel = await createGoogleModel("gemini-3.8-flash");
+  const googleModel = await createGoogleModel(MODEL_CHAINS.writing);
 
   const text = await streamTextWithTracking(
     {
@@ -1379,6 +1400,21 @@ export function sanitizeManimScript(script: string): string {
 
 const MANIM_SCRIPT_MAX_RETRIES = 1;
 
+/**
+ * Thinking tokens count against maxOutputTokens, and Hydrogen thinks at
+ * "high" by default: at the old 32K cap it ran out mid-script on a 10-scene
+ * plan, wasting the whole request. "medium" still outscores 3.8 Flash and
+ * leaves room for long scripts inside the 180s call deadline.
+ */
+function manimModelSettings(modelId: string): Partial<StreamTextConfig> {
+  if (modelId !== GEMINI_HYDROGEN) return {};
+  return {
+    providerOptions: {
+      google: { thinkingConfig: { thinkingLevel: "medium" } },
+    },
+  };
+}
+
 export async function generateManimScript({
   prompt,
   voiceoverScript,
@@ -1409,7 +1445,7 @@ export async function generateManimScript({
 
   if (timedScenePlan) {
     generationPromptParts.push(
-      `SCENE PLAN (follow this structure exactly):\n${JSON.stringify(timedScenePlan, null, 2)}`,
+      `SCENE PLAN (follow this structure exactly):\n${JSON.stringify(timedScenePlan)}`,
     );
     const visualGaps = scenePlanVisualGaps(timedScenePlan);
     if (visualGaps.length > 0) {
@@ -1428,7 +1464,7 @@ export async function generateManimScript({
   let lastError: unknown;
 
   for (let attempt = 0; attempt < MANIM_SCRIPT_MAX_RETRIES; attempt++) {
-    const googleModel = await createGoogleModel("gemini-3.8-flash");
+    const googleModel = await createGoogleModel(MODEL_CHAINS.code);
     const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
       posthogProperties: { $ai_session_id: sessionId },
     });
@@ -1440,9 +1476,10 @@ export async function generateManimScript({
           system: augmentedSystemPrompt,
           prompt: generationPrompt,
           temperature: 0.2,
-          maxOutputTokens: 32_768,
+          maxOutputTokens: 65_536,
         },
         googleModel,
+        manimModelSettings,
       );
 
       const code = text
@@ -1627,7 +1664,7 @@ Return ONLY a JSON object: {"ideas": [ten or more short raw title ideas], "packa
     sourceMaterial ? `\n\nSOURCE MATERIAL:\n${sourceMaterial}` : ""
   }`;
 
-  const googleModel = await createGoogleModel("gemini-3.8-flash");
+  const googleModel = await createGoogleModel(MODEL_CHAINS.writing);
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
   });
@@ -1848,7 +1885,7 @@ RULES:
     "```",
   ].join("\n");
 
-  const googleModel = await createGoogleModel("gemini-3.8-flash");
+  const googleModel = await createGoogleModel(MODEL_CHAINS.code);
   const model = maybeWithTracing(googleModel.provider(googleModel.modelId), {
     posthogProperties: { $ai_session_id: sessionId },
   });

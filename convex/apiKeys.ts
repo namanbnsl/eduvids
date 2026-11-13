@@ -19,6 +19,15 @@ type ModelPolicy = {
 };
 
 const MODEL_POLICIES: Record<string, ModelPolicy> = {
+  // Strongest model, writes and repairs Manim code – free tier: 20 RPD
+  // (confirmed against the API on 13 Nov 2026)
+  "gemini-4-hydrogen": {
+    maxRequestsPer24hPerKey: 20,
+    rateLimitCooldownMs: 90_000,
+    quotaResetDelayMs: 3_600_000,
+    errorCooldownMs: 45_000,
+    maxConsecutiveErrors: 3,
+  },
   // Higher quality model – free tier: 5 RPM, 250K TPM, 20 RPD
   "gemini-3.8-flash": {
     maxRequestsPer24hPerKey: 20,
@@ -56,6 +65,9 @@ const DEFAULT_MODEL_POLICY: ModelPolicy = {
 function resolveModelPolicy(model: string): ModelPolicy {
   if (MODEL_POLICIES[model]) return MODEL_POLICIES[model];
 
+  if (model.includes("hydrogen")) {
+    return MODEL_POLICIES["gemini-4-hydrogen"];
+  }
   if (model.includes("3.8-flash")) {
     return MODEL_POLICIES["gemini-3.8-flash"];
   }

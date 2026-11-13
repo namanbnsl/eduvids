@@ -63,29 +63,61 @@ export const createGoogleProvider = async (
   return provider;
 };
 
+export const GEMINI_HYDROGEN = "gemini-4-hydrogen";
+export const GEMINI_FLASH = "gemini-3.8-flash";
+export const GEMINI_FLASH_LITE = "gemini-3.5-flash-lite";
+
+/**
+ * Ordered models for each kind of work. Every model has its own free daily
+ * quota per Cloud project, so a chain both falls back on overload and spreads
+ * the scarce requests: Hydrogen (strongest, ~20/day) writes and repairs Manim
+ * code, where a mistake costs a whole render; 3.8 Flash (~20/day) writes the
+ * narration, plan and titles; Flash-Lite (~500/day) is the last resort.
+ */
+export const MODEL_CHAINS = {
+  code: [GEMINI_HYDROGEN, GEMINI_FLASH, GEMINI_FLASH_LITE],
+  writing: [GEMINI_FLASH, GEMINI_HYDROGEN, GEMINI_FLASH_LITE],
+} as const;
+
+/** Chains used when a caller names a single model. */
+const DEFAULT_CHAINS: Record<string, readonly string[]> = {
+  [GEMINI_HYDROGEN]: MODEL_CHAINS.code,
+  [GEMINI_FLASH]: [GEMINI_FLASH, GEMINI_FLASH_LITE],
+};
+
 export interface GoogleModelConfig {
   modelId: string;
   provider: GoogleGenerativeAIProvider;
+  /** Models to try, in order, if this one is overloaded or returns no usable output. */
+  fallbacks?: readonly string[];
 }
 
-/** Key selection can fail before a model stream (and its fallback) exists. */
+/**
+ * Select a key for the first model in the chain whose key pool has capacity.
+ * Key selection can fail before a model stream (and its fallback) exists.
+ */
 export const createGoogleModel = async (
-  modelId: string,
+  modelOrChain: string | readonly string[],
 ): Promise<GoogleModelConfig> => {
-  try {
-    return { modelId, provider: await createGoogleProvider(modelId) };
-  } catch (error) {
-    if (modelId !== "gemini-3.8-flash" || !isApiKeyPoolUnavailable(error)) {
-      throw error;
+  const chain =
+    typeof modelOrChain === "string"
+      ? (DEFAULT_CHAINS[modelOrChain] ?? [modelOrChain])
+      : modelOrChain;
+  for (let index = 0; ; index++) {
+    const modelId = chain[index]!;
+    const fallbacks = chain.slice(index + 1);
+    try {
+      return {
+        modelId,
+        provider: await createGoogleProvider(modelId),
+        fallbacks,
+      };
+    } catch (error) {
+      if (!fallbacks.length || !isApiKeyPoolUnavailable(error)) throw error;
+      console.warn(
+        `[Google Provider] ${modelId} key pool unavailable; switching to ${fallbacks[0]}`,
+      );
     }
-    console.warn(
-      "[Google Provider] Primary key pool unavailable; switching to gemini-3.5-flash-lite",
-    );
-    const fallbackId = "gemini-3.5-flash-lite";
-    return {
-      modelId: fallbackId,
-      provider: await createGoogleProvider(fallbackId),
-    };
   }
 };
 
