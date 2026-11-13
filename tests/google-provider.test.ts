@@ -121,3 +121,34 @@ test("exhausted keys produce a useful workflow failure message", () => {
     /rejected its credentials/,
   );
 });
+
+test("the code chain falls from Hydrogen through 3.8 Flash to Flash-Lite as pools run out", async () => {
+  const { MODEL_CHAINS } = await import("../src/lib/google-provider");
+  const exhausted = new Set(["gemini-4-hydrogen", primary]);
+  const models: string[] = [];
+  mock.method(
+    client,
+    "mutation",
+    async (_fn: unknown, args: { model: string }) => {
+      models.push(args.model);
+      if (exhausted.has(args.model)) throw unavailable(args.model);
+      return { keyIndex: 0 };
+    },
+  );
+
+  const selected = await createGoogleModel(MODEL_CHAINS.code);
+  assert.equal(selected.modelId, fallback);
+  assert.deepEqual(selected.fallbacks, []);
+  assert.deepEqual(models, ["gemini-4-hydrogen", primary, fallback]);
+});
+
+test("a healthy Hydrogen pool keeps the rest of the chain as stream fallbacks", async () => {
+  const { MODEL_CHAINS } = await import("../src/lib/google-provider");
+  mock.method(client, "mutation", async () => ({ keyIndex: 0 }));
+  const code = await createGoogleModel(MODEL_CHAINS.code);
+  assert.equal(code.modelId, "gemini-4-hydrogen");
+  assert.deepEqual(code.fallbacks, [primary, fallback]);
+  const writing = await createGoogleModel(MODEL_CHAINS.writing);
+  assert.equal(writing.modelId, primary);
+  assert.deepEqual(writing.fallbacks, ["gemini-4-hydrogen", fallback]);
+});

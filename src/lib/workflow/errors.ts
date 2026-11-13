@@ -32,6 +32,17 @@ export function isModelOverloaded(error: unknown): boolean {
   );
 }
 
+/** Google's per-model quota for this key is spent; other models have their own. */
+export function isModelQuotaExhausted(error: unknown): boolean {
+  const message = safeError(error);
+  return (
+    !isCredentialError(message) &&
+    /exceeded your current quota|quota exceeded for metric|RESOURCE_EXHAUSTED|\b429\b/i.test(
+      message,
+    )
+  );
+}
+
 export function isRetryableModelOutputError(error: unknown): boolean {
   const message = safeError(error);
   // The SDK can reject result.text before our empty-text check runs. Match the
