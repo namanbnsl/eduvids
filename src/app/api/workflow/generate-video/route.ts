@@ -31,8 +31,10 @@ import {
   downloadVideo,
   cleanupSandbox,
   readSceneDurations,
+  readPacingReport,
   type SandboxJob,
 } from "@/lib/workflow/sandbox-jobs";
+import { evaluatePacing, pacingQaMode } from "@/lib/pacing-qa";
 import { generationFailureMessage, safeError } from "@/lib/workflow/errors";
 import { getConvexClient, api } from "@/lib/convex-server";
 import { uploadImage, uploadVideo } from "@/lib/uploadthing";
@@ -547,6 +549,30 @@ export const { POST } = serve<VideoGenerationPayload>(
     if (!prepared)
       throw new WorkflowNonRetryableError("No validated render available");
 
+    // Long frozen frames and dead air are where Shorts viewers leave. The
+    // render job measured the final cut; a video that fails is still
+    // delivered to the user but kept off YouTube (PACING_QA=warn only logs).
+    const pacing = await context.run("pacing-qa", async () => {
+      const mode = pacingQaMode();
+      if (mode === "off") return null;
+      const report = await readPacingReport(prepared!.sandboxId);
+      if (!report) {
+        console.warn("[pacing-qa] report unavailable", { jobId });
+        return null;
+      }
+      const verdict = evaluatePacing(report);
+      console.info("[pacing-qa]", {
+        jobId,
+        mode,
+        ok: verdict.ok,
+        frozenShareOfOpening: verdict.frozenShareOfOpening,
+        longestFreeze: verdict.longestFreeze,
+        longestSilence: verdict.longestSilence,
+        problems: verdict.problems,
+      });
+      return { mode, ok: verdict.ok, problems: verdict.problems };
+    });
+
     const uploadUrl = await context.run("upload-video", async () => {
       const existing = await artifactStore.find(jobId, "uploadUrl");
       if (existing) return existing;
@@ -600,6 +626,13 @@ export const { POST } = serve<VideoGenerationPayload>(
         !process.env.GOOGLE_REFRESH_TOKEN
       )
         return;
+      if (pacing && !pacing.ok && pacing.mode === "block") {
+        await jobStore.setYoutubeStatus(jobId, {
+          youtubeStatus: "failed",
+          youtubeError: `Held back by the pacing check: ${pacing.problems.join("; ")}`,
+        });
+        return;
+      }
       await jobStore.setYoutubeStatus(jobId, { youtubeStatus: "pending" });
       const selectedThumbnailPair = videoTitleSet
         ? selectThumbnailPair(videoTitleSet, thumbnailPairs)

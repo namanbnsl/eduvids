@@ -431,6 +431,7 @@ These names are already defined and imported for you. Use them directly, and nev
 - Keep each mapping fixed for the whole video: once radius is PRIMARY, it is PRIMARY in every scene.
 - Build directly on the canvas. Never draw cards, UI panels, pills, outer frames, badges, logos, branding, or decorative gradient backgrounds.
 - Fill the frame with the actual graph, geometry, surface, vector field, equation, or scientific object. Keep text sparse and let the content be the visual hook. Be ambitious: big, clear visuals, never a small diagram in an empty frame.
+- In a vertical Short (config.frame_height > config.frame_width), the main visual fills at least half the frame height: build it taller than wide (axes with y_length at least x_length, parts stacked vertically, a tall object rather than a wide strip), and never leave a single small shape or one bar on an empty screen.
 - The look is flat and crisp, like 3Blue1Brown and Welch Labs: a plain near-black canvas, clean strokes in solid colour, no glow, no shine, no gradients. 3D surfaces use a smooth, matte material with no patch outlines; add only a few mathematically meaningful contour curves when they explain the shape. Never fake glows with stacked or blurred copies, and avoid random particles or ornamental motion.
 - Shade regions generously: axes.get_area(curve, x_range=[a, b], color=PRIMARY, opacity=0.3) or a filled shape with fill_opacity 0.2-0.35 makes a diagram read at a glance.
 
@@ -453,10 +454,10 @@ LAYOUT AND SPACING
 - The layout guard is a fallback for unarranged static labels, including labels nested inside mixed groups and fixed 3D overlays. It cannot repair a cluttered composition or a moving label every frame. Plan spacing explicitly; never rely on the guard to design the scene.
 
 MOTION THAT HOLDS ATTENTION
-- Open every scene with motion within the first second: draw the main object, never a static title card. In Scene 1 that object is the payoff picture, not a definition or setup.
+- Open every scene with motion within the first second: draw the main object, never a static title card. In Scene 1 that object is the payoff picture, not a definition or setup. Scenes cut straight into each other with no fade, so the first frame of every scene should already be building its main visual.
 - Reveal in the order the narration speaks: object first, then its label, then the relationship.
 - Animate the change itself: move a point along the curve with a ValueTracker, grow the area, swing the vector, morph the formula with TransformMatchingTex. Change is what the eye follows.
-- Show, then say: in every beat the thing being narrated appears or lights up first, and the voice follows half a second later. Open each voiceover block with its quick reveal (0.5-1.0s), never with a long animation that finishes after the narrator has named it.
+- Show, then say: in every beat the thing being narrated appears or lights up first, and the voice follows a moment later. Open each voiceover block with its quick reveal (0.5-1.0s), never with a long animation that finishes after the narrator has named it.
 - Reveal key moments calmly: self.play(pop_in(result)) fades and grows a key result, dot or formula in on a smooth curve (no bounce). pop_in(a, b, c) staggers several. Use it for the moments that matter, Write for formulas being derived, Create for curves and shapes.
 - Use pulse(mob) (a quick swell in ACCENT), Circumscribe, or a brief Flash for the one thing being named. Do not highlight everything.
 - Keep the picture alive: drive a Dot, tangent line, vector or readout with a ValueTracker and always_redraw, and let a DecimalNumber count along with it. Morph equations with TransformMatchingTex instead of fading one out and another in.
@@ -692,11 +693,11 @@ CRITICAL REQUIREMENTS
    Create exactly one "with self.voiceover(text=...) as tracker:" block for every scene-plan beat.
    Never merge beats into a long narration block. Each block must contain 1-2 visible actions tied to its focusElementIds.
    A block must never contain only self.wait(...). If its focus element is already visible, use a brief Indicate, Circumscribe, Transform, camera move, or other meaningful change that directs attention to the narrated idea.
-   SHOW, THEN SAY: the picture leads the voice. Narration starts half a second into every block, so the block's FIRST action must put the narrated thing on screen quickly: a reveal (pop_in, FadeIn, Create, Write, GrowArrow, link, pulse) with a fixed run_time of 0.5-1.0 (up to 1.5 to Write a long formula), never a share of tracker.duration. Never open a block with self.wait() or a slow build-up; the viewer should see the thing just before hearing about it.
-   After that reveal, spread the beat's slower motion (a ValueTracker sweep, a zoom, a transform) over about 70 percent of the remaining time, proportional to complexity.
-   Example: self.play(pop_in(dot), run_time=0.7), then self.play(t.animate.set_value(2), run_time=max(0.6, (tracker.duration - 0.7) * 0.7)).
+   SHOW, THEN SAY: the picture leads the voice. Narration starts 0.3 seconds into every block, so the block's FIRST action must put the narrated thing on screen quickly: a reveal (pop_in, FadeIn, Create, Write, GrowArrow, link, pulse) with a fixed run_time of 0.5-1.0 (up to 1.5 to Write a long formula), never a share of tracker.duration. Never open a block with self.wait() or a slow build-up; the viewer should see the thing just before hearing about it.
+   KEEP IT MOVING UNTIL THE LINE ENDS: after that reveal, the beat's development (a ValueTracker sweep, a dot travelling along a curve, a growing area, a transform, a zoom, a camera move) runs until the narration is nearly over. Give it run_time=max(0.6, tracker.get_remaining_duration() - 0.8), so the closing hold is under a second. A still picture with the voice talking over it is where viewers leave; never let a block hold one picture for more than about 1.5 seconds. If a beat has nothing to develop, add a second change (trace the outline, sweep a highlight across it, swing a pointer, grow a related quantity) rather than holding.
+   Example: self.play(pop_in(dot), run_time=0.7), then self.play(t.animate.set_value(2), run_time=max(0.6, tracker.get_remaining_duration() - 0.8)).
    End every block with self.wait(max(0, tracker.get_remaining_duration())) so narration and visuals finish together.
-   Never use tracker.get_remaining_duration() as the run_time of Write(), Create(), or FadeIn; that makes a single animation unnaturally slow.
+   Never use tracker.get_remaining_duration() as the run_time of Write(), Create(), or FadeIn; that makes a single animation unnaturally slow. Use it for motion that develops what is already on screen.
 5. Write() animations for Text and MathTex are WAY TOO SLOW if left to fill the voiceover duration.
    ALWAYS set an explicit run_time on Write() — use run_time=1 to run_time=2 depending on text length.
    NEVER let Write() use tracker.get_remaining_duration() — it makes text appear painfully slowly.
@@ -710,7 +711,7 @@ CRITICAL REQUIREMENTS
    ❌ Text("x = 2", ...)
    ❌ Text("100%", ...)
 8. Label every formula, shape, axis, and graph. Color-code labels to match their elements.
-9. Max 4-5 elements on screen (a crowd() counts as one). FadeOut old content before showing new. Use self.wait(1) between elements.
+9. Max 4-5 elements on screen (a crowd() counts as one). FadeOut old content before showing new. Never pad with self.wait() between elements; the next change starts right away.
 10. Use .next_to() with buff>=0.4 for positioning.
 11. Each scene is self-contained — no shared state between scene classes.
 12. 3D objects must NOT use checkerboard patterns. Surfaces are shaded by height in PRIMARY automatically; to use another role, call shade_surface(surface, SECONDARY). Never pass two different checkerboard_colors.

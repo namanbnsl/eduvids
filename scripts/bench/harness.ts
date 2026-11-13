@@ -96,21 +96,28 @@ async function main() {
     "soundtrack.pcm",
     "scenes.txt",
     "scene_durations.json",
+    "pacing_qa.json",
   ]) {
     await rm(`${HOME}/${entry}`, { recursive: true, force: true });
   }
   execFileSync("bash", ["-c", `rm -f ${HOME}/*-job*.* ${HOME}/postprocess.py`]);
 
   const script = await readFile(scriptPath, "utf8");
+  const variant = process.env.BENCH_VARIANT === "short" ? "short" : "video";
   const t0 = Date.now();
   const prepared = await e2b.prepareManimSandbox({
     script,
     prompt: "derivatives",
     sessionId: "bench",
-    variant: "video",
+    variant,
     palette: videoPalette("bench-job"),
     applyWatermark: true,
     skipDryRun: true,
+    // BENCH_VARIANT=short renders a vertical Short, as production does.
+    renderOptions:
+      variant === "short"
+        ? { resolution: { width: 1080, height: 1920 }, orientation: "portrait" }
+        : undefined,
   });
   timeline.prepare = (Date.now() - t0) / 1000;
 
@@ -198,7 +205,11 @@ async function main() {
     "-c",
     `grep -h eduvids-render ${HOME}/render-job-bench.log || true`,
   ]).toString();
+  const pacingPath = `${HOME}/pacing_qa.json`;
   const result = {
+    pacing: existsSync(pacingPath)
+      ? JSON.parse(await readFile(pacingPath, "utf8"))
+      : undefined,
     timeline,
     probe: JSON.parse(probe).format,
     videoBytes: video.length,

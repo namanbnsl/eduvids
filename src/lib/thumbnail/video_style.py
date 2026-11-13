@@ -130,6 +130,25 @@ config.background_color = BG
 if config.pixel_height > config.pixel_width:
     config.frame_width = 8.0
     config.frame_height = 8.0 * config.pixel_height / config.pixel_width
+
+# A Short is watched full screen on an upright phone, and in a tall frame a
+# hero fitted with the landscape cap filled a fifth of the height, leaving a
+# small diagram on black. There, the hero may grow further to fill its area,
+# and labels and captions are set larger (headings and hero formulas, already
+# large, are left alone).
+PORTRAIT = config.pixel_height > config.pixel_width
+HERO_MAX_SCALE = 3.0 if PORTRAIT else 1.6
+HERO_3D_MAX_SCALE = 2.5 if PORTRAIT else 1.5
+PORTRAIT_LABEL_BOOST = 1.2
+PORTRAIT_LABEL_LIMIT = 44
+
+
+def _label_size(size):
+    """Portrait: lift a label or caption size (below 44) by a fifth, to at most 44."""
+    if PORTRAIT and size < PORTRAIT_LABEL_LIMIT:
+        return min(PORTRAIT_LABEL_LIMIT, size * PORTRAIT_LABEL_BOOST)
+    return size
+
 # Manim's own defaults (a bare Circle is RED, Indicate is YELLOW, plots are
 # YELLOW, axes are WHITE) bypass the names above, so retune them at draw
 # time: any exact Manim named colour is drawn as its house tone.
@@ -619,7 +638,7 @@ def _house_text(base):
                 if base is manim.Text:
                     text = sentence_case(text)
             kwargs["font"] = FONT
-            size = kwargs.get("font_size") or manim.DEFAULT_FONT_SIZE
+            size = _label_size(kwargs.get("font_size") or manim.DEFAULT_FONT_SIZE)
             weight = str(kwargs.get("weight") or "").upper()
             # CMU Serif ships Regular and Bold. Like 3Blue1Brown, headings stay
             # regular; bold only when the script asks for it.
@@ -780,6 +799,8 @@ if not getattr(_tex_to_svg_file, "__eduvids_fallback__", False):
 def _house_tex(base):
     class HouseTex(base):
         def __init__(self, *args, **kwargs):
+            if kwargs.get("font_size"):
+                kwargs["font_size"] = _label_size(kwargs["font_size"])
             super().__init__(*args, **kwargs)
             _fit_frame(self)
 
@@ -835,9 +856,10 @@ def content_box(above=None, below=None):
     return np.array([0.0, (top + bottom) / 2, 0.0]), width, height
 
 
-def place_in_content(mob, above=None, fill=0.86, max_scale=1.6, below=None):
+def place_in_content(mob, above=None, fill=0.86, max_scale=None, below=None):
     """Scale the main visual to fill the content area and centre it there."""
     center, width, height = content_box(above, below)
+    max_scale = HERO_MAX_SCALE if max_scale is None else max_scale
     if mob.width > 0 and mob.height > 0:
         factor = min(width * fill / mob.width, height * fill / mob.height, max_scale)
         mob.scale(factor)
@@ -885,7 +907,7 @@ def layout_scene(visual, title=None, notes=None, side=None, gap=0.7):
         for mob, w, h, point in ((visual, hero_width, hero_height, hero_center),
                                   (side, side_width, side_height, side_center)):
             if mob.width and mob.height:
-                mob.scale(min(w * 0.92 / mob.width, h * 0.90 / mob.height, 1.6))
+                mob.scale(min(w * 0.92 / mob.width, h * 0.90 / mob.height, HERO_MAX_SCALE))
             mob.move_to(point)
         lock_layout(side)
     # The hero's annotations were included in its bounds and keep their anchors.
@@ -933,7 +955,7 @@ def place_3d_in_content(scene, mob, above=None, below=None, orbit=0.0, fill=0.88
             lo = np.min([b[0] for b in bounds], axis=0)
             hi = np.max([b[1] for b in bounds], axis=0)
             factor = min(width * fill / max(hi[0] - lo[0], 1e-6),
-                         height * fill / max(hi[1] - lo[1], 1e-6), 1.5)
+                         height * fill / max(hi[1] - lo[1], 1e-6), HERO_3D_MAX_SCALE)
             # Smaller passes converge despite perspective changing with scale.
             if abs(factor - 1) < 0.01:
                 break
@@ -1555,6 +1577,113 @@ if _validate_run_time is not None and not getattr(manim.Scene.wait, "__eduvids_z
     manim.Scene.validate_run_time = classmethod(_one_frame_at_least)
 
 # ---------------------------------------------------------------------------
+# No frozen holds. A beat ends with self.wait(tracker.get_remaining_duration());
+# when its animations finish early, that hold was one still frame for the rest
+# of the line (a lone shape on black for ten seconds while the voice went on),
+# and viewers left at exactly those freezes. A hold longer than HOLD_CAP with
+# nothing else moving now breathes instead: the content (not the title or
+# caption lanes) swells by DRIFT and floats by DRIFT_SHIFT, and back, at a
+# steady pace, so no stretch of picture stays still for more than a moment.
+# (The swell alone barely moves a small shape near the centre; the float moves
+# every stroke by more than its width.) It ends exactly where it began,
+# so the script's layout is untouched afterwards. Scale is computed from the
+# hold's elapsed time, not per frame, so segment renders that skip ahead (see
+# EDUVIDS_SEGMENT below) land on the same frames.
+# ---------------------------------------------------------------------------
+
+HOLD_CAP = 1.5       # longest still frame a closing hold may show
+DRIFT = 0.035        # how far the content swells, as a fraction of its size
+DRIFT_SHIFT = 0.12   # how far it floats, in scene units (~16 px at 1080 wide)
+# Diagonal (up and to the right), so horizontal and vertical lines both move
+# across themselves; a line drifting along its own length looks unchanged.
+_DRIFT_DIRECTION = np.array([0.6, 0.8, 0.0])
+DRIFT_PERIOD = 3.0   # seconds for one swell out and back
+
+
+def _hold_targets(scene):
+    fixed = getattr(scene.camera, "fixed_in_frame_mobjects", ()) or ()
+    fixed = {id(mob) for mob in fixed}
+    targets = []
+    for mob in scene.mobjects:
+        if getattr(mob, "_eduvids_header", False) or getattr(mob, "_eduvids_overlay", False):
+            continue
+        if id(mob) in fixed or isinstance(mob, manim.ValueTracker):
+            continue
+        if not any(part.has_points() for part in mob.get_family()):
+            continue
+        targets.append(mob)
+    return targets
+
+
+def _already_moving(scene):
+    """What Scene.should_update_mobjects checks before a wait (it can only be
+    called while that wait plays): such a hold already renders motion."""
+    return bool(
+        getattr(scene, "always_update_mobjects", False)
+        or getattr(scene, "updaters", None)
+        or any(mob.has_time_based_updater() for mob in scene.get_mobject_family_members())
+    )
+
+
+def _breath(elapsed, duration):
+    """How far into its swell a hold is at ``elapsed`` seconds, 0 to 1: out
+    and back in whole cycles, so the hold ends exactly where it began. Linear
+    (not eased), so no slow turning point reads as a pause."""
+    cycles = max(1, round(duration / DRIFT_PERIOD))
+    phase = (min(max(elapsed / duration, 0.0), 1.0) * cycles) % 1.0
+    return 1 - abs(2 * phase - 1)
+
+
+if not getattr(manim.Scene.wait, "__eduvids_breathe__", False):
+    _still_wait = manim.Scene.wait
+
+    def _breathing_wait(self, duration=manim.DEFAULT_WAIT_TIME, stop_condition=None, frozen_frame=None):
+        if (
+            duration <= HOLD_CAP
+            or stop_condition is not None
+            or frozen_frame is not None
+            or _already_moving(self)
+        ):
+            return _still_wait(self, duration, stop_condition=stop_condition, frozen_frame=frozen_frame)
+        targets = _hold_targets(self)
+        if not targets:
+            return _still_wait(self, duration)
+        about = manim.Group(*targets).get_center()
+        state = {"elapsed": 0.0, "level": 0.0}
+
+        def move_to_level(level):
+            # Content at level l is scaled by 1 + DRIFT*l about ``about`` and
+            # then shifted along _DRIFT_DIRECTION by DRIFT_SHIFT*l; go from the current level to
+            # the new one without accumulating error.
+            old = state["level"]
+            ratio = (1 + DRIFT * level) / (1 + DRIFT * old)
+            pivot = about + _DRIFT_DIRECTION * DRIFT_SHIFT * old
+            for mob in targets:
+                mob.scale(ratio, about_point=pivot)
+                mob.shift(_DRIFT_DIRECTION * DRIFT_SHIFT * (level - old))
+            state["level"] = level
+
+        def breathe(_mob, dt):
+            state["elapsed"] += dt
+            move_to_level(_breath(state["elapsed"], duration))
+
+        # The updater sits on the first target: Cairo redraws only mobjects
+        # from the first one with an updater onwards and paints the rest into
+        # a cached background, so an updater on a separate clock would move
+        # the content without ever redrawing it.
+        targets[0].add_updater(breathe)
+        try:
+            return _still_wait(self, duration)
+        finally:
+            targets[0].remove_updater(breathe)
+            if state["level"]:
+                move_to_level(0.0)
+
+    _breathing_wait.__eduvids_breathe__ = True
+    _breathing_wait.__eduvids_zero__ = getattr(_still_wait, "__eduvids_zero__", False)
+    manim.Scene.wait = _breathing_wait
+
+# ---------------------------------------------------------------------------
 # Encoding: retain thin typography and gradients in Manim's intermediate
 # movies. PyAV opens the codec lazily on its first frame, so set its quality
 # after the stream is created and before any frame is written.
@@ -1844,7 +1973,10 @@ if not getattr(_renderer_play, "__eduvids_release__", False):
 # the whole line and the next beat never talks over this one.
 # ---------------------------------------------------------------------------
 
-NARRATION_LEAD = 0.5
+# 0.3 s: long enough for the reveal to land first, short enough that the
+# silence between lines (and between scenes, which now cut without a fade)
+# never reads as dead air.
+NARRATION_LEAD = 0.3
 
 try:
     from manim_voiceover import VoiceoverScene as _VoiceoverScene
