@@ -6,11 +6,6 @@ import {
   WATERMARK_FONT_PYTHON,
   WATERMARK_STYLE,
 } from "@/lib/video-style";
-import {
-  PACING_QA_FILTERS,
-  parsePacingReport,
-  type PacingReport,
-} from "@/lib/pacing-qa";
 
 export const SANDBOX_JOB_TIMEOUT_SECONDS = 1_800;
 export const SANDBOX_POLL_WINDOW_MS = 150_000;
@@ -219,7 +214,6 @@ export async function startRenderJob(
 
 // Written next to the script by postprocessing (the workdir is /home/user).
 export const SCENE_DURATIONS_PATH = "/home/user/scene_durations.json";
-export const PACING_QA_PATH = "/home/user/pacing_qa.json";
 
 // Runs entirely in E2B; neither ffmpeg nor its retries occupy a Vercel request.
 export function buildPostprocessScript(prepared: PreparedSandboxState): string {
@@ -314,34 +308,6 @@ else:
 args += ['-c:a', 'aac', '-b:a', '128k', '-shortest', '-movflags', '+faststart', str(output)]
 run(args)
 duration(output)
-# Pacing check (pacing-qa.ts decides): frozen frames and silences in the
-# final cut, one decoding pass. It never fails the job; a missing report only
-# skips the check.
-def pacing_report(path):
-    total = duration(path)
-    log = subprocess.run(['ffmpeg', '-hide_banner', '-nostats', '-i', str(path), '-map', '0:v:0', '-map', '0:a:0?', '-vf', ${JSON.stringify(PACING_QA_FILTERS.video)}, '-af', ${JSON.stringify(PACING_QA_FILTERS.audio)}, '-f', 'null', '-'], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=900).stderr.decode(errors='replace')
-    def runs(kind):
-        found, start = [], None
-        for line in log.splitlines():
-            for edge in ('start', 'end'):
-                token = kind + '_' + edge + ': '
-                if token in line:
-                    value = float(line.split(token)[1].split()[0])
-                    if edge == 'start':
-                        start = value
-                    elif start is not None:
-                        found.append([start, value])
-                        start = None
-        if start is not None:  # still frozen or silent when the video ends
-            found.append([start, total])
-        return found
-    return {'duration': total, 'freezes': runs('freeze'), 'silences': runs('silence')}
-try:
-    report = pacing_report(output)
-except Exception as error:
-    report = {'error': str(error)[:500]}
-(workdir / 'pacing_qa.json').write_text(json.dumps(report))
-print('pacing:', json.dumps(report)[:2000], flush=True)
 `;
 }
 
@@ -360,17 +326,6 @@ export async function cleanupSandbox(sandboxId: string): Promise<void> {
 }
 
 export type SceneDuration = { scene: string; seconds: number };
-
-export async function readPacingReport(
-  sandboxId: string,
-): Promise<PacingReport | null> {
-  const sandbox = await connectSandbox(sandboxId);
-  try {
-    return parsePacingReport(await sandbox.files.read(PACING_QA_PATH));
-  } catch {
-    return null;
-  }
-}
 
 export async function readSceneDurations(
   sandboxId: string,

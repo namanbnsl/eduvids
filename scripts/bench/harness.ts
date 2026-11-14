@@ -96,7 +96,6 @@ async function main() {
     "soundtrack.pcm",
     "scenes.txt",
     "scene_durations.json",
-    "pacing_qa.json",
   ]) {
     await rm(`${HOME}/${entry}`, { recursive: true, force: true });
   }
@@ -205,11 +204,7 @@ async function main() {
     "-c",
     `grep -h eduvids-render ${HOME}/render-job-bench.log || true`,
   ]).toString();
-  const pacingPath = `${HOME}/pacing_qa.json`;
   const result = {
-    pacing: existsSync(pacingPath)
-      ? JSON.parse(await readFile(pacingPath, "utf8"))
-      : undefined,
     timeline,
     probe: JSON.parse(probe).format,
     videoBytes: video.length,
