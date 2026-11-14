@@ -7,7 +7,7 @@ Every video renders in an E2B sandbox built from this template. It holds:
 - XeLaTeX, dvisvgm and the TeX Live packages formulas need
 - ffmpeg and SoX
 
-The house style (`src/lib/thumbnail/video_style.py`) and the render driver are
+The house style (`src/lib/video-render/video_style.py`) and the render driver are
 written into each sandbox at render time, so changing them needs no rebuild.
 
 Versions are pinned. The house style hooks into Manim internals that change
@@ -35,12 +35,9 @@ test it, then change the default.
 
 Install the same versions in a virtualenv (`pip install manim==0.22.0
 manim-voiceover==0.4.0 gTTS==2.5.4`, plus the apt packages in `template.ts`),
-put it first on `PATH` and run:
-
-- `npm test`: the Manim tests render real scenes, split scenes and narration
-  through the house style; they skip when Manim is not installed.
-- `scripts/bench`: the production prepare, render driver and postprocess on a
-  two-minute sample video (see `scripts/bench/README.md`).
+put it first on `PATH` and run `npm test`. The Manim tests render real
+scenes, split scenes and narration through the house style; they skip when
+Manim is not installed.
 
 ## History
 

@@ -28,7 +28,6 @@ import {
 } from "../src/lib/llm";
 import {
   injectEduvidsCallout,
-  injectSceneFadeOut,
   renderThumbnailCandidates,
 } from "../src/lib/e2b";
 import {
@@ -803,7 +802,7 @@ class Last(Scene):
   }
 });
 
-test("Shorts preserve the final demonstration without an injected card or final fade", () => {
+test("Shorts preserve the final demonstration without an injected end card", () => {
   const source = `class First(Scene):
     def construct(self):
         self.wait(1)
@@ -811,9 +810,6 @@ class Last(Scene):
     def construct(self):
         self.add(result)
         self.wait(1)`;
-  const withTransitions = injectSceneFadeOut(source, true);
-  assert.match(withTransitions.split("class Last")[0]!, /FadeOut/);
-  assert.doesNotMatch(withTransitions.split("class Last")[1]!, /FadeOut/);
   for (const previous of [
     undefined,
     {
@@ -822,15 +818,20 @@ class Last(Scene):
       watchUrl: "https://www.youtube.com/watch?v=previous123",
     },
   ]) {
-    assert.equal(
-      injectEduvidsCallout(withTransitions, previous, "short"),
-      withTransitions,
-    );
+    assert.equal(injectEduvidsCallout(source, previous, "short"), source);
   }
-  assert.equal(injectSceneFadeOut(withTransitions, true), withTransitions);
 });
 
-test("scene fade-out and outro land after construct's last statement, not inside it", async () => {
+test("scenes cut straight into the next one, with no injected fade to black", async () => {
+  const e2bSource = await readFile(join(process.cwd(), "src/lib/e2b.ts"), "utf8");
+  // The old per-scene FadeOut plus a 0.25 s hold left about 2 s of silence
+  // and black between scenes, and viewers left at those gaps.
+  assert.doesNotMatch(e2bSource, /SCENE_FADE_OUT/);
+  // The end card clears the last scene in well under a second.
+  assert.match(e2bSource, /FadeOut\(mob\) for mob in existing_mobjects\], run_time=0\.4\)/);
+});
+
+test("the outro lands after construct's last statement, not inside it", async () => {
   // Valid Python that continues a call, a string or a line at a shallower
   // indent than construct's body; the injectors once read those lines as the
   // end of construct and spliced their code into the open call.
@@ -855,11 +856,11 @@ test("scene fade-out and outro land after construct's last statement, not inside
         ...tail,
         "",
       ].join("\n");
-      const enhanced = injectEduvidsCallout(injectSceneFadeOut(source));
+      const enhanced = injectEduvidsCallout(source);
       const script = join(folder, `case${index}.py`);
       await writeFile(script, enhanced);
-      // Each construct still holds its own statements, then the fade-out
-      // (ending in self.wait(0.25)); the last one then plays the outro.
+      // Each construct still holds its own statements; the last one then
+      // plays the outro.
       const { stdout } = await exec("python3", [
         "-c",
         `import ast, sys
@@ -870,8 +871,8 @@ for cls in tree.body[1:]:
         script,
       ]);
       const [first, last] = stdout.trim().split("\n");
-      assert.match(first!, /^First .*'If', 'Expr'\] self\.wait\(0\.25\)$/, `case ${index}\n${enhanced}`);
-      assert.match(last!, /^Last .*'If', 'Expr', .*'With'\] with self\.voiceover/, `case ${index}\n${enhanced}`);
+      assert.doesNotMatch(first!, /'If'/, `case ${index}\n${enhanced}`);
+      assert.match(last!, /^Last .*'If', 'If', 'With'\] with self\.voiceover/, `case ${index}\n${enhanced}`);
     }
   } finally {
     await rm(folder, { recursive: true, force: true });
@@ -1122,7 +1123,7 @@ test("thumbnail renderer produces verified 1280x720 PNGs and recovers in safe mo
         "--out-dir",
         join(folder, "out"),
         "--font-dir",
-        join(process.cwd(), "src/lib/thumbnail/fonts"),
+        join(process.cwd(), "src/lib/fonts"),
         "--timeout",
         "240",
       ],
@@ -1349,7 +1350,7 @@ test("all render paths use 1080p at 30fps and preserve portrait dimensions", () 
 test("house encoding supports legacy FFmpeg and PyAV Manim writers", async () => {
   await exec("python3", [
     join(process.cwd(), "tests/video-encoding.py"),
-    join(process.cwd(), "src/lib/thumbnail/video_style.py"),
+    join(process.cwd(), "src/lib/video-render/video_style.py"),
   ]);
 });
 
@@ -1488,7 +1489,7 @@ test("storytelling helpers zoom, crowd, spotlight and draw props correctly in re
 
 test("every storytelling helper the Manim prompt names is exported by the house style", async () => {
   const source = await readFile(
-    join(process.cwd(), "src/lib/thumbnail/video_style.py"),
+    join(process.cwd(), "src/lib/video-render/video_style.py"),
     "utf8",
   );
   const exported = new Set(
@@ -1835,7 +1836,7 @@ test("render driver finds narration and formulas, and plans the costliest scenes
   const { stdout } = await exec("python3", [
     "-c",
     `import json, sys
-sys.path.insert(0, "src/lib/thumbnail")
+sys.path.insert(0, "src/lib/video-render")
 import render_driver as d
 scenes = ["A", "B", "C", "D"]
 narration, formulas, weights = d.analyse(json.loads(sys.argv[1]), scenes)

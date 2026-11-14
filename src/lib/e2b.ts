@@ -28,7 +28,6 @@ const MAX_COMMAND_BUFFER_CHARS = 20000;
 let latexEnvironmentVerified = false;
 
 const CTA_MARKER = "# __EDUVIDS_CTA_INJECTED__";
-const SCENE_FADE_MARKER = "# __EDUVIDS_SCENE_FADE_OUT__";
 
 /**
  * For each line, whether a new Python statement starts there: not inside
@@ -190,10 +189,10 @@ export function injectEduvidsCallout(
 
   const snippet = [
     `${bodyIndent}${CTA_MARKER}`,
-    `${bodyIndent}# Clear scene and prepare for CTA (Call-to-Action)`,
+    `${bodyIndent}# Clear the scene quickly (a long fade reads as dead air) and show the CTA`,
     `${bodyIndent}existing_mobjects = list(self.mobjects)`,
     `${bodyIndent}if existing_mobjects:`,
-    `${bodyIndent}    self.play(*[FadeOut(mob) for mob in existing_mobjects])`,
+    `${bodyIndent}    self.play(*[FadeOut(mob) for mob in existing_mobjects], run_time=0.4)`,
     `${bodyIndent}# End camera motion and reveal the end card as a screen overlay`,
     `${bodyIndent}if isinstance(self, ThreeDScene):`,
     `${bodyIndent}    self.stop_ambient_camera_rotation()`,
@@ -208,85 +207,6 @@ export function injectEduvidsCallout(
   const insertionLines = insertionNeedsBlankLine ? ["", ...snippet] : snippet;
 
   lines.splice(insertionIndex, 0, ...insertionLines);
-
-  return lines.join("\n");
-}
-
-export function injectSceneFadeOut(
-  script: string,
-  preserveFinalFrame = false,
-): string {
-  const lines = script.split("\n");
-  const constructPattern = /^\s*def\s+construct\s*\(\s*self\s*\)\s*:/;
-
-  type ConstructBlock = {
-    constructIndex: number;
-    bodyIndent: string;
-    endIndex: number;
-  };
-
-  const constructs: ConstructBlock[] = [];
-  const starts = statementStarts(lines);
-
-  for (let i = 0; i < lines.length; i++) {
-    if (!starts[i] || !constructPattern.test(lines[i])) continue;
-
-    let bodyIndent = "        ";
-    for (let j = i + 1; j < lines.length; j++) {
-      const trimmed = lines[j]?.trim() ?? "";
-      if (!trimmed.length) continue;
-      const indentMatch = lines[j]?.match(/^\s+/);
-      if (indentMatch && indentMatch[0]) {
-        bodyIndent = indentMatch[0];
-      } else {
-        const defIndent = lines[i]?.match(/^\s*/)?.[0] ?? "";
-        bodyIndent = `${defIndent}    `;
-      }
-      break;
-    }
-
-    const endIndex = blockEnd(lines, starts, i, bodyIndent);
-    constructs.push({ constructIndex: i, bodyIndent, endIndex });
-  }
-
-  if (!constructs.length) {
-    return script;
-  }
-
-  const snippetForIndent = (indent: string) => [
-    `${indent}${SCENE_FADE_MARKER}`,
-    `${indent}existing_mobjects = list(self.mobjects)`,
-    `${indent}if existing_mobjects:`,
-    `${indent}    self.play(*[FadeOut(mob) for mob in existing_mobjects])`,
-    `${indent}self.wait(0.25)`,
-  ];
-
-  const inserts: { index: number; lines: string[] }[] = [];
-
-  for (const block of constructs) {
-    if (preserveFinalFrame && block === constructs.at(-1)) continue;
-    const alreadyInjected = lines
-      .slice(block.constructIndex + 1, block.endIndex)
-      .some((line) => line.includes(SCENE_FADE_MARKER));
-    if (alreadyInjected) continue;
-
-    const insertionNeedsBlankLine =
-      block.endIndex > block.constructIndex + 1 &&
-      (lines[block.endIndex - 1]?.trim()?.length ?? 0) > 0;
-    const snippet = snippetForIndent(block.bodyIndent);
-    const insertionLines = insertionNeedsBlankLine ? ["", ...snippet] : snippet;
-    inserts.push({ index: block.endIndex, lines: insertionLines });
-  }
-
-  if (!inserts.length) {
-    return script;
-  }
-
-  inserts
-    .sort((a, b) => b.index - a.index)
-    .forEach((insert) => {
-      lines.splice(insert.index, 0, ...insert.lines);
-    });
 
   return lines.join("\n");
 }
@@ -1130,7 +1050,6 @@ export async function startManimRender({
 
     let enhancedScript = heuristicFixedScript;
     enhancedScript = applyVideoStyle(enhancedScript);
-    enhancedScript = injectSceneFadeOut(enhancedScript, variant === "short");
     enhancedScript = injectEduvidsCallout(
       enhancedScript,
       previousVideo,
@@ -1722,7 +1641,6 @@ export async function prepareManimSandbox({
 
     let enhancedScript = heuristicFixedScript;
     enhancedScript = applyVideoStyle(enhancedScript);
-    enhancedScript = injectSceneFadeOut(enhancedScript, variant === "short");
     enhancedScript = injectEduvidsCallout(
       enhancedScript,
       previousVideo,

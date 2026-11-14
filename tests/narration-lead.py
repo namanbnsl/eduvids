@@ -7,17 +7,18 @@ python3 tests/narration-lead.py <workdir>   (needs Manim, manim-voiceover, ffmpe
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "src/lib/thumbnail"))
+sys.path.insert(0, str(REPO / "src/lib/video-render"))
 import render_driver as driver  # noqa: E402
 
 WORK = Path(sys.argv.pop(1))
-STYLE = (REPO / "src/lib/thumbnail/video_style.py").read_text()
+STYLE = (REPO / "src/lib/video-render/video_style.py").read_text()
 RATE = 16000
 
 SCRIPT = '''
@@ -95,7 +96,7 @@ class NarrationLeadTests(unittest.TestCase):
         (WORK / "eduvids_style.py").write_text(style)
         fonts = WORK / "eduvids-fonts"
         if not fonts.exists():
-            fonts.symlink_to(REPO / "src/lib/thumbnail/fonts")
+            fonts.symlink_to(REPO / "src/lib/fonts")
         (WORK / "script.py").write_text(SCRIPT)
         env = dict(os.environ, PYTHONPATH=f"{WORK}:{os.environ.get('PYTHONPATH', '')}")
         subprocess.run(["manim", str(WORK / "script.py"), "Lead", "--media_dir", str(WORK / "media"), *FLAGS],
@@ -103,15 +104,15 @@ class NarrationLeadTests(unittest.TestCase):
                        stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         cls.movie = driver.scene_output(WORK / "media", "Lead")
         cls.spans = json.loads((WORK / "spans.json").read_text())
-        cls.lead = 0.5
+        cls.lead = float(re.search(r"^NARRATION_LEAD = ([0-9.]+)", STYLE, re.M).group(1))
         cls.first = clip_seconds("A circle appears on the screen right here")
         cls.second = clip_seconds("And then a square joins it")
 
     def test_each_line_starts_after_its_picture(self):
         starts = onsets(audio(self.movie))
         self.assertEqual(len(starts), 2, starts)
-        # The first line waits for the circle's fade; the second starts half a
-        # second after its own block, which begins once the first line ends.
+        # The first line waits for the circle's fade; the second starts the
+        # lead after its own block, which begins once the first line ends.
         self.assertAlmostEqual(starts[0], self.lead, delta=0.02)
         self.assertAlmostEqual(starts[1], self.lead + self.first + self.lead, delta=0.05)
 
@@ -133,7 +134,24 @@ class NarrationLeadTests(unittest.TestCase):
     def test_subtitles_follow_the_voice(self):
         srt = self.movie.with_suffix(".srt").read_text()
         first = srt.split("\n")[1]
-        self.assertTrue(first.startswith("00:00:00,500"), srt)
+        self.assertTrue(first.startswith(f"00:00:00,{round(self.lead * 1000):03d}"), srt)
+
+    def test_a_long_closing_hold_keeps_moving_and_ends_where_it_began(self):
+        # The first block holds about 2.5 s after its 0.7 s fade, more than
+        # HOLD_CAP: the circle drifts instead of freezing, and is back in
+        # place when the hold ends.
+        hold_start, hold_end = 0.8, self.lead + self.first
+        frames = [frame(self.movie, t) for t in (hold_start, (hold_start + hold_end) / 2, hold_end - 0.05)]
+        self.assertGreater(abs(frames[1] - frames[0]).mean(), 0.1)
+        self.assertLess(abs(frames[2] - frames[0]).mean(), abs(frames[1] - frames[0]).mean() / 3)
+
+
+def frame(path, seconds):
+    import numpy as np
+
+    out = subprocess.check_output(["ffmpeg", "-v", "error", "-ss", str(seconds), "-i", str(path),
+                                   "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", "-"])
+    return np.frombuffer(out, dtype=np.uint8).astype(int)
 
 
 if __name__ == "__main__":

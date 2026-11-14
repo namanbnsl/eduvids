@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://eduvids.app"><img src="docs/readme/banner.jpg" alt="eduvids" width="100%"></a>
+  <a href="https://eduvids.app"><img src="assets/readme/banner.jpg" alt="eduvids" width="100%"></a>
 </p>
 
 <p align="center">
@@ -16,14 +16,14 @@
 
 <table>
   <tr>
-    <td><img src="docs/readme/atom.gif" alt="How small is an atom?"></td>
-    <td><img src="docs/readme/equation.gif" alt="Solving is balancing"></td>
-    <td><img src="docs/readme/pendulum.gif" alt="What sets the swing"></td>
+    <td><img src="assets/readme/atom.gif" alt="How small is an atom?"></td>
+    <td><img src="assets/readme/equation.gif" alt="Solving is balancing"></td>
+    <td><img src="assets/readme/pendulum.gif" alt="What sets the swing"></td>
   </tr>
   <tr>
-    <td><img src="docs/readme/pythagoras.gif" alt="Three squares, one triangle"></td>
-    <td><img src="docs/readme/search.gif" alt="Halve it every time"></td>
-    <td><img src="docs/readme/bayes.gif" alt="Ninety-nine percent accurate"></td>
+    <td><img src="assets/readme/pythagoras.gif" alt="Three squares, one triangle"></td>
+    <td><img src="assets/readme/search.gif" alt="Halve it every time"></td>
+    <td><img src="assets/readme/bayes.gif" alt="Ninety-nine percent accurate"></td>
   </tr>
 </table>
 
@@ -94,15 +94,6 @@ Open [localhost:3000](http://localhost:3000).
 Create an app in the X developer console and add its keys to `.env`.
 
 </details>
-
-## How it looks, and why
-
-The design notes live in [`docs/`](docs), each with before/after renders and the scripts to reproduce them:
-
-- [Visual storytelling](docs/visual-storytelling) — show the idea, not a slide about it
-- [Video quality](docs/video-quality) — composition, labels, 3D
-- [Thumbnail layout](docs/thumbnail-layout)
-- [Render performance](docs/render-performance)
 
 ## Contributing
 

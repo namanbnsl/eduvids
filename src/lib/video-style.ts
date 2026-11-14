@@ -8,7 +8,7 @@ import {
 } from "./youtube-thumbnail";
 
 /**
- * Videos share their thumbnail's look: `thumbnail/video_style.py` sets the
+ * Videos share their thumbnail's look: `video-render/video_style.py` sets the
  * canvas, Computer Modern text and math (CMU Serif, Latin Modern Math), and the
  * per-video palette.
  * It is installed into the render sandbox as the `eduvids_style` module and
@@ -127,7 +127,7 @@ export async function loadVideoStyleAssets(
   palette: ThumbnailPalette,
   { watermark = false }: { watermark?: boolean } = {},
 ): Promise<VideoStyleAssets> {
-  const dir = join(process.cwd(), "src/lib/thumbnail");
+  const dir = join(process.cwd(), "src/lib/video-render");
   sourcesPromise ??= Promise.all([
     readFile(join(dir, "video_style.py"), "utf8"),
     readFile(join(dir, "render_driver.py"), "utf8"),
