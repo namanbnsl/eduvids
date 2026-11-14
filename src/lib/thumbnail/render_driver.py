@@ -42,7 +42,7 @@ import time
 import traceback
 from pathlib import Path
 
-# Measured on the sample video (scripts/bench): driver, render server and
+# Measured on a two-minute sample video: driver, render server and
 # shared imports take ~180 MB; each render forked from the server adds ~210 MB
 # more (x264 without B-frames, a 4-frame queue). Budgets carry ~20% headroom;
 # a render the kernel kills anyway is retried alone.
