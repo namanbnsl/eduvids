@@ -7,7 +7,7 @@ Every video renders in an E2B sandbox built from this template. It holds:
 - XeLaTeX, dvisvgm and the TeX Live packages formulas need
 - ffmpeg and SoX
 
-The house style (`src/lib/thumbnail/video_style.py`) and the render driver are
+The house style (`src/lib/video-render/video_style.py`) and the render driver are
 written into each sandbox at render time, so changing them needs no rebuild.
 
 Versions are pinned. The house style hooks into Manim internals that change

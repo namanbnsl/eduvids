@@ -17,7 +17,7 @@ with tempfile.TemporaryDirectory(prefix="thumbnail-layout-") as folder:
     config.verbosity = "ERROR"
     config.media_dir = folder
     Path(folder, "Tex").mkdir()
-    fonts = str(REPO / "src/lib/thumbnail/fonts")
+    fonts = str(REPO / "src/lib/fonts")
     cool, warm = r.PALETTES["teal-amber"]
     ts = r.Typesetter(fonts, cool, warm, region_w=r.u(528))
     equation = r.hero_equation({"notation": r"P(A)=\hl{x}"}, cool, warm, ts, False)

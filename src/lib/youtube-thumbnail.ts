@@ -55,6 +55,8 @@ export interface ThumbnailSpec {
 }
 
 const THUMBNAIL_DIR = join(process.cwd(), "src/lib/thumbnail");
+// Shared with the video house style (see video-style.ts).
+const FONT_DIR = join(process.cwd(), "src/lib/fonts");
 
 export const THUMBNAIL_FONT_FILES = [
   "cmunrm.otf",
@@ -262,9 +264,7 @@ export function loadThumbnailAssets(): Promise<ThumbnailAssets> {
     fonts: await Promise.all(
       THUMBNAIL_FONT_FILES.map(async (name) => ({
         name,
-        data: new Uint8Array(
-          await readFile(join(THUMBNAIL_DIR, "fonts", name)),
-        ),
+        data: new Uint8Array(await readFile(join(FONT_DIR, name))),
       })),
     ),
   }))().catch((error) => {

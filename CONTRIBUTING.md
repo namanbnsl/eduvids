@@ -35,7 +35,10 @@ You don't need every service to work on most things. UI changes and many prompt 
 | `src/app` | Next.js routes: the app, marketing pages, and the `chat`, `jobs` and `workflow` API routes |
 | `src/lib/workflow` | The render workflow: sandbox jobs, model fallback, error handling |
 | `src/prompt.ts` | The prompts that plan lessons and write Manim code |
-| `src/lib/video-style.ts`, `src/lib/thumbnail` | The house style (palette, fonts, layout helpers) and thumbnail rendering |
+| `src/lib/video-render` | Python that runs in the render sandbox: `video_style.py` (the house style every generated scene imports: palette, text, layout helpers, motion and timing patches) and `render_driver.py` (renders scenes in parallel) |
+| `src/lib/video-style.ts` | Loads the house style and render driver and installs them in the sandbox |
+| `src/lib/thumbnail`, `src/lib/youtube-thumbnail.ts` | The thumbnail renderer (`renderer.py`) and the code that plans and uploads thumbnails |
+| `src/lib/fonts` | Computer Modern fonts shared by videos and thumbnails |
 | `src/lib/e2b.ts` | Talking to the render sandbox |
 | `convex` | Database schema and functions for chats and videos |
 | `sandbox-templates/eduvids-render` | The E2B template that renders videos. The other folders are older templates |

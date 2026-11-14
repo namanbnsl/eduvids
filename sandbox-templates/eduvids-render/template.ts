@@ -5,7 +5,7 @@ import { Template } from "e2b";
 // (Deepgram / OpenRouter over HTTP, gTTS as the fallback).
 //
 // Versions are pinned so a rebuild installs exactly what was tested:
-// src/lib/thumbnail/video_style.py hooks into Manim internals that change
+// src/lib/video-render/video_style.py hooks into Manim internals that change
 // between releases (0.22 rewrote the movie writer). Bump them together and
 // run the render tests (see README.md) before switching the app over.
 //

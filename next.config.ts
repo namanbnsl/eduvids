@@ -2,15 +2,15 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["@resvg/resvg-js"],
-  // The thumbnail renderer, video style module and fonts are read at runtime
-  // and uploaded to the render sandbox, so they must ship with the workflow.
+  // The video house style, render driver, thumbnail renderer and fonts are
+  // read at runtime and uploaded to the render sandbox, so they must ship
+  // with the workflow.
   outputFileTracingIncludes: {
     "/api/workflow/generate-video": [
+      "./src/lib/video-render/video_style.py",
+      "./src/lib/video-render/render_driver.py",
       "./src/lib/thumbnail/renderer.py",
-      "./src/lib/thumbnail/video_style.py",
-      "./src/lib/thumbnail/render_driver.py",
-      "./src/lib/thumbnail/frame_picker.py",
-      "./src/lib/thumbnail/fonts/*",
+      "./src/lib/fonts/*",
     ],
   },
   images: {

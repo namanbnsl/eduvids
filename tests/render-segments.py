@@ -10,11 +10,11 @@ import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "src/lib/thumbnail"))
+sys.path.insert(0, str(REPO / "src/lib/video-render"))
 import render_driver as driver  # noqa: E402
 
 WORK = Path(sys.argv.pop(1))
-STYLE = (REPO / "src/lib/thumbnail/video_style.py").read_text()
+STYLE = (REPO / "src/lib/video-render/video_style.py").read_text()
 
 SCRIPT = '''
 import wave
@@ -125,7 +125,7 @@ class SegmentTests(unittest.TestCase):
         (WORK / "eduvids_style.py").write_text(style)
         fonts = WORK / "eduvids-fonts"
         if not fonts.exists():
-            fonts.symlink_to(REPO / "src/lib/thumbnail/fonts")
+            fonts.symlink_to(REPO / "src/lib/fonts")
         (WORK / "script.py").write_text(SCRIPT)
         cls.env = dict(os.environ, PYTHONPATH=f"{WORK}:{os.environ.get('PYTHONPATH', '')}")
         subprocess.run(["manim", str(WORK / "script.py"), "Split", "--media_dir", str(WORK / "whole"), *FLAGS],
